@@ -1,0 +1,47 @@
+#ifndef TERMINAL_BRIDGE_H
+#define TERMINAL_BRIDGE_H
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
+typedef struct Terminal Terminal;
+uint32_t terminal_abi_version(void);
+Terminal *terminal_create(uint32_t cols,uint32_t rows);
+void terminal_destroy(Terminal *);
+size_t terminal_feed(Terminal *,const uint8_t *,size_t,uint64_t);
+bool terminal_resize(Terminal *,uint32_t,uint32_t);
+char *terminal_snapshot(Terminal *,size_t,uint64_t);
+/* Views are borrowed only during the callback; copy them before returning.
+ * Colors: 0=default, 0x01_0000_ii=indexed, 0x02_rrggbb=sRGB. */
+typedef struct {
+  const uint8_t *text; size_t text_len;
+  const uint8_t *link; size_t link_len;
+  uint32_t foreground, background, underline_color;
+  uint16_t style_flags;
+  uint8_t kind, cell_flags, underline;
+} TerminalCellView;
+bool terminal_snapshot_binary(Terminal *,size_t,uint64_t,void *,void (*)(void *,const uint8_t *,size_t,const TerminalCellView *,size_t,const uint8_t *,size_t));
+bool terminal_view_snapshot_binary(Terminal *,uint64_t,void *,void (*)(void *,const uint8_t *,size_t,const TerminalCellView *,size_t,const uint8_t *,size_t));
+void terminal_view_scroll(Terminal *,int64_t);
+void terminal_view_follow_tail(Terminal *);
+void terminal_string_free(char *);
+void terminal_replies(Terminal *,void *,void (*)(void *,const uint8_t *,size_t));
+bool terminal_input(Terminal *,const char *,uint32_t,uint32_t,uint32_t,void *,void (*)(void *,const uint8_t *,size_t));
+typedef struct SearchTask TerminalSearch;
+/* Exclusive task ownership migrates owner -> worker -> owner. No terminal
+ * access on worker. Status: 0=work,1=page,2=done,3=changed,4=limit; accept 5=hit. */
+TerminalSearch *terminal_search_create(Terminal *,const uint8_t *,size_t);
+uint32_t terminal_search_fill(Terminal *,TerminalSearch *);
+uint32_t terminal_search_step(TerminalSearch *);
+uint32_t terminal_search_accept(Terminal *,TerminalSearch *);
+void terminal_search_destroy(TerminalSearch *);
+void terminal_finish(Terminal *);
+typedef struct {int master;int status;int pid;int error;} TerminalProcess;
+TerminalProcess terminal_spawn(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows);
+TerminalProcess terminal_spawn_args(const char *,const char *,const char *,uint16_t,uint16_t,char *const []);
+bool terminal_validate(Terminal *);
+bool terminal_has_work(Terminal *);
+void terminal_set_history_limit(Terminal *,uint32_t);
+bool terminal_image_rgba(Terminal *,uint32_t,uint64_t,void *,void (*)(void *,const uint8_t *,size_t));
+bool terminal_resize_pixels(Terminal *,uint32_t,uint32_t,uint32_t,uint32_t);
+uint64_t terminal_history_bytes(Terminal *);
+#endif

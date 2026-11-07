@@ -1,0 +1,266 @@
+# Native macOS terminal. Run `just` to see common workflows.
+set shell := ["bash", "-euo", "pipefail", "-c"]
+set positional-arguments
+export TERMINAL_PROJECT_ROOT := justfile_directory()
+
+# Show available commands
+@default:
+    just --list --unsorted
+
+# Build the Rust core, native host, Metal shaders and signed development bundle
+[group('build')]
+@build: icons
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ROOT_DIR="$TERMINAL_PROJECT_ROOT"
+    BUILD_DIR="$ROOT_DIR/target/native"
+    APP_BUNDLE="$ROOT_DIR/dist/Terminal.app"
+    mkdir -p "$BUILD_DIR" "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+    cargo build --release --locked -p terminal-core
+    xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 native/Launcher.c -o "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
+    xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
+    xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
+    xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
+    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
+    cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+    cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
+    codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
+    codesign --force --sign - "$APP_BUNDLE"
+
+# Generate all macOS icon sizes from the original app icon
+[group('build')]
+@icons:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ICONSET=target/native/Terminal.iconset
+    if [[ target/native/Terminal.icns -nt assets/AppIcon.png ]]; then exit 0; fi
+    mkdir -p "$ICONSET"
+    for SIZE in 16 32 128 256 512; do
+      sips -z "$SIZE" "$SIZE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}.png" >/dev/null
+      DOUBLE=$((SIZE * 2))
+      sips -z "$DOUBLE" "$DOUBLE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" >/dev/null
+    done
+    iconutil -c icns "$ICONSET" -o target/native/Terminal.icns
+
+# Build and launch a separate development instance; pass app arguments after dev
+[group('build')]
+@dev *args: build
+    open -n "$TERMINAL_PROJECT_ROOT/dist/Terminal.app" --args "$@"
+
+# Build and install a copy in ~/Applications/Helge Terminal.app
+[group('build')]
+install: build (_bundle "install")
+
+# Remove only this app's installed bundle; preserve settings and project output
+[group('build')]
+uninstall: (_bundle "uninstall")
+
+# Build and replace the installed copy, keeping the previous copy if build fails
+[group('build')]
+reinstall: install
+
+# Open the installed app
+[group('build')]
+@open:
+    open "$HOME/Applications/Helge Terminal.app"
+
+# Format Rust sources
+[group('check')]
+fmt:
+    cargo fmt --all
+
+# Check formatting and strict Rust lints
+[group('check')]
+lint:
+    cargo fmt --all -- --check
+    cargo clippy --locked --workspace --all-targets -- -D warnings
+
+# Run the complete Rust and native transport/session/bridge test suite
+[group('check')]
+@test: lint build
+    cargo test --locked --workspace
+    xcrun clang -Wall -Wextra -Werror -I native native/tests/pty.c native/Spawn.c target/release/libterminal_core.a -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
+    target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
+    xcrun swiftc native/Transport.swift native/tests/TransportTests.swift -o target/native/transport-tests
+    target/native/transport-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SessionTests.swift target/native/Spawn.o target/release/libterminal_core.a -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/session-tests
+    target/native/session-tests "$PWD"
+    xcrun swiftc native/Geometry.swift native/tests/GeometryTests.swift -o target/native/geometry-tests
+    target/native/geometry-tests
+    xcrun swiftc native/Statistics.swift native/tests/StatisticsTests.swift -o target/native/statistics-tests
+    target/native/statistics-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SnapshotBridgeTests.swift target/native/Spawn.o target/release/libterminal_core.a -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/snapshot-bridge-tests
+    target/native/snapshot-bridge-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/KeyMap.swift native/tests/KeyMapTests.swift target/release/libterminal_core.a -framework AppKit -framework CoreText -framework Security -liconv -o target/native/keymap-tests
+    target/native/keymap-tests
+
+# Exercise the real native app, PTY, IME, split panes and Metal, then quit it
+[group('check')]
+smoke: build (_native-smoke "normal")
+
+# Measure a visible pane at idle for 60 seconds, then quit the test instance
+[group('check')]
+idle: build (_native-smoke "idle")
+
+# Full local gate, including the GUI smoke
+[group('check')]
+check: test smoke
+
+# Measure the headless core in release mode
+[group('bench')]
+benchmark-core:
+    cargo run --release --locked -p terminal-tools --bin benchmark
+
+# Compare PTY throughput: just benchmark terminal|ghostty|kitty [new-report-directory]
+[group('bench')]
+@benchmark terminal output="reports/comparison":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ROOT_DIR="$TERMINAL_PROJECT_ROOT"
+    TERMINAL_NAME="${1:-}"
+    case "$TERMINAL_NAME" in terminal|ghostty|kitty) ;; *) echo "usage: $0 terminal|ghostty|kitty [output-directory]" >&2; exit 2 ;; esac
+    REPORT_DIR="${2:-$ROOT_DIR/reports/comparison}"
+    mkdir -p "$REPORT_DIR" target/native
+    REPORT_DIR="$(cd "$REPORT_DIR" && pwd)"
+    BYTES="${BENCH_BYTES:-16777216}"
+    RUNS="${BENCH_RUNS:-5}"
+    xcrun clang -Wall -Wextra -Werror -O2 native/benchmarks/terminal-bench.c -o target/native/terminal-bench
+    DRIVER="$ROOT_DIR/target/native/terminal-bench"
+    REPORT="$REPORT_DIR/$TERMINAL_NAME.json"
+    if [[ -e "$REPORT" ]]; then echo "Refusing to overwrite $REPORT; choose a new output directory." >&2; exit 2; fi
+    ARGS=(--output "$REPORT" --terminal "$TERMINAL_NAME" --bytes "$BYTES" --runs "$RUNS" --columns 100 --rows 30)
+    case "$TERMINAL_NAME" in
+      terminal)
+        APP="$ROOT_DIR/dist/Terminal.app"
+        if [[ ! -x "$APP/Contents/MacOS/Terminal" ]]; then just build; fi
+        "$APP/Contents/MacOS/Terminal" --columns 100 --rows 30 --font-size 14 --history-limit 10000 --exit-after-command --execute "$DRIVER" "${ARGS[@]}" > "$REPORT_DIR/terminal-launch.log" 2>&1 &
+        ;;
+      ghostty)
+        APP=/Applications/Ghostty.app
+        "$APP/Contents/MacOS/ghostty" +version > "$REPORT_DIR/ghostty-version.txt"
+        cat > "$REPORT_DIR/ghostty.conf" <<'CONFIG'
+    config-default-files = false
+    font-family = Obel Mono
+    font-size = 14
+    cursor-style-blink = false
+    background-opacity = 1
+    window-width = 100
+    window-height = 30
+    window-padding-x = 8
+    window-padding-y = 8
+    scrollback-limit-lines = 10000
+    scrollback-limit-bytes = 67108864
+    shell-integration = none
+    confirm-close-surface = false
+    quit-after-last-window-closed = true
+    window-save-state = never
+    CONFIG
+        open -na "$APP" --args --config-default-files=false --config-file="$REPORT_DIR/ghostty.conf" -e "$DRIVER" "${ARGS[@]}"
+        ;;
+      kitty)
+        APP=/Applications/kitty.app
+        "$APP/Contents/MacOS/kitty" --version > "$REPORT_DIR/kitty-version.txt"
+        open -na "$APP" --args -c NONE -o 'font_family=Obel Mono' -o font_size=14 -o initial_window_width=100c -o initial_window_height=30c -o remember_window_size=no -o cursor_blink_interval=0 -o scrollback_lines=10000 -o background_opacity=1 -o shell_integration=disabled -o window_padding_width=8 "$DRIVER" "${ARGS[@]}"
+        ;;
+    esac
+    sw_vers > "$REPORT_DIR/os-version.txt"
+    shasum -a 256 "$DRIVER" "$APP/Contents/MacOS/$( [[ "$TERMINAL_NAME" == terminal ]] && echo Terminal || echo "$TERMINAL_NAME" )" > "$REPORT_DIR/$TERMINAL_NAME-binaries.sha256"
+    for ((attempt = 0; attempt < 600; attempt++)); do
+      if [[ -e "$REPORT" ]]; then
+        jq '{terminal,columns,rows,idle_cpu_percent_one_core,idle_physical_bytes,workloads:[.workloads[]|{name,mib_per_second}],dsr_roundtrip_ms}' "$REPORT"
+        BENCH_APP_PID="$(jq -r '.terminal_pid' "$REPORT")"
+        BENCH_APP_COMMAND="$(ps -p "$BENCH_APP_PID" -o command= || true)"
+        case "$BENCH_APP_COMMAND" in
+          "$APP/Contents/MacOS/"*"$DRIVER"*"$REPORT"*) kill -TERM "$BENCH_APP_PID" 2>/dev/null || true ;;
+        esac
+        exit 0
+      fi
+      if [[ -e "$REPORT.failed" ]]; then cat "$REPORT.failed" >&2; exit 1; fi
+      sleep 1
+    done
+    echo "No complete report after 600 seconds. Inspect the separate benchmark window for errors." >&2
+    exit 1
+
+# Build and run in LLDB
+[group('debug')]
+@debug: build
+    lldb -- "$TERMINAL_PROJECT_ROOT/dist/Terminal.app/Contents/MacOS/Terminal"
+
+# Stream this app's native log messages
+[group('debug')]
+logs:
+    /usr/bin/log stream --info --style compact --predicate 'process == "Terminal"'
+
+# Validate bundle metadata and its ad-hoc signature
+[group('check')]
+verify: build
+    plutil -lint dist/Terminal.app/Contents/Info.plist
+    codesign --verify --strict --deep dist/Terminal.app
+
+[private]
+@_native-smoke mode:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    REPORT="$PWD/reports/native-smoke.json"
+    LIMIT=80
+    if [[ "$1" == idle ]]; then REPORT="$PWD/reports/native-idle.json"; LIMIT=360; fi
+    ARGS=(--self-test "$REPORT")
+    if [[ "$1" == idle ]]; then ARGS+=(--idle-test); fi
+    mkdir -p reports
+    rm -f "$REPORT"
+    open -n "$PWD/dist/Terminal.app" --args "${ARGS[@]}"
+    for ((attempt=0; attempt<LIMIT; attempt++)); do
+      if [[ -f "$REPORT" ]] && ! pgrep -f "^$PWD/dist/Terminal.app/Contents/MacOS/Terminal --self-test $REPORT" >/dev/null; then
+        ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort("Native smoke failed: #{r.fetch("checks")}") unless r.fetch("passed"); puts "PASS native smoke, Metal submission, and app termination"' "$REPORT"
+        exit 0
+      fi
+      sleep 0.25
+    done
+    echo "Native smoke timed out; inspect $REPORT and the app process." >&2
+    exit 1
+
+# Owns installation identity checks, staging, rollback and removal policy.
+[private]
+@_bundle operation:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    INSTALL_DIR="$HOME/Applications"
+    INSTALL_APP="$INSTALL_DIR/Helge Terminal.app"
+    IDENTIFIER=no.helgesverre.terminal
+    if [[ -e "$INSTALL_APP" || -L "$INSTALL_APP" ]]; then
+      EXISTING_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INSTALL_APP/Contents/Info.plist" 2>/dev/null || true)"
+      if [[ "$EXISTING_ID" != "$IDENTIFIER" || -L "$INSTALL_APP" ]]; then
+        echo "Refusing to replace or remove an unrelated app at $INSTALL_APP" >&2
+        exit 1
+      fi
+      for APP_PID in $(pgrep -x Terminal || true); do
+        APP_COMMAND="$(ps -p "$APP_PID" -o command= || true)"
+        case "$APP_COMMAND" in
+          "$INSTALL_APP/Contents/MacOS/Terminal"|"$INSTALL_APP/Contents/MacOS/Terminal "*)
+            echo "Quit the installed Helge Terminal before changing it; its sessions are still running." >&2
+            exit 1
+            ;;
+        esac
+      done
+    fi
+    if [[ "$1" == uninstall ]]; then
+      rm -rf "$INSTALL_APP"
+      echo "Uninstalled $INSTALL_APP (settings preserved)"
+      exit 0
+    fi
+    [[ "$1" == install ]] || exit 2
+    codesign --verify --strict --deep "$TERMINAL_PROJECT_ROOT/dist/Terminal.app"
+    mkdir -p "$INSTALL_DIR"
+    STAGE="$(mktemp -d "$INSTALL_DIR/.helge-terminal.XXXXXX")"
+    trap 'rm -rf "$STAGE"' EXIT
+    ditto "$TERMINAL_PROJECT_ROOT/dist/Terminal.app" "$STAGE/new.app"
+    codesign --verify --strict --deep "$STAGE/new.app"
+    if [[ -e "$INSTALL_APP" ]]; then mv "$INSTALL_APP" "$STAGE/previous.app"; fi
+    if ! mv "$STAGE/new.app" "$INSTALL_APP"; then
+      if [[ -e "$STAGE/previous.app" ]] && ! mv "$STAGE/previous.app" "$INSTALL_APP"; then
+        trap - EXIT
+        echo "Restore failed; the previous app is preserved at $STAGE/previous.app" >&2
+      fi
+      exit 1
+    fi
+    echo "Installed $INSTALL_APP"

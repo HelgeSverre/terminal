@@ -1,0 +1,8 @@
+version = 1
+name = "terminal"
+[setup]
+script = ""
+[[actions]]
+name = "Run"
+icon = "run"
+command = "just dev"
