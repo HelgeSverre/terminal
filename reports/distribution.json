@@ -1,0 +1,25 @@
+{
+  "bundle_identifier": "no.helgesverre.terminal",
+  "version": "0.1.0",
+  "signing_team": "9Z2L5FBZS3",
+  "notarized_app": {
+    "id": "a7de95d1-b5f8-47ac-ad37-aeff74d37402",
+    "message": "Processing complete",
+    "status": "Accepted"
+  },
+  "notarized_pkg": {
+    "status": "Accepted",
+    "id": "9f42ffa4-b3f8-4979-8c22-7c363ef83e26",
+    "message": "Processing complete"
+  },
+  "app_stapler_validated": true,
+  "app_gatekeeper_accepted": true,
+  "pkg_stapler_validated": true,
+  "pkg_gatekeeper_accepted": true,
+  "installed_app": "/Users/helge/Applications/Helge Terminal.app",
+  "installed_executable_sha256": "dfea68edaca01514816e8dd658a1e1b0c283bffa1bc520346a1eefd3a3b434c3",
+  "pkg_sha256": "191b7876e449456cb80b891cbe2e9d8b669775849da19a81e4fe080fb80e7cee",
+  "ci_run": "https://github.com/HelgeSverre/terminal/actions/runs/42414709476",
+  "ci_conclusion": "success",
+  "note": "Development milestone; notarization verifies distribution trust, not completion of the terminal specification. No installer was run against system Applications."
+}

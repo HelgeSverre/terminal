@@ -17,12 +17,19 @@ Implemented and locally exercised:
   the resolved viewport; focus reports and key releases do not follow the tail.
   Reset/history clear/screen or geometry changes invalidate frozen host selections;
   destructive screen/geometry changes cancel preedit without committing it.
+- Bounded worker-based literal search over immutable rows with Unicode scalar
+  lowercase matching, soft-wrap joining, cell decorations, query limits,
+  latest-query cancellation, close cancellation and source-revision validation.
+  The whole-transcript native search path has been removed.
 - PTY launcher/status handshake, native readiness, ordered owner input/replies,
   partial writes, exit drain/reap, close escalation, write pressure limits.
 - Metal glyph atlas/instanced quads, demand-only rendering, Retina metrics.
 - AppKit text-input callbacks, selection/copy, paste, mouse/focus, local history,
   basic literal search, windows/tabs/nested splits and font size controls.
 - Minimal pane-only content with Obel Mono; geometric block and common box glyphs.
+- App icon, bundle identity `no.helgesverre.terminal`, Developer ID signing,
+  notarized/stapled app and PKG, transactional personal Applications installation,
+  private GitHub repository and a passing macOS CI test run.
 - Graphite/yellow visual style drawn from Helge's Trace/Splash/Glue/Shepherd
   projects, with backing-scale-aware 8-point insets, native dark window chrome,
   and a separate settings window with inline validation. Two visual rounds
@@ -49,7 +56,7 @@ Implemented and locally exercised:
 Current automated evidence:
 
 - `just test`: 41 core semantic/property-style fixtures, 9 margin fixtures,
-  3 keypad fixtures, 7 viewport fixtures, 13 graphics fixtures,
+  3 keypad fixtures, 7 viewport fixtures, 7 search fixtures, 13 graphics fixtures,
   and the full official Unicode 18 break suite; strict Clippy;
   native build; ten real PTY scenarios including bash/fish/Neovim/tmux/fzf output
   replayed through the core with invariant checks and ordered protocol replies.
@@ -95,7 +102,7 @@ Required work remaining before the requested completion gate:
   metadata and modifier-only events, plus custom terminfo.
 - Resumable reflow work quanta and fallible temporary-memory allowances. REP now yields in bounded quanta; actor/input ordering during REP is tested.
 - Complete typed epoch/anchor lifetimes and owner-confined, eviction-aware selection;
-  bounded/cancellable asynchronous search instead of whole-transcript search.
+  richer search navigation/options and broader live-edit validation coverage.
   The primary viewport now uses stable anchors, but fractional pixel scrolling,
   unseen-output accounting and indexed anchor lookup remain work. Selected content
   is still held in one bounded host snapshot rather than owner-validated endpoints.
@@ -112,8 +119,9 @@ Required work remaining before the requested completion gate:
   interaction corpus, multi-display/sleep/scale and resource-retirement stress.
 - Performance targets: current ASCII/mixed replay and reflow measurements do not
   meet all original acceptance targets. Measurements must guide further changes.
-- Clean-machine install and release packaging/signing/notarization if credentials
-  are later supplied. No signed distribution claim is made by a development build.
+- Clean-machine installation and broader signed-distribution lifecycle tests.
+  Local Developer ID signing and app/PKG notarization now pass; development
+  builds remain distinct from those distribution artifacts.
 
 The Vulkan-specific requirements have been superseded by the authorized Metal
 platform decision; the terminal behavior and native quality gates remain the goal.

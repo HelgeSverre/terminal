@@ -49,11 +49,13 @@ export TERMINAL_PROJECT_ROOT := justfile_directory()
 
 # Build and install a copy in ~/Applications/Helge Terminal.app
 [group('build')]
-install: build (_bundle "install")
+install: build
+    xcrun swift tools/Distribution.swift install
 
 # Remove only this app's installed bundle; preserve settings and project output
 [group('build')]
-uninstall: (_bundle "uninstall")
+uninstall:
+    xcrun swift tools/Distribution.swift uninstall
 
 # Build and replace the installed copy, keeping the previous copy if build fails
 [group('build')]
@@ -197,6 +199,21 @@ verify: build
     plutil -lint dist/Terminal.app/Contents/Info.plist
     codesign --verify --strict --deep dist/Terminal.app
 
+# Build a Developer ID signed application, ZIP and PKG installer
+[group('release')]
+package: build
+    xcrun swift tools/Distribution.swift package
+
+# Sign, notarize, staple and validate both the application and PKG installer
+[group('release')]
+release: build
+    xcrun swift tools/Distribution.swift release
+
+# Verify local Developer ID identities and notarization credentials
+[group('release')]
+release-status:
+    xcrun swift tools/Distribution.swift status
+
 [private]
 @_native-smoke mode:
     #!/usr/bin/env bash
@@ -218,49 +235,3 @@ verify: build
     done
     echo "Native smoke timed out; inspect $REPORT and the app process." >&2
     exit 1
-
-# Owns installation identity checks, staging, rollback and removal policy.
-[private]
-@_bundle operation:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    INSTALL_DIR="$HOME/Applications"
-    INSTALL_APP="$INSTALL_DIR/Helge Terminal.app"
-    IDENTIFIER=no.helgesverre.terminal
-    if [[ -e "$INSTALL_APP" || -L "$INSTALL_APP" ]]; then
-      EXISTING_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$INSTALL_APP/Contents/Info.plist" 2>/dev/null || true)"
-      if [[ "$EXISTING_ID" != "$IDENTIFIER" || -L "$INSTALL_APP" ]]; then
-        echo "Refusing to replace or remove an unrelated app at $INSTALL_APP" >&2
-        exit 1
-      fi
-      for APP_PID in $(pgrep -x Terminal || true); do
-        APP_COMMAND="$(ps -p "$APP_PID" -o command= || true)"
-        case "$APP_COMMAND" in
-          "$INSTALL_APP/Contents/MacOS/Terminal"|"$INSTALL_APP/Contents/MacOS/Terminal "*)
-            echo "Quit the installed Helge Terminal before changing it; its sessions are still running." >&2
-            exit 1
-            ;;
-        esac
-      done
-    fi
-    if [[ "$1" == uninstall ]]; then
-      rm -rf "$INSTALL_APP"
-      echo "Uninstalled $INSTALL_APP (settings preserved)"
-      exit 0
-    fi
-    [[ "$1" == install ]] || exit 2
-    codesign --verify --strict --deep "$TERMINAL_PROJECT_ROOT/dist/Terminal.app"
-    mkdir -p "$INSTALL_DIR"
-    STAGE="$(mktemp -d "$INSTALL_DIR/.helge-terminal.XXXXXX")"
-    trap 'rm -rf "$STAGE"' EXIT
-    ditto "$TERMINAL_PROJECT_ROOT/dist/Terminal.app" "$STAGE/new.app"
-    codesign --verify --strict --deep "$STAGE/new.app"
-    if [[ -e "$INSTALL_APP" ]]; then mv "$INSTALL_APP" "$STAGE/previous.app"; fi
-    if ! mv "$STAGE/new.app" "$INSTALL_APP"; then
-      if [[ -e "$STAGE/previous.app" ]] && ! mv "$STAGE/previous.app" "$INSTALL_APP"; then
-        trap - EXIT
-        echo "Restore failed; the previous app is preserved at $STAGE/previous.app" >&2
-      fi
-      exit 1
-    fi
-    echo "Installed $INSTALL_APP"

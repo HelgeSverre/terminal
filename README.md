@@ -49,6 +49,26 @@ Installation is independent of the development bundle. Replacing or removing a
 running installed app requires closing it first, so its shells are preserved.
 A failed build keeps the installed copy. Only this app's bundle identifier is
 eligible for replacement or removal.
+When a matching notarized build exists, installation uses it automatically;
+otherwise it installs the development build.
+
+## Packaging
+
+The bundle identifier is `no.helgesverre.terminal`.
+
+```sh
+just release-status  # Check Developer ID certificates and notarization access
+just package         # Signed app, ZIP and PKG under dist/release
+just release         # Also notarize, staple and validate the app and PKG
+```
+
+Distribution uses existing Keychain identities and a Keychain notarization
+profile. Set `APPLE_NOTARY_PROFILE`, or put `notaryProfile` in
+`~/.config/terminal/release.json`. Application and installer identities are
+detected when each has one valid Developer ID certificate; the same local file
+can specify `applicationIdentity` and `installerIdentity` when needed.
+Credentials and private keys are kept outside this repository. The PKG installs
+to Applications; `just install` uses your personal Applications folder.
 
 Shortcuts: ⌘N window, ⌘T tab, ⌘D split right, ⇧⌘D split below, ⌘W close pane,
 ⌘C copy selection, ⌘V paste, ⌘A select visible output, ⌘F literal history search,
@@ -65,6 +85,10 @@ configuration and home directory. `TERM=xterm-256color` remains an explicit
 bring-up compatibility fallback. Clipboard control through OSC 52 is denied.
 
 ## Verify
+
+The native integration corpus also needs fish, Neovim, tmux and fzf:
+`brew install just fish neovim tmux fzf`. GitHub CI installs these and runs the
+Rust checks, native build, PTY/session/bridge tests and bundle verification.
 
 ```sh
 just test
