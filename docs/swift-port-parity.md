@@ -27,19 +27,23 @@ linked Swift executable.
 
 | Area | Oracle | Swift status |
 | --- | --- | --- |
-| ABI/session/PTY ownership | native app + C bridge | Buildable ABI; native Session uses it |
+| ABI/session/PTY ownership | native app + C bridge | Binary borrowed-row ABI restored; SnapshotBridge executable passes |
 | Basic VT, SGR, cursor, alternate screen | semantic transcript | Implemented smoke coverage |
-| Input and bracketed paste | key encoding tests | Common keys/paste implemented |
+| Input and bracketed paste | key encoding tests | Swift encoder covers legacy, keypad and Kitty key events; standalone tests pass |
 | Scrollback and viewport | viewport tests | Basic history/anchoring implemented |
 | Unicode 18 grapheme width and maximal-subpart UTF-8 | 41 semantic + Unicode corpus | Not yet parity |
 | Margins, rectangle editing, atomic reflow | 9 margin tests | Not yet parity |
-| Bounded incremental search | 7 search tests | Basic literal search only |
-| Kitty graphics (PNG/zlib/direct, placements/cache) | 13 graphics + dmscene | Not implemented |
-| Binary snapshot ABI | bridge tests | Replaced internally by owned JSON snapshot |
+| Bounded incremental search | 7 search tests | Bounded immutable worker seam exists; Session highlight/anchor check passes |
+| Kitty graphics (PNG/zlib/direct, placements/cache) | 13 graphics + dmscene | Direct RGBA/PNG/chunks/placements work in standalone tests; zlib and dmscene remain |
+| Binary snapshot ABI | bridge tests | Original typed borrowed callback restored; SnapshotBridge executable passes |
 
-`just swift-core-test` currently passes. `just test` was intentionally stopped
-after the legacy Session suite exposed expected mismatches in ordered terminal
-mode delivery and search highlighting; its generated report is not committed.
+`just swift-core-test` currently passes. The full native Session exercise is
+run separately while porting; its generated report is not committed.
+
+After binary-snapshot, search, input and graphics integration, the real native
+Session regression reported **19/20 checks passing**. The remaining failure is
+the REP (`CSI Ps b`) bounded-work ordering test: this Swift core does not yet
+represent REP as resumable work, so it parses the suffix before publication.
 
 The experiment must not claim 100% parity until every original test has an
 equivalent Swift differential replay and the dmscene/PTY corpus passes. System

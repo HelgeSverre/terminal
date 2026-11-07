@@ -44,6 +44,23 @@ private final class SwiftSearchTask {
   init(_ query: String) { self.query = query }
 }
 
+// Owns byte storage for a synchronous ABI snapshot callback.  The callback
+// promise is deliberately narrow: clients copy before return, so storage can
+// be released immediately afterwards.
+private final class SwiftBorrowedCells {
+  var text: [UnsafeMutablePointer<UInt8>] = []
+  var links: [UnsafeMutablePointer<UInt8>] = []
+  deinit { text.forEach { $0.deallocate() }; links.forEach { $0.deallocate() } }
+  func copy(_ string: String, into target: inout [UnsafeMutablePointer<UInt8>]) -> UnsafePointer<UInt8>? {
+    let bytes = Array(string.utf8)
+    guard !bytes.isEmpty else { return nil }
+    let pointer = UnsafeMutablePointer<UInt8>.allocate(capacity: bytes.count)
+    for (offset, byte) in bytes.enumerated() { pointer.advanced(by: offset).initialize(to: byte) }
+    target.append(pointer)
+    return UnsafePointer(pointer)
+  }
+}
+
 private final class SwiftTerminalCore {
   private(set) var columns: Int
   private(set) var rowCount: Int
@@ -54,7 +71,7 @@ private final class SwiftTerminalCore {
   private var historyLimit = 10_000
   private var viewOffset = 0
   private var parser = SwiftParserState.ground
-  private var textBytes: [UInt8] = []
+  private var utf8 = SwiftUnicode.UTF8Decoder()
   private var sequence = ""
   private var pen = SwiftStyle()
   private var currentLink: String?
@@ -62,6 +79,8 @@ private final class SwiftTerminalCore {
   private var title = ""
   private var atPrompt = false
   private var applicationCursor = false
+  private var applicationKeypad = false
+  private var kittyKeyboardFlags: UInt32 = 0
   private var bracketedPaste = false
   private var focusReporting = false
   private var reverseVideo = false
@@ -72,6 +91,9 @@ private final class SwiftTerminalCore {
   private var historyEpoch: UInt64 = 1
   private var screenEpoch: UInt64 = 1
   private var searchHighlights: [[String: Int]] = []
+  private let graphics = KittyGraphicsStore()
+  private var cellPixelWidth = 8
+  private var cellPixelHeight = 16
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
@@ -89,11 +111,10 @@ private final class SwiftTerminalCore {
     if history { historyEpoch &+= 1 }
     if geometry { geometryEpoch &+= 1 }
   }
-  private func flushText() {
-    guard !textBytes.isEmpty else { return }
-    let value = String(decoding: textBytes, as: UTF8.self)
-    textBytes.removeAll(keepingCapacity: true)
-    for character in value { put(character) }
+  private func flushText(final: Bool = false) {
+    if final {
+      for scalar in utf8.finish() { put(String(scalar)) }
+    }
   }
   func feed(_ bytes: UnsafePointer<UInt8>?, count: Int) -> Int {
     guard let bytes, count > 0 else { return 0 }
@@ -107,7 +128,8 @@ private final class SwiftTerminalCore {
         case 0x09: flushText(); tab()
         case 0x0a, 0x0b, 0x0c: flushText(); lineFeed()
         case 0x0d: flushText(); carriageReturn()
-        default: textBytes.append(byte)
+        default:
+          for scalar in utf8.push(byte) { put(String(scalar)) }
         }
       case .escape:
         parser = .ground
@@ -121,6 +143,8 @@ private final class SwiftTerminalCore {
         case 0x4d: reverseIndex()
         case 0x45: carriageReturn(); lineFeed()
         case 0x63: reset()
+        case 0x3d: applicationKeypad = true
+        case 0x3e: applicationKeypad = false
         default: break
         }
       case .csi:
@@ -135,28 +159,24 @@ private final class SwiftTerminalCore {
         else { parser = .ground; sequence = "" }
       }
     }
-    flushText()
     return count
   }
-  private func put(_ character: Character) {
+  private func put(_ text: String) {
     var s = screen
-    if character.unicodeScalars.allSatisfy({ $0.properties.generalCategory == .nonspacingMark || $0.properties.generalCategory == .enclosingMark }) {
-      if s.cursorColumn > 0 { s.rows[s.cursorRow].cells[s.cursorColumn - 1].text.append(character) }
+    let measuredWidth = SwiftUnicode.cellWidth(of: text)
+    if measuredWidth == 0 {
+      if s.cursorColumn > 0 { s.rows[s.cursorRow].cells[s.cursorColumn - 1].text.append(text) }
       screen = s; changed(); return
     }
-    let width = isWide(character) ? 2 : 1
+    let width = min(2, max(1, measuredWidth))
     if s.pendingWrap { s.rows[s.cursorRow].softWrapped = true; s.cursorColumn = 0; s.pendingWrap = false; advanceLine(&s) }
     if width == 2 && s.cursorColumn == columns - 1 { s.rows[s.cursorRow].softWrapped = true; s.cursorColumn = 0; advanceLine(&s) }
     guard s.cursorRow < s.rows.count, s.cursorColumn < columns else { return }
-    s.rows[s.cursorRow].cells[s.cursorColumn] = SwiftCell(text: String(character), kind: width == 2 ? 2 : 1, style: pen, link: currentLink)
+    s.rows[s.cursorRow].cells[s.cursorColumn] = SwiftCell(text: text, kind: width == 2 ? 2 : 1, style: pen, link: currentLink)
     if width == 2 && s.cursorColumn + 1 < columns { s.rows[s.cursorRow].cells[s.cursorColumn + 1] = SwiftCell(text: "", kind: 3, style: pen, link: currentLink) }
     if s.cursorColumn + width >= columns { s.cursorColumn = columns - 1; s.pendingWrap = true }
     else { s.cursorColumn += width }
     screen = s; changed()
-  }
-  private func isWide(_ character: Character) -> Bool {
-    guard let scalar = character.unicodeScalars.first?.value else { return false }
-    return scalar >= 0x1100 && (scalar <= 0x115f || scalar >= 0x2e80)
   }
   private func advanceLine(_ s: inout SwiftScreen) {
     if s.cursorRow + 1 < rowCount { s.cursorRow += 1; return }
@@ -190,7 +210,10 @@ private final class SwiftTerminalCore {
     case "K": eraseLine(params.first ?? 0)
     case "m": applySGR(params)
     case "s": saveCursor()
-    case "u": restoreCursor()
+    case "u":
+      if raw.first == ">" { kittyKeyboardFlags = UInt32(max(0, parameters(String(raw.dropFirst())).first ?? 0)) & 31 }
+      else if raw.first == "?" { replies.append(contentsOf: "\u{1b}[?\(kittyKeyboardFlags)u".utf8) }
+      else { restoreCursor() }
     case "n": if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { replies.append(contentsOf: "\u{1b}[\(s.cursorRow + 1);\(s.cursorColumn + 1)R".utf8) }
     case "c": replies.append(contentsOf: "\u{1b}[?62;4c".utf8)
     case "h", "l": changedActiveScreen = setMode(params, enabled: final == "h", privateMode: privateMode)
@@ -267,25 +290,139 @@ private final class SwiftTerminalCore {
     }
     return changedActiveScreen
   }
-  private func finishString() { let payload = sequence; sequence = ""; if parser == .osc { let parts = payload.split(separator: ";", omittingEmptySubsequences: false); guard let command = parts.first else { return }; if command == "0" || command == "2" { title = parts.dropFirst().joined(separator: ";") } else if command == "8" { currentLink = parts.count > 2 ? String(parts.dropFirst(2).joined(separator: ";")) : nil } else if command == "133" { atPrompt = parts.dropFirst().first == "A" } } /* Kitty APC remains explicitly unsupported in this first Swift core. */ }
+  private func finishString() {
+    let payload = sequence; sequence = ""
+    if parser == .osc {
+      let parts = payload.split(separator: ";", omittingEmptySubsequences: false)
+      guard let command = parts.first else { return }
+      if command == "0" || command == "2" { title = parts.dropFirst().joined(separator: ";") }
+      else if command == "8" { currentLink = parts.count > 2 ? String(parts.dropFirst(2).joined(separator: ";")) : nil }
+      else if command == "133" { atPrompt = parts.dropFirst().first == "A" }
+      return
+    }
+    guard parser == .apc else { return }
+    let s = screen
+    let outcome = graphics.consume(Data(payload.utf8), context: KittyGraphicsContext(
+      alternate: usingAlternate, row: s.cursorRow, column: s.cursorColumn,
+      cellWidth: cellPixelWidth, cellHeight: cellPixelHeight), now: 0)
+    if let reply = outcome.reply { replies.append(reply) }
+    if let advance = outcome.advance {
+      var moved = s
+      moved.cursorColumn = min(columns - 1, moved.cursorColumn + advance.0)
+      moved.cursorRow = min(rowCount - 1, moved.cursorRow + advance.1)
+      screen = moved
+    }
+  }
   func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool { guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows) else { return false }; columns = nextColumns; rowCount = nextRows; primary = resized(primary); alternate = resized(alternate); viewOffset = min(viewOffset, history.count); changed(geometry: true); return true }
+  func resize(columns nextColumns: Int, rows nextRows: Int, cellWidth: Int, cellHeight: Int) -> Bool { guard resize(columns: nextColumns, rows: nextRows) else { return false }; cellPixelWidth = max(1, cellWidth); cellPixelHeight = max(1, cellHeight); return true }
   private func resized(_ old: SwiftScreen) -> SwiftScreen { var value = SwiftScreen(columns: columns, rows: rowCount); let start = max(0, old.rows.count - rowCount); for (target, source) in old.rows.suffix(rowCount).enumerated() { var row = SwiftRow(columns: columns); for i in 0..<min(columns, source.cells.count) { row.cells[i] = source.cells[i] }; row.softWrapped = source.softWrapped; value.rows[target] = row }; value.cursorRow = min(rowCount - 1, max(0, old.cursorRow - start)); value.cursorColumn = min(columns - 1, old.cursorColumn); return value }
   func scroll(_ amount: Int) { viewOffset = max(0, min(history.count, viewOffset + amount)); changed() }
   func followTail() { viewOffset = 0; changed() }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); if history.count > historyLimit { history.removeFirst(history.count - historyLimit); historyEpoch &+= 1 }; viewOffset = min(viewOffset, history.count) }
-  func clearDisplay() -> UInt32 { if usingAlternate { return 0 }; let action: UInt32 = atPrompt ? 1 : 2; if atPrompt { var s = screen; s.rows[s.cursorRow] = SwiftRow(columns: columns); s.cursorColumn = 0; screen = s } else { history.removeAll(); primary = SwiftScreen(columns: columns, rows: rowCount); viewOffset = 0 }; changed(history: true); return action }
-  func input(_ text: String, key: UInt32, modifiers: UInt32, event: UInt32) -> Data? { if key == 1 { guard text.utf8.count <= 1_048_576 else { return nil }; let cleaned = text.replacingOccurrences(of: "\r\n", with: "\n").unicodeScalars.filter { $0.properties.generalCategory != .control || $0 == "\n" || $0 == "\r" || $0 == "\t" }.map(String.init).joined().replacingOccurrences(of: "\n", with: "\r"); return Data((bracketedPaste ? "\u{1b}[200~\(cleaned)\u{1b}[201~" : cleaned).utf8) }; if key == 2 { return focusReporting ? Data((event == 1 ? "\u{1b}[I" : "\u{1b}[O").utf8) : Data() }; if event == 2 { return Data() }; let modifier = 1 + ((modifiers & 1) != 0 ? 1 : 0) + ((modifiers & 2) != 0 ? 2 : 0) + ((modifiers & 4) != 0 ? 4 : 0) + ((modifiers & 8) != 0 ? 8 : 0); let arrows: [UInt32: Character] = [10:"A",11:"B",12:"C",13:"D",14:"H",15:"F"]; if let final = arrows[key] { return Data((modifier == 1 ? "\u{1b}\(applicationCursor ? "O" : "[")\(final)" : "\u{1b}[1;\(modifier)\(final)").utf8) }; let tilde: [UInt32:Int] = [16:5,17:6,18:2,19:3]; if let code = tilde[key] { return Data((modifier == 1 ? "\u{1b}[\(code)~" : "\u{1b}[\(code);\(modifier)~").utf8) }; switch key { case 20: return Data([127]); case 21: return Data((modifiers & 1 != 0 ? "\u{1b}[Z" : "\t").utf8); case 22: return Data([13]); case 23: return Data([27]); case 100...111: let number = [100:1,101:1,102:13,103:1,104:15,105:17,106:18,107:19,108:20,109:21,110:23,111:24][key]!; let final: String = key == 100 ? "P" : key == 101 ? "Q" : key == 103 ? "S" : "~"; return Data((final == "~" ? "\u{1b}[\(number)~" : "\u{1b}O\(final)").utf8); default: break }; if key == 0 || key == 200 { if modifiers & 4 != 0, let scalar = text.unicodeScalars.first, scalar.isASCII { return Data([UInt8(scalar.value & 31)]) }; var output = Data(text.utf8); if modifiers & 2 != 0 { output.insert(27, at: 0) }; return output }; return Data() }
+  func clearDisplay() -> UInt32 { if usingAlternate { return 0 }; let action: UInt32 = atPrompt ? 1 : 2; if atPrompt { var s = screen; s.rows[s.cursorRow] = SwiftRow(columns: columns); s.cursorColumn = 0; screen = s } else { history.removeAll(); primary = SwiftScreen(columns: columns, rows: rowCount); viewOffset = 0; graphics.clear(alternate: false, removeResources: true) }; changed(history: true); return action }
+  func input(_ text: String, key: UInt32, modifiers: UInt32, event: UInt32) -> Data? {
+    let modes = SwiftInputEncoder.Modes(
+      applicationCursor: applicationCursor, applicationKeypad: applicationKeypad,
+      bracketedPaste: bracketedPaste, focusReporting: focusReporting, kittyFlags: kittyKeyboardFlags)
+    if key == 1 { return SwiftInputEncoder.paste(text, modes: modes) }
+    if key == 2 { return SwiftInputEncoder.focus(event == 1, modes: modes) }
+    let modifier = SwiftInputEncoder.Modifiers(
+      shift: modifiers & 1 != 0, option: modifiers & 2 != 0,
+      control: modifiers & 4 != 0, command: modifiers & 8 != 0)
+    let phase: SwiftInputEncoder.Event = event == 1 ? .repeatKey : event == 2 ? .release : .press
+    guard let semantic = inputKey(key, text: text) else { return Data() }
+    return SwiftInputEncoder.key(semantic, modifiers: modifier, event: phase, modes: modes)
+  }
+  private func inputKey(_ code: UInt32, text: String) -> SwiftInputEncoder.Key? {
+    let navigation: [UInt32: SwiftInputEncoder.Key] = [
+      10: .up, 11: .down, 12: .right, 13: .left, 14: .home, 15: .end,
+      16: .pageUp, 17: .pageDown, 18: .insert, 19: .delete, 20: .backspace,
+      21: .tab, 22: .enter, 23: .escape]
+    if let value = navigation[code] { return value }
+    if (100...111).contains(code) { return .function(Int(code - 99)) }
+    if (300...317).contains(code), let keypad = SwiftInputEncoder.KeypadKey(rawValue: Int(code - 300)) {
+      return .keypad(keypad, nativeText: text.first)
+    }
+    if code == 0 || code == 200 { return text.first.map { .character($0) } }
+    return nil
+  }
   func takeReplies() -> Data { defer { replies.removeAll(keepingCapacity: true) }; return replies }
-  func finish() { flushText() }
+  func finish() { flushText(final: true) }
   func historyBytes() -> UInt64 { UInt64(history.reduce(0) { $0 + $1.cells.reduce(0) { $0 + $1.text.utf8.count } }) }
-  func startSearch(_ task: SwiftSearchTask) -> UInt32 { searchHighlights.removeAll(); for (index, row) in history.enumerated() { let text = row.cells.map(\ .text).joined(); if let range = text.range(of: task.query, options: [.caseInsensitive]) { let start = text.distance(from: text.startIndex, to: range.lowerBound); let end = text.distance(from: text.startIndex, to: range.upperBound); searchHighlights.append(["row": index, "start": start, "end": end]) } }; return searchHighlights.isEmpty ? 4 : 5 }
+  func imageRGBA(id: UInt32, generation: UInt64) -> Data? { graphics.imageRGBA(id: id, generation: generation) }
+  func startSearch(_ task: SwiftSearchTask) -> UInt32 {
+    searchHighlights.removeAll()
+    for (index, row) in history.enumerated() {
+      let text = row.cells.map(\ .text).joined()
+      guard let range = text.range(of: task.query, options: [.caseInsensitive]) else { continue }
+      // Search owns anchoring, so the renderer receives a visible stable hit.
+      viewOffset = min(history.count, max(1, history.count - index + rowCount - 1))
+      let allCount = history.count + primary.rows.count
+      let visibleEnd = max(rowCount, allCount - viewOffset)
+      let visibleStart = max(0, visibleEnd - rowCount)
+      let start = text.distance(from: text.startIndex, to: range.lowerBound)
+      let end = text.distance(from: text.startIndex, to: range.upperBound)
+      searchHighlights.append(["row": max(0, index - visibleStart), "start": start, "end": end])
+    }
+    return searchHighlights.isEmpty ? 4 : 5
+  }
   private func palette() -> [[Int]] { (0..<256).map { index in if index < 16 { let r = (index & 1) == 0 ? 0 : 205; let g = (index & 2) == 0 ? 0 : 205; let b = (index & 4) == 0 ? 0 : 238; return [r,g,b] }; let v = index < 232 ? [0,95,135,175,215,255][(index - 16) % 6] : 8 + (index - 232) * 10; return [v,v,v] } }
+  private func rowsForSnapshot(view: Bool, scroll: Int? = nil) -> (rows: [SwiftRow], offset: Int) {
+    let requested = max(0, scroll ?? viewOffset)
+    guard view, !usingAlternate, requested > 0 else { return (screen.rows, 0) }
+    let all = history + primary.rows
+    let end = max(rowCount, all.count - min(requested, history.count))
+    return (Array(all[max(0, end - rowCount)..<end]), min(requested, history.count))
+  }
+  func publishBinary(view: Bool, scroll: Int, context: UnsafeMutableRawPointer?, callback: SnapshotCallback?) -> Bool {
+    guard let callback else { return false }
+    let selected = rowsForSnapshot(view: view, scroll: view ? nil : scroll)
+    guard var header = (try? JSONSerialization.jsonObject(with: snapshotJSON(view: view))) as? [String: Any] else { return false }
+    header.removeValue(forKey: "rows")
+    header["scroll_offset"] = selected.offset
+    header["following_tail"] = selected.offset == 0
+    guard let metadata = try? JSONSerialization.data(withJSONObject: header) else { return false }
+    let borrowed = SwiftBorrowedCells()
+    var views: [TerminalCellView] = []
+    views.reserveCapacity(selected.rows.count * columns)
+    for row in selected.rows {
+      for cell in row.cells {
+        var view = TerminalCellView()
+        view.text = borrowed.copy(cell.text, into: &borrowed.text)
+        view.text_len = cell.text.utf8.count
+        if let link = cell.link {
+          view.link = borrowed.copy(link, into: &borrowed.links)
+          view.link_len = link.utf8.count
+        }
+        view.foreground = cell.style.foreground
+        view.background = cell.style.background
+        view.underline_color = cell.style.underline
+        view.style_flags = cell.style.flags
+        view.kind = cell.kind
+        view.cell_flags = cell.flags
+        view.underline = cell.style.underlineKind
+        views.append(view)
+      }
+    }
+    let wraps = selected.rows.map { $0.softWrapped ? UInt8(1) : UInt8(0) }
+    return metadata.withUnsafeBytes { metadataBuffer in
+      views.withUnsafeBufferPointer { viewBuffer in
+        wraps.withUnsafeBufferPointer { wrapBuffer in
+          callback(context, metadataBuffer.bindMemory(to: UInt8.self).baseAddress, metadata.count,
+                   viewBuffer.baseAddress, views.count, wrapBuffer.baseAddress, wraps.count)
+        }
+      }
+      return true
+    }
+  }
   func snapshotJSON(view: Bool) -> Data {
     let source: [SwiftRow]; let offset: Int
-    if view && !usingAlternate && viewOffset > 0 { let all = history + primary.rows; let end = max(rowCount, all.count - viewOffset); source = Array(all[max(0, end - rowCount)..<end]); offset = viewOffset } else { source = screen.rows; offset = 0 }
+    let selected = rowsForSnapshot(view: view)
+    source = selected.rows; offset = selected.offset
     let cursor = screen
     let rows: [[String: Any]] = source.map { row in ["soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(cell.style.foreground), "background": colorJSON(cell.style.background), "underline_color": colorJSON(cell.style.underline), "underline": Int(cell.style.underlineKind), "bold": cell.style.flags & 1 != 0, "faint": cell.style.flags & 2 != 0, "italic": cell.style.flags & 4 != 0, "inverse": cell.style.flags & 8 != 0, "conceal": cell.style.flags & 16 != 0, "strike": cell.style.flags & 32 != 0, "overline": cell.style.flags & 64 != 0, "blink": cell.style.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
-    let data: [String: Any] = ["at_prompt":atPrompt,"search":searchHighlights,"images":[],"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":offset == 0,"viewport_clamp_revision":revision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":0],"modes":["application_cursor":applicationCursor,"bracketed_paste":bracketedPaste,"focus":focusReporting,"mouse":0,"sgr_mouse":false,"reverse_video":reverseVideo],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[229,229,229],"default_bg":[10,10,12]]
+    let images = graphics.visible(alternate: usingAlternate).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
+    let data: [String: Any] = ["at_prompt":atPrompt,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":offset == 0,"viewport_clamp_revision":revision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":0],"modes":["application_cursor":applicationCursor,"bracketed_paste":bracketedPaste,"focus":focusReporting,"mouse":0,"sgr_mouse":false,"reverse_video":reverseVideo],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[229,229,229],"default_bg":[10,10,12]]
     return (try? JSONSerialization.data(withJSONObject: data)) ?? Data("{}".utf8)
   }
   private func colorJSON(_ color: UInt32) -> Any { if color >> 24 == 1 { return ["Indexed": Int(color & 255)] }; if color >> 24 == 2 { return ["Rgb": [Int((color >> 16) & 255), Int((color >> 8) & 255), Int(color & 255)]] }; return "Default" }
@@ -296,13 +433,14 @@ private final class SwiftTerminalCore {
 
 private func core(_ pointer: OpaquePointer?) -> SwiftTerminalCore? { pointer.map { Unmanaged<SwiftTerminalCore>.fromOpaque(UnsafeMutableRawPointer($0)).takeUnretainedValue() } }
 typealias BytesCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void
+typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int, UnsafePointer<TerminalCellView>?, Int, UnsafePointer<UInt8>?, Int) -> Void
 
 @_cdecl("terminal_abi_version") func swift_terminal_abi_version() -> UInt32 { 1 }
 @_cdecl("terminal_create") func swift_terminal_create(_ cols: UInt32, _ rows: UInt32) -> OpaquePointer? { OpaquePointer(Unmanaged.passRetained(SwiftTerminalCore(columns: Int(cols), rows: Int(rows))).toOpaque()) }
 @_cdecl("terminal_destroy") func swift_terminal_destroy(_ pointer: OpaquePointer?) { if let pointer { Unmanaged<SwiftTerminalCore>.fromOpaque(UnsafeMutableRawPointer(pointer)).release() } }
 @_cdecl("terminal_feed") func swift_terminal_feed(_ pointer: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ count: Int, _ now: UInt64) -> Int { core(pointer)?.feed(bytes, count: count) ?? 0 }
 @_cdecl("terminal_resize") func swift_terminal_resize(_ pointer: OpaquePointer?, _ cols: UInt32, _ rows: UInt32) -> Bool { core(pointer)?.resize(columns: Int(cols), rows: Int(rows)) ?? false }
-@_cdecl("terminal_resize_pixels") func swift_terminal_resize_pixels(_ pointer: OpaquePointer?, _ cols: UInt32, _ rows: UInt32, _ width: UInt32, _ height: UInt32) -> Bool { core(pointer)?.resize(columns: Int(cols), rows: Int(rows)) ?? false }
+@_cdecl("terminal_resize_pixels") func swift_terminal_resize_pixels(_ pointer: OpaquePointer?, _ cols: UInt32, _ rows: UInt32, _ width: UInt32, _ height: UInt32) -> Bool { core(pointer)?.resize(columns: Int(cols), rows: Int(rows), cellWidth: Int(width), cellHeight: Int(height)) ?? false }
 @_cdecl("terminal_finish") func swift_terminal_finish(_ pointer: OpaquePointer?) { core(pointer)?.finish() }
 @_cdecl("terminal_validate") func swift_terminal_validate(_ pointer: OpaquePointer?) -> Bool { core(pointer) != nil }
 @_cdecl("terminal_has_work") func swift_terminal_has_work(_ pointer: OpaquePointer?) -> Bool { false }
@@ -310,12 +448,14 @@ typealias BytesCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePointe
 @_cdecl("terminal_history_bytes") func swift_terminal_history_bytes(_ pointer: OpaquePointer?) -> UInt64 { core(pointer)?.historyBytes() ?? 0 }
 @_cdecl("terminal_snapshot") func swift_terminal_snapshot(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64) -> UnsafeMutablePointer<CChar>? { guard let value = core(pointer) else { return nil }; return strdup(String(data: value.snapshotJSON(view: true), encoding: .utf8) ?? "{}") }
 @_cdecl("terminal_string_free") func swift_terminal_string_free(_ value: UnsafeMutablePointer<CChar>?) { if let value { free(value) } }
+@_cdecl("terminal_snapshot_binary") func swift_terminal_snapshot_binary(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: SnapshotCallback?) -> Bool { core(pointer)?.publishBinary(view: false, scroll: scroll, context: context, callback: callback) ?? false }
+@_cdecl("terminal_view_snapshot_binary") func swift_terminal_view_snapshot_binary(_ pointer: OpaquePointer?, _ now: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: SnapshotCallback?) -> Bool { core(pointer)?.publishBinary(view: true, scroll: 0, context: context, callback: callback) ?? false }
 @_cdecl("terminal_view_scroll") func swift_terminal_view_scroll(_ pointer: OpaquePointer?, _ amount: Int64) { core(pointer)?.scroll(Int(amount)) }
 @_cdecl("terminal_view_follow_tail") func swift_terminal_view_follow_tail(_ pointer: OpaquePointer?) { core(pointer)?.followTail() }
 @_cdecl("terminal_clear_display") func swift_terminal_clear_display(_ pointer: OpaquePointer?) -> UInt32 { core(pointer)?.clearDisplay() ?? 0 }
 @_cdecl("terminal_replies") func swift_terminal_replies(_ pointer: OpaquePointer?, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) { guard let callback, let data = core(pointer)?.takeReplies(), !data.isEmpty else { return }; data.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, data.count) } }
 @_cdecl("terminal_input") func swift_terminal_input(_ pointer: OpaquePointer?, _ text: UnsafePointer<CChar>?, _ key: UInt32, _ modifiers: UInt32, _ event: UInt32, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool { guard let value = core(pointer)?.input(text.map { String(cString: $0) } ?? "", key: key, modifiers: modifiers, event: event) else { return false }; if let callback, !value.isEmpty { value.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, value.count) } }; return true }
-@_cdecl("terminal_image_rgba") func swift_terminal_image_rgba(_ pointer: OpaquePointer?, _ image: UInt32, _ generation: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool { false }
+@_cdecl("terminal_image_rgba") func swift_terminal_image_rgba(_ pointer: OpaquePointer?, _ image: UInt32, _ generation: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool { guard let callback, let pixels = core(pointer)?.imageRGBA(id: image, generation: generation) else { return false }; pixels.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, pixels.count) }; return true }
 @_cdecl("terminal_search_create") func swift_terminal_search_create(_ pointer: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ count: Int) -> OpaquePointer? { guard let bytes, count > 0, let query = String(bytes: UnsafeBufferPointer(start: bytes, count: count), encoding: .utf8) else { return nil }; return OpaquePointer(Unmanaged.passRetained(SwiftSearchTask(query)).toOpaque()) }
 @_cdecl("terminal_search_destroy") func swift_terminal_search_destroy(_ pointer: OpaquePointer?) { if let pointer { Unmanaged<SwiftSearchTask>.fromOpaque(UnsafeMutableRawPointer(pointer)).release() } }
 @_cdecl("terminal_search_fill") func swift_terminal_search_fill(_ pointer: OpaquePointer?, _ task: OpaquePointer?) -> UInt32 { 2 }

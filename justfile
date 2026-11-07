@@ -69,7 +69,7 @@ close-smoke: build
     xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
     xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
     xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
-    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/SwiftTerminalCore.swift native/SwiftSnapshotBridge.swift native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
+    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftGraphics.swift native/SwiftTerminalCore.swift native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -framework ImageIO -o "$APP_BUNDLE/Contents/MacOS/Terminal"
     cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
     cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
     ditto native/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
@@ -134,7 +134,7 @@ lint:
     just swift-core-test
     xcrun swiftc native/Transport.swift native/tests/TransportTests.swift -o target/native/transport-tests
     target/native/transport-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftTerminalCore.swift native/SwiftSnapshotBridge.swift native/Preferences.swift native/Transport.swift native/Session.swift native/AccessibilityProjection.swift native/tests/SessionTests.swift target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/session-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftGraphics.swift native/SwiftTerminalCore.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SessionTests.swift target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests
     target/native/session-tests "$PWD"
     xcrun swiftc native/Geometry.swift native/tests/GeometryTests.swift -o target/native/geometry-tests
     target/native/geometry-tests
@@ -142,9 +142,9 @@ lint:
     target/native/statistics-tests
     xcrun swiftc native/Preferences.swift native/tests/PreferencesTests.swift -o target/native/preferences-tests
     target/native/preferences-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftTerminalCore.swift native/SwiftSnapshotBridge.swift native/Preferences.swift native/Transport.swift native/Session.swift native/AccessibilityProjection.swift native/tests/SnapshotBridgeTests.swift target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/snapshot-bridge-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftGraphics.swift native/SwiftTerminalCore.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SnapshotBridgeTests.swift target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/snapshot-bridge-tests
     target/native/snapshot-bridge-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftTerminalCore.swift native/Preferences.swift native/KeyMap.swift native/tests/KeyMapTests.swift -framework AppKit -framework CoreText -framework Security -liconv -o target/native/keymap-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftTerminalCore.swift native/Preferences.swift native/KeyMap.swift native/tests/KeyMapTests.swift -framework AppKit -framework CoreText -framework Security -liconv -o target/native/keymap-tests
     target/native/keymap-tests
 
 # Swift-only terminal-state smoke.  The original Rust suite remains an
@@ -152,7 +152,7 @@ lint:
 [group('check')]
 swift-core-test:
     mkdir -p target/native
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftTerminalCore.swift native/tests/SwiftCoreTests.swift -framework Foundation -o target/native/swift-core-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftGraphics.swift native/SwiftTerminalCore.swift native/tests/SwiftCoreTests.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/swift-core-tests
     target/native/swift-core-tests
 
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
