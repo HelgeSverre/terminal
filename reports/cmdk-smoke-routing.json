@@ -1,0 +1,25 @@
+{
+  "scope": "NativeSmokeTest Command-K routing diagnosis",
+  "synthetic_key_event_when_terminal_is_not_key": {
+    "key_window": false,
+    "app_key_window": false,
+    "history_epoch_before": 1,
+    "history_epoch_after": 1,
+    "cleared": false,
+    "completed_without_timeout": false
+  },
+  "direct_clear_action_when_terminal_is_not_key": {
+    "key_window": false,
+    "app_key_window": false,
+    "history_epoch_before": 1,
+    "history_epoch_after": 2,
+    "cleared": true,
+    "completed_without_timeout": true
+  },
+  "menu_binding": {
+    "title": "Clear Screen",
+    "action": "clearScreen:",
+    "key_equivalent": "command-k"
+  },
+  "conclusion": "AppKit synthetic key events require the active key window. The smoke independently verifies the menu binding and invokes the pane action it owns."
+}

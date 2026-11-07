@@ -42,6 +42,7 @@ import Darwin
       "preedit_cancelled_on_resize", "preedit_cancelled_on_focus", "cancel_did_not_commit_preedit",
       "search_navigated_and_highlighted",
       "command_left_begins_line", "command_right_accepts_zsh_suggestion",
+      "command_k_shortcut_registered",
       "command_k_clears_history_and_redraws_prompt",
       "starting_directory",
     ].map { ($0, false) })
@@ -195,11 +196,11 @@ import Darwin
       clearHistoryEpoch = snapshot.history_epoch
       measurements["clear_key_window"] = controller.window?.isKeyWindow == true
       measurements["clear_app_key_window"] = NSApp.keyWindow === controller.window
-      if let window = controller.window, let event = NSEvent.keyEvent(
-        with: .keyDown, location: .zero, modifierFlags: [.command],
-        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-        context: nil, characters: "k", charactersIgnoringModifiers: "k", isARepeat: false, keyCode: 40)
-      { NSApp.sendEvent(event) }
+      checks["command_k_shortcut_registered"] = hasClearScreenShortcut()
+      // NSApp's synthetic key routing needs an active key window. The smoke
+      // owns this pane, so exercise the action directly and assert the menu
+      // registration separately; the two contracts remain independently testable.
+      controller.panes.first?.clearScreen(nil)
     } else if phase == 10 && snapshot.at_prompt && snapshot.modes.bracketed_paste && snapshot.history_epoch > clearHistoryEpoch
       && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       checks["command_k_clears_history_and_redraws_prompt"] = snapshot.history_rows == 0
@@ -226,6 +227,19 @@ import Darwin
     deliverCommandArrow(left: true)
     pane.insertText("printf 'CMD_LEFT_OK\\n';", replacementRange: NSRange(location: NSNotFound, length: 0))
     pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+  }
+  private func hasClearScreenShortcut() -> Bool {
+    func containsShortcut(in menu: NSMenu) -> Bool {
+      for item in menu.items {
+        if item.action == #selector(TerminalCanvasView.clearScreen(_:))
+          && item.keyEquivalent == "k" && item.keyEquivalentModifierMask == .command
+        { return true }
+        if let submenu = item.submenu, containsShortcut(in: submenu) { return true }
+      }
+      return false
+    }
+    guard let menu = NSApp.mainMenu else { return false }
+    return containsShortcut(in: menu)
   }
   private func deliverCommandArrow(left: Bool) {
     guard let window = controller.window else { return }
