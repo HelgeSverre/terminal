@@ -1,0 +1,34 @@
+{
+  "fixtures": [
+    {
+      "name": "plain-text-and-lf",
+      "columns": 8,
+      "rows": 3,
+      "chunks_base64": ["b25lCg==", "dHdv"]
+    },
+    {
+      "name": "sgr-and-cursor",
+      "columns": 8,
+      "rows": 3,
+      "chunks_base64": ["G1szMW1S", "G1swbRtbMkg="]
+    },
+    {
+      "name": "alternate-screen-return",
+      "columns": 8,
+      "rows": 3,
+      "chunks_base64": ["cHJpbWFyeRtbPzEwNDloYWx0G1s/MTA0OWw="]
+    },
+    {
+      "name": "utf8-one-byte-partitions",
+      "columns": 8,
+      "rows": 3,
+      "chunks_base64": ["4g==", "gg==", "rA=="]
+    },
+    {
+      "name": "dsr-replies",
+      "columns": 8,
+      "rows": 3,
+      "chunks_base64": ["G1s1bhtbNm4="]
+    }
+  ]
+}
