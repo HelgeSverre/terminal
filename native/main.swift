@@ -1,6 +1,7 @@
 import AppKit
 
 final class TerminalWindow: NSWindowController, NSWindowDelegate {
+  let automationID = UUID().uuidString
   private(set) var panes: [TerminalCanvasView] = []
   private let container = NSView()
   private var root: NSView?
@@ -14,6 +15,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     super.init(window: window)
     TerminalTheme.apply(to: window)
     window.title = "Terminal"
+    window.setAccessibilityIdentifier("no.helgesverre.terminal.window." + automationID)
     window.minSize = NSSize(width: 320, height: 180)
     window.tabbingMode = .preferred
     window.tabbingIdentifier = "HelgeTerminal"
@@ -145,7 +147,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
     menu()
-    if let index = CommandLine.arguments.firstIndex(of: "--execute"),
+    if CommandLine.arguments.contains("--glyph-smoke") {
+      let shell = LaunchSpec.shell
+      let launch = LaunchSpec(executable: "/bin/sh", arguments: ["/bin/sh", "-c",
+        "stty raw -echo; printf 'GLYPH_READY'; exec /bin/cat"], cwd: shell.cwd, launcher: shell.launcher)
+      let window = TerminalWindow(launch: launch)
+      windows.append(window)
+      window.showWindow(nil)
+      window.window?.makeKeyAndOrderFront(nil)
+    } else if let index = CommandLine.arguments.firstIndex(of: "--execute"),
       CommandLine.arguments.count > index + 1
     {
       let argv = Array(CommandLine.arguments.dropFirst(index + 1))
@@ -174,6 +184,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     if let index = CommandLine.arguments.firstIndex(of: "--editing-smoke"),
       CommandLine.arguments.count > index + 1, let window = windows.first {
       EditingSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
+    }
+    if let index = CommandLine.arguments.firstIndex(of: "--glyph-smoke"),
+      CommandLine.arguments.count > index + 1, let window = windows.first {
+      GlyphSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
     }
     if let index = CommandLine.arguments.firstIndex(of: "--close-smoke"),
       CommandLine.arguments.count > index + 1, let window = windows.first {
@@ -284,6 +298,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       window, "Show Previous Tab", #selector(NSWindow.selectPreviousTab(_:)), "\t",
       [.control, .shift])
   }
+}
+let catalogArguments = Array(CommandLine.arguments.prefix { $0 != "--execute" })
+if let index = catalogArguments.firstIndex(of: "--font-catalog"),
+  catalogArguments.count > index + 1 {
+  do {
+    let path = CommandLine.arguments[index + 1]
+    try FontCatalog.write(to: path)
+    let report = FontCatalog.inspect()
+    try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+      .write(to: URL(fileURLWithPath: path + ".json"), options: .atomic)
+    exit(report["passed"] as? Bool == true ? 0 : 1)
+  } catch { fputs("Font catalog failed: \(error)\n", stderr); exit(1) }
 }
 let application = NSApplication.shared
 let delegate = AppDelegate()

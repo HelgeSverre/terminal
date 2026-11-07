@@ -27,8 +27,6 @@ import Darwin
 }
 
 // Separate test instance; invokes actual input/PTY/render paths without global input.
-
-// Separate test instance; invokes actual input/PTY/render paths without global input.
 @MainActor final class NativeSmokeTest {
   private static var active: NativeSmokeTest?
   let controller: TerminalWindow
@@ -110,7 +108,8 @@ import Darwin
     {
       checks["pty_input_and_output"] = true
       let directory = lines.first(where: { $0.hasPrefix("STARTUP_PWD=") })?.dropFirst("STARTUP_PWD=".count)
-      checks["starting_directory"] = directory.map(String.init) == LaunchSpec.shell.cwd
+      checks["starting_directory"] = directory.map(String.init)
+        == URL(fileURLWithPath: LaunchSpec.shell.cwd).resolvingSymlinksInPath().path
       measurements["starting_directory"] = directory.map(String.init) ?? ""
       checks["unicode_text"] = text.contains("猫 é 👩🏽‍💻 🇳🇴")
       checks["sgr_red"] = snapshot.rows.flatMap { $0.cells }.contains {
@@ -194,6 +193,8 @@ import Darwin
     if phase == 9 && snapshot.at_prompt && snapshot.modes.bracketed_paste {
       phase = 10
       clearHistoryEpoch = snapshot.history_epoch
+      measurements["clear_key_window"] = controller.window?.isKeyWindow == true
+      measurements["clear_app_key_window"] = NSApp.keyWindow === controller.window
       if let window = controller.window, let event = NSEvent.keyEvent(
         with: .keyDown, location: .zero, modifierFlags: [.command],
         timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
@@ -208,6 +209,12 @@ import Darwin
         controller.closePane(nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [self] in measureIdle() }
       } else { DispatchQueue.main.async { [self] in finish(timedOut: false) } }
+    }
+    if phase == 10 {
+      measurements["clear_epoch_before"] = clearHistoryEpoch
+      measurements["clear_epoch_after"] = snapshot.history_epoch
+      measurements["clear_at_prompt"] = snapshot.at_prompt
+      measurements["clear_bracketed_paste"] = snapshot.modes.bracketed_paste
     }
   }
   private func testCommandNavigation() {

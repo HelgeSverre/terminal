@@ -1,0 +1,39 @@
+{
+  "bundled_text_faces" : true,
+  "cell_pixels" : [
+    17,
+    41
+  ],
+  "clipped_bounds" : [
+
+  ],
+  "codepoints" : 10624,
+  "faces" : [
+    "ObelMono-Regular",
+    "ObelMono-Bold",
+    "ObelMono-Italic",
+    "ObelMono-BoldItalic"
+  ],
+  "font_sources" : [
+    "\/Users\/helge\/code\/terminal\/dist\/Terminal.app\/Contents\/Resources\/Fonts\/obel-mono\/ObelMono-Regular.ttf",
+    "\/Users\/helge\/code\/terminal\/dist\/Terminal.app\/Contents\/Resources\/Fonts\/obel-mono\/ObelMono-Bold.ttf",
+    "\/Users\/helge\/code\/terminal\/dist\/Terminal.app\/Contents\/Resources\/Fonts\/obel-mono\/ObelMono-Italic.ttf",
+    "\/Users\/helge\/code\/terminal\/dist\/Terminal.app\/Contents\/Resources\/Fonts\/obel-mono\/ObelMono-BoldItalic.ttf"
+  ],
+  "intentional_blank" : "U+EC03 cod-blank",
+  "missing_glyphs" : [
+
+  ],
+  "note" : "Every mapped printable Nerd Font character shaped and rasterized in all four text styles. Bounds outside the cell are reported separately.",
+  "passed" : true,
+  "resolved_fonts" : [
+    "ObelMono-Bold",
+    "ObelMono-BoldItalic",
+    "ObelMono-Italic",
+    "ObelMono-Regular",
+    "SymbolsNFM"
+  ],
+  "unexpected_blank_glyphs" : [
+
+  ]
+}

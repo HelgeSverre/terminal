@@ -2,6 +2,7 @@ import AppKit
 import QuartzCore
 
 final class TerminalCanvasView: NSView, NSTextInputClient {
+  let automationID = UUID().uuidString
   let session: Session
   private var renderer: MetalRenderer?
   private var snapshot: TerminalSnapshot?
@@ -72,6 +73,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     setAccessibilityElement(true)
     setAccessibilityRole(.textArea)
     setAccessibilityLabel("Terminal pane")
+    setAccessibilityIdentifier("no.helgesverre.terminal.pane." + automationID)
     session.onSnapshot = { [weak self] value in
       guard let self else { return }
       onObservedSnapshot?(value)

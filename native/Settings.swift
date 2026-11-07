@@ -2,7 +2,7 @@ import AppKit
 
 // A separate native utility window keeps the terminal usable while editing settings.
 final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
-  private let fontSize = NSTextField(string: "")
+  private let fontSize = FontSizeInput()
   private let familyName = NSTextField(labelWithString: "Obel Mono")
   private let historyRows = NSTextField(string: "")
   private let startingDirectory = NSTextField(string: "")
@@ -20,6 +20,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     super.init(window: window)
     window.title = "Settings"
+    window.setAccessibilityIdentifier("no.helgesverre.terminal.settings")
     window.isReleasedWhenClosed = false
     window.tabbingMode = .disallowed
     TerminalTheme.apply(to: window)
@@ -65,10 +66,13 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     section("Startup")
     startingDirectory.widthAnchor.constraint(equalToConstant: 180).isActive = true
     startingDirectory.setAccessibilityLabel("Starting directory")
+    startingDirectory.setAccessibilityIdentifier("no.helgesverre.terminal.settings.starting-directory")
     startingDirectory.toolTip = "Blank uses your home directory. Existing shells keep their current directory."
     startingDirectory.delegate = self
     let choose = NSButton(title: "Choose…", target: self, action: #selector(chooseDirectory(_:)))
     choose.bezelStyle = .rounded
+    choose.setAccessibilityLabel("Choose starting directory")
+    choose.setAccessibilityIdentifier("no.helgesverre.terminal.settings.choose-directory")
     let directoryControls = NSStackView(views: [startingDirectory, choose])
     directoryControls.spacing = 8
     let directoryRow = row("Directory", control: directoryControls, unit: "")
@@ -80,11 +84,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     let family = row("Font", control: familyName, unit: "")
     stack.addArrangedSubview(family)
     stack.setCustomSpacing(12, after: family)
-    fontSize.widthAnchor.constraint(equalToConstant: 76).isActive = true
-    fontSize.alignment = .right
-    fontSize.setAccessibilityLabel("Font size in points")
-    fontSize.toolTip = "8–40 pt"
-    fontSize.delegate = self
+    fontSize.onChange = { [weak self] in self?.validate() }
     let sizeRow = row("Size", control: fontSize, unit: "pt")
     stack.addArrangedSubview(sizeRow)
     stack.setCustomSpacing(24, after: sizeRow)
@@ -92,6 +92,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     historyRows.widthAnchor.constraint(equalToConstant: 100).isActive = true
     historyRows.alignment = .right
     historyRows.setAccessibilityLabel("Scrollback rows")
+    historyRows.setAccessibilityIdentifier("no.helgesverre.terminal.settings.scrollback-rows")
     historyRows.toolTip = "0–50,000 rows"
     historyRows.delegate = self
     let historyRow = row("Scrollback", control: historyRows, unit: "rows")
@@ -102,23 +103,28 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     stack.addArrangedSubview(historyHint)
     stack.setCustomSpacing(12, after: historyHint)
     followTail.font = .systemFont(ofSize: 13)
+    followTail.setAccessibilityIdentifier("no.helgesverre.terminal.settings.follow-tail-on-input")
     stack.addArrangedSubview(followTail)
     stack.setCustomSpacing(24, after: followTail)
     section("Keyboard")
     option.font = .systemFont(ofSize: 13)
+    option.setAccessibilityIdentifier("no.helgesverre.terminal.settings.option-sends-escape")
     option.toolTip = "Off uses native Option characters. Option arrows always move by word."
     stack.addArrangedSubview(option)
     stack.setCustomSpacing(12, after: option)
     error.font = .systemFont(ofSize: 12)
     error.textColor = TerminalTheme.color(TerminalTheme.danger)
     error.setAccessibilityLabel("Settings validation")
+    error.setAccessibilityIdentifier("no.helgesverre.terminal.settings.validation")
     stack.addArrangedSubview(error)
     error.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
     error.heightAnchor.constraint(equalToConstant: 30).isActive = true
     let cancel = NSButton(title: "Cancel", target: self, action: #selector(Self.cancel(_:)))
     cancel.bezelStyle = .rounded
+    cancel.setAccessibilityIdentifier("no.helgesverre.terminal.settings.cancel")
     cancel.keyEquivalent = "\u{1b}"
     apply.bezelStyle = .rounded
+    apply.setAccessibilityIdentifier("no.helgesverre.terminal.settings.apply")
     apply.bezelColor = TerminalTheme.color(TerminalTheme.accent)
     apply.contentTintColor = TerminalTheme.color(TerminalTheme.background)
     apply.keyEquivalent = "\r"
@@ -192,5 +198,69 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       startingDirectory.stringValue = url.path
       validate()
     }
+  }
+}
+
+// The field editor delivers arrow commands to its delegate. Keeping that here
+// makes typing, stepper clicks and keyboard increments share one bounded value.
+private final class FontSizeInput: NSStackView, NSTextFieldDelegate {
+  private let field = NSTextField(string: "14")
+  private let stepper = NSStepper()
+  var onChange: (() -> Void)?
+  var stringValue: String {
+    get { field.stringValue }
+    set { field.stringValue = newValue; stepper.doubleValue = Double(newValue) ?? 14 }
+  }
+  init() {
+    super.init(frame: .zero)
+    orientation = .horizontal
+    alignment = .centerY
+    spacing = 4
+    let formatter = NumberFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.numberStyle = .decimal
+    formatter.usesGroupingSeparator = false
+    formatter.allowsFloats = true
+    formatter.minimum = 8
+    formatter.maximum = 40
+    formatter.maximumFractionDigits = 2
+    field.formatter = formatter
+    field.alignment = .right
+    field.delegate = self
+    field.toolTip = "8–40 pt. Use Up and Down to adjust by one point."
+    field.setAccessibilityLabel("Font size in points")
+    field.setAccessibilityIdentifier("no.helgesverre.terminal.settings.font-size")
+    field.widthAnchor.constraint(equalToConstant: 76).isActive = true
+    stepper.minValue = 8
+    stepper.maxValue = 40
+    stepper.increment = 1
+    stepper.valueWraps = false
+    stepper.target = self
+    stepper.action = #selector(stepped(_:))
+    stepper.setAccessibilityLabel("Adjust font size")
+    stepper.setAccessibilityIdentifier("no.helgesverre.terminal.settings.font-size-stepper")
+    addArrangedSubview(field)
+    addArrangedSubview(stepper)
+    widthAnchor.constraint(equalTo: field.widthAnchor,
+      constant: stepper.intrinsicContentSize.width + spacing).isActive = true
+  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
+  func controlTextDidChange(_ notification: Notification) {
+    if let value = Double(field.stringValue) { stepper.doubleValue = value }
+    onChange?()
+  }
+  func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+    let name = NSStringFromSelector(selector)
+    guard name == "moveUp:" || name == "moveDown:" else { return false }
+    let value = Double(field.stringValue) ?? stepper.doubleValue
+    stepper.doubleValue = min(40, max(8, value + (name == "moveUp:" ? 1 : -1)))
+    stepped(stepper)
+    textView.string = field.stringValue
+    textView.setSelectedRange(NSRange(location: 0, length: (textView.string as NSString).length))
+    return true
+  }
+  @objc private func stepped(_ sender: NSStepper) {
+    field.stringValue = String(format: "%g", stepper.doubleValue)
+    onChange?()
   }
 }

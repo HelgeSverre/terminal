@@ -165,27 +165,9 @@ final class MetalRenderer: @unchecked Sendable {
       shelf = 0
     }
     guard atlasY + height + 1 < atlasSize else { return nil }
-    var pixels = [UInt8](repeating: 0, count: width * height * 4)
     let selected =
       key.bold ? (key.italic ? boldItalicFont : boldFont) : (key.italic ? italicFont : font)
-    pixels.withUnsafeMutableBytes { raw in
-      guard
-        let context = CGContext(
-          data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8,
-          bytesPerRow: width * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
-      else { return }
-      context.setAllowsAntialiasing(true)
-      context.setShouldAntialias(true)
-      let attributes: [NSAttributedString.Key: Any] = [
-        .font: selected, .foregroundColor: CGColor(red: 1, green: 1, blue: 1, alpha: 1),
-        .ligature: 0,
-      ]
-      let line = CTLineCreateWithAttributedString(
-        NSAttributedString(string: key.text, attributes: attributes))
-      context.textPosition = CGPoint(x: 0, y: CGFloat(height) - CTFontGetAscent(selected) - 2)
-      CTLineDraw(line, context)
-    }
+    var pixels = TerminalFont.rasterize(key.text, font: selected, width: width, height: height).pixels
     // Convert premultiplied sRGB raster output to premultiplied linear RGBA.
     // White mask glyphs retain coverage; emoji keep their source colors.
     for pixel in stride(from: 0, to: pixels.count, by: 4) {
@@ -301,7 +283,7 @@ final class MetalRenderer: @unchecked Sendable {
               let key = GlyphKey(
                 text: displayText, cells: cells, bold: cell.style.bold, italic: cell.style.italic)
               if let glyph = glyph(key, cells: cells, request: request) {
-                let emoji = cell.text.unicodeScalars.contains { $0.value >= 0x1f000 }
+                let emoji = cell.text.unicodeScalars.contains { (0x1f000...0x1faff).contains($0.value) }
                 quads.append(
                   Quad(
                     rect: SIMD4(Float(x), Float(y), Float(glyph.width), Float(request.cellHeight)),

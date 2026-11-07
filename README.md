@@ -10,8 +10,10 @@
 A native Apple Silicon terminal for macOS 15 or later. The terminal state and VT
 parser are written in Rust; AppKit owns windows and native text input, and Metal
 draws terminal cells through a CoreText glyph atlas. The default font is Obel
-Mono, using its installed regular/bold/italic faces. Menlo is the fallback on
-machines without Obel Mono. Font files are not redistributed. This is an implementation in
+Mono, bundled with regular/bold/italic faces under the SIL Open Font License.
+Bundled Symbols Nerd Font Mono supplies missing icon glyphs without changing
+Obel's text metrics. Font licenses and sources are in [assets/fonts](assets/fonts/README.md).
+This is an implementation in
 progress, not a completed v1 release.
 
 ## Gallery
@@ -24,6 +26,8 @@ show rendering behavior; they do not establish performance.
 | ![Dmscene ASCII output](reports/dmscene-showcase.png) | ![Kitty image output](reports/dmscene-kitty-hakkuh.png) |
 
 <img src="reports/settings.png" width="440" alt="Settings grouped into Startup, Text, Scrollback and Keyboard, with ~/code as the starting directory">
+
+![Obel Mono with Nerd Font symbols in the native terminal](reports/nerd-font-glyphs.png)
 
 ## Build and run
 
@@ -91,7 +95,9 @@ configuration. Set the starting folder in Settings → Startup → Directory; `~
 and an empty field use your home folder. The setting applies to new shells;
 existing sessions keep their current directory. If the saved folder disappears,
 new shells fall back to home. `just dev --working-directory /tmp` overrides it
-for that launch. `TERM=xterm-256color` remains an explicit
+for that launch. The font-size number field supports Up/Down and native stepper
+buttons, bounded to 8–40 pt. Closing the last window quits the application and
+shuts down its terminal sessions. `TERM=xterm-256color` remains an explicit
 bring-up compatibility fallback. Clipboard control through OSC 52 is denied.
 
 ## Verify
@@ -104,6 +110,9 @@ Rust checks, native build, PTY/session/bridge tests and bundle verification.
 just test
 just smoke
 just editing-smoke # Fresh-prompt cd/Backspace, autosuggestions and ZLE buffer
+just glyph-smoke   # Every Nerd Font glyph through all four styles and Metal
+just glyphs        # Print the full labeled glyph catalog for inspection
+just close-smoke   # Last-window close and Cmd+Q; app and PTY child must exit
 just idle
 just benchmark-core
 just check       # Tests plus the real native smoke

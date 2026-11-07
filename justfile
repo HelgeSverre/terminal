@@ -7,6 +7,17 @@ export TERMINAL_PROJECT_ROOT := justfile_directory()
 @default:
     just --list --unsorted
 
+# Print every supported Nerd Font glyph in a separate terminal window
+[group('check')]
+glyphs: build
+    dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
+    open -n "$PWD/dist/Terminal.app" --args --execute /bin/cat "$PWD/reports/font-glyphs.txt"
+
+# Verify every Nerd Font glyph through the PTY, grid, rasterizer and Metal
+[group('check')]
+glyph-smoke: build (_native-smoke "glyph")
+    dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
+
 # Close the last window; require both the app and its HUP-resistant child to exit
 [group('check')]
 close-smoke: build
@@ -14,35 +25,35 @@ close-smoke: build
     require 'json'
     require 'timeout'
     ['window', 'shortcut'].each do |mode|
-    report_path = File.join(Dir.pwd, "reports/close-#{mode}-smoke.json")
-    File.delete(report_path) if File.exist?(report_path)
-    app = File.join(Dir.pwd, 'dist/Terminal.app/Contents/MacOS/Terminal')
-    flags = mode == 'shortcut' ? ['--quit-shortcut'] : []
-    pid = Process.spawn(app, '--close-smoke', report_path, *flags, '--execute', '/bin/sh', '-c', "trap '' HUP; printf CLOSE_SMOKE_READY; exec /bin/sleep 30", out: File::NULL, err: File::NULL)
-    app_reaped = false
-    child = nil
-    gone = true
-    begin
-      Timeout.timeout(8) { Process.wait(pid) }
-      app_reaped = true
-      report = JSON.parse(File.read(report_path))
-      child = report.fetch('child_pid')
-      raise 'invalid child PID' unless child > 0
-      begin; Process.kill(0, child); gone = false; rescue Errno::ESRCH; gone = true; end
-      report['app_exited'] = true
-      report['child_exited'] = gone
-      report['passed'] = gone && report.fetch('trigger') == (mode == 'shortcut' ? 'cmd+q' : 'last-window-close')
-      File.write(report_path, JSON.pretty_generate(report) + "\n")
-      abort 'Child survived window closure' unless report['passed']
-      puts "PASS #{mode} closure: application exited and PTY child reaped"
-    ensure
-      unless app_reaped
-        begin; Process.kill('KILL', pid); Process.wait(pid); rescue Errno::ESRCH, Errno::ECHILD; end
+      report_path = File.join(Dir.pwd, "reports/close-#{mode}-smoke.json")
+      File.delete(report_path) if File.exist?(report_path)
+      app = File.join(Dir.pwd, 'dist/Terminal.app/Contents/MacOS/Terminal')
+      flags = mode == 'shortcut' ? ['--quit-shortcut'] : []
+      pid = Process.spawn(app, '--close-smoke', report_path, *flags, '--execute', '/bin/sh', '-c', "trap '' HUP; printf CLOSE_SMOKE_READY; exec /bin/sleep 30", out: File::NULL, err: File::NULL)
+      app_reaped = false
+      child = nil
+      gone = true
+      begin
+        Timeout.timeout(8) { Process.wait(pid) }
+        app_reaped = true
+        report = JSON.parse(File.read(report_path))
+        child = report.fetch('child_pid')
+        raise 'invalid child PID' unless child > 0
+        begin; Process.kill(0, child); gone = false; rescue Errno::ESRCH; gone = true; end
+        report['app_exited'] = true
+        report['child_exited'] = gone
+        report['passed'] = gone && report.fetch('trigger') == (mode == 'shortcut' ? 'cmd+q' : 'last-window-close')
+        File.write(report_path, JSON.pretty_generate(report) + "\n")
+        abort 'Child survived window closure' unless report['passed']
+        puts "PASS #{mode} closure: application exited and PTY child reaped"
+      ensure
+        unless app_reaped
+          begin; Process.kill('KILL', pid); Process.wait(pid); rescue Errno::ESRCH, Errno::ECHILD; end
+        end
+        if defined?(child) && child && child > 0 && defined?(gone) && !gone
+          begin; Process.kill('KILL', child); rescue Errno::ESRCH; end
+        end
       end
-      if defined?(child) && child && child > 0 && defined?(gone) && !gone
-        begin; Process.kill('KILL', child); rescue Errno::ESRCH; end
-      end
-    end
     end
 
 # Build the Rust core, native host, Metal shaders and signed development bundle
@@ -59,10 +70,11 @@ close-smoke: build
     xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
     xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
     xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
-    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
+    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
     cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
     cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
     ditto native/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
+    ditto assets/fonts "$APP_BUNDLE/Contents/Resources/Fonts"
     codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
     codesign --force --sign - "$APP_BUNDLE"
 
@@ -119,6 +131,7 @@ lint:
 # Run the complete Rust and native transport/session/bridge test suite
 [group('check')]
 @test: lint build
+    dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
     cargo test --locked --workspace
     xcrun clang -Wall -Wextra -Werror -I native native/tests/pty.c native/Spawn.c target/release/libterminal_core.a -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
     target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
@@ -271,13 +284,18 @@ release-status:
       REPORT="$PWD/reports/editing-smoke.json"
       ARGS=(--editing-smoke "$REPORT")
     fi
+    if [[ "$1" == glyph ]]; then
+      REPORT="$PWD/reports/glyph-smoke.json"
+      LIMIT=220
+      ARGS=(--glyph-smoke "$REPORT" --columns 100 --rows 36 --font-size 14)
+    fi
     if [[ "$1" == idle ]]; then ARGS+=(--idle-test); fi
     mkdir -p reports
     rm -f "$REPORT"
     open -n "$PWD/dist/Terminal.app" --args "${ARGS[@]}"
     for ((attempt=0; attempt<LIMIT; attempt++)); do
       if [[ -f "$REPORT" ]] && ! pgrep -f "^$PWD/dist/Terminal.app/Contents/MacOS/Terminal ${ARGS[0]} $REPORT" >/dev/null; then
-        ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort("Native smoke failed: #{r.fetch("checks")}") unless r.fetch("passed"); puts "PASS #{ARGV[1]} smoke and app termination"' "$REPORT" "$1"
+        ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort("Native smoke failed: #{r.fetch("checks", r.fetch("failures", []))}") unless r.fetch("passed"); puts "PASS #{ARGV[1]} smoke and app termination"' "$REPORT" "$1"
         exit 0
       fi
       sleep 0.25
