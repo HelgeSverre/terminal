@@ -1,0 +1,191 @@
+cargo fmt --all -- --check
+cargo clippy --locked --workspace --all-targets -- -D warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.17s
+#!/usr/bin/env bash
+set -euo pipefail
+ICONSET=target/native/Terminal.iconset
+if [[ target/native/Terminal.icns -nt assets/AppIcon.png ]]; then exit 0; fi
+mkdir -p "$ICONSET"
+for SIZE in 16 32 128 256 512; do
+  sips -z "$SIZE" "$SIZE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}.png" >/dev/null
+  DOUBLE=$((SIZE * 2))
+  sips -z "$DOUBLE" "$DOUBLE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o target/native/Terminal.icns
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR="$TERMINAL_PROJECT_ROOT"
+BUILD_DIR="$ROOT_DIR/target/native"
+APP_BUNDLE="$ROOT_DIR/dist/Terminal.app"
+mkdir -p "$BUILD_DIR" "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+cargo build --release --locked -p terminal-core
+xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 native/Launcher.c -o "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
+xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
+xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
+xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
+xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
+cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
+codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
+codesign --force --sign - "$APP_BUNDLE"
+    Finished `release` profile [optimized] target(s) in 0.07s
+/Users/helge/code/terminal/dist/Terminal.app/Contents/MacOS/TerminalLauncher: replacing existing signature
+/Users/helge/code/terminal/dist/Terminal.app: replacing existing signature
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.26s
+     Running unittests src/lib.rs (target/debug/deps/terminal_core-59fe54813e730c75)
+
+running 1 test
+test unicode::tests::official_unicode_18_break_tests ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/graphics.rs (target/debug/deps/graphics-d8ac9f0e1216b849)
+
+running 13 tests
+test replacements_delete_old_placements_and_generate_new_lifetime ... ok
+test malformed_size_base64_and_file_transports_fail_without_replacing ... ok
+test direct_rgb_rgba_and_placement ... ok
+test png_and_zlib_are_decoded_with_alpha ... ok
+test every_byte_partition_and_one_byte_reads ... ok
+test quiet_modes_and_unsupported_feature_queries ... ok
+test screen_scope_clear_reset_and_scrolling ... ok
+test delete_z_keeps_unrelated_cached_images_and_other_screen_references ... ok
+test chunk_atomicity_and_final_cursor_position ... ok
+test kitty_detection_query_is_ordered_and_non_mutating ... ok
+test cancel_and_oversized_apc_never_leak_payload ... ok
+test zero_source_extent_means_remaining_pixels_and_queries_respect_quiet ... ok
+test dmscene_double_buffer_sequence ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/keypad.rs (target/debug/deps/keypad-a666595c88d5fe44)
+
+running 3 tests
+test legacy_release_suppression_and_disambiguated_keypad ... ok
+test enhanced_keypad_press_repeat_release_and_associated_text ... ok
+test numeric_and_application_keypad_are_distinct_and_resettable ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/margins.rs (target/debug/deps/margins-152e5471fae75955)
+
+running 9 tests
+test rectangular_scroll_remaps_styles_links_clusters_and_protection ... ok
+test regional_wrap_does_not_join_full_rows_or_touch_side_columns ... ok
+test rectangular_insert_delete_lines_and_bce ... ok
+test rectangular_index_keeps_row_identity_side_cells_and_history ... ok
+test screen_scope_reset_resize_and_margin_mode_disable ... ok
+test carriage_return_backspace_and_tabs_respect_horizontal_region ... ok
+test horizontal_insert_delete_and_wide_edges ... ok
+test margins_origin_home_queries_validation_and_ansi_save_conflict ... ok
+test every_partition_and_ascii_scalar_paths_agree_with_rectangles ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+
+     Running tests/search.rs (target/debug/deps/search-f28676c9cb150c9d)
+
+running 7 tests
+test soft_chains_join_but_hard_breaks_and_explicit_spaces_remain ... ok
+test literal_latest_hit_navigates_physical_history_and_decorates_cells ... ok
+test output_is_not_chased_and_alternate_never_searches_primary_history ... ok
+test unicode_scalar_fold_and_cluster_boundaries_include_wide_continuations ... ok
+test immutable_page_runs_off_owner_and_stale_source_is_rejected ... ok
+test epochs_eviction_and_row_revisions_invalidate_results_and_decorations ... ok
+test bounded_quanta_overlapping_matches_and_query_admission ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests/semantics.rs (target/debug/deps/semantics-528eea24494b072d)
+
+running 41 tests
+test ed2_vs_ed3 ... ok
+test c1_not_reinterpreted ... ok
+test alternate_never_enters_history ... ok
+test combining_style_adjacency ... ok
+test erase_background_only ... ok
+test color_syntax ... ok
+test deferred_wrap ... ok
+test capped_grapheme_keeps_incremental_boundary_state ... ok
+test alternate_idempotence_and_mixed ... ok
+test cursor_save_pending_and_pen ... ok
+test geometry_rejected_without_mutation ... ok
+test history_bounds ... ok
+test immutable_rows ... ok
+test input_modes_and_paste ... ok
+test interior_edit_preserves_wrap_chain ... ok
+test invalid_utf8_color_does_not_panic ... ok
+test keyboard_stacks_per_screen ... ok
+test kitty_event_encoding ... ok
+test lf_is_not_cr ... ok
+test margins_no_history ... ok
+test overflow_invalidates_command ... ok
+test malformed_utf8_maximal_subpart ... ok
+test parser_eof_drops_control ... ok
+test reflow_roundtrip_text ... ok
+test resize_inactive_primary ... ok
+test ris_resets_both_cursor_appearances ... ok
+test scroll_closes_cluster_repair ... ok
+test saved_cursor_excludes_appearance ... ok
+test string_discard_escape_cannot_inject ... ok
+test selective_erase_protects_whole_wide_glyph ... ok
+test ascii_fast_path_matches_scalar ... ok
+test string_escape_and_abort ... ok
+test unicode_clusters ... ok
+test sync_replies_deadline ... ok
+test unicode_tables_are_pinned_to_18 ... ok
+test wide_at_edge ... ok
+test wide_repair_all_mutations ... ok
+test widening_clipped_glyph_clears_clipping_flag ... ok
+test rep_yields_without_consuming_later_bytes ... ok
+test every_byte_partition ... ok
+test random_byte_partition_and_invariants ... ok
+
+test result: ok. 41 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+
+     Running tests/viewport.rs (target/debug/deps/viewport-8ecb9a082a4f7b45)
+
+running 7 tests
+test height_growth_clamps_to_legal_top_and_anchor_can_move_back_to_history ... ok
+test publication_gate_does_not_rebase_anchor_and_invalid_resize_is_atomic ... ok
+test alternate_has_no_history_and_retains_primary_view_for_return ... ok
+test reflow_maps_leading_boundary_including_soft_wrap_and_wide_atoms ... ok
+test history_clear_and_reset_publish_distinct_identities_and_initial_colors ... ok
+test eviction_clamps_once_without_leaving_anchored_mode ... ok
+test output_preserves_content_and_scroll_is_relative_to_current_anchor ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/bin/benchmark.rs (target/debug/deps/benchmark-6f9e9d34918401fb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/terminal_tools-ce7c5406435829f8)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests terminal_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+PASS PTY: 37 123 (49 bytes, child reaped, final output drained)
+PASS PTY: FINAL_SENTINEL (240014 bytes, child reaped, final output drained)
+PASS PTY: exec failure (0 bytes, child reaped, final output drained)
+PASS PTY: cwd failure (0 bytes, child reaped, final output drained)
+PASS PTY: ENV_OK (6 bytes, child reaped, final output drained)
+PASS PTY: BASH_CORPUS_OK (14 bytes, child reaped, final output drained)
+PASS PTY: FISH_CORPUS_OK (14 bytes, child reaped, final output drained)
+PASS PTY: NVIM_CORPUS_OK (5714 bytes, child reaped, final output drained)
+PASS PTY: TMUX_CORPUS_OK (1144 bytes, child reaped, final output drained)
+PASS PTY: FZF_CORPUS_OK (10949 bytes, child reaped, final output drained)
+PASS transport: every byte offset of bracket opening, Unicode payload and closing; idempotent cancel; unbracketed cancel; ordinary writes preserved
+PASS session: REP ordering, lossless admission, live-mode paste encoding, saturation/cancel/close, owned-child reaping
+PASS geometry: all block characters stay in bounds; half blocks tile odd/even cells without gaps; box strokes meet cell edges
+PASS statistics: empty/finite/nonfinite distributions serialize as JSON values
+PASS binary snapshot bridge: exact legacy equivalence, colors/styles/links, Unicode, scroll, images, sync gate, owned lifetimes
+PASS native key map: all numeric-pad keys, localized decimal, Return distinction, application mode, enhanced release

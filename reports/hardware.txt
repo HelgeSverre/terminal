@@ -1,0 +1,8 @@
+Apple M2 Max
+34359738368
+ProductName:		macOS
+ProductVersion:		15.6
+BuildVersion:		24G84
+Apple Swift version 6.2.4 (swiftlang-6.2.4.1.4 clang-1700.6.4.2)
+Target: arm64-apple-macosx15.0
+rustc 1.99.0 (b940084d7 2026-09-28)

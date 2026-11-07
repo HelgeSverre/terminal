@@ -1,0 +1,3 @@
+2026-11-07 20:04:30.517 Terminal[30384:20762329] Session: PTY ended; waiting for process exit
+2026-11-07 20:04:30.517 Terminal[30384:20762329] Session: Process exited (status 0); draining output
+2026-11-07 20:04:30.517 Terminal[30384:20762329] Session: Session finished

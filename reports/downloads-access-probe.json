@@ -1,0 +1,13 @@
+{
+  "passed": false,
+  "launch": "Launch Services open -n",
+  "operation": "Read one 4096-byte block of the same dump with /bin/dd, discard to /dev/null",
+  "observed": "Child remained blocked inside open; no Downloads permission alert or sheet appeared",
+  "bundle_signature": "Ad-hoc; codesign --verify --strict --deep passed",
+  "app_sandbox": false,
+  "downloads_usage_description": true,
+  "full_disk_access_preflight": "TCC returned authValue=0; no broad permission was requested or changed",
+  "comparison": "Direct launch from the authorized coding session completed two full 8.16 GB /bin/cat stress tests",
+  "cleanup": "Task-owned probe instance terminated",
+  "sql_content_recorded": false
+}

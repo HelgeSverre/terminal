@@ -1,0 +1,86 @@
+{
+  "checks" : {
+    "accessibility_text_ranges" : true,
+    "completed_without_timeout" : true,
+    "ime_commit_once" : true,
+    "ime_marked_state" : true,
+    "ime_unmarked_state" : true,
+    "metal_submitted" : true,
+    "native_keypad_enter" : true,
+    "pty_input_and_output" : true,
+    "resize_epoch" : true,
+    "sgr_red" : true,
+    "split_panes" : true,
+    "unicode_text" : true
+  },
+  "measurements" : {
+    "accessibility_first_range_frame" : "{{468, 911}, {9, 21}}",
+    "accessibility_utf16_count" : 216,
+    "maximum_ime_output_marker_lines" : 1
+  },
+  "note" : "Programmatic native input\/PTY\/resize\/split smoke. Real input methods and VoiceOver require interactive validation. GPU command time is not display latency.",
+  "os" : "Version 15.6 (Build 24G84)",
+  "pane_geometry" : [
+    {
+      "bounds" : "{{0, 0}, {425, 530}}",
+      "drawable_size" : "{425, 530}",
+      "frame" : "{{0, 0}, {425, 530}}",
+      "layer_frame" : "{{0, 0}, {425, 530}}",
+      "renderer_matches_layer" : true
+    },
+    {
+      "bounds" : "{{0, 0}, {424, 530}}",
+      "drawable_size" : "{424, 530}",
+      "frame" : "{{426, 0}, {424, 530}}",
+      "layer_frame" : "{{426, 0}, {424, 530}}",
+      "renderer_matches_layer" : true
+    }
+  ],
+  "passed" : true,
+  "render" : {
+    "attachment" : "BGRA8Unorm_sRGB",
+    "command_errors" : 0,
+    "font" : "Obel Mono",
+    "glyph_atlas" : "premultiplied linear RGBA8Unorm",
+    "gpu_command_ms" : [
+      0.080375000834465027,
+      0.036583340261131525,
+      0.032208336051553488,
+      0.034916680306196213,
+      0.034333323128521442,
+      0.031625007977709174,
+      0.037208345020189881,
+      0.019708328181877732,
+      0.021125015337020159,
+      0.019583327230066061,
+      0.020999985281378031,
+      0.025708344765007496,
+      0.016375008272007108,
+      0.024916662368923426,
+      0.023375003365799785,
+      0.026583351427689195,
+      0.024541659513488412
+    ],
+    "preparation_ms" : [
+      0.261459,
+      2.1232500000000001,
+      1.827958,
+      0.71191599999999999,
+      0.63312500000000005,
+      1.1584159999999999,
+      9.7918749999999992,
+      0.52691699999999997,
+      0.79462500000000003,
+      0.33908300000000002,
+      0.14804200000000001,
+      0.37112499999999998,
+      0.087541999999999995,
+      0.25520900000000002,
+      0.15354100000000001,
+      0.16883300000000001,
+      0.19545799999999999
+    ],
+    "submissions" : 17
+  },
+  "renderer" : "Metal"
+}

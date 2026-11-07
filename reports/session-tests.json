@@ -1,0 +1,35 @@
+{
+  "cancel_to_reap_seconds" : 0.0095809698104858398,
+  "checks" : {
+    "accepted_input_during_rep" : true,
+    "cancel_close_under_three_seconds" : true,
+    "focus_release_preserves_viewport" : true,
+    "input_before_mode_suffix" : true,
+    "large_paste_accepted" : true,
+    "ordered_mode_encoding_after_rep" : true,
+    "ordinary_ingress_busy" : true,
+    "oversize_paste_rejected" : true,
+    "release_admitted_under_ingress_pressure" : true,
+    "rep_completed" : true,
+    "saturated_cancel_close_reaped" : true,
+    "search_close_cancelled" : true,
+    "search_found_and_highlighted" : true,
+    "search_latest_query_completed" : true,
+    "search_owner_probe_under_100ms" : true,
+    "search_replacement_cancelled" : true,
+    "typing_follows_tail" : true,
+    "viewport_scroll_anchored" : true
+  },
+  "passed" : true,
+  "statuses" : [
+    "PTY ended; waiting for process exit",
+    "Process exited (status 0); draining output",
+    "Session finished",
+    "Paste limit is 1 MiB",
+    "Input busy or closed",
+    "Input busy or closed",
+    "Input busy or closed",
+    "Paste cancelled",
+    "Process exited (status 1); draining output"
+  ]
+}

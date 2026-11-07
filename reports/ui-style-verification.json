@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "scope": "Native macOS visual refinement from local Trace, Splash, Glue and Shepherd references",
+  "surfaces_checked": ["split terminal window", "settings window", "settings validation"],
+  "default_background": "#0a0a0b",
+  "default_foreground": "#e6e6e6",
+  "accent": "#facc15",
+  "terminal_font": "Obel Mono",
+  "persistent_footer": false,
+  "native_window_controls": true,
+  "focused_cursor_only": true,
+  "settings_opened_through_menu": true,
+  "invalid_font_size": "999",
+  "invalid_input_preserved": true,
+  "apply_disabled_for_invalid_input": true,
+  "validation_message_visible": true,
+  "cancel_returned_focus_to_terminal": true,
+  "test_preferences_saved": false,
+  "visual_rounds": 2,
+  "note": "Final verification used native accessibility state and actual window captures. Initial review caught and fixed an Auto Layout attachment order error and stale split-pane focus. No further visual polishing after the confirmation round."
+}

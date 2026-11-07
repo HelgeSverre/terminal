@@ -1,0 +1,95 @@
+[
+  {
+    "terminal": "terminal",
+    "resource_usage_available": true,
+    "idle_cpu_percent_one_core": 0.004222,
+    "idle_physical_bytes": 41601600,
+    "throughput_mib_s": [
+      {
+        "name": "ascii_short_lines",
+        "p50": 68.541270
+      },
+      {
+        "name": "ascii_long_lines",
+        "p50": 92.339834
+      },
+      {
+        "name": "ansi_truecolor",
+        "p50": 20.578990
+      },
+      {
+        "name": "unicode",
+        "p50": 12.732315
+      }
+    ],
+    "dsr_roundtrip_ms": {
+      "samples": 100,
+      "p50": 0.022000,
+      "p95": 0.028000,
+      "p99": 0.035000,
+      "max": 0.035000
+    }
+  },
+  {
+    "terminal": "ghostty",
+    "resource_usage_available": false,
+    "idle_cpu_percent_one_core": null,
+    "idle_physical_bytes": null,
+    "throughput_mib_s": [
+      {
+        "name": "ascii_short_lines",
+        "p50": 282.805430
+      },
+      {
+        "name": "ascii_long_lines",
+        "p50": 309.807339
+      },
+      {
+        "name": "ansi_truecolor",
+        "p50": 198.032056
+      },
+      {
+        "name": "unicode",
+        "p50": 187.382154
+      }
+    ],
+    "dsr_roundtrip_ms": {
+      "samples": 100,
+      "p50": 0.027000,
+      "p95": 0.036000,
+      "p99": 0.045000,
+      "max": 0.046000
+    }
+  },
+  {
+    "terminal": "kitty",
+    "resource_usage_available": true,
+    "idle_cpu_percent_one_core": 0.007848,
+    "idle_physical_bytes": 66980352,
+    "throughput_mib_s": [
+      {
+        "name": "ascii_short_lines",
+        "p50": 113.166978
+      },
+      {
+        "name": "ascii_long_lines",
+        "p50": 115.789321
+      },
+      {
+        "name": "ansi_truecolor",
+        "p50": 46.232753
+      },
+      {
+        "name": "unicode",
+        "p50": 116.172691
+      }
+    ],
+    "dsr_roundtrip_ms": {
+      "samples": 100,
+      "p50": 3.875000,
+      "p95": 4.000000,
+      "p99": 4.934000,
+      "max": 5.020000
+    }
+  }
+]
