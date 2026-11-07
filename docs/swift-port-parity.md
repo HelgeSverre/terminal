@@ -35,7 +35,7 @@ linked Swift executable.
 | Unicode 18 grapheme width and maximal-subpart UTF-8 | 41 semantic + Unicode corpus | Official corpus: 715 / 853 cases pass, 138 fail (first U+094D); generated tables not yet parity |
 | Margins, rectangle editing, atomic reflow | 9 margin tests | Reflow primitive smoke passes; margins/rectangles/style retention not integrated |
 | Bounded incremental search | 7 search tests | Worker seam + standalone search test + Session highlight/anchor pass; core integration incomplete |
-| Kitty graphics (PNG/zlib/direct, placements/cache) | 13 graphics + dmscene | Direct RGBA/PNG/chunks/placements standalone tests pass; zlib and dmscene remain |
+| Kitty graphics (PNG/zlib/direct, placements/cache) | 13 graphics + dmscene | Direct RGBA/PNG/zlib/chunks/placements standalone tests pass; dmscene and original 13-case replay remain |
 | Binary snapshot ABI | bridge tests | Original typed borrowed callback restored; SnapshotBridge executable passes |
 
 `just swift-core-test` currently passes. The full native Session exercise is
