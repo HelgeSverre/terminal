@@ -32,7 +32,7 @@ linked Swift executable.
 | Basic VT, SGR, cursor, alternate screen | semantic transcript | Implemented smoke coverage |
 | Input and bracketed paste | key encoding tests | Swift encoder covers legacy, keypad and Kitty key events; standalone tests pass |
 | Scrollback and viewport | viewport tests | Basic history/anchoring implemented |
-| Unicode 18 grapheme width and maximal-subpart UTF-8 | 41 semantic + Unicode corpus | Unicode seam smoke passes; generated Unicode-18 tables/official corpus not yet parity |
+| Unicode 18 grapheme width and maximal-subpart UTF-8 | 41 semantic + Unicode corpus | Official corpus: 715 / 853 cases pass, 138 fail (first U+094D); generated tables not yet parity |
 | Margins, rectangle editing, atomic reflow | 9 margin tests | Reflow primitive smoke passes; margins/rectangles/style retention not integrated |
 | Bounded incremental search | 7 search tests | Worker seam + standalone search test + Session highlight/anchor pass; core integration incomplete |
 | Kitty graphics (PNG/zlib/direct, placements/cache) | 13 graphics + dmscene | Direct RGBA/PNG/chunks/placements standalone tests pass; zlib and dmscene remain |
