@@ -64,6 +64,7 @@ dependency graph.
 | Behavioral core tests | 86 / 86 | not comparable | — | Swift native Session: 20 / 20; graphics/Unicode/reflow suites incomplete |
 | Full app build wall time | 26.24 s | 24.90 s | -1.34 s | Fresh worktree output, warmed shared tool caches |
 | Full app build max RSS | 309.4 MB | 265.6 MB | -43.8 MB | Same command scope as above |
+| Unchanged full `just build` | 17.86 s | 24.33 s | +6.47 s | Equal command scope; Rust benefits from Cargo’s incremental core cache while the normal Swift recipe still whole-compiles |
 | App executable | 3,349,872 B | 1,198,304 B | -64.2% | Signed development bundle executable |
 | Stripped executable copy | 2,590,288 B | 801,136 B | -69.1% | Strip performed on copied binaries only |
 | Full app bundle | 8,476 KiB | 6,376 KiB | -24.8% | Same bundled fonts/assets |
