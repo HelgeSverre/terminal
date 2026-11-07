@@ -70,6 +70,13 @@ import Foundation
     precondition(response.starts(with: Data("\u{1b}[0n".utf8)))
     precondition(response.contains(Data("R".utf8)))
 
+    // The parser owns Kitty APC hand-off; snapshots expose only finalized
+    // generation-addressable graphics state.
+    feed(core, "\u{1b}_Ga=T,i=42,f=32,s=1,v=1;AP8A/w==\u{1b}\\")
+    value = snapshot(core)
+    let images = value["images"] as! [[String: Any]]
+    precondition(images.count == 1 && images[0]["image"] as? Int == 42)
+
     precondition(terminal_resize(core, 4, 2))
     let euro = Array("€".utf8)
     for byte in euro { var b = byte; _ = terminal_feed(core, &b, 1, 0) }

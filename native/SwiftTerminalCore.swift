@@ -166,7 +166,10 @@ private final class SwiftTerminalCore {
         else { parser = .ground; sequence = "" }
       case .osc, .apc:
         if byte == 0x07 { finishString(); parser = .ground }
-        else if byte == 0x1b { parser = .escape; sequence.append("\u{1b}") }
+        // String Terminator is the two-byte ESC \\ sequence. Keep parser
+        // ownership in the string state until the following byte decides it;
+        // switching to generic Escape would lose APC/OSC context.
+        else if byte == 0x1b { sequence.append("\u{1b}") }
         else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
         else if sequence.utf8.count < 1_048_576 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
         else { parser = .ground; sequence = "" }
