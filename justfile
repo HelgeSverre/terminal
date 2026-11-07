@@ -21,7 +21,7 @@ export TERMINAL_PROJECT_ROOT := justfile_directory()
     xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
     xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
     xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
-    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
+    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
     cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
     cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
     ditto native/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
@@ -92,6 +92,8 @@ lint:
     target/native/geometry-tests
     xcrun swiftc native/Statistics.swift native/tests/StatisticsTests.swift -o target/native/statistics-tests
     target/native/statistics-tests
+    xcrun swiftc native/Preferences.swift native/tests/PreferencesTests.swift -o target/native/preferences-tests
+    target/native/preferences-tests
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SnapshotBridgeTests.swift target/native/Spawn.o target/release/libterminal_core.a -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/snapshot-bridge-tests
     target/native/snapshot-bridge-tests
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/KeyMap.swift native/tests/KeyMapTests.swift target/release/libterminal_core.a -framework AppKit -framework CoreText -framework Security -liconv -o target/native/keymap-tests
@@ -100,6 +102,10 @@ lint:
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
 [group('check')]
 smoke: build (_native-smoke "normal")
+
+# Reproduce native cd/autosuggestion/Backspace editing against the actual ZLE buffer
+[group('check')]
+editing-smoke: build (_native-smoke "editing")
 
 # Measure a visible pane at idle for 60 seconds, then quit the test instance
 [group('check')]
@@ -223,13 +229,17 @@ release-status:
     LIMIT=80
     if [[ "$1" == idle ]]; then REPORT="$PWD/reports/native-idle.json"; LIMIT=360; fi
     ARGS=(--self-test "$REPORT")
+    if [[ "$1" == editing ]]; then
+      REPORT="$PWD/reports/editing-smoke.json"
+      ARGS=(--editing-smoke "$REPORT")
+    fi
     if [[ "$1" == idle ]]; then ARGS+=(--idle-test); fi
     mkdir -p reports
     rm -f "$REPORT"
     open -n "$PWD/dist/Terminal.app" --args "${ARGS[@]}"
     for ((attempt=0; attempt<LIMIT; attempt++)); do
-      if [[ -f "$REPORT" ]] && ! pgrep -f "^$PWD/dist/Terminal.app/Contents/MacOS/Terminal --self-test $REPORT" >/dev/null; then
-        ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort("Native smoke failed: #{r.fetch("checks")}") unless r.fetch("passed"); puts "PASS native smoke, Metal submission, and app termination"' "$REPORT"
+      if [[ -f "$REPORT" ]] && ! pgrep -f "^$PWD/dist/Terminal.app/Contents/MacOS/Terminal ${ARGS[0]} $REPORT" >/dev/null; then
+        ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort("Native smoke failed: #{r.fetch("checks")}") unless r.fetch("passed"); puts "PASS #{ARGV[1]} smoke and app termination"' "$REPORT" "$1"
         exit 0
       fi
       sleep 0.25

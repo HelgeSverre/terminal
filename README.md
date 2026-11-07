@@ -23,6 +23,8 @@ show rendering behavior; they do not establish performance.
 | --- | --- |
 | ![Dmscene ASCII output](reports/dmscene-showcase.png) | ![Kitty image output](reports/dmscene-kitty-hakkuh.png) |
 
+<img src="reports/settings.png" width="440" alt="Settings grouped into Startup, Text, Scrollback and Keyboard, with ~/code as the starting directory">
+
 ## Build and run
 
 Requires Xcode (including the Metal compiler), rustup and `just`. The pinned Rust
@@ -35,8 +37,9 @@ just dev
 Run `just` to list the available workflows. The development bundle is
 `dist/Terminal.app`. `just build` builds without launching; `just verify` checks
 the bundle and signature; `just debug` and `just logs` support diagnosis.
-The project Run action uses `just dev`. Bundles are ad-hoc signed; release
-signing/notarization is not configured. No Vulkan SDK or runtime is needed.
+The project Run action uses `just dev`. Development bundles are ad-hoc signed;
+Developer ID signing and notarization use the release workflow below.
+No Vulkan SDK or runtime is needed.
 
 ```sh
 just install     # Build and copy to ~/Applications/Helge Terminal.app
@@ -84,7 +87,11 @@ primary scroll position for return. Cmd-click
 an OSC 8 link to open an http/https/mailto URL. File drops paste quoted paths.
 
 The current shell is `$SHELL`, falling back to `/bin/zsh`, with its normal login
-configuration and home directory. `TERM=xterm-256color` remains an explicit
+configuration. Set the starting folder in Settings → Startup → Directory; `~`
+and an empty field use your home folder. The setting applies to new shells;
+existing sessions keep their current directory. If the saved folder disappears,
+new shells fall back to home. `just dev --working-directory /tmp` overrides it
+for that launch. `TERM=xterm-256color` remains an explicit
 bring-up compatibility fallback. Clipboard control through OSC 52 is denied.
 
 ## Verify
@@ -96,6 +103,7 @@ Rust checks, native build, PTY/session/bridge tests and bundle verification.
 ```sh
 just test
 just smoke
+just editing-smoke # Fresh-prompt cd/Backspace, autosuggestions and ZLE buffer
 just idle
 just benchmark-core
 just check       # Tests plus the real native smoke

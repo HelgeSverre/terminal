@@ -18,6 +18,7 @@ import Darwin
       "search_navigated_and_highlighted",
       "command_left_begins_line", "command_right_accepts_zsh_suggestion",
       "command_k_clears_history_and_redraws_prompt",
+      "starting_directory",
     ].map { ($0, false) })
   var measurements: [String: Any] = [:]
   var phase = -1
@@ -48,7 +49,7 @@ import Darwin
   private func runCommand() {
     guard let pane = controller.panes.first else { return }
     pane.insertText(
-      "printf '\\033[2J\\033[H\\033[31mRED\\033[0m Unicode: 猫 é 👩🏽‍💻 🇳🇴\\nSMOKE_SENTINEL\\n'",
+      "printf '\\033[2J\\033[H\\033[31mRED\\033[0m Unicode: 猫 é 👩🏽‍💻 🇳🇴\\nSTARTUP_PWD=%s\\nSMOKE_SENTINEL\\n' \"$PWD\"",
       replacementRange: NSRange(location: NSNotFound, length: 0))
     if let down = NSEvent.keyEvent(
       with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
@@ -66,7 +67,7 @@ import Darwin
   }
   func observe(_ snapshot: TerminalSnapshot) {
     if phase == -1 {
-      guard snapshot.at_prompt else { return }
+      guard snapshot.at_prompt && snapshot.modes.bracketed_paste else { return }
       phase = 0
       runCommand()
       return
@@ -81,6 +82,9 @@ import Darwin
       && snapshot.rows.first?.cells.prefix(3).map({ $0.text }).joined() == "RED"
     {
       checks["pty_input_and_output"] = true
+      let directory = lines.first(where: { $0.hasPrefix("STARTUP_PWD=") })?.dropFirst("STARTUP_PWD=".count)
+      checks["starting_directory"] = directory.map(String.init) == LaunchSpec.shell.cwd
+      measurements["starting_directory"] = directory.map(String.init) ?? ""
       checks["unicode_text"] = text.contains("猫 é 👩🏽‍💻 🇳🇴")
       checks["sgr_red"] = snapshot.rows.flatMap { $0.cells }.contains {
         $0.text == "R" && $0.style.foreground.index == 1
@@ -160,7 +164,7 @@ import Darwin
       checks["command_right_accepts_zsh_suggestion"] = true
       phase = 9
     }
-    if phase == 9 && snapshot.at_prompt {
+    if phase == 9 && snapshot.at_prompt && snapshot.modes.bracketed_paste {
       phase = 10
       clearHistoryEpoch = snapshot.history_epoch
       if let window = controller.window, let event = NSEvent.keyEvent(
@@ -168,7 +172,7 @@ import Darwin
         timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
         context: nil, characters: "k", charactersIgnoringModifiers: "k", isARepeat: false, keyCode: 40)
       { NSApp.sendEvent(event) }
-    } else if phase == 10 && snapshot.at_prompt && snapshot.history_epoch > clearHistoryEpoch
+    } else if phase == 10 && snapshot.at_prompt && snapshot.modes.bracketed_paste && snapshot.history_epoch > clearHistoryEpoch
       && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       checks["command_k_clears_history_and_redraws_prompt"] = snapshot.history_rows == 0
         && !text.contains("CMD_SUGGEST_OK") && !text.contains("SMOKE_SENTINEL")

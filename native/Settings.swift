@@ -5,6 +5,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   private let fontSize = NSTextField(string: "")
   private let familyName = NSTextField(labelWithString: "Obel Mono")
   private let historyRows = NSTextField(string: "")
+  private let startingDirectory = NSTextField(string: "")
   private let option = NSButton(
     checkboxWithTitle: "Option key sends Escape", target: nil, action: nil)
   private let followTail = NSButton(
@@ -15,7 +16,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   init(onApply: @escaping (TerminalPreferences) -> Void) {
     self.onApply = onApply
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 440, height: 420),
+      contentRect: NSRect(x: 0, y: 0, width: 440, height: 520),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     super.init(window: window)
     window.title = "Settings"
@@ -61,6 +62,18 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       value.spacing = 8
       return value
     }
+    section("Startup")
+    startingDirectory.widthAnchor.constraint(equalToConstant: 180).isActive = true
+    startingDirectory.setAccessibilityLabel("Starting directory")
+    startingDirectory.toolTip = "Blank uses your home directory. Existing shells keep their current directory."
+    startingDirectory.delegate = self
+    let choose = NSButton(title: "Choose…", target: self, action: #selector(chooseDirectory(_:)))
+    choose.bezelStyle = .rounded
+    let directoryControls = NSStackView(views: [startingDirectory, choose])
+    directoryControls.spacing = 8
+    let directoryRow = row("Directory", control: directoryControls, unit: "")
+    stack.addArrangedSubview(directoryRow)
+    stack.setCustomSpacing(24, after: directoryRow)
     section("Text")
     familyName.font = .systemFont(ofSize: 13)
     familyName.textColor = TerminalTheme.color(TerminalTheme.text)
@@ -133,30 +146,51 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       historyRows.stringValue = String(prefs.historyRows)
       option.state = prefs.optionSendsEscape ? .on : .off
       followTail.state = prefs.followTailOnInput ? .on : .off
+      startingDirectory.stringValue = prefs.startingDirectoryText
       validate()
     }
     showWindow(nil)
     window?.makeKeyAndOrderFront(nil)
   }
   func controlTextDidChange(_ notification: Notification) { validate() }
-  private func value() -> TerminalPreferences? {
-    TerminalPreferences.edited(
+  private func value() throws -> TerminalPreferences {
+    try TerminalPreferences.edited(
       fontSize: fontSize.stringValue, historyRows: historyRows.stringValue,
-      optionSendsEscape: option.state == .on, followTailOnInput: followTail.state == .on)
+      optionSendsEscape: option.state == .on, followTailOnInput: followTail.state == .on,
+      startingDirectory: startingDirectory.stringValue)
   }
   private func validate() {
-    apply.isEnabled = value() != nil
-    error.stringValue =
-      apply.isEnabled ? "" : "Enter a size from 8–40 pt and a row limit from 0–50,000."
+    do {
+      _ = try value()
+      apply.isEnabled = true
+      error.stringValue = ""
+    } catch {
+      apply.isEnabled = false
+      self.error.stringValue = error.localizedDescription
+    }
   }
   @objc private func cancel(_ sender: Any?) { close() }
   @objc func closePane(_ sender: Any?) { close() }
   @objc private func save(_ sender: Any?) {
-    guard let prefs = value() else {
+    guard let prefs = try? value() else {
       validate()
       return
     }
     onApply(prefs)
     close()
+  }
+  @objc private func chooseDirectory(_ sender: Any?) {
+    guard let window else { return }
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.allowsMultipleSelection = false
+    panel.prompt = "Choose"
+    panel.directoryURL = URL(fileURLWithPath: (startingDirectory.stringValue as NSString).expandingTildeInPath)
+    panel.beginSheetModal(for: window) { [weak self] response in
+      guard let self, response == .OK, let url = panel.url else { return }
+      startingDirectory.stringValue = url.path
+      validate()
+    }
   }
 }

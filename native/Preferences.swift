@@ -5,15 +5,48 @@ struct TerminalPreferences {
   let historyRows: Int
   let optionSendsEscape: Bool
   let followTailOnInput: Bool
+  let startingDirectory: String
+  enum ValidationError: LocalizedError {
+    case font, history, directory
+    var errorDescription: String? {
+      switch self {
+      case .font: return "Enter a font size from 8–40 pt."
+      case .history: return "Enter a scrollback limit from 0–50,000 rows."
+      case .directory: return "Choose an existing starting directory."
+      }
+    }
+  }
+  private static var home: String { FileManager.default.homeDirectoryForCurrentUser.path }
+  private static func directory(_ text: String) -> String? {
+    let path = text.isEmpty ? home : (text as NSString).expandingTildeInPath
+    guard path.hasPrefix("/") else { return nil }
+    var isDirectory: ObjCBool = false
+    guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else { return nil }
+    return URL(fileURLWithPath: path).standardizedFileURL.path
+  }
+  // Check the filesystem only at launch/validation, never on keyboard reads.
+  var launchDirectory: String {
+    let args = Array(CommandLine.arguments.prefix { $0 != "--execute" })
+    if let index = args.firstIndex(of: "--working-directory"), args.indices.contains(index + 1) {
+      return (args[index + 1] as NSString).expandingTildeInPath
+    }
+    return Self.directory(startingDirectory) ?? Self.home
+  }
+  var startingDirectoryText: String {
+    let path = (startingDirectory as NSString).expandingTildeInPath
+    if path == Self.home { return "~" }
+    return path.hasPrefix(Self.home + "/") ? "~" + path.dropFirst(Self.home.count) : startingDirectory
+  }
   var session: TerminalSessionConfiguration {
     TerminalSessionConfiguration(historyRows: historyRows, followTailOnInput: followTailOnInput)
   }
   static func edited(fontSize: String, historyRows: String, optionSendsEscape: Bool,
-                     followTailOnInput: Bool) -> Self? {
-    guard let font = Double(fontSize), font.isFinite, (8...40).contains(font),
-      let rows = Int(historyRows), (0...50_000).contains(rows) else { return nil }
+                     followTailOnInput: Bool, startingDirectory: String) throws -> Self {
+    guard let font = Double(fontSize), font.isFinite, (8...40).contains(font) else { throw ValidationError.font }
+    guard let rows = Int(historyRows), (0...50_000).contains(rows) else { throw ValidationError.history }
+    guard let directory = Self.directory(startingDirectory) else { throw ValidationError.directory }
     return Self(fontSize: font, historyRows: rows, optionSendsEscape: optionSendsEscape,
-                followTailOnInput: followTailOnInput)
+                followTailOnInput: followTailOnInput, startingDirectory: directory)
   }
   // Transient launch options never modify saved preferences, nor inspect child argv.
   static func launchInteger(_ name: String, within range: ClosedRange<Int>) -> Int? {
@@ -42,7 +75,8 @@ struct TerminalPreferences {
         ?? ((0...50_000).contains(rows) ? rows : 50_000),
       optionSendsEscape: defaults.bool(forKey: "optionSendsEscape"),
       followTailOnInput: defaults.object(forKey: "followTailOnInput") == nil
-        || defaults.bool(forKey: "followTailOnInput"))
+        || defaults.bool(forKey: "followTailOnInput"),
+      startingDirectory: defaults.string(forKey: "startingDirectory") ?? Self.home)
   }
   func save() {
     let d = UserDefaults.standard
@@ -50,6 +84,7 @@ struct TerminalPreferences {
     d.set(historyRows, forKey: "historyRows")
     d.set(optionSendsEscape, forKey: "optionSendsEscape")
     d.set(followTailOnInput, forKey: "followTailOnInput")
+    d.set(startingDirectory, forKey: "startingDirectory")
   }
 }
 

@@ -141,6 +141,13 @@ struct LaunchSpec {
   let arguments: [String]
   let cwd: String
   let launcher: String
+  static var shell: LaunchSpec {
+    let executable = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
+    return LaunchSpec(
+      executable: executable, arguments: [executable, "-l"],
+      cwd: TerminalPreferences.load().launchDirectory,
+      launcher: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher").path)
+  }
 }
 // The PTY and Rust handle are confined to this queue. Main receives immutable decoded values.
 final class Session: @unchecked Sendable {
@@ -325,14 +332,7 @@ final class Session: @unchecked Sendable {
       return
     }
     core = handle
-    let fallback = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-    let spec =
-      launchSpec
-      ?? LaunchSpec(
-        executable: fallback, arguments: [fallback, "-l"],
-        cwd: FileManager.default.homeDirectoryForCurrentUser.path,
-        launcher: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher")
-          .path)
+    let spec = launchSpec ?? .shell
     guard !spec.arguments.isEmpty, spec.arguments.count <= 256,
       spec.arguments.reduce(0, { $0 + $1.utf8.count }) <= 1_048_576
     else {

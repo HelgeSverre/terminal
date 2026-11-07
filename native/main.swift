@@ -148,15 +148,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       CommandLine.arguments.count > index + 1
     {
       let argv = Array(CommandLine.arguments.dropFirst(index + 1))
-      let cwdIndex = CommandLine.arguments.firstIndex(of: "--working-directory")
-      let cwd =
-        cwdIndex.flatMap {
-          CommandLine.arguments.indices.contains($0 + 1) ? CommandLine.arguments[$0 + 1] : nil
-        } ?? FileManager.default.homeDirectoryForCurrentUser.path
+      let shell = LaunchSpec.shell
       let launch = LaunchSpec(
-        executable: argv[0], arguments: argv, cwd: cwd,
-        launcher: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher")
-          .path)
+        executable: argv[0], arguments: argv, cwd: shell.cwd, launcher: shell.launcher)
       let window = TerminalWindow(launch: launch)
       windows.append(window)
       window.showWindow(nil)
@@ -175,6 +169,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       CommandLine.arguments.count > index + 1, let window = windows.first
     {
       NativeSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
+    }
+    if let index = CommandLine.arguments.firstIndex(of: "--editing-smoke"),
+      CommandLine.arguments.count > index + 1, let window = windows.first {
+      EditingSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
     }
     if let index = CommandLine.arguments.firstIndex(of: "--demo-smoke"),
       CommandLine.arguments.count > index + 1, let window = windows.first
