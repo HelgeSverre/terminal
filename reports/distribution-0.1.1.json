@@ -1,0 +1,49 @@
+{
+  "verified_at": "2026-11-07T22:53:45Z",
+  "source_commit": "4ae6967ebb3d5c85a11ee976ab1831f87be954cc",
+  "bundle_identifier": "no.helgesverre.terminal",
+  "version": "0.1.1",
+  "build": "2",
+  "signing_team": "9Z2L5FBZS3",
+  "notarized_app": {
+    "id": "e2fa0c57-50ff-4a75-bc3c-df66e1dd8e4a",
+    "status": "Accepted",
+    "message": "Processing complete"
+  },
+  "notarized_pkg": {
+    "id": "2059ad19-08ec-420d-8d3e-8b7ad4217d47",
+    "status": "Accepted",
+    "message": "Processing complete"
+  },
+  "app_stapler_validated": true,
+  "app_gatekeeper_accepted": true,
+  "pkg_stapler_validated": true,
+  "pkg_gatekeeper_accepted": true,
+  "installed_app": "/Users/helge/Applications/Helge Terminal.app",
+  "installed_executable_sha256": "afe03e2854b1c2fda54b45d81f8b8462942288cf7072edf729c66673d17a03ee",
+  "pkg_sha256": "dfc57ed303d76d0073389a4fa0a2c2dbb8e01c5a674f2b6fc6cb940c8e868d8d",
+  "ci_run": "https://github.com/HelgeSverre/terminal/actions/runs/42422255895",
+  "ci_conclusion": "success",
+  "installed_window_close": {
+    "app_pid": 28942,
+    "child_pid": 28944,
+    "trigger": "last-window-close",
+    "app_exited": true,
+    "child_exited": true,
+    "passed": true,
+    "version": "0.1.1",
+    "installed_app": "/Users/helge/Applications/Helge Terminal.app/Contents/MacOS/Terminal"
+  },
+  "installed_command_q": {
+    "app_pid": 28985,
+    "child_pid": 28986,
+    "trigger": "cmd+q",
+    "app_exited": true,
+    "child_exited": true,
+    "passed": true,
+    "version": "0.1.1",
+    "installed_app": "/Users/helge/Applications/Helge Terminal.app/Contents/MacOS/Terminal"
+  },
+  "packaging_recovery": "Both notarizations were accepted. Initial PKG stapling exited 68; explicit retry succeeded. The accepted, stapled app was recovered from its release ZIP, trust-validated, then installed using the normal matching-payload installer.",
+  "note": "Development milestone, not completion of the terminal specification. No PKG was run against system Applications. Every installed shutdown test app and its HUP-resistant PTY child exited."
+}
