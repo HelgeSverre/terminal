@@ -329,8 +329,14 @@ final class Session: @unchecked Sendable {
     admittedBytes -= cost
     admission.unlock()
   }
+  private func stopAcceptingInput() {
+    admission.lock()
+    accepting = false
+    admission.unlock()
+  }
   private func start() {
     guard terminal_abi_version() == 1, let handle = terminal_create(80, 24) else {
+      stopAcceptingInput()
       report("Core initialization failed")
       return
     }
@@ -339,6 +345,7 @@ final class Session: @unchecked Sendable {
     guard !spec.arguments.isEmpty, spec.arguments.count <= 256,
       spec.arguments.reduce(0, { $0 + $1.utf8.count }) <= 1_048_576
     else {
+      stopAcceptingInput()
       report("Invalid launch arguments")
       return
     }
@@ -348,6 +355,7 @@ final class Session: @unchecked Sendable {
       terminal_spawn_args(spec.launcher, spec.executable, spec.cwd, 80, 24, $0.baseAddress)
     }
     guard child.error == 0 else {
+      stopAcceptingInput()
       report("Launch failed: \(String(cString:strerror(child.error)))")
       return
     }
@@ -571,6 +579,7 @@ final class Session: @unchecked Sendable {
     reap()
   }
   private func endWrite() {
+    stopAcceptingInput()
     writeEnded = true
     if writeSuspended {
       writer?.resume()
@@ -814,9 +823,7 @@ final class Session: @unchecked Sendable {
     }
   }
   func close() {
-    admission.lock()
-    accepting = false
-    admission.unlock()
+    stopAcceptingInput()
     queue.async { [self] in
       guard !closed else { return }
       closed = true
