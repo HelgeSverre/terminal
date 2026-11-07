@@ -36,7 +36,19 @@ func process(_ executable: String, _ args: [String], stdin: Data? = nil, cwd: St
 }
 
 func canonical(_ data: Data) throws -> Any {
-  let value = try JSONSerialization.jsonObject(with: data)
+  stripVolatile(try JSONSerialization.jsonObject(with: data))
+}
+/// Epochs/revisions describe internal publication accounting rather than the
+/// terminal-visible state. Compare their behavior in dedicated transition
+/// tests; omit them from transcript equivalence so the next semantic delta is
+/// actionable.
+func stripVolatile(_ value: Any) -> Any {
+  if var object = value as? [String: Any] {
+    ["revision", "geometry_epoch", "document_epoch", "history_epoch", "screen_epoch", "viewport_clamp_revision", "history"].forEach { object.removeValue(forKey: $0) }
+    for (key, child) in object { object[key] = stripVolatile(child) }
+    return object
+  }
+  if let array = value as? [Any] { return array.map(stripVolatile) }
   return value
 }
 func json(_ value: Any) throws -> String {

@@ -387,7 +387,12 @@ private final class SwiftTerminalCore {
     }
     return searchHighlights.isEmpty ? 4 : 5
   }
-  private func palette() -> [[Int]] { (0..<256).map { index in if index < 16 { let r = (index & 1) == 0 ? 0 : 205; let g = (index & 2) == 0 ? 0 : 205; let b = (index & 4) == 0 ? 0 : 238; return [r,g,b] }; let v = index < 232 ? [0,95,135,175,215,255][(index - 16) % 6] : 8 + (index - 232) * 10; return [v,v,v] } }
+  private func palette() -> [[Int]] {
+    var output = [[27,28,31], [239,68,68], [34,197,94], [250,204,21], [96,165,250], [192,132,252], [34,211,238], [212,212,216], [107,111,118], [248,113,113], [74,222,128], [253,224,71], [147,197,253], [216,180,254], [103,232,249], [250,250,250]]
+    for red in [0,95,135,175,215,255] { for green in [0,95,135,175,215,255] { for blue in [0,95,135,175,215,255] { output.append([red, green, blue]) } } }
+    for index in 0..<24 { let value = 8 + index * 10; output.append([value, value, value]) }
+    return output
+  }
   private func rowsForSnapshot(view: Bool, scroll: Int? = nil) -> (rows: [SwiftRow], offset: Int) {
     let requested = max(0, scroll ?? viewOffset)
     guard view, !usingAlternate, requested > 0 else { return (screen.rows, 0) }
@@ -443,7 +448,7 @@ private final class SwiftTerminalCore {
     let cursor = screen
     let rows: [[String: Any]] = source.map { row in ["soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(cell.style.foreground), "background": colorJSON(cell.style.background), "underline_color": colorJSON(cell.style.underline), "underline": Int(cell.style.underlineKind), "bold": cell.style.flags & 1 != 0, "faint": cell.style.flags & 2 != 0, "italic": cell.style.flags & 4 != 0, "inverse": cell.style.flags & 8 != 0, "conceal": cell.style.flags & 16 != 0, "strike": cell.style.flags & 32 != 0, "overline": cell.style.flags & 64 != 0, "blink": cell.style.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
     let images = graphics.visible(alternate: usingAlternate).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
-    let data: [String: Any] = ["at_prompt":atPrompt,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":offset == 0,"viewport_clamp_revision":revision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":0],"modes":["application_cursor":applicationCursor,"bracketed_paste":bracketedPaste,"focus":focusReporting,"mouse":0,"sgr_mouse":false,"reverse_video":reverseVideo],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
+    let data: [String: Any] = ["at_prompt":atPrompt,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":offset == 0,"viewport_clamp_revision":revision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":0],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":true,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":false,"left_right_margins":false,"mouse":0,"newline":false,"origin":false,"reverse_video":reverseVideo,"sgr_mouse":false],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
     return (try? JSONSerialization.data(withJSONObject: data)) ?? Data("{}".utf8)
   }
   private func colorJSON(_ color: UInt32) -> Any { if color >> 24 == 1 { return ["Indexed": Int(color & 255)] }; if color >> 24 == 2 { return ["Rgb": [Int((color >> 16) & 255), Int((color >> 8) & 255), Int(color & 255)]] }; return "Default" }
