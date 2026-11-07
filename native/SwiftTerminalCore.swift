@@ -177,6 +177,7 @@ private final class SwiftTerminalCore {
     let params = parameters(privateMode ? String(raw.dropFirst()) : raw)
     let n = max(1, params.first ?? 0)
     var s = screen
+    var changedActiveScreen = false
     switch final {
     case "A": s.cursorRow = max(0, s.cursorRow - n)
     case "B": s.cursorRow = min(rowCount - 1, s.cursorRow + n)
@@ -192,10 +193,14 @@ private final class SwiftTerminalCore {
     case "u": restoreCursor()
     case "n": if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { replies.append(contentsOf: "\u{1b}[\(s.cursorRow + 1);\(s.cursorColumn + 1)R".utf8) }
     case "c": replies.append(contentsOf: "\u{1b}[?62;4c".utf8)
-    case "h", "l": setMode(params, enabled: final == "h", privateMode: privateMode)
+    case "h", "l": changedActiveScreen = setMode(params, enabled: final == "h", privateMode: privateMode)
     default: break
     }
-    s.pendingWrap = false; screen = s; changed()
+    // DEC alternate-screen modes swap the screen object.  Keeping the swap
+    // inside mode ownership prevents this generic CSI epilogue from writing a
+    // stale primary copy back into the newly active alternate buffer.
+    if !changedActiveScreen { s.pendingWrap = false; screen = s }
+    changed()
   }
   private func eraseDisplay(_ mode: Int) { var s = screen; switch mode { case 2, 3: s.rows = Array(repeating: SwiftRow(columns: columns), count: rowCount); if mode == 3 && !usingAlternate { history.removeAll(); historyEpoch &+= 1 }; case 1: for r in 0...s.cursorRow { let end = r == s.cursorRow ? s.cursorColumn : columns - 1; for c in 0...end { s.rows[r].cells[c] = SwiftCell() } }; default: for r in s.cursorRow..<rowCount { let start = r == s.cursorRow ? s.cursorColumn : 0; for c in start..<columns { s.rows[r].cells[c] = SwiftCell() } } }; screen = s }
   private func eraseLine(_ mode: Int) { var s = screen; let range: Range<Int>; switch mode { case 1: range = 0..<(s.cursorColumn + 1); case 2: range = 0..<columns; default: range = s.cursorColumn..<columns }; for c in range { s.rows[s.cursorRow].cells[c] = SwiftCell() }; screen = s }
@@ -243,7 +248,25 @@ private final class SwiftTerminalCore {
       i += 1
     }
   }
-  private func setMode(_ params: [Int], enabled: Bool, privateMode: Bool) { for mode in params { if privateMode { switch mode { case 1: applicationCursor = enabled; case 25: cursorVisible = enabled; case 47, 1047, 1049: usingAlternate = enabled; if enabled { alternate = SwiftScreen(columns: columns, rows: rowCount) }; viewOffset = 0; case 1004: focusReporting = enabled; case 2004: bracketedPaste = enabled; case 5: reverseVideo = enabled; default: break } } }; changed() }
+  private func setMode(_ params: [Int], enabled: Bool, privateMode: Bool) -> Bool {
+    var changedActiveScreen = false
+    for mode in params where privateMode {
+      switch mode {
+      case 1: applicationCursor = enabled
+      case 25: cursorVisible = enabled
+      case 47, 1047, 1049:
+        usingAlternate = enabled
+        if enabled { alternate = SwiftScreen(columns: columns, rows: rowCount) }
+        viewOffset = 0
+        changedActiveScreen = true
+      case 1004: focusReporting = enabled
+      case 2004: bracketedPaste = enabled
+      case 5: reverseVideo = enabled
+      default: break
+      }
+    }
+    return changedActiveScreen
+  }
   private func finishString() { let payload = sequence; sequence = ""; if parser == .osc { let parts = payload.split(separator: ";", omittingEmptySubsequences: false); guard let command = parts.first else { return }; if command == "0" || command == "2" { title = parts.dropFirst().joined(separator: ";") } else if command == "8" { currentLink = parts.count > 2 ? String(parts.dropFirst(2).joined(separator: ";")) : nil } else if command == "133" { atPrompt = parts.dropFirst().first == "A" } } /* Kitty APC remains explicitly unsupported in this first Swift core. */ }
   func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool { guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows) else { return false }; columns = nextColumns; rowCount = nextRows; primary = resized(primary); alternate = resized(alternate); viewOffset = min(viewOffset, history.count); changed(geometry: true); return true }
   private func resized(_ old: SwiftScreen) -> SwiftScreen { var value = SwiftScreen(columns: columns, rows: rowCount); let start = max(0, old.rows.count - rowCount); for (target, source) in old.rows.suffix(rowCount).enumerated() { var row = SwiftRow(columns: columns); for i in 0..<min(columns, source.cells.count) { row.cells[i] = source.cells[i] }; row.softWrapped = source.softWrapped; value.rows[target] = row }; value.cursorRow = min(rowCount - 1, max(0, old.cursorRow - start)); value.cursorColumn = min(columns - 1, old.cursorColumn); return value }
