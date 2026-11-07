@@ -94,6 +94,8 @@ private final class SwiftTerminalCore {
   private let graphics = KittyGraphicsStore()
   private var cellPixelWidth = 8
   private var cellPixelHeight = 16
+  private var lastPrinted = ""
+  private var repeatRemaining = 0
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
@@ -118,7 +120,15 @@ private final class SwiftTerminalCore {
   }
   func feed(_ bytes: UnsafePointer<UInt8>?, count: Int) -> Int {
     guard let bytes, count > 0 else { return 0 }
-    for byte in UnsafeBufferPointer(start: bytes, count: count) {
+    // REP is intentionally resumable. It keeps the owner responsive and lets
+    // an admitted input event observe modes established *after* the repeat.
+    if repeatRemaining > 0, !lastPrinted.isEmpty {
+      let budget = min(4_096, repeatRemaining)
+      for _ in 0..<budget { put(lastPrinted) }
+      repeatRemaining -= budget
+      return 0
+    }
+    for (offset, byte) in UnsafeBufferPointer(start: bytes, count: count).enumerated() {
       switch parser {
       case .ground:
         switch byte {
@@ -148,7 +158,10 @@ private final class SwiftTerminalCore {
         default: break
         }
       case .csi:
-        if (0x40...0x7e).contains(byte) { handleCSI(sequence, final: Character(UnicodeScalar(byte))); parser = .ground }
+        if (0x40...0x7e).contains(byte) {
+          handleCSI(sequence, final: Character(UnicodeScalar(byte))); parser = .ground
+          if repeatRemaining > 0 { return offset + 1 }
+        }
         else if sequence.utf8.count < 16_384 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
         else { parser = .ground; sequence = "" }
       case .osc, .apc:
@@ -173,6 +186,7 @@ private final class SwiftTerminalCore {
     if width == 2 && s.cursorColumn == columns - 1 { s.rows[s.cursorRow].softWrapped = true; s.cursorColumn = 0; advanceLine(&s) }
     guard s.cursorRow < s.rows.count, s.cursorColumn < columns else { return }
     s.rows[s.cursorRow].cells[s.cursorColumn] = SwiftCell(text: text, kind: width == 2 ? 2 : 1, style: pen, link: currentLink)
+    lastPrinted = text
     if width == 2 && s.cursorColumn + 1 < columns { s.rows[s.cursorRow].cells[s.cursorColumn + 1] = SwiftCell(text: "", kind: 3, style: pen, link: currentLink) }
     if s.cursorColumn + width >= columns { s.cursorColumn = columns - 1; s.pendingWrap = true }
     else { s.cursorColumn += width }
@@ -208,6 +222,7 @@ private final class SwiftTerminalCore {
     case "H", "f": s.cursorRow = min(rowCount - 1, max(0, (params.first ?? 1) - 1)); s.cursorColumn = min(columns - 1, max(0, (params.dropFirst().first ?? 1) - 1))
     case "J": eraseDisplay(params.first ?? 0)
     case "K": eraseLine(params.first ?? 0)
+    case "b": repeatRemaining = min(1_000_000, max(0, params.first ?? 1))
     case "m": applySGR(params)
     case "s": saveCursor()
     case "u":
@@ -348,6 +363,7 @@ private final class SwiftTerminalCore {
   }
   func takeReplies() -> Data { defer { replies.removeAll(keepingCapacity: true) }; return replies }
   func finish() { flushText(final: true) }
+  var hasPendingWork: Bool { repeatRemaining > 0 }
   func historyBytes() -> UInt64 { UInt64(history.reduce(0) { $0 + $1.cells.reduce(0) { $0 + $1.text.utf8.count } }) }
   func imageRGBA(id: UInt32, generation: UInt64) -> Data? { graphics.imageRGBA(id: id, generation: generation) }
   func startSearch(_ task: SwiftSearchTask) -> UInt32 {
@@ -443,7 +459,7 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
 @_cdecl("terminal_resize_pixels") func swift_terminal_resize_pixels(_ pointer: OpaquePointer?, _ cols: UInt32, _ rows: UInt32, _ width: UInt32, _ height: UInt32) -> Bool { core(pointer)?.resize(columns: Int(cols), rows: Int(rows), cellWidth: Int(width), cellHeight: Int(height)) ?? false }
 @_cdecl("terminal_finish") func swift_terminal_finish(_ pointer: OpaquePointer?) { core(pointer)?.finish() }
 @_cdecl("terminal_validate") func swift_terminal_validate(_ pointer: OpaquePointer?) -> Bool { core(pointer) != nil }
-@_cdecl("terminal_has_work") func swift_terminal_has_work(_ pointer: OpaquePointer?) -> Bool { false }
+@_cdecl("terminal_has_work") func swift_terminal_has_work(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.hasPendingWork ?? false }
 @_cdecl("terminal_set_history_limit") func swift_terminal_set_history_limit(_ pointer: OpaquePointer?, _ limit: UInt32) { core(pointer)?.setHistoryLimit(Int(limit)) }
 @_cdecl("terminal_history_bytes") func swift_terminal_history_bytes(_ pointer: OpaquePointer?) -> UInt64 { core(pointer)?.historyBytes() ?? 0 }
 @_cdecl("terminal_snapshot") func swift_terminal_snapshot(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64) -> UnsafeMutablePointer<CChar>? { guard let value = core(pointer) else { return nil }; return strdup(String(data: value.snapshotJSON(view: true), encoding: .utf8) ?? "{}") }

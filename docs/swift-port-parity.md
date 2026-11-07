@@ -41,9 +41,9 @@ linked Swift executable.
 run separately while porting; its generated report is not committed.
 
 After binary-snapshot, search, input and graphics integration, the real native
-Session regression reported **19/20 checks passing**. The remaining failure is
-the REP (`CSI Ps b`) bounded-work ordering test: this Swift core does not yet
-represent REP as resumable work, so it parses the suffix before publication.
+Session regression reported **20/20 checks passing**, including REP (`CSI Ps b`)
+bounded-work ordering. This is one native regression suite, not a substitute
+for the 86 Rust-core semantics/graphics/margin/search/viewport tests.
 
 The experiment must not claim 100% parity until every original test has an
 equivalent Swift differential replay and the dmscene/PTY corpus passes. System
@@ -61,7 +61,7 @@ dependency graph.
 
 | Metric | Rust baseline | Swift experiment | Delta | Qualification |
 | --- | ---: | ---: | ---: | --- |
-| Behavioral core tests | 86 / 86 | not comparable | — | Swift native Session: 19 / 20; graphics/Unicode/reflow suites incomplete |
+| Behavioral core tests | 86 / 86 | not comparable | — | Swift native Session: 20 / 20; graphics/Unicode/reflow suites incomplete |
 | Full app build wall time | 26.24 s | 24.90 s | -1.34 s | Fresh worktree output, warmed shared tool caches |
 | Full app build max RSS | 309.4 MB | 265.6 MB | -43.8 MB | Same command scope as above |
 | App executable | 3,349,872 B | 1,198,304 B | -64.2% | Signed development bundle executable |
