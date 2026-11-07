@@ -371,11 +371,13 @@ private final class SwiftTerminalCore {
   func imageRGBA(id: UInt32, generation: UInt64) -> Data? { graphics.imageRGBA(id: id, generation: generation) }
   func startSearch(_ task: SwiftSearchTask) -> UInt32 {
     searchHighlights.removeAll()
-    for (index, row) in history.enumerated() {
+    let searchable = history + primary.rows
+    for (index, row) in searchable.enumerated() {
       let text = row.cells.map(\ .text).joined()
       guard let range = text.range(of: task.query, options: [.caseInsensitive]) else { continue }
       // Search owns anchoring, so the renderer receives a visible stable hit.
-      viewOffset = min(history.count, max(1, history.count - index + rowCount - 1))
+      viewOffset = index < history.count
+        ? min(history.count, max(1, history.count - index + rowCount - 1)) : 0
       let allCount = history.count + primary.rows.count
       let visibleEnd = max(rowCount, allCount - viewOffset)
       let visibleStart = max(0, visibleEnd - rowCount)

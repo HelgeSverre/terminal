@@ -132,6 +132,9 @@ lint:
 @test: build
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
     just swift-core-test
+    xcrun clang -Wall -Wextra -Werror -I native -c native/tests/pty.c -o target/native/swift-pty-tests.o
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftGraphics.swift native/SwiftTerminalCore.swift target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
+    target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
     xcrun swiftc native/Transport.swift native/tests/TransportTests.swift -o target/native/transport-tests
     target/native/transport-tests
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftGraphics.swift native/SwiftTerminalCore.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SessionTests.swift target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests

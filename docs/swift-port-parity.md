@@ -28,6 +28,7 @@ linked Swift executable.
 | Area | Oracle | Swift status |
 | --- | --- | --- |
 | ABI/session/PTY ownership | native app + C bridge | Binary borrowed-row ABI restored; SnapshotBridge executable passes |
+| Native PTY application corpus | shell, bash, fish, nvim, tmux, fzf | 10 / 10 C PTY corpus cases pass with Swift ABI core |
 | Basic VT, SGR, cursor, alternate screen | semantic transcript | Implemented smoke coverage |
 | Input and bracketed paste | key encoding tests | Swift encoder covers legacy, keypad and Kitty key events; standalone tests pass |
 | Scrollback and viewport | viewport tests | Basic history/anchoring implemented |
