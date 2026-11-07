@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ICONSET=target/native/Terminal.iconset
+if [[ target/native/Terminal.icns -nt assets/AppIcon.png ]]; then exit 0; fi
+mkdir -p "$ICONSET"
+for SIZE in 16 32 128 256 512; do
+  sips -z "$SIZE" "$SIZE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}.png" >/dev/null
+  DOUBLE=$((SIZE * 2))
+  sips -z "$DOUBLE" "$DOUBLE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o target/native/Terminal.icns
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR="$TERMINAL_PROJECT_ROOT"
+BUILD_DIR="$ROOT_DIR/target/native"
+APP_BUNDLE="$ROOT_DIR/dist/Terminal.app"
+mkdir -p "$BUILD_DIR" "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 native/Launcher.c -o "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
+xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
+xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
+xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
+xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/SwiftTerminalCore.swift native/SwiftSnapshotBridge.swift native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
+cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
+ditto native/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
+ditto assets/fonts "$APP_BUNDLE/Contents/Resources/Fonts"
+codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
+codesign --force --sign - "$APP_BUNDLE"
+/Users/helge/code/terminal-swift-experiment/dist/Terminal.app/Contents/MacOS/TerminalLauncher: replacing existing signature
+/Users/helge/code/terminal-swift-experiment/dist/Terminal.app: replacing existing signature
+real 25.42
+user 19.23
+sys 1.63
+           273842176  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              313845  page reclaims
+                8836  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                  10  messages sent
+                   0  messages received
+                   0  signals received
+                1685  voluntary context switches
+                9717  involuntary context switches
+            44299216  instructions retired
+            20515088  cycles elapsed
+             3621632  peak memory footprint

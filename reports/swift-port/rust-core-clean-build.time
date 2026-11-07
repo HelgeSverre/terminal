@@ -1,0 +1,48 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling simd-adler32 v0.3.10
+   Compiling crc32fast v1.5.4
+   Compiling adler2 v2.0.1
+   Compiling serde_core v1.0.228
+   Compiling zmij v1.0.23
+   Compiling cfg-if v1.0.5
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.149
+   Compiling thiserror v2.0.18
+   Compiling memchr v2.8.3
+   Compiling bitflags v2.13.2
+   Compiling itoa v1.0.18
+   Compiling miniz_oxide v0.9.1
+   Compiling fdeflate v0.3.7
+   Compiling miniz_oxide v0.8.9
+   Compiling unicode-segmentation v1.13.3 (/Users/helge/code/terminal-swift-experiment/vendor/unicode-segmentation)
+   Compiling base64 v0.23.1
+   Compiling unicode-width v0.2.3
+   Compiling flate2 v1.1.11
+   Compiling syn v2.0.119
+   Compiling png v0.18.1
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v2.0.18
+   Compiling terminal-core v0.1.0 (/Users/helge/code/terminal-swift-experiment/crates/terminal-core)
+    Finished `release` profile [optimized] target(s) in 5.79s
+real 5.82
+user 18.33
+sys 1.74
+           309641216  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              538171  page reclaims
+                1024  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                  56  signals received
+                 961  voluntary context switches
+               47340  involuntary context switches
+           823688489  instructions retired
+           432238452  cycles elapsed
+            12666688  peak memory footprint
