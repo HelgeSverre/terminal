@@ -23,13 +23,23 @@ import Foundation
     let loaded = store.visible(alternate: false).first { $0.image == 8 }!
     precondition(store.imageRGBA(id: 8, generation: loaded.generation) == Data(original))
 
-    _ = store.consume(Data("Ga=d,d=I,i=7".utf8), context: context, now: 4)
+    // zlib transport is decoded only into the declared image extent.
+    let zlib: [UInt8] = [120, 1, 99, 100, 98, 102, 1, 0, 0, 24, 0, 11]
+    let zlibResult = store.consume(packet("a=T,t=d,f=32,s=1,v=1,o=z,i=10", zlib), context: context, now: 4)
+    guard let zipped = store.visible(alternate: false).first(where: { $0.image == 10 }) else {
+      fatalError(String(data: zlibResult.reply ?? Data(), encoding: .utf8) ?? "zlib placement missing")
+    }
+    precondition(store.imageRGBA(id: 10, generation: zipped.generation) == Data([1, 2, 3, 4]))
+    let bomb = store.consume(packet("a=t,t=d,f=32,s=1,v=1,o=z,i=11", Array(repeating: 0, count: 4096)), context: context, now: 4)
+    precondition(String(data: bomb.reply!, encoding: .utf8)!.contains("EINVAL"))
+
+    _ = store.consume(Data("Ga=d,d=I,i=7".utf8), context: context, now: 5)
     precondition(store.visible(alternate: false).allSatisfy { $0.image != 7 })
     precondition(store.imageRGBA(id: 7, generation: placement.generation) == nil)
 
-    let invalid = store.consume(Data("Ga=T,t=f,f=24,s=1,v=1,i=1;AQID".utf8), context: context, now: 5)
+    let invalid = store.consume(Data("Ga=T,t=f,f=24,s=1,v=1,i=1;AQID".utf8), context: context, now: 6)
     precondition(String(data: invalid.reply!, encoding: .utf8)!.contains("ENOTSUP"))
-    print("PASS Swift Kitty graphics: direct RGBA, atomic chunks, placement and deletion")
+    print("PASS Swift Kitty graphics: direct/zlib RGBA, atomic chunks, placement and deletion")
   }
 }
 

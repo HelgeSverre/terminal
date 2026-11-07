@@ -1,6 +1,7 @@
 import Foundation
 import CoreGraphics
 import ImageIO
+import Compression
 
 // KittyGraphicsStore is the sole owner of Kitty image protocol state.  Callers
 // supply a complete APC body (the bytes after ESC _) and a grid context; they
@@ -175,6 +176,7 @@ final class KittyGraphicsStore {
   private func validateTransport(_ values: [Character: String]) throws {
     let type = values["t"] ?? "d"
     guard type == "d" else { throw KittyGraphicsError.unsupported }
+    if let compression = values["o"], compression != "z" { throw KittyGraphicsError.unsupported }
     let format = try number(values, "f", default: 32)
     guard format == 24 || format == 32 || format == 100 else { throw KittyGraphicsError.unsupported }
     if format != 100 {
@@ -205,14 +207,51 @@ final class KittyGraphicsStore {
   }
   private func decode(_ values: [Character: String], bytes: Data) throws -> (width: Int, height: Int, rgba: Data) {
     let format = try number(values, "f", default: 32)
-    if format == 100 { return try png(bytes) }
+    if format == 100 {
+      let payload = values["o"] == "z" ? try inflate(bytes, limit: Self.maximumImageBytes) : bytes
+      return try png(payload)
+    }
     let width = try number(values, "s", default: 0), height = try number(values, "v", default: 0)
     let expected = width * height * (format == 24 ? 3 : 4)
-    guard expected == bytes.count else { throw KittyGraphicsError.invalid }
-    if format == 32 { return (width, height, bytes) }
+    guard expected > 0, expected <= Self.maximumImageBytes else { throw KittyGraphicsError.tooLarge }
+    let payload = values["o"] == "z" ? try inflate(bytes, limit: expected) : bytes
+    guard expected == payload.count else { throw KittyGraphicsError.invalid }
+    if format == 32 { return (width, height, payload) }
     var rgba = Data(capacity: width * height * 4)
-    for pixel in bytes.withUnsafeBytes({ Array($0.bindMemory(to: UInt8.self)) }).chunks(ofCount: 3) { rgba.append(contentsOf: [pixel[0], pixel[1], pixel[2], 255]) }
+    for pixel in payload.withUnsafeBytes({ Array($0.bindMemory(to: UInt8.self)) }).chunks(ofCount: 3) { rgba.append(contentsOf: [pixel[0], pixel[1], pixel[2], 255]) }
     return (width, height, rgba)
+  }
+  // The declared dimensions bound output before allocating. `compression` only
+  // returns success when one complete zlib stream fits that fixed buffer, so a
+  // decompression bomb cannot grow memory beyond the image protocol limit.
+  private func inflate(_ input: Data, limit: Int) throws -> Data {
+    guard !input.isEmpty, limit > 0, limit <= Self.maximumImageBytes else { throw KittyGraphicsError.invalid }
+    // Compression.framework's ZLIB decoder consumes a raw DEFLATE stream on
+    // current macOS. Kitty (and Rust's `ZlibEncoder`) supplies RFC1950 framing,
+    // so validate and strip the two-byte header/four-byte Adler trailer first.
+    let source: Data
+    if input.count >= 6, input[0] & 0x0f == 8,
+      ((UInt16(input[0]) << 8) | UInt16(input[1])) % 31 == 0
+    {
+      source = input.subdata(in: 2..<(input.count - 4))
+    } else {
+      source = input
+    }
+    guard !source.isEmpty else { throw KittyGraphicsError.invalid }
+    // Reserve one sentinel byte so the decoder can prove stream completion
+    // even when the legal payload exactly fills its declared image extent.
+    var output = Data(count: limit + 1)
+    let count = output.withUnsafeMutableBytes { destination in
+      source.withUnsafeBytes { compressed in
+        compression_decode_buffer(
+          destination.bindMemory(to: UInt8.self).baseAddress!, limit + 1,
+          compressed.bindMemory(to: UInt8.self).baseAddress!, source.count,
+          nil, COMPRESSION_ZLIB)
+      }
+    }
+    guard count > 0, count <= limit else { throw KittyGraphicsError.invalid }
+    output.removeSubrange(count..<output.count)
+    return output
   }
   private func png(_ bytes: Data) throws -> (width: Int, height: Int, rgba: Data) {
     guard let source = CGImageSourceCreateWithData(bytes as CFData, nil), let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { throw KittyGraphicsError.invalid }
