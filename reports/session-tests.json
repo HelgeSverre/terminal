@@ -1,5 +1,5 @@
 {
-  "cancel_to_reap_seconds" : 0.0095809698104858398,
+  "cancel_to_reap_seconds" : 0.0037209987640380859,
   "checks" : {
     "accepted_input_during_rep" : true,
     "cancel_close_under_three_seconds" : true,

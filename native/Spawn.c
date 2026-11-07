@@ -7,7 +7,41 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <stdio.h>
+#include <limits.h>
 extern char **environ;
+typedef struct { char **values; char *directory; char *original; } SpawnEnvironment;
+static void destroy_environment(SpawnEnvironment *env){free(env->values);free(env->directory);free(env->original);}
+// Only normal interactive zsh launches are wrapped. Explicit commands keep
+// their original startup semantics. The signed bundle owns the integration.
+static int make_environment(const char *launcher,const char *executable,char *const argv[],size_t argc,SpawnEnvironment *out){
+    size_t count=0;while(environ[count])count++;
+    out->values=calloc(count+8,sizeof(char *));if(!out->values)return ENOMEM;
+    const char *name=strrchr(executable,'/');name=name?name+1:executable;
+    const char *parent=strrchr(launcher,'/');
+    int wrap=!strcmp(name,"zsh")&&(argc==1||(argc==2&&!strcmp(argv[1],"-l")))&&parent;
+    char shim[PATH_MAX],entry[PATH_MAX];
+    if(wrap){
+        int len=snprintf(shim,sizeof(shim),"%.*s/../Resources/ShellIntegration/zsh",(int)(parent-launcher),launcher);
+        int length=snprintf(entry,sizeof(entry),"%s/.zshenv",shim);
+        wrap=len>0&&(size_t)len<sizeof(shim)&&length>0&&(size_t)length<sizeof(entry)&&access(entry,R_OK)==0;
+    }
+    size_t n=0;
+    for(size_t i=0;i<count;i++){
+        const char *value=environ[i];
+        if(!strncmp(value,"VK_",3)||!strncmp(value,"TERM=",5)||!strncmp(value,"COLORTERM=",10)||!strncmp(value,"TERM_PROGRAM=",13))continue;
+        if(wrap&&(!strncmp(value,"ZDOTDIR=",8)||!strncmp(value,"HELGE_TERMINAL_",15)))continue;
+        out->values[n++]=environ[i];
+    }
+    out->values[n++]="TERM=xterm-256color";out->values[n++]="COLORTERM=truecolor";out->values[n++]="TERM_PROGRAM=HelgeTerminal";
+    if(wrap){
+        const char *original=getenv("ZDOTDIR");
+        if(asprintf(&out->directory,"ZDOTDIR=%s",shim)<0||asprintf(&out->original,"HELGE_TERMINAL_ORIGINAL_ZDOTDIR=%s",original?original:"")<0)return ENOMEM;
+        out->values[n++]=out->directory;out->values[n++]=out->original;
+        out->values[n++]=original?"HELGE_TERMINAL_ZDOTDIR_SET=1":"HELGE_TERMINAL_ZDOTDIR_SET=0";
+    }
+    return 0;
+}
 TerminalProcess terminal_spawn_args(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[]){
     TerminalProcess out={-1,-1,-1,0};int master=-1,slave=-1,p[2]={-1,-1};
     struct winsize size={.ws_row=rows,.ws_col=cols};
@@ -25,14 +59,10 @@ TerminalProcess terminal_spawn_args(const char *launcher,const char *executable,
     size_t argc=0;while(argc<4096 && target_argv[argc])argc++;if(argc==4096)error=E2BIG;
     char **argv=calloc(argc+4,sizeof(char *));
     if(!argv){error=ENOMEM;}else{argv[0]=(char *)launcher;argv[1]=(char *)cwd;argv[2]=(char *)executable;for(size_t i=0;i<argc;i++)argv[i+3]=target_argv[i];}
-    // Private graphics configuration is not inherited by the shell.
-    size_t count=0;while(environ[count])count++;
-    char **env=calloc(count+4,sizeof(char *));
-    if(!env){error=ENOMEM;}else{
-        size_t n=0;for(size_t i=0;i<count;i++){if(strncmp(environ[i],"VK_",3)&&strncmp(environ[i],"TERM=",5)&&strncmp(environ[i],"COLORTERM=",10)&&strncmp(environ[i],"TERM_PROGRAM=",13))env[n++]=environ[i];}
-        env[n++]="TERM=xterm-256color";env[n++]="COLORTERM=truecolor";env[n++]="TERM_PROGRAM=HelgeTerminal";
-        if(!error)error=posix_spawn(&out.pid,launcher,&actions,&attr,argv,env);free(env);
-    }
+    SpawnEnvironment env={0};
+    if(!error)error=make_environment(launcher,executable,target_argv,argc,&env);
+    if(!error)error=posix_spawn(&out.pid,launcher,&actions,&attr,argv,env.values);
+    destroy_environment(&env);
     posix_spawnattr_destroy(&attr);posix_spawn_file_actions_destroy(&actions);close(high_slave);close(high_status);free(argv);
     if(error){out.error=error;out.pid=-1;goto cleanup;}
     fcntl(master,F_SETFD,FD_CLOEXEC);fcntl(master,F_SETFL,fcntl(master,F_GETFL)|O_NONBLOCK);
@@ -41,5 +71,3 @@ TerminalProcess terminal_spawn_args(const char *launcher,const char *executable,
 cleanup:
     if(master>=0)close(master);if(slave>=0)close(slave);if(p[0]>=0)close(p[0]);if(p[1]>=0)close(p[1]);return out;
 }
-
-TerminalProcess terminal_spawn(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows){char *argv[]={(char *)executable,"-l",NULL};return terminal_spawn_args(launcher,executable,cwd,cols,rows,argv);}

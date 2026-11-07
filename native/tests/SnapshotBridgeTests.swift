@@ -23,6 +23,7 @@ import Foundation
         fatalError(result.error ?? "binary snapshot absent")
       }
       precondition(value.rows == legacy.rows, "cell layout/text/color/style/link/wrap mismatch")
+      precondition(value.at_prompt == legacy.at_prompt)
       precondition(value.search == legacy.search)
       precondition(value.images == legacy.images && value.cursor == legacy.cursor)
       precondition(value.modes == legacy.modes && value.alternate == legacy.alternate)

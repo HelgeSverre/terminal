@@ -24,6 +24,7 @@ export TERMINAL_PROJECT_ROOT := justfile_directory()
     xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
     cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
     cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
+    ditto native/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
     codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
     codesign --force --sign - "$APP_BUNDLE"
 

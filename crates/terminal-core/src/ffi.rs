@@ -1,5 +1,12 @@
 //! ABI v1. Opaque handles are confined to one serial owner. Returned C strings are owned.
 mod search;
+/// # Safety
+/// Handle is live/exclusive on its owner. Returns DisplayClear's native action.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn terminal_clear_display(terminal: *mut crate::Terminal) -> u32 {
+    // SAFETY: caller guarantees a live exclusive non-null handle.
+    unsafe { terminal.as_mut() }.map_or(0, |terminal| terminal.clear_display() as u32)
+}
 use crate::{
     Terminal,
     input::{Key, KeypadKey, Modifiers},
@@ -300,6 +307,7 @@ fn packed_color(color: crate::model::Color) -> u32 {
 }
 #[derive(serde::Serialize)]
 struct SnapshotHeader<'a> {
+    at_prompt: bool,
     search: &'a [crate::search::SearchHighlight],
     images: &'a [crate::graphics::ImagePlacement],
     revision: u64,
@@ -409,6 +417,7 @@ fn publish_snapshot(
     callback: SnapshotCallback,
 ) -> bool {
     let header = SnapshotHeader {
+        at_prompt: snapshot.at_prompt,
         search: &snapshot.search,
         images: &snapshot.images,
         revision: snapshot.revision,

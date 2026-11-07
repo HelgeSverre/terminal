@@ -11,6 +11,7 @@ pub const IMAGE_BUDGET: usize = 64 * 1024 * 1024;
 const MAX_PLACEMENTS: usize = 256;
 #[derive(Debug, Clone)]
 pub struct ImageData {
+    origin_screen: bool,
     pub id: u32,
     pub generation: u64,
     pub width: u32,
@@ -184,6 +185,14 @@ impl AttachmentStore {
     }
     pub fn clear_screen(&mut self, screen: bool) {
         self.placements.retain(|p| p.screen != screen);
+    }
+    pub(crate) fn clear_from_host(&mut self, screen: bool) {
+        self.clear_screen(screen);
+        self.resources.retain(|id, image| {
+            image.origin_screen != screen || self.placements.iter().any(|p| p.image == *id)
+        });
+        self.total_bytes = self.resources.values().map(|image| image.rgba.len()).sum();
+        self.pending = None;
     }
     pub fn remove_anchor(&mut self, row: u64) {
         self.placements.retain(|p| p.row != row);
@@ -417,6 +426,7 @@ impl AttachmentStore {
         }
         let generation = self.serial.checked_add(1).ok_or(GraphicsError::NoSpace)?;
         let image = Arc::new(ImageData {
+            origin_screen: context.screen,
             id,
             generation,
             width,

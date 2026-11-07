@@ -10,6 +10,10 @@ Implemented and locally exercised:
 - Deferred wrap, wide repair, SGR, cursor/margins, erase/insert/delete/scroll/tab/REP,
   DEC save/restore, normal/alternate screens, reset, replies, title/links/palette.
 - Unicode 18 grapheme/width tables, incremental cluster extension, occupancy repair.
+- Native Command–K with prompt-aware redraw, primary history/image cleanup and
+  alternate-screen protection; bundled OSC 133 zsh prompt hooks preserve user
+  startup files and autosuggestion bindings. Five focused core cases and the
+  actual native Command–K path pass.
 - Primary reflow and alternate crop/pad; inactive primary and saved cursors resize.
 - Owner-confined primary viewport anchored by document/row identity, stable under
   new output, remapped through reflow, clamped on eviction, and retained while

@@ -75,6 +75,9 @@ Shortcuts: ⌘N window, ⌘T tab, ⌘D split right, ⇧⌘D split below, ⌘W cl
 ⌘+/⌘− font size. ⌘←/⌘→ move to the start/end of the shell line; ⌘→ accepts
 zsh autosuggestions configured on end-of-line. ⌥←/⌥→ move by word, and ⌘Backspace
 clears the input line. Shift overrides application mouse tracking for local selection.
+⌘K clears primary-screen scrollback and redraws a marked shell prompt; it leaves
+alternate-screen applications alone. Normal interactive zsh launches install
+prompt hooks from the app bundle while preserving your own startup files.
 Scroll locally to inspect history; incoming output keeps the reading position,
 and typing returns to the live screen. Alternate-screen programs retain the
 primary scroll position for return. Cmd-click

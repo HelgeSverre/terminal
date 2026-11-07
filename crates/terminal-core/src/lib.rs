@@ -1,5 +1,6 @@
 //! Single-writer terminal state, independent of the platform and renderer.
 mod commands;
+pub mod display_clear;
 pub mod ffi;
 pub mod graphics;
 pub mod input;
@@ -670,6 +671,7 @@ impl Terminal {
         };
         let images = self.image_placements(scroll);
         Some(Snapshot {
+            at_prompt: self.screen().at_prompt,
             search: self.search_highlights(scroll),
             images,
             revision: self.revision,

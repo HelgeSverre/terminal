@@ -86,3 +86,20 @@ cancellation clears marked storage under a reentrancy guard before discarding
 the input context's composition; an external unmark callback still commits once.
 Viewport anchors are owner-confined, but full owner selection, fractional pixel
 scrolling, unseen-output counts and indexed anchor resolution remain pending.
+
+## Native screen clearing and shell integration
+
+Command–K follows Ghostty 1.4's emulator-level clear action: primary history is
+removed; at an OSC 133-marked prompt the owner clears the grid and requests a
+Ctrl-L redraw; outside a prompt it removes only rows above the cursor. Alternate
+screen state is untouched. This preserves a running TUI's coordinate model.
+Reference: [Ghostty's implementation](https://github.com/ghostty-org/ghostty/blob/v1.4.0/src/termio/Termio.zig#L605).
+
+The core owns clearing policy, identity changes, viewport/search invalidation and
+graphics cleanup. AppKit submits one ordered action. A narrow bundled zsh startup
+shim restores the original ZDOTDIR, sources user startup files at top level, then
+adds prompt/ZLE hooks. It does not edit dotfiles or replace the prompt. Explicit
+noninteractive commands use their existing startup path. Normal interactive
+zsh is detected and configured by the spawn module; callers do not construct
+integration environment variables. The obsolete spawn convenience entry point
+was removed, leaving the argument-aware spawn path as the single interface.

@@ -571,6 +571,9 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     NSPasteboard.general.setString(text, forType: .string)
   }
   @objc func cancelPaste(_ sender: Any?) { session.cancelPaste() }
+  @objc func clearScreen(_ sender: Any?) {
+    session.clearDisplay()
+  }
   @objc func paste(_ sender: Any?) {
     if let text = NSPasteboard.general.string(forType: .string) { send(text, key: 1) }
   }

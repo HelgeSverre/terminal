@@ -89,11 +89,12 @@ final class ImagePixels: @unchecked Sendable {
 }
 private final class ImageCapture { var data: Data? }
 struct TerminalSnapshot: Decodable {
+  let at_prompt: Bool
   let search: [SearchHighlight]
   let images: [ImagePlacementSnapshot]
   var imagePixels: [ImageKey: ImagePixels] = [:]
   enum CodingKeys: String, CodingKey {
-    case search, images, revision, geometry_epoch, document_epoch, history_epoch, screen_epoch,
+    case at_prompt, search, images, revision, geometry_epoch, document_epoch, history_epoch, screen_epoch,
       scroll_offset, following_tail, viewport_clamp_revision, cols, rows, cursor, modes, alternate, title,
       history_rows, palette, default_fg, default_bg
   }
@@ -154,6 +155,7 @@ final class Session: @unchecked Sendable {
     case scroll(Int)
     case find(String, @MainActor (HistorySearchOutcome) -> Void)
     case searchAdvance
+    case clearDisplay
     case probe(UInt64, @MainActor (Double) -> Void)
     case eof, idle
   }
@@ -480,6 +482,13 @@ final class Session: @unchecked Sendable {
     case .scroll(let delta): terminal_view_scroll(core, Int64(delta))
     case .find(let query, let completion): historySearch.start(query, completion: completion)
     case .searchAdvance: historySearch.advance()
+    case .clearDisplay:
+      let action = terminal_clear_display(core)
+      if action != 0 { historySearch.cancel() }
+      if action == 2 && !writeEnded {
+        writeID += 1
+        writes.append(WriteTransaction(id: writeID, data: Data([12]), kind: .ordinary))
+      }
     case .probe(let accepted, let completion):
       let delay = Double(DispatchTime.now().uptimeNanoseconds - accepted) / 1_000_000
       DispatchQueue.main.async { completion(delay) }
@@ -713,6 +722,12 @@ final class Session: @unchecked Sendable {
     queue.async { [self] in
       guard !closed else { return }
       enqueue(.scroll(amount))
+    }
+  }
+  func clearDisplay() {
+    queue.async { [self] in
+      guard !closed else { return }
+      enqueue(.clearDisplay)
     }
   }
   func find(_ query: String, completion: @escaping @MainActor (HistorySearchOutcome) -> Void) {

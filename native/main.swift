@@ -267,6 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     item(edit, "Find", #selector(TerminalCanvasView.find(_:)), "f")
     item(edit, "Cancel Paste", #selector(TerminalCanvasView.cancelPaste(_:)), ".")
     let view = submenu("View")
+    item(view, "Clear Screen", #selector(TerminalCanvasView.clearScreen(_:)), "k")
     item(view, "Increase Font Size", #selector(TerminalCanvasView.increaseFont(_:)), "+")
     item(view, "Decrease Font Size", #selector(TerminalCanvasView.decreaseFont(_:)), "-")
     item(view, "Reset Font Size", #selector(TerminalCanvasView.resetFont(_:)), "0")

@@ -17,9 +17,11 @@ import Darwin
       "preedit_cancelled_on_resize", "preedit_cancelled_on_focus", "cancel_did_not_commit_preedit",
       "search_navigated_and_highlighted",
       "command_left_begins_line", "command_right_accepts_zsh_suggestion",
+      "command_k_clears_history_and_redraws_prompt",
     ].map { ($0, false) })
   var measurements: [String: Any] = [:]
-  var phase = 0
+  var phase = -1
+  var clearHistoryEpoch: UInt64 = 0
   var resizeEpoch: UInt64 = 0
   var oldCols = 0
   var maximumIMEMarkerLines = 0
@@ -41,6 +43,10 @@ import Darwin
       return
     }
     pane.onObservedSnapshot = { [weak self] snapshot in self?.observe(snapshot) }
+    pane.session.semanticProbe { _ in }
+  }
+  private func runCommand() {
+    guard let pane = controller.panes.first else { return }
     pane.insertText(
       "printf '\\033[2J\\033[H\\033[31mRED\\033[0m Unicode: 猫 é 👩🏽‍💻 🇳🇴\\nSMOKE_SENTINEL\\n'",
       replacementRange: NSRange(location: NSNotFound, length: 0))
@@ -59,6 +65,12 @@ import Darwin
     }
   }
   func observe(_ snapshot: TerminalSnapshot) {
+    if phase == -1 {
+      guard snapshot.at_prompt else { return }
+      phase = 0
+      runCommand()
+      return
+    }
     let lines = snapshot.rows.map { $0.cells.map { $0.text }.joined() }
     let text = lines.joined(separator: "\n")
     if text.contains("DISCARDED_PREEDIT") { checks["cancel_did_not_commit_preedit"] = false }
@@ -147,6 +159,20 @@ import Darwin
     } else if phase == 8 && lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "CMD_SUGGEST_OK" }) {
       checks["command_right_accepts_zsh_suggestion"] = true
       phase = 9
+    }
+    if phase == 9 && snapshot.at_prompt {
+      phase = 10
+      clearHistoryEpoch = snapshot.history_epoch
+      if let window = controller.window, let event = NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [.command],
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+        context: nil, characters: "k", charactersIgnoringModifiers: "k", isARepeat: false, keyCode: 40)
+      { NSApp.sendEvent(event) }
+    } else if phase == 10 && snapshot.at_prompt && snapshot.history_epoch > clearHistoryEpoch
+      && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      checks["command_k_clears_history_and_redraws_prompt"] = snapshot.history_rows == 0
+        && !text.contains("CMD_SUGGEST_OK") && !text.contains("SMOKE_SENTINEL")
+      phase = 11
       if idle {
         controller.closePane(nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [self] in measureIdle() }

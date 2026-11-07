@@ -4,6 +4,7 @@ import Foundation
 // metadata uses JSON. All views are copied on the owner before the callback returns.
 enum SnapshotBridge {
   private struct Header: Decodable {
+    let at_prompt: Bool
     let search: [SearchHighlight]
     let images: [ImagePlacementSnapshot]
     let revision: UInt64
@@ -95,6 +96,7 @@ enum SnapshotBridge {
           rows.append(RowSnapshot(cells: output, soft_wrapped: wraps[row] != 0))
         }
         capture.snapshot = TerminalSnapshot(
+          at_prompt: header.at_prompt,
           search: header.search,
           images: header.images, revision: header.revision, geometry_epoch: header.geometry_epoch,
           document_epoch: header.document_epoch, history_epoch: header.history_epoch,

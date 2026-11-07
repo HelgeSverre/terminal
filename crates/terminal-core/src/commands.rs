@@ -436,6 +436,7 @@ impl Terminal {
         }
     }
     fn clear_active(&mut self) {
+        self.screen_mut().at_prompt = false;
         self.screen_epoch += 1;
         self.graphics.clear_screen(self.is_alternate);
         for r in 0..self.height {
@@ -631,6 +632,11 @@ impl Terminal {
             return;
         };
         match code {
+            "133" => match value.split(';').next() {
+                Some("A" | "B") => self.screen_mut().at_prompt = true,
+                Some("C" | "D") => self.screen_mut().at_prompt = false,
+                _ => {}
+            },
             "0" | "2" => {
                 self.title = value
                     .chars()

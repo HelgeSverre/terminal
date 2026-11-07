@@ -23,6 +23,7 @@ bool terminal_snapshot_binary(Terminal *,size_t,uint64_t,void *,void (*)(void *,
 bool terminal_view_snapshot_binary(Terminal *,uint64_t,void *,void (*)(void *,const uint8_t *,size_t,const TerminalCellView *,size_t,const uint8_t *,size_t));
 void terminal_view_scroll(Terminal *,int64_t);
 void terminal_view_follow_tail(Terminal *);
+uint32_t terminal_clear_display(Terminal *);
 void terminal_string_free(char *);
 void terminal_replies(Terminal *,void *,void (*)(void *,const uint8_t *,size_t));
 bool terminal_input(Terminal *,const char *,uint32_t,uint32_t,uint32_t,void *,void (*)(void *,const uint8_t *,size_t));
@@ -36,7 +37,6 @@ uint32_t terminal_search_accept(Terminal *,TerminalSearch *);
 void terminal_search_destroy(TerminalSearch *);
 void terminal_finish(Terminal *);
 typedef struct {int master;int status;int pid;int error;} TerminalProcess;
-TerminalProcess terminal_spawn(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows);
 TerminalProcess terminal_spawn_args(const char *,const char *,const char *,uint16_t,uint16_t,char *const []);
 bool terminal_validate(Terminal *);
 bool terminal_has_work(Terminal *);

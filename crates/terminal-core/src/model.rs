@@ -406,6 +406,7 @@ pub struct Saved {
 }
 #[derive(Debug, Clone)]
 pub struct Screen {
+    pub at_prompt: bool,
     pub rows: VecDeque<Arc<Row>>,
     pub cursor: Cursor,
     pub saved: Saved,
@@ -421,6 +422,7 @@ impl Screen {
             .front()
             .map_or(0, |row| row.cells.len().saturating_sub(1));
         Self {
+            at_prompt: false,
             rows,
             cursor: Cursor {
                 visible: true,
@@ -501,6 +503,7 @@ impl From<&Row> for RowDump {
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct Snapshot {
+    pub at_prompt: bool,
     pub search: Vec<crate::search::SearchHighlight>,
     pub images: Vec<crate::graphics::ImagePlacement>,
     pub revision: u64,
