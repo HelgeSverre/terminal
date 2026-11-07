@@ -45,6 +45,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       "frame": NSStringFromRect(frame), "bounds": NSStringFromRect(bounds),
       "layer_frame": NSStringFromRect(layer?.frame ?? .zero),
       "drawable_size": NSStringFromSize(metal?.drawableSize ?? .zero),
+      "contents_gravity": layer?.contentsGravity.rawValue ?? "",
       "renderer_matches_layer": renderer?.layer === layer,
       "focused": focused,
       "first_responder": window?.firstResponder === self,
@@ -65,6 +66,10 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     wantsLayer = true
     layer?.masksToBounds = true
     if let layer = layer as? CAMetalLayer {
+      // Configure the installed backing layer: AppKit applies its layer defaults
+      // after `makeBackingLayer()`. Retained content must not stretch while a
+      // replacement drawable is prepared during a split or resize.
+      layer.contentsGravity = .topLeft
       do { renderer = try MetalRenderer(layer: layer) } catch {
         NSLog("Metal initialization failed: %@", String(describing: error))
       }

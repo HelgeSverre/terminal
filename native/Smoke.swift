@@ -36,6 +36,9 @@ import Darwin
     uniqueKeysWithValues: [
       "pty_input_and_output", "unicode_text", "sgr_red", "ime_marked_state", "ime_unmarked_state",
       "ime_commit_once", "resize_epoch", "split_panes", "metal_submitted",
+      "split_resize_frames_match_drawables",
+      "split_resize_drops_stale_frames",
+      "split_resize_retained_frame_does_not_scale",
       "completed_without_timeout", "accessibility_text_ranges",
       "native_keypad_enter",
       "pane_focus_consistent", "settings_window",
@@ -52,6 +55,8 @@ import Darwin
   var resizeEpoch: UInt64 = 0
   var oldCols = 0
   var maximumIMEMarkerLines = 0
+  var geometryMismatchedPresents: UInt64 = 0
+  var geometryDroppedStaleFrames: UInt64 = 0
   init(window: TerminalWindow, path: String) {
     controller = window
     self.path = path
@@ -146,6 +151,8 @@ import Darwin
         controller.panes.first?.setMarkedText(
           "FOCUS_DISCARDED_PREEDIT", selectedRange: NSRange(location: 0, length: 0),
           replacementRange: NSRange(location: NSNotFound, length: 0))
+        geometryMismatchedPresents = RendererMetrics.mismatchedPresentations()
+        geometryDroppedStaleFrames = RendererMetrics.staleFrameDropCount()
         controller.splitVertical(nil)
         checks["preedit_cancelled_on_focus"] = controller.panes.first?.hasMarkedText() == false
         checks["split_panes"] =
@@ -156,7 +163,14 @@ import Darwin
             controller.window?.isKeyWindow == true && controller.window?.firstResponder === pane
           return pane.geometryReport()["focused"] as? Bool == expected
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [self] in
+        checks["split_resize_retained_frame_does_not_scale"] = controller.panes.allSatisfy {
+          $0.geometryReport()["contents_gravity"] as? String == CALayerContentsGravity.topLeft.rawValue
+        }
+        exerciseSplitResizeStress { [self] in
+          checks["split_resize_frames_match_drawables"] =
+            RendererMetrics.mismatchedPresentations() == geometryMismatchedPresents
+          checks["split_resize_drops_stale_frames"] =
+            RendererMetrics.staleFrameDropCount() > geometryDroppedStaleFrames
           checks["metal_submitted"] = RendererMetrics.submissions() > 0
           phase = 4
           controller.panes.first?.session.find("SMOKE_SENTINEL") { [weak self] outcome in
@@ -217,6 +231,27 @@ import Darwin
       measurements["clear_at_prompt"] = snapshot.at_prompt
       measurements["clear_bracketed_paste"] = snapshot.modes.bracketed_paste
     }
+  }
+  private func exerciseSplitResizeStress(completion: @escaping @MainActor @Sendable () -> Void) {
+    guard let window = controller.window else {
+      completion()
+      return
+    }
+    let sizes = (0..<48).map { index in
+      NSSize(
+        width: index.isMultiple(of: 2) ? 820 : 1180,
+        height: index.isMultiple(of: 3) ? 460 : 760)
+    }
+    func resize(_ index: Int) {
+      guard index < sizes.count else {
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(300)) { completion() }
+        return
+      }
+      window.setContentSize(sizes[index])
+      window.contentView?.layoutSubtreeIfNeeded()
+      DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(2)) { resize(index + 1) }
+    }
+    resize(0)
   }
   private func testCommandNavigation() {
     guard let pane = controller.panes.first else { return }

@@ -366,6 +366,18 @@ final class MetalRenderer: @unchecked Sendable {
     }
     let drawableWidth = drawable.texture.width
     let drawableHeight = drawable.texture.height
+    let matchesRequest = RendererMetrics.recordDrawable(
+      requestWidth: request.width, requestHeight: request.height,
+      drawableWidth: drawableWidth, drawableHeight: drawableHeight)
+    // `CAMetalLayer` can hand us a drawable for a resize that happened after this
+    // request was queued. Its pixel coordinates describe the old grid, so a
+    // present would temporarily distort or clip the terminal. The geometry change
+    // also queued a replacement request; let it render the current drawable.
+    guard matchesRequest else {
+      RendererMetrics.recordStaleFrameDrop()
+      inFlight.signal()
+      return
+    }
     command.label = "Terminal frame \(submissions) revision \(snap.revision)"
     let descriptor = MTLRenderPassDescriptor()
     descriptor.colorAttachments[0].texture = drawable.texture
@@ -429,6 +441,9 @@ final class MetalRenderer: @unchecked Sendable {
     drawImages { $0 >= 0 }
     drawQuads(overlayQuads, texture: atlas, state: pipeline)
     encoder.endEncoding()
+    RendererMetrics.recordPresentation(
+      requestWidth: request.width, requestHeight: request.height,
+      drawableWidth: drawableWidth, drawableHeight: drawableHeight)
     command.present(drawable)
     let semaphore = inFlight
     command.addCompletedHandler { command in
@@ -445,6 +460,9 @@ final class MetalRenderer: @unchecked Sendable {
 final class RendererMetrics: @unchecked Sendable {
   private static let lock = NSLock()
   private static var count: UInt64 = 0
+  private static var mismatchedDrawables: UInt64 = 0
+  private static var mismatchedPresents: UInt64 = 0
+  private static var droppedStaleFrames: UInt64 = 0
   private static var preparation: [Double] = []
   private static var gpu: [Double] = []
   private static var errors = 0
@@ -464,6 +482,39 @@ final class RendererMetrics: @unchecked Sendable {
     if error { errors += 1 }
     lock.unlock()
   }
+  static func recordDrawable(
+    requestWidth: Int, requestHeight: Int, drawableWidth: Int, drawableHeight: Int
+  ) -> Bool {
+    let matches = requestWidth == drawableWidth && requestHeight == drawableHeight
+    guard !matches else { return true }
+    lock.lock()
+    mismatchedDrawables += 1
+    lock.unlock()
+    return false
+  }
+  static func recordStaleFrameDrop() {
+    lock.lock()
+    droppedStaleFrames += 1
+    lock.unlock()
+  }
+  static func recordPresentation(
+    requestWidth: Int, requestHeight: Int, drawableWidth: Int, drawableHeight: Int
+  ) {
+    guard requestWidth != drawableWidth || requestHeight != drawableHeight else { return }
+    lock.lock()
+    mismatchedPresents += 1
+    lock.unlock()
+  }
+  static func mismatchedPresentations() -> UInt64 {
+    lock.lock()
+    defer { lock.unlock() }
+    return mismatchedPresents
+  }
+  static func staleFrameDropCount() -> UInt64 {
+    lock.lock()
+    defer { lock.unlock() }
+    return droppedStaleFrames
+  }
   static func submissions() -> UInt64 {
     lock.lock()
     defer { lock.unlock() }
@@ -476,6 +527,9 @@ final class RendererMetrics: @unchecked Sendable {
       "submissions": count, "preparation_ms": preparation, "gpu_command_ms": gpu,
       "command_errors": errors, "font": TerminalFont.family, "attachment": "BGRA8Unorm_sRGB",
       "glyph_atlas": "premultiplied linear RGBA8Unorm",
+      "mismatched_drawables": mismatchedDrawables,
+      "mismatched_presents": mismatchedPresents,
+      "dropped_stale_frames": droppedStaleFrames,
     ]
   }
 }
