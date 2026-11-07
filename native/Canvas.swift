@@ -207,13 +207,13 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   func updateFocus() {
     let value = window?.isKeyWindow == true && window?.firstResponder === self
+    if !value {
+      releaseOwnedKeys()
+      if hasMarkedText() { cancelComposition() }
+    }
     if focused != value {
-      if !value { releaseOwnedKeys() }
       focused = value
       session.input(key: 2, event: value ? 1 : 0)
-      if !value {
-        cancelComposition()
-      }
       redraw()
     }
   }
@@ -246,7 +246,11 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     updateGeometry()
   }
   override func becomeFirstResponder() -> Bool {
-    DispatchQueue.main.async { [weak self] in self?.updateFocus() }
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.updateFocus()
+      (NSApp.delegate as? AppDelegate)?.rememberFocus(self)
+    }
     return true
   }
   override func resignFirstResponder() -> Bool {
@@ -312,6 +316,13 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       clearSelection()
     }
     redraw()
+    return accepted
+  }
+  // Scripted text is a committed text operation, not a synthetic key event.
+  // Keep the input-method and selection transitions owned by the canvas.
+  @discardableResult func submitAutomationText(_ text: String) -> Bool {
+    let accepted = send(text)
+    if accepted { cancelComposition() }
     return accepted
   }
   private func modifiers(_ flags: NSEvent.ModifierFlags) -> UInt32 {

@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "panes_created": 5,
+  "child_processes_reaped": 5,
+  "scenarios": [
+    "invalid-target",
+    "bounded-read",
+    "preferences",
+    "window",
+    "split",
+    "tab",
+    "focus",
+    "settings",
+    "inactive",
+    "close",
+    "cleanup"
+  ]
+}

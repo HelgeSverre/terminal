@@ -100,6 +100,11 @@ buttons, bounded to 8–40 pt. Closing the last window quits the application and
 shuts down its terminal sessions. `TERM=xterm-256color` remains an explicit
 bring-up compatibility fallback. Clipboard control through OSC 52 is denied.
 
+Development builds also expose an AppleScript dictionary for pane discovery,
+text input, screen reads, splits, windows, tabs and validated settings changes.
+See [automation examples and behavior](docs/automation.md). Stable accessibility
+identifiers let UI automation target individual panes and settings controls.
+
 ## Verify
 
 The native integration corpus also needs fish, Neovim, tmux and fzf:
@@ -113,6 +118,7 @@ just editing-smoke # Fresh-prompt cd/Backspace, autosuggestions and ZLE buffer
 just glyph-smoke   # Every Nerd Font glyph through all four styles and Metal
 just glyphs        # Print the full labeled glyph catalog for inspection
 just close-smoke   # Last-window close and Cmd+Q; app and PTY child must exit
+just automation-smoke # Real AppleScript against an isolated disposable app
 just idle
 just benchmark-core
 just check       # Tests plus the real native smoke

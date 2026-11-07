@@ -138,12 +138,17 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   func windowDidBecomeKey(_ notification: Notification) {
     panes.forEach { $0.updateFocus() }
     if !(window?.firstResponder is TerminalCanvasView) { window?.makeFirstResponder(panes.first) }
+    if let pane = window?.firstResponder as? TerminalCanvasView {
+      (NSApp.delegate as? AppDelegate)?.rememberFocus(pane)
+    }
   }
 }
 final class AppDelegate: NSObject, NSApplicationDelegate {
   var windows: [TerminalWindow] = []
   private var preferencesWindow: TerminalSettingsWindow?
+  private weak var lastFocusedPane: TerminalCanvasView?
   private var terminationRequested = false
+  var acceptsAutomation: Bool { !terminationRequested }
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
     menu()
@@ -212,7 +217,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     window.window?.makeKeyAndOrderFront(nil)
   }
   @objc func newTab(_ sender: Any?) {
-    let previous = NSApp.keyWindow
+    let previous = (NSApp.keyWindow?.windowController as? TerminalWindow)?.window
+      ?? intendedPane()?.window
     let window = TerminalWindow()
     windows.append(window)
     if let tab = window.window {
@@ -223,11 +229,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   @objc func settings(_ sender: Any?) {
     if preferencesWindow == nil {
       preferencesWindow = TerminalSettingsWindow { [weak self] prefs in
-        prefs.save()
-        self?.windows.flatMap { $0.panes }.forEach { $0.applyPreferences() }
+        self?.applyPreferences(prefs)
       }
     }
     preferencesWindow?.present()
+  }
+  func rememberFocus(_ pane: TerminalCanvasView) {
+    guard pane.window?.firstResponder === pane,
+      windows.contains(where: { $0.panes.contains { $0 === pane } })
+    else { return }
+    lastFocusedPane = pane
+  }
+  func intendedPane() -> TerminalCanvasView? {
+    if let current = NSApp.keyWindow?.firstResponder as? TerminalCanvasView {
+      rememberFocus(current)
+      if current === lastFocusedPane { return current }
+    }
+    guard let pane = lastFocusedPane, pane.window != nil,
+      windows.contains(where: { $0.panes.contains { $0 === pane } })
+    else { return nil }
+    return pane
+  }
+  func applyPreferences(_ preferences: TerminalPreferences) {
+    preferences.save()
+    windows.lazy.flatMap(\.panes).forEach { $0.applyPreferences() }
+    preferencesWindow?.reload()
   }
   func remove(_ window: TerminalWindow) { windows.removeAll { $0 === window } }
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

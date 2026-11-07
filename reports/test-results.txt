@@ -1,6 +1,6 @@
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.07s
 #!/usr/bin/env bash
 set -euo pipefail
 ICONSET=target/native/Terminal.iconset
@@ -23,8 +23,9 @@ xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 native/Launcher.c -o
 xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
 xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
 xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
-xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
+xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Automation.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
 cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+cp native/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
 cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
 ditto native/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
 ditto assets/fonts "$APP_BUNDLE/Contents/Resources/Fonts"
@@ -33,7 +34,7 @@ codesign --force --sign - "$APP_BUNDLE"
     Finished `release` profile [optimized] target(s) in 0.06s
 /Users/helge/code/terminal/dist/Terminal.app/Contents/MacOS/TerminalLauncher: replacing existing signature
 /Users/helge/code/terminal/dist/Terminal.app: replacing existing signature
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.02s
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.03s
      Running unittests src/lib.rs (target/debug/deps/terminal_core-59fe54813e730c75)
 
 running 1 test
@@ -45,8 +46,8 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 5 tests
 test command_markers_leave_prompt_and_reset_clears_prompt_identity ... ok
-test unmarked_program_preserves_cursor_row_and_everything_below_it ... ok
 test prompt_clear_is_local_and_requests_redraw_without_resetting_terminal_modes ... ok
+test unmarked_program_preserves_cursor_row_and_everything_below_it ... ok
 test clear_drops_primary_images_but_preserves_other_screen_resources ... ok
 test alternate_clear_does_nothing_including_retained_primary_view_and_graphics ... ok
 
@@ -56,16 +57,16 @@ test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 13 tests
 test quiet_modes_and_unsupported_feature_queries ... ok
-test delete_z_keeps_unrelated_cached_images_and_other_screen_references ... ok
-test screen_scope_clear_reset_and_scrolling ... ok
-test malformed_size_base64_and_file_transports_fail_without_replacing ... ok
 test replacements_delete_old_placements_and_generate_new_lifetime ... ok
-test kitty_detection_query_is_ordered_and_non_mutating ... ok
-test zero_source_extent_means_remaining_pixels_and_queries_respect_quiet ... ok
-test cancel_and_oversized_apc_never_leak_payload ... ok
+test delete_z_keeps_unrelated_cached_images_and_other_screen_references ... ok
+test malformed_size_base64_and_file_transports_fail_without_replacing ... ok
+test screen_scope_clear_reset_and_scrolling ... ok
 test chunk_atomicity_and_final_cursor_position ... ok
-test png_and_zlib_are_decoded_with_alpha ... ok
+test zero_source_extent_means_remaining_pixels_and_queries_respect_quiet ... ok
 test direct_rgb_rgba_and_placement ... ok
+test png_and_zlib_are_decoded_with_alpha ... ok
+test kitty_detection_query_is_ordered_and_non_mutating ... ok
+test cancel_and_oversized_apc_never_leak_payload ... ok
 test every_byte_partition_and_one_byte_reads ... ok
 test dmscene_double_buffer_sequence ... ok
 
@@ -84,23 +85,23 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 9 tests
 test carriage_return_backspace_and_tabs_respect_horizontal_region ... ok
+test screen_scope_reset_resize_and_margin_mode_disable ... ok
 test horizontal_insert_delete_and_wide_edges ... ok
 test rectangular_index_keeps_row_identity_side_cells_and_history ... ok
-test screen_scope_reset_resize_and_margin_mode_disable ... ok
+test rectangular_scroll_remaps_styles_links_clusters_and_protection ... ok
 test regional_wrap_does_not_join_full_rows_or_touch_side_columns ... ok
 test rectangular_insert_delete_lines_and_bce ... ok
-test rectangular_scroll_remaps_styles_links_clusters_and_protection ... ok
 test margins_origin_home_queries_validation_and_ansi_save_conflict ... ok
 test every_partition_and_ascii_scalar_paths_agree_with_rectangles ... ok
 
-test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
 
      Running tests/search.rs (target/debug/deps/search-f28676c9cb150c9d)
 
 running 7 tests
-test soft_chains_join_but_hard_breaks_and_explicit_spaces_remain ... ok
-test literal_latest_hit_navigates_physical_history_and_decorates_cells ... ok
 test output_is_not_chased_and_alternate_never_searches_primary_history ... ok
+test literal_latest_hit_navigates_physical_history_and_decorates_cells ... ok
+test soft_chains_join_but_hard_breaks_and_explicit_spaces_remain ... ok
 test immutable_page_runs_off_owner_and_stale_source_is_rejected ... ok
 test unicode_scalar_fold_and_cluster_boundaries_include_wide_continuations ... ok
 test epochs_eviction_and_row_revisions_invalidate_results_and_decorations ... ok
@@ -111,22 +112,22 @@ test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
      Running tests/semantics.rs (target/debug/deps/semantics-528eea24494b072d)
 
 running 41 tests
-test combining_style_adjacency ... ok
-test ed2_vs_ed3 ... ok
-test erase_background_only ... ok
-test deferred_wrap ... ok
-test color_syntax ... ok
-test alternate_never_enters_history ... ok
-test alternate_idempotence_and_mixed ... ok
 test c1_not_reinterpreted ... ok
+test ed2_vs_ed3 ... ok
+test alternate_never_enters_history ... ok
+test erase_background_only ... ok
 test cursor_save_pending_and_pen ... ok
+test combining_style_adjacency ... ok
+test deferred_wrap ... ok
+test alternate_idempotence_and_mixed ... ok
+test color_syntax ... ok
 test geometry_rejected_without_mutation ... ok
 test history_bounds ... ok
 test immutable_rows ... ok
+test capped_grapheme_keeps_incremental_boundary_state ... ok
 test input_modes_and_paste ... ok
 test interior_edit_preserves_wrap_chain ... ok
 test invalid_utf8_color_does_not_panic ... ok
-test capped_grapheme_keeps_incremental_boundary_state ... ok
 test keyboard_stacks_per_screen ... ok
 test kitty_event_encoding ... ok
 test lf_is_not_cr ... ok
@@ -134,37 +135,37 @@ test margins_no_history ... ok
 test parser_eof_drops_control ... ok
 test overflow_invalidates_command ... ok
 test malformed_utf8_maximal_subpart ... ok
-test reflow_roundtrip_text ... ok
 test resize_inactive_primary ... ok
+test reflow_roundtrip_text ... ok
 test ris_resets_both_cursor_appearances ... ok
-test saved_cursor_excludes_appearance ... ok
 test scroll_closes_cluster_repair ... ok
 test selective_erase_protects_whole_wide_glyph ... ok
+test saved_cursor_excludes_appearance ... ok
+test unicode_tables_are_pinned_to_18 ... ok
 test string_escape_and_abort ... ok
 test sync_replies_deadline ... ok
-test unicode_tables_are_pinned_to_18 ... ok
 test unicode_clusters ... ok
 test wide_at_edge ... ok
+test string_discard_escape_cannot_inject ... ok
 test widening_clipped_glyph_clears_clipping_flag ... ok
 test wide_repair_all_mutations ... ok
-test string_discard_escape_cannot_inject ... ok
 test ascii_fast_path_matches_scalar ... ok
 test rep_yields_without_consuming_later_bytes ... ok
 test every_byte_partition ... ok
 test random_byte_partition_and_invariants ... ok
 
-test result: ok. 41 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+test result: ok. 41 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
 
      Running tests/viewport.rs (target/debug/deps/viewport-8ecb9a082a4f7b45)
 
 running 7 tests
-test publication_gate_does_not_rebase_anchor_and_invalid_resize_is_atomic ... ok
-test eviction_clamps_once_without_leaving_anchored_mode ... ok
-test alternate_has_no_history_and_retains_primary_view_for_return ... ok
 test height_growth_clamps_to_legal_top_and_anchor_can_move_back_to_history ... ok
-test output_preserves_content_and_scroll_is_relative_to_current_anchor ... ok
-test history_clear_and_reset_publish_distinct_identities_and_initial_colors ... ok
+test alternate_has_no_history_and_retains_primary_view_for_return ... ok
+test publication_gate_does_not_rebase_anchor_and_invalid_resize_is_atomic ... ok
 test reflow_maps_leading_boundary_including_soft_wrap_and_wide_atoms ... ok
+test output_preserves_content_and_scroll_is_relative_to_current_anchor ... ok
+test eviction_clamps_once_without_leaving_anchored_mode ... ok
+test history_clear_and_reset_publish_distinct_identities_and_initial_colors ... ok
 
 test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
