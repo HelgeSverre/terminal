@@ -1,0 +1,9 @@
+[package]
+name = "terminal-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+terminal-core = { path = "../terminal-core" }
+serde_json.workspace = true

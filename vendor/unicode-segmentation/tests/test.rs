@@ -1,0 +1,449 @@
+// Copyright 2012-2015 The Rust Project Developers. See the COPYRIGHT
+// file at the top-level directory of this distribution and at
+// http://rust-lang.org/COPYRIGHT.
+//
+// Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+// http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+// <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+// option. This file may not be copied, modified, or distributed
+// except according to those terms.
+
+use quickcheck::quickcheck;
+use unicode_segmentation::UnicodeSegmentation;
+
+#[rustfmt::skip]
+mod testdata;
+
+#[test]
+fn test_graphemes() {
+    use crate::testdata::{TEST_DIFF, TEST_SAME};
+
+    pub const EXTRA_DIFF: &[(&str, &[&str], &[&str])] = &[
+        // Official test suite doesn't include two Prepend chars between two other chars.
+        (
+            "\u{20}\u{600}\u{600}\u{20}",
+            &["\u{20}", "\u{600}\u{600}\u{20}"],
+            &["\u{20}", "\u{600}", "\u{600}", "\u{20}"],
+        ),
+        // Test for Prepend followed by two Any chars
+        (
+            "\u{600}\u{20}\u{20}",
+            &["\u{600}\u{20}", "\u{20}"],
+            &["\u{600}", "\u{20}", "\u{20}"],
+        ),
+        // GB9c (Unicode 18): Linker + Extend + Consonant → no break (extended), break (legacy)
+        // U+093C is GC_Extend, so GB9 joins it to the linker even in legacy
+        (
+            "\u{94d}\u{93c}\u{915}",
+            &["\u{94d}\u{93c}\u{915}"],
+            &["\u{94d}\u{93c}", "\u{915}"],
+        ),
+    ];
+
+    pub const EXTRA_SAME: &[(&str, &[&str])] = &[
+        // family emoji (more than two emoji joined by ZWJ)
+        (
+            "\u{1f468}\u{200d}\u{1f467}\u{200d}\u{1f466}",
+            &["\u{1f468}\u{200d}\u{1f467}\u{200d}\u{1f466}"],
+        ),
+        // cartwheel emoji followed by two fitzpatrick skin tone modifiers
+        // (test case from issue #19)
+        (
+            "\u{1F938}\u{1F3FE}\u{1F3FE}",
+            &["\u{1F938}\u{1F3FE}\u{1F3FE}"],
+        ),
+        // GB4 and GB5 come before GB9b, so a Prepend does not join to a
+        // following Control, CR or LF. ARABIC END OF AYAH is Prepend.
+        ("\u{06DD}\r", &["\u{06DD}", "\r"]),
+        ("\u{06DD}\n", &["\u{06DD}", "\n"]),
+        ("\u{06DD}\u{0000}", &["\u{06DD}", "\u{0000}"]),
+        // ARABIC NUMBER SIGN, the other Prepend used in these tests
+        ("\u{0600}\r", &["\u{0600}", "\r"]),
+    ];
+
+    for &(s, g) in TEST_SAME.iter().chain(EXTRA_SAME) {
+        // test forward iterator
+        let our_extended: Vec<_> = UnicodeSegmentation::graphemes(s, true).collect();
+        let our_legacy: Vec<_> = UnicodeSegmentation::graphemes(s, false).collect();
+        assert_eq!(our_extended, g, "{s:?} extended");
+        assert_eq!(our_legacy, g, "{s:?} legacy");
+
+        // test reverse iterator
+        assert!(UnicodeSegmentation::graphemes(s, true)
+            .rev()
+            .eq(g.iter().rev().cloned()));
+        assert!(UnicodeSegmentation::graphemes(s, false)
+            .rev()
+            .eq(g.iter().rev().cloned()));
+    }
+
+    for &(s, gt, gf) in TEST_DIFF.iter().chain(EXTRA_DIFF) {
+        // test forward iterator
+        assert!(UnicodeSegmentation::graphemes(s, true).eq(gt.iter().cloned()));
+        assert!(UnicodeSegmentation::graphemes(s, false).eq(gf.iter().cloned()));
+
+        // test reverse iterator
+        assert!(UnicodeSegmentation::graphemes(s, true)
+            .rev()
+            .eq(gt.iter().rev().cloned()));
+        assert!(UnicodeSegmentation::graphemes(s, false)
+            .rev()
+            .eq(gf.iter().rev().cloned()));
+    }
+
+    // test the indices iterators
+    let s = "a̐éö̲\r\n";
+    let gr_inds = UnicodeSegmentation::grapheme_indices(s, true).collect::<Vec<(usize, &str)>>();
+    let b: &[_] = &[(0, "a̐"), (3, "é"), (6, "ö̲"), (11, "\r\n")];
+    assert_eq!(gr_inds, b);
+    let gr_inds = UnicodeSegmentation::grapheme_indices(s, true)
+        .rev()
+        .collect::<Vec<(usize, &str)>>();
+    let b: &[_] = &[(11, "\r\n"), (6, "ö̲"), (3, "é"), (0, "a̐")];
+    assert_eq!(gr_inds, b);
+    let mut gr_inds_iter = UnicodeSegmentation::grapheme_indices(s, true);
+    {
+        let gr_inds = gr_inds_iter.by_ref();
+        let e1 = gr_inds.size_hint();
+        assert_eq!(e1, (1, Some(13)));
+        let c = gr_inds.count();
+        assert_eq!(c, 4);
+    }
+    let e2 = gr_inds_iter.size_hint();
+    assert_eq!(e2, (0, Some(0)));
+
+    // make sure the reverse iterator does the right thing with "\n" at beginning of string
+    let s = "\n\r\n\r";
+    let gr = UnicodeSegmentation::graphemes(s, true)
+        .rev()
+        .collect::<Vec<&str>>();
+    let b: &[_] = &["\r", "\r\n", "\n"];
+    assert_eq!(gr, b);
+}
+
+// The `graphemes` iterator sees the whole string at once, so it always had these
+// right. `GraphemeCursor` answers the same question one chunk at a time, and
+// `provide_context` applied GB9b directly on a trailing Prepend without checking
+// whether GB4 or GB5 had already decided the boundary. Feeding the input one
+// codepoint at a time is the smallest way to reach that path.
+#[test]
+fn test_grapheme_cursor_chunked_matches_iterator() {
+    use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
+
+    const CASES: &[&str] = &[
+        "\u{06DD}\r",
+        "\u{06DD}\n",
+        "\u{06DD}\u{0000}",
+        "\u{0600}\r",
+        "\u{0600}a",
+        "a\u{06DD}\r",
+    ];
+
+    for &s in CASES {
+        for is_extended in [true, false] {
+            // Prepend is only joined in extended mode, so the expected
+            // boundaries have to come from the matching iterator.
+            let expected: Vec<usize> = std::iter::once(0)
+                .chain(
+                    UnicodeSegmentation::grapheme_indices(s, is_extended).map(|(i, g)| i + g.len()),
+                )
+                .collect();
+
+            for (offset, _) in s.char_indices().skip(1) {
+                let mut cursor = GraphemeCursor::new(offset, s.len(), is_extended);
+                let boundary = loop {
+                    match cursor.is_boundary(&s[offset..], offset) {
+                        Ok(b) => break b,
+                        Err(GraphemeIncomplete::PreContext(n)) => {
+                            cursor.provide_context(&s[..n], 0);
+                        }
+                        Err(e) => panic!("{:?} at {}: unexpected {:?}", s, offset, e),
+                    }
+                };
+                assert_eq!(
+                    boundary,
+                    expected.contains(&offset),
+                    "{s:?} extended={is_extended} offset={offset}"
+                );
+            }
+        }
+    }
+}
+
+// Verify that `GraphemeCursor` chunked mode matches the `Graphemes` iterator
+// for GB9c (Indic conjunct break) sequences, especially when the linker,
+// extends, or consonant fall on chunk boundaries.
+#[test]
+fn test_grapheme_cursor_incb_consonant_chunked() {
+    use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete};
+
+    // U+094D = Virama (Linker, 3 bytes), U+0915 = Ka (Consonant, 3 bytes)
+    // U+093f = VowelSignI (Extend, 3 bytes)
+    const CASES: &[&str] = &[
+        "\u{94d}\u{915}",        // Linker + Consonant
+        "\u{94d}\u{93c}\u{915}", // Linker + Extend + Consonant
+        "\u{1cf5}\u{995}",       // Vedic Jihvamuliya + Consonant (Unicode 18)
+        "\u{1cf6}\u{9aa}",       // Vedic Upadhmaniya + Consonant (Unicode 18)
+        "\u{11a3a}\u{11a0b}",    // Zanabazar Square + Consonant (Unicode 18)
+    ];
+
+    for &s in CASES {
+        for is_extended in [true, false] {
+            let expected: Vec<usize> = std::iter::once(0)
+                .chain(
+                    UnicodeSegmentation::grapheme_indices(s, is_extended).map(|(i, g)| i + g.len()),
+                )
+                .collect();
+
+            for (offset, _) in s.char_indices().skip(1) {
+                let mut cursor = GraphemeCursor::new(offset, s.len(), is_extended);
+                let boundary = loop {
+                    match cursor.is_boundary(&s[offset..], offset) {
+                        Ok(b) => break b,
+                        Err(GraphemeIncomplete::PreContext(n)) => {
+                            cursor.provide_context(&s[..n], 0);
+                        }
+                        Err(e) => panic!("{:?} at {}: unexpected {:?}", s, offset, e),
+                    }
+                };
+                assert_eq!(
+                    boundary,
+                    expected.contains(&offset),
+                    "{s:?} extended={is_extended} offset={offset}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_words() {
+    use crate::testdata::TEST_WORD;
+
+    // Unicode's official tests don't really test longer chains of flag emoji
+    // TODO This could be improved with more tests like flag emoji with interspersed Extend chars and ZWJ
+    const EXTRA_TESTS: &[(&str, &[&str])] = &[
+        (
+            "🇦🇫🇦🇽🇦🇱🇩🇿🇦🇸🇦🇩🇦🇴",
+            &["🇦🇫", "🇦🇽", "🇦🇱", "🇩🇿", "🇦🇸", "🇦🇩", "🇦🇴"],
+        ),
+        ("🇦🇫🇦🇽🇦🇱🇩🇿🇦🇸🇦🇩🇦", &["🇦🇫", "🇦🇽", "🇦🇱", "🇩🇿", "🇦🇸", "🇦🇩", "🇦"]),
+        (
+            "🇦a🇫🇦🇽a🇦🇱🇩🇿🇦🇸🇦🇩🇦",
+            &["🇦", "a", "🇫🇦", "🇽", "a", "🇦🇱", "🇩🇿", "🇦🇸", "🇦🇩", "🇦"],
+        ),
+        (
+            "\u{1f468}\u{200d}\u{1f468}\u{200d}\u{1f466}",
+            &["\u{1f468}\u{200d}\u{1f468}\u{200d}\u{1f466}"],
+        ),
+        ("😌👎🏼", &["😌", "👎🏼"]),
+        // WB6/WB7, WB7b/WB7c and WB11/WB12 need a letter or digit after the
+        // MidLetter/MidNum character, not ZWJ + emoji
+        ("a.\u{200d}\u{1f44d}", &["a", ".\u{200d}\u{1f44d}"]),
+        (
+            "\u{5d0}\"\u{200d}\u{1f44d}",
+            &["\u{5d0}", "\"\u{200d}\u{1f44d}"],
+        ),
+        ("1,\u{200d}\u{1f44d}", &["1", ",\u{200d}\u{1f44d}"]),
+        // U+24C2 (Ⓜ) is both Extended_Pictographic (WB3c) and ALetter (WB5/WB6/WB7)
+        ("\u{200d}\u{24c2}a", &["\u{200d}\u{24c2}a"]),
+        ("a.\u{200d}\u{24c2}", &["a.\u{200d}\u{24c2}"]),
+        ("1,\u{200d}\u{24c2}", &["1", ",\u{200d}\u{24c2}"]),
+        ("!\u{200d}\u{24c2}", &["!\u{200d}\u{24c2}"]),
+        ("!:\u{200d}\u{24c2}", &["!", ":\u{200d}\u{24c2}"]),
+        // perhaps wrong, spaces should not be included?
+        ("hello world", &["hello", " ", "world"]),
+        ("🇨🇦🇨🇭🇿🇲🇿 hi", &["🇨🇦", "🇨🇭", "🇿🇲", "🇿", " ", "hi"]),
+    ];
+    for &(s, w) in TEST_WORD.iter().chain(EXTRA_TESTS.iter()) {
+        macro_rules! assert_ {
+            ($test:expr, $exp:expr, $name:expr) => {
+                // collect into vector for better diagnostics in failure case
+                let testing = $test.collect::<Vec<_>>();
+                let expected = $exp.collect::<Vec<_>>();
+                assert_eq!(
+                    testing, expected,
+                    "{} test for testcase ({:?}, {:?}) failed.",
+                    $name, s, w
+                )
+            };
+        }
+        // test forward iterator
+        assert_!(
+            s.split_word_bounds(),
+            w.iter().cloned(),
+            "Forward word boundaries"
+        );
+
+        // test reverse iterator
+        assert_!(
+            s.split_word_bounds().rev(),
+            w.iter().rev().cloned(),
+            "Reverse word boundaries"
+        );
+
+        // generate offsets from word string lengths
+        let mut indices = vec![0];
+        for i in w.iter().cloned().map(|s| s.len()).scan(0, |t, n| {
+            *t += n;
+            Some(*t)
+        }) {
+            indices.push(i);
+        }
+        indices.pop();
+        let indices = indices;
+
+        // test forward indices iterator
+        assert_!(
+            s.split_word_bound_indices().map(|(l, _)| l),
+            indices.iter().cloned(),
+            "Forward word indices"
+        );
+
+        // test backward indices iterator
+        assert_!(
+            s.split_word_bound_indices().rev().map(|(l, _)| l),
+            indices.iter().rev().cloned(),
+            "Reverse word indices"
+        );
+    }
+}
+
+#[test]
+fn test_sentences() {
+    use crate::testdata::TEST_SENTENCE;
+
+    for &(s, w) in TEST_SENTENCE.iter() {
+        macro_rules! assert_ {
+            ($test:expr, $exp:expr, $name:expr) => {
+                // collect into vector for better diagnostics in failure case
+                let testing = $test.collect::<Vec<_>>();
+                let expected = $exp.collect::<Vec<_>>();
+                assert_eq!(
+                    testing, expected,
+                    "{} test for testcase ({:?}, {:?}) failed.",
+                    $name, s, w
+                )
+            };
+        }
+
+        assert_!(
+            s.split_sentence_bounds(),
+            w.iter().cloned(),
+            "Forward sentence boundaries"
+        );
+    }
+}
+
+quickcheck! {
+    fn quickcheck_forward_reverse_graphemes_extended(s: String) -> bool {
+        let a = s.graphemes(true).collect::<Vec<_>>();
+        let mut b = s.graphemes(true).rev().collect::<Vec<_>>();
+        b.reverse();
+        a == b
+    }
+
+    fn quickcheck_forward_reverse_graphemes_legacy(s: String) -> bool {
+        let a = s.graphemes(false).collect::<Vec<_>>();
+        let mut b = s.graphemes(false).rev().collect::<Vec<_>>();
+        b.reverse();
+        a == b
+    }
+
+    fn quickcheck_join_graphemes(s: String) -> bool {
+        let a = s.graphemes(true).collect::<String>();
+        let b = s.graphemes(false).collect::<String>();
+        a == s && b == s
+    }
+
+    fn quickcheck_forward_reverse_words(s: String) -> bool {
+        let a = s.split_word_bounds().collect::<Vec<_>>();
+        let mut b = s.split_word_bounds().rev().collect::<Vec<_>>();
+        b.reverse();
+        a == b
+    }
+
+    fn quickcheck_join_words(s: String) -> bool {
+        let a = s.split_word_bounds().collect::<String>();
+        a == s
+    }
+}
+
+/// `Iterator::size_hint` must not panic, must report a lower bound no greater
+/// than its upper bound, and both must bracket the number of items the iterator
+/// yields. This drives every public iterator of the crate over a corpus that
+/// leads with the empty string, which is the input on which a bound computed by
+/// subtraction underflows.
+#[test]
+fn test_size_hint_is_a_valid_bound() {
+    use crate::testdata::{TEST_SAME, TEST_SENTENCE, TEST_WORD};
+
+    fn check<I: Iterator>(label: &str, s: &str, it: I, count: usize) {
+        let (lo, hi) = it.size_hint();
+        assert!(
+            lo <= count,
+            "{}: size_hint lower {} exceeds the {} items yielded on {:?}",
+            label,
+            lo,
+            count,
+            s
+        );
+        if let Some(hi) = hi {
+            assert!(
+                lo <= hi,
+                "{}: size_hint lower {} exceeds upper {} on {:?}",
+                label,
+                lo,
+                hi,
+                s
+            );
+            assert!(
+                count <= hi,
+                "{}: the {} items yielded exceed size_hint upper {} on {:?}",
+                label,
+                count,
+                hi,
+                s
+            );
+        }
+    }
+
+    macro_rules! check {
+        ($label:expr, $s:expr, $mk:expr) => {{
+            let mk = $mk;
+            let count = mk().count();
+            check($label, $s, mk(), count);
+        }};
+    }
+
+    let corpus = [
+        "",
+        " ",
+        "a",
+        "ab",
+        "\r\n",
+        "0",
+        "\u{1f600}",
+        "Mr. Fox jumped. [...] The dog was too lazy.",
+    ]
+    .iter()
+    .copied()
+    .chain(TEST_SAME.iter().map(|&(s, _)| s))
+    .chain(TEST_WORD.iter().map(|&(s, _)| s))
+    .chain(TEST_SENTENCE.iter().map(|&(s, _)| s));
+
+    for s in corpus {
+        check!("graphemes(true)", s, || s.graphemes(true));
+        check!("graphemes(false)", s, || s.graphemes(false));
+        check!("grapheme_indices(true)", s, || s.grapheme_indices(true));
+        check!("split_word_bounds", s, || s.split_word_bounds());
+        check!("split_word_bound_indices", s, || s
+            .split_word_bound_indices());
+        check!("unicode_words", s, || s.unicode_words());
+        check!("unicode_word_indices", s, || s.unicode_word_indices());
+        check!("split_sentence_bounds", s, || s.split_sentence_bounds());
+        check!("split_sentence_bound_indices", s, || s
+            .split_sentence_bound_indices());
+        check!("unicode_sentences", s, || s.unicode_sentences());
+    }
+}

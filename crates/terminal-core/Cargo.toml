@@ -1,0 +1,21 @@
+[package]
+name = "terminal-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+base64 = "=0.23.1"
+png = "=0.18.1"
+flate2 = "=1.1.11"
+serde.workspace = true
+thiserror.workspace = true
+serde_json.workspace = true
+unicode-segmentation = "=1.13.3"
+unicode-width = "=0.2.3"
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lib]
+crate-type = ["rlib", "staticlib"]
