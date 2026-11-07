@@ -141,6 +141,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
 final class AppDelegate: NSObject, NSApplicationDelegate {
   var windows: [TerminalWindow] = []
   private var preferencesWindow: TerminalSettingsWindow?
+  private var terminationRequested = false
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
     menu()
@@ -173,6 +174,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     if let index = CommandLine.arguments.firstIndex(of: "--editing-smoke"),
       CommandLine.arguments.count > index + 1, let window = windows.first {
       EditingSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
+    }
+    if let index = CommandLine.arguments.firstIndex(of: "--close-smoke"),
+      CommandLine.arguments.count > index + 1, let window = windows.first {
+      CloseSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
     }
     if let index = CommandLine.arguments.firstIndex(of: "--demo-smoke"),
       CommandLine.arguments.count > index + 1, let window = windows.first
@@ -211,12 +216,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     preferencesWindow?.present()
   }
   func remove(_ window: TerminalWindow) { windows.removeAll { $0 === window } }
-  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+  func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
     if !hasVisibleWindows { newWindow(nil) }
     return true
   }
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    guard !terminationRequested else { return .terminateLater }
+    terminationRequested = true
     windows.forEach { $0.close() }
     // AppKit's terminate-later loop runs in modalPanel mode, so a default-mode
     // dispatch callback can remain blocked by the very termination it resolves.

@@ -1,0 +1,8 @@
+{
+  "app_pid": 16327,
+  "child_pid": 16328,
+  "trigger": "cmd+q",
+  "app_exited": true,
+  "child_exited": true,
+  "passed": true
+}

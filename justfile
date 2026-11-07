@@ -7,6 +7,44 @@ export TERMINAL_PROJECT_ROOT := justfile_directory()
 @default:
     just --list --unsorted
 
+# Close the last window; require both the app and its HUP-resistant child to exit
+[group('check')]
+close-smoke: build
+    #!/usr/bin/env ruby
+    require 'json'
+    require 'timeout'
+    ['window', 'shortcut'].each do |mode|
+    report_path = File.join(Dir.pwd, "reports/close-#{mode}-smoke.json")
+    File.delete(report_path) if File.exist?(report_path)
+    app = File.join(Dir.pwd, 'dist/Terminal.app/Contents/MacOS/Terminal')
+    flags = mode == 'shortcut' ? ['--quit-shortcut'] : []
+    pid = Process.spawn(app, '--close-smoke', report_path, *flags, '--execute', '/bin/sh', '-c', "trap '' HUP; printf CLOSE_SMOKE_READY; exec /bin/sleep 30", out: File::NULL, err: File::NULL)
+    app_reaped = false
+    child = nil
+    gone = true
+    begin
+      Timeout.timeout(8) { Process.wait(pid) }
+      app_reaped = true
+      report = JSON.parse(File.read(report_path))
+      child = report.fetch('child_pid')
+      raise 'invalid child PID' unless child > 0
+      begin; Process.kill(0, child); gone = false; rescue Errno::ESRCH; gone = true; end
+      report['app_exited'] = true
+      report['child_exited'] = gone
+      report['passed'] = gone && report.fetch('trigger') == (mode == 'shortcut' ? 'cmd+q' : 'last-window-close')
+      File.write(report_path, JSON.pretty_generate(report) + "\n")
+      abort 'Child survived window closure' unless report['passed']
+      puts "PASS #{mode} closure: application exited and PTY child reaped"
+    ensure
+      unless app_reaped
+        begin; Process.kill('KILL', pid); Process.wait(pid); rescue Errno::ESRCH, Errno::ECHILD; end
+      end
+      if defined?(child) && child && child > 0 && defined?(gone) && !gone
+        begin; Process.kill('KILL', child); rescue Errno::ESRCH; end
+      end
+    end
+    end
+
 # Build the Rust core, native host, Metal shaders and signed development bundle
 [group('build')]
 @build: icons

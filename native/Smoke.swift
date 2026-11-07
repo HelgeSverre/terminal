@@ -1,6 +1,33 @@
 import AppKit
 import Darwin
 
+@MainActor enum CloseSmokeTest {
+  static func start(window: TerminalWindow, path: String) {
+    var closing = false
+    window.panes.first?.onObservedSnapshot = { snapshot in
+      guard !closing, snapshot.rows.flatMap({ $0.cells }).map({ $0.text }).joined().contains("CLOSE_SMOKE_READY") else { return }
+      closing = true
+      window.panes.first?.session.statistics { stats in
+        let shortcut = CommandLine.arguments.contains("--quit-shortcut")
+        let report: [String: Any] = ["app_pid": ProcessInfo.processInfo.processIdentifier,
+          "child_pid": stats["child_pid"] ?? -1, "trigger": shortcut ? "cmd+q" : "last-window-close"]
+        do { try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+          .write(to: URL(fileURLWithPath: path), options: .atomic) }
+        catch { NSLog("Close smoke report failed: %@", String(describing: error)) }
+        if shortcut, let number = window.window?.windowNumber,
+          let event = NSEvent.keyEvent(with: .keyDown, location: .zero,
+            modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: number, context: nil, characters: "q", charactersIgnoringModifiers: "q",
+            isARepeat: false, keyCode: 12) {
+          NSApp.sendEvent(event)
+        } else { window.window?.performClose(nil) }
+      }
+    }
+  }
+}
+
+// Separate test instance; invokes actual input/PTY/render paths without global input.
+
 // Separate test instance; invokes actual input/PTY/render paths without global input.
 @MainActor final class NativeSmokeTest {
   private static var active: NativeSmokeTest?
