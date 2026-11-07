@@ -49,3 +49,27 @@ The experiment must not claim 100% parity until every original test has an
 equivalent Swift differential replay and the dmscene/PTY corpus passes. System
 Swift Unicode tables are not considered a replacement for the existing pinned
 Unicode 18 tables.
+
+## Preliminary same-machine comparison
+
+Both app builds below used detached commit `4ae6967` as the Rust source
+baseline, the same host/toolchain/macOS, and the same bundled assets. Cargo's
+registry cache and the Xcode toolchain were warm; each worktree had a fresh
+local build output. The Swift result is not a claim of a faster terminal: its
+core is still incomplete and its direct compiler invocation has no incremental
+dependency graph.
+
+| Metric | Rust baseline | Swift experiment | Delta | Qualification |
+| --- | ---: | ---: | ---: | --- |
+| Behavioral core tests | 86 / 86 | not comparable | — | Swift native Session: 19 / 20; graphics/Unicode/reflow suites incomplete |
+| Full app build wall time | 26.24 s | 24.90 s | -1.34 s | Fresh worktree output, warmed shared tool caches |
+| Full app build max RSS | 309.4 MB | 265.6 MB | -43.8 MB | Same command scope as above |
+| App executable | 3,349,872 B | 1,198,304 B | -64.2% | Signed development bundle executable |
+| Stripped executable copy | 2,590,288 B | 801,136 B | -69.1% | Strip performed on copied binaries only |
+| Full app bundle | 8,476 KiB | 6,376 KiB | -24.8% | Same bundled fonts/assets |
+| Incremental build | 0.05 s core-only Cargo | not configured | — | Direct `swiftc` repeat recompiles; do not compare it as incremental |
+| Core/PTY throughput and memory | benchmark available | not yet valid | — | Same workload harness awaits semantic parity |
+
+Raw measurements are retained in `reports/swift-port/*app*` and core timing
+files. A true Swift incremental pipeline and a shared transcript/PTY benchmark
+are required before runtime performance is compared.
