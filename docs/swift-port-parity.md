@@ -67,9 +67,11 @@ dependency graph.
 | App executable | 3,349,872 B | 1,198,304 B | -64.2% | Signed development bundle executable |
 | Stripped executable copy | 2,590,288 B | 801,136 B | -69.1% | Strip performed on copied binaries only |
 | Full app bundle | 8,476 KiB | 6,376 KiB | -24.8% | Same bundled fonts/assets |
-| Incremental build | 0.05 s core-only Cargo | not configured | — | Direct `swiftc` repeat recompiles; do not compare it as incremental |
+| Incremental compile + link | 0.05 s core-only Cargo | 0.60 s executable-only Swift | +0.55 s | Both are cache-scope-specific; Swift is 399 ms compile + 197 ms link |
 | Core/PTY throughput and memory | benchmark available | not yet valid | — | Same workload harness awaits semantic parity |
 
 Raw measurements are retained in `reports/swift-port/*app*` and core timing
-files. A true Swift incremental pipeline and a shared transcript/PTY benchmark
-are required before runtime performance is compared.
+files. The true Swift incremental pipeline is documented in
+`docs/swift-incremental-build.md`; it measured 24,000 ms clean compile + 266 ms
+link, then 399 ms unchanged compile + 197 ms link. A shared transcript/PTY
+benchmark is still required before runtime performance is compared.
