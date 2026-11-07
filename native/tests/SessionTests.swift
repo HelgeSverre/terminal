@@ -17,6 +17,8 @@ import Foundation
         "viewport_scroll_anchored", "focus_release_preserves_viewport", "typing_follows_tail",
         "search_found_and_highlighted", "search_replacement_cancelled",
         "search_latest_query_completed", "search_owner_probe_under_100ms", "search_close_cancelled",
+        "closed_focus_and_key_releases_are_quiet",
+        "closed_text_input_is_reported",
       ].map { ($0, false) })
     var statuses: [String] = []
     // The first partial REP snapshot arrives before its suffix sets bracketed paste.
@@ -76,7 +78,16 @@ import Foundation
     while viewPhase != 4 && Date() < viewDeadline {
       RunLoop.main.run(until: Date().addingTimeInterval(0.01))
     }
+    var shutdownStatuses: [String] = []
+    view.onStatus = { shutdownStatuses.append($0) }
     view.close()
+    precondition(!view.input(key: 2, event: 0))
+    precondition(!view.input("r", key: 200, event: 2))
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    checks["closed_focus_and_key_releases_are_quiet"] = !shutdownStatuses.contains { $0.hasPrefix("Input") }
+    precondition(!view.input("user text"))
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    checks["closed_text_input_is_reported"] = shutdownStatuses.contains("Input closed")
     let searchable = Session(launch: spec(
       #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; 3000.times{|i| print(i==1000 ? "SEARCH_NEEDLE\r\n" : "row#{i}\r\n")}; print "SEARCH_READY"; STDIN.read(1)'"#))
     var searchReady = false

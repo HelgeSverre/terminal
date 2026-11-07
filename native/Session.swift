@@ -311,15 +311,18 @@ final class Session: @unchecked Sendable {
   private func report(_ text: String) {
     DispatchQueue.main.async { [weak self] in self?.onStatus?(text) }
   }
-  private func reserve(_ cost: Int, control: Bool = false) -> Bool {
+  private enum Admission {
+    case accepted, busy, closed
+    var message: String { self == .busy ? "Input busy" : "Input closed" }
+  }
+  private func reserve(_ cost: Int, control: Bool = false) -> Admission {
     admission.lock()
     defer { admission.unlock() }
     let limit = 2 * 1024 * 1024 - (control ? 0 : 65_536)
-    guard accepting, cost <= limit, admittedBytes + cost <= limit else {
-      return false
-    }
+    guard accepting else { return .closed }
+    guard cost <= limit, admittedBytes + cost <= limit else { return .busy }
     admittedBytes += cost
-    return true
+    return .accepted
   }
   private func release(_ cost: Int) {
     admission.lock()
@@ -644,15 +647,17 @@ final class Session: @unchecked Sendable {
       return false
     }
     let cost = text.utf8.count + 128
+    let lifecycle = key == 2 || event == 2
     let control = cost <= 256 && ((event == 2 && key >= 10) || key == 2)
-    guard reserve(cost, control: control) else {
-      report("Input busy or closed")
+    let admission = reserve(cost, control: control)
+    guard admission == .accepted else {
+      if admission != .closed || !lifecycle { report(admission.message) }
       return false
     }
     queue.async { [self] in
       guard !closed, !writeEnded else {
         release(cost)
-        report("Input closed")
+        if !lifecycle { report("Input closed") }
         return
       }
       enqueue(.input(text, key, modifiers, event, cost))
@@ -667,8 +672,9 @@ final class Session: @unchecked Sendable {
   }
   private func submitRaw(_ bytes: Data, event: @escaping (Data, Int) -> Event) -> Bool {
     let cost = bytes.count + 128
-    guard reserve(cost) else {
-      report("Input busy or closed")
+    let admission = reserve(cost)
+    guard admission == .accepted else {
+      report(admission.message)
       return false
     }
     queue.async { [self] in
@@ -698,6 +704,7 @@ final class Session: @unchecked Sendable {
         "history_bytes": terminal_history_bytes(core), "stream_seconds": elapsed,
         "parsed_mib_per_second": elapsed > 0 ? Double(bytesParsed) / 1_048_576 / elapsed : 0,
         "child_reaped": reaped, "read_ended": readEnded, "parser_ended": parserEnded,
+        "child_pid": pid,
       ]
       DispatchQueue.main.async { completion(stats) }
     }

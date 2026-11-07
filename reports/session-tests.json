@@ -1,8 +1,10 @@
 {
-  "cancel_to_reap_seconds" : 0.00062000751495361328,
+  "cancel_to_reap_seconds" : 0.0055220127105712891,
   "checks" : {
     "accepted_input_during_rep" : true,
     "cancel_close_under_three_seconds" : true,
+    "closed_focus_and_key_releases_are_quiet" : true,
+    "closed_text_input_is_reported" : true,
     "focus_release_preserves_viewport" : true,
     "input_before_mode_suffix" : true,
     "large_paste_accepted" : true,
@@ -22,13 +24,12 @@
   },
   "passed" : true,
   "statuses" : [
-    "PTY ended; waiting for process exit",
     "Process exited (status 0); draining output",
     "Session finished",
     "Paste limit is 1 MiB",
-    "Input busy or closed",
-    "Input busy or closed",
-    "Input busy or closed",
+    "Input busy",
+    "Input busy",
+    "Input busy",
     "Paste cancelled",
     "Process exited (status 1); draining output"
   ]
