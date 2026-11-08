@@ -16,6 +16,10 @@ class ComparisonError < StandardError; end
 
 DEFAULT_BYTES = 32 * 1024 * 1024
 WORKLOADS = %w[ascii mixed].freeze
+STREAM_FIELDS = {
+  "payload" => %w[payload_bytes payload_fnv1a64].freeze,
+  "reply" => %w[reply_bytes reply_fnv1a64].freeze
+}.freeze
 VOLATILE_ROOT_FIELDS = %w[
   revision geometry_epoch document_epoch history_epoch screen_epoch
   viewport_clamp_revision history
@@ -189,6 +193,83 @@ def throughput_mib_s(record)
   record.fetch("payload_bytes") / (1024.0 * 1024.0) / (record.fetch("elapsed_ns") / 1_000_000_000.0)
 end
 
+def valid_stream_value?(field, value)
+  if field.end_with?("_bytes")
+    value.is_a?(Integer) && value >= 0
+  else
+    value.is_a?(String) && value.match?(/\A[0-9a-f]{16}\z/)
+  end
+end
+
+def stream_values(samples, fields)
+  samples.filter_map do |sample|
+    next unless fields.all? { |field| valid_stream_value?(field, sample[field]) }
+
+    fields.to_h { |field| [field, sample.fetch(field)] }
+  end.uniq
+end
+
+def validate_replay_gate(samples, expected_samples_per_implementation)
+  gate = {
+    "passed" => true,
+    "expected_samples_per_implementation_per_workload" => expected_samples_per_implementation,
+    "observed_sample_counts" => {},
+    "observed_stream_values" => {},
+    "failures" => []
+  }
+
+  WORKLOADS.each do |workload|
+    workload_samples = samples.select { |sample| sample["workload"] == workload }
+    by_implementation = workload_samples.group_by { |sample| sample["implementation"] }
+    gate["observed_sample_counts"][workload] = {}
+    gate["observed_stream_values"][workload] = {}
+
+    %w[swift rust].each do |implementation|
+      implementation_samples = by_implementation.fetch(implementation, [])
+      count = implementation_samples.length
+      gate["observed_sample_counts"][workload][implementation] = count
+      if count != expected_samples_per_implementation
+        gate["passed"] = false
+        gate["failures"] << {
+          "workload" => workload, "kind" => "sample_count", "implementation" => implementation,
+          "expected" => expected_samples_per_implementation, "observed" => count
+        }
+      end
+
+      gate["observed_stream_values"][workload][implementation] = {}
+      STREAM_FIELDS.each do |kind, fields|
+        invalid = implementation_samples.filter_map do |sample|
+          missing_or_invalid = fields.reject { |field| valid_stream_value?(field, sample[field]) }
+          next if missing_or_invalid.empty?
+
+          { "pair" => sample["pair"], "sample" => sample["sample"], "fields" => missing_or_invalid }
+        end
+        gate["observed_stream_values"][workload][implementation][kind] = stream_values(implementation_samples, fields)
+        next if invalid.empty?
+
+        gate["passed"] = false
+        gate["failures"] << {
+          "workload" => workload, "kind" => "invalid_#{kind}_stream", "implementation" => implementation,
+          "samples" => invalid
+        }
+      end
+    end
+
+    STREAM_FIELDS.each_key do |kind|
+      values = %w[swift rust].flat_map do |implementation|
+        gate.dig("observed_stream_values", workload, implementation, kind)
+      end.uniq
+      next if values.length == 1
+
+      gate["passed"] = false
+      gate["failures"] << {
+        "workload" => workload, "kind" => "#{kind}_stream_mismatch", "observed_values" => values
+      }
+    end
+  end
+  gate
+end
+
 def hardware
   {
     "os_product_version" => command_optional("/usr/bin/sw_vers", "-productVersion"),
@@ -218,6 +299,36 @@ def self_test!
   true_snapshot = normalize_snapshot(JSON.generate("input_ready" => true, "rows" => [])).last
   false_snapshot = normalize_snapshot(JSON.generate("input_ready" => false, "rows" => [])).last
   raise "input_ready was incorrectly projected away" if canonical_json(true_snapshot) == canonical_json(false_snapshot)
+
+  base_samples = %w[swift rust].flat_map do |implementation|
+    [1, 2].map do |sample|
+      {
+        "workload" => "ascii", "implementation" => implementation, "pair" => 1, "sample" => sample,
+        "payload_bytes" => 99, "payload_fnv1a64" => "0123456789abcdef",
+        "reply_bytes" => 7, "reply_fnv1a64" => "fedcba9876543210"
+      }
+    end
+  end
+  # Add an equivalent mixed workload so that this focused test exercises every
+  # required workload and does not rely on a partial gate input.
+  base_samples.concat(base_samples.map { |sample| sample.merge("workload" => "mixed") })
+  raise "matching replay streams were rejected" unless validate_replay_gate(base_samples, 2).fetch("passed")
+
+  payload_mismatch = Marshal.load(Marshal.dump(base_samples))
+  payload_mismatch.find { |sample| sample["workload"] == "ascii" && sample["implementation"] == "rust" }["payload_fnv1a64"] = "1111111111111111"
+  payload_gate = validate_replay_gate(payload_mismatch, 2)
+  raise "mismatched payload stream was accepted" if payload_gate.fetch("passed")
+  unless payload_gate.fetch("failures").any? { |failure| failure["kind"] == "payload_stream_mismatch" }
+    raise "payload mismatch was not auditable"
+  end
+
+  reply_mismatch = Marshal.load(Marshal.dump(base_samples))
+  reply_mismatch.find { |sample| sample["workload"] == "mixed" && sample["implementation"] == "rust" }["reply_bytes"] = 8
+  reply_gate = validate_replay_gate(reply_mismatch, 2)
+  raise "mismatched reply stream was accepted" if reply_gate.fetch("passed")
+  unless reply_gate.fetch("failures").any? { |failure| failure["kind"] == "reply_stream_mismatch" }
+    raise "reply mismatch was not auditable"
+  end
 
   Dir.mktmpdir("emulator-comparison-self-test") do |directory|
     executable = File.join(directory, "hang")
@@ -301,7 +412,9 @@ result = {
   "hardware" => hardware,
   "background_at_start" => background_activity,
   "implementations" => implementations,
-  "warmups" => [], "samples" => [], "snapshot_gate" => { "passed" => true, "mismatches" => [] }
+  "warmups" => [], "samples" => [],
+  "snapshot_gate" => { "passed" => true, "mismatches" => [] },
+  "replay_gate" => nil
 }
 
 begin
@@ -331,11 +444,12 @@ begin
     end
   end
 
+  result["replay_gate"] = validate_replay_gate(result.fetch("samples"), options[:pairs] * options[:samples_per_turn])
   WORKLOADS.each do |workload|
     by_impl = result["samples"].select { |sample| sample["workload"] == workload }.group_by { |sample| sample["implementation"] }
-    swift = by_impl.fetch("swift")
-    rust = by_impl.fetch("rust")
-    swift.zip(rust).each_with_index do |(swift_sample, rust_sample), index|
+    swift = by_impl.fetch("swift", [])
+    rust = by_impl.fetch("rust", [])
+    swift.first([swift.length, rust.length].min).zip(rust).each_with_index do |(swift_sample, rust_sample), index|
       swift_raw, swift_canonical = normalize_snapshot(File.read(swift_sample.fetch("snapshot_path")))
       rust_raw, rust_canonical = normalize_snapshot(File.read(rust_sample.fetch("snapshot_path")))
       next if canonical_json(swift_canonical) == canonical_json(rust_canonical)
@@ -372,11 +486,12 @@ build_rows = %w[swift rust].map do |implementation|
   "| #{implementation} | #{item['build_wall_seconds']} | #{item['executable_bytes']} | #{item['executable_sha256']} |"
 end
 File.write(File.join(options[:output], "summary.md"), <<~MARKDOWN)
-  # Frozen Swift vs Rust core comparison
+  # Frozen Swift vs Rust emulator comparison
 
-  Canonical final-snapshot gate: **#{result.dig('snapshot_gate', 'passed') ? 'PASS' : 'FAIL'}**. No speed winner is asserted by this report.
+  These are scoped results for the current frozen implementations, not a generic terminal-core or full-product comparison.
+  Replay payload/reply gate: **#{result.dig('replay_gate', 'passed') ? 'PASS' : 'FAIL'}**. Canonical final-snapshot gate: **#{result.dig('snapshot_gate', 'passed') ? 'PASS' : 'FAIL'}**.
 
-  | Implementation | Frozen build wall seconds | Executable bytes | SHA-256 |
+  | Implementation | Recorded headless-recipe build wall seconds (not matched app compile) | Executable bytes | SHA-256 |
   | --- | ---: | ---: | --- |
   #{build_rows.join("\n")}
 
@@ -387,5 +502,7 @@ File.write(File.join(options[:output], "summary.md"), <<~MARKDOWN)
   See `result.json` for every runtime/RSS sample and `snapshots/` for every raw final ABI JSON snapshot.
 MARKDOWN
 
-abort "canonical final snapshots differ; see #{options[:output]}/result.json" unless result.dig("snapshot_gate", "passed")
+unless result.dig("snapshot_gate", "passed") && result.dig("replay_gate", "passed")
+  abort "comparison gates failed; see #{options[:output]}/result.json"
+end
 end
