@@ -4,7 +4,8 @@ import QuartzCore
 final class TerminalCanvasView: NSView, NSTextInputClient {
   let automationID = UUID().uuidString
   let session: Session
-  private var renderer: MetalRenderer?
+  private let rendering: TerminalRendering?
+  private var surface: TerminalRendering.SurfaceLease?
   private var snapshot: TerminalSnapshot?
   private var accessible: AccessibilityProjection?
   private var lastAccessibleSelection = NSRange(location: NSNotFound, length: 0)
@@ -46,6 +47,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   func geometryReport() -> [String: Any] {
     let metal = layer as? CAMetalLayer
+    let renderingStatus = rendering?.surfaceStatus(surface, layer: metal)
     return [
       "frame": NSStringFromRect(frame), "bounds": NSStringFromRect(bounds),
       "layer_frame": NSStringFromRect(layer?.frame ?? .zero),
@@ -53,8 +55,8 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       "contents_gravity": layer?.contentsGravity.rawValue ?? "",
       "contents_placement": layerContentsPlacement.rawValue,
       "contents_are_flipped": layer?.contentsAreFlipped() ?? false,
-      "renderer_matches_layer": renderer?.layer === layer,
-      "completed_snapshot_revision": renderer?.completedRevision() ?? 0,
+      "renderer_matches_layer": renderingStatus?.attached ?? false,
+      "completed_snapshot_revision": renderingStatus?.completedSnapshotRevision ?? 0,
       "focused": focused,
       "first_responder": window?.firstResponder === self,
     ]
@@ -68,6 +70,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   override func makeBackingLayer() -> CALayer { CAMetalLayer() }
   init(frame: NSRect, session: Session) {
     self.session = session
+    rendering = (NSApp.delegate as? AppDelegate)?.rendering
     super.init(frame: frame)
     fontPoints = TerminalPreferences.load().fontSize
     session.configure(TerminalPreferences.load().session)
@@ -76,10 +79,10 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     // system. Direct layer gravity has different vertical meaning when flipped.
     layerContentsPlacement = .topLeft
     layer?.masksToBounds = true
-    if let layer = layer as? CAMetalLayer {
-      do { renderer = try MetalRenderer(layer: layer) } catch {
-        NSLog("Metal initialization failed: %@", String(describing: error))
-      }
+    if let layer = layer as? CAMetalLayer, let rendering {
+      surface = rendering.attach(layer)
+    } else {
+      NSLog("Metal initialization failed: no Metal rendering service")
     }
     registerForDraggedTypes([.fileURL, .string])
     setAccessibilityElement(true)
@@ -124,6 +127,14 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     }
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
+  func detachRenderingSurface() {
+    guard let surface else { return }
+    rendering?.detach(surface)
+    self.surface = nil
+  }
+  deinit {
+    detachRenderingSurface()
+  }
   private func display(_ value: TerminalSnapshot) {
     snapshot = value
     accessible = AccessibilityProjection(snapshot: value)
@@ -316,13 +327,15 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     guard let value = snapshot, !isHidden, window?.isMiniaturized != true,
       window?.occlusionState.contains(.visible) == true
     else { return }
-    renderer?.request(
-      RenderRequest(
+    if let surface {
+      rendering?.request(
+        surface, latest: RenderRequest(
         snapshot: value, width: Int(bounds.width * scale), height: Int(bounds.height * scale),
         inset: insetPixels, cellWidth: cellWidth, cellHeight: cellHeight,
         fontSize: fontPoints * scale,
         focused: focused, scrolled: !value.following_tail,
         selection: selection, marked: marked.string))
+    }
   }
   private func clearSelection() {
     selection = nil
