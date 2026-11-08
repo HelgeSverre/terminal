@@ -78,13 +78,16 @@ final class GlyphResidency: @unchecked Sendable {
   private var uploadQueue: [QueuedUpload] = []
   private var preparedPins: Set<UUID> = []
   private var submittedPins: Set<UUID> = []
+  private var preparedDirect: Set<UUID> = []
+  private var submittedDirect: Set<UUID> = []
   private var residentBytes = 0
   private var reservations = 0
   private var directFallbackBytes = 0
   private var transientReplacementBytes = 0
   private var legacyBridgeBytes = 0
   private var activeLegacy: [UUID: Int] = [:]
-  private var directResident: [UUID: LegacyTexture] = [:]
+  private struct DirectResident { let allocation: LegacyTexture; let recipe: GlyphRasterRecipe; var pins: Int }
+  private var directResident: [UUID: DirectResident] = [:]
   private var deniedAllocations: UInt64 = 0
   private var fallback: GlyphLease?
 
@@ -101,6 +104,7 @@ final class GlyphResidency: @unchecked Sendable {
     activeSurface = surface
     currentDemand.removeAll(keepingCapacity: true)
     preparedPins.removeAll(keepingCapacity: true)
+    preparedDirect.removeAll(keepingCapacity: true)
     let uploads = uploadQueue
     uploadQueue.removeAll(keepingCapacity: true)
     for upload in uploads {
@@ -122,6 +126,8 @@ final class GlyphResidency: @unchecked Sendable {
           return resolve(recipe)
         }
         preparedPins.insert(page)
+      } else if let id = entry.lease.allocation, directResident[id] != nil {
+        preparedDirect.insert(id)
       }
       return entry.lease
     }
@@ -244,7 +250,7 @@ final class GlyphResidency: @unchecked Sendable {
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: kind.format,
       width: recipe.width, height: recipe.height, mipmapped: false)
     descriptor.storageMode = .shared; descriptor.usage = .shaderRead
-    guard let allocation = makeLegacyTexture(descriptor) else {
+    guard let allocation = makeLegacyTexture(descriptor) ?? reclaimDirectAndAllocate(descriptor) else {
       // Keep the normal outline under pressure. This is a real GPU budget
       // denial, not a synchronous render-owner raster fallback.
       rememberFailure(recipe)
@@ -258,13 +264,24 @@ final class GlyphResidency: @unchecked Sendable {
       allocation.texture.replace(region: MTLRegionMake2D(0, 0, recipe.width, recipe.height),
         mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: row)
     }
-    directResident[allocation.id] = allocation
+    directResident[allocation.id] = DirectResident(allocation: allocation, recipe: recipe, pins: 0)
     directFallbackBytes += allocation.capacity
     let lease = GlyphLease(uv: SIMD4(0, 0, 1, 1), width: recipe.width,
       texture: allocation.texture, kind: kind == .mask ? .mask : .color,
-      allocation: nil, allocationGeneration: nil)
+      allocation: allocation.id, allocationGeneration: nil)
     entries[recipe] = Entry(lease: lease, page: nil, bytes: allocation.capacity)
     return .installed
+  }
+
+  private func reclaimDirectAndAllocate(_ descriptor: MTLTextureDescriptor) -> LegacyTexture? {
+    guard let victim = directResident.values.first(where: {
+      $0.pins == 0 && !visibleDemand.contains($0.recipe)
+    }) else { return nil }
+    directResident.removeValue(forKey: victim.allocation.id)
+    entries.removeValue(forKey: victim.recipe)
+    directFallbackBytes = max(0, directFallbackBytes - victim.allocation.capacity)
+    releaseLegacyTexture(victim.allocation.id)
+    return makeLegacyTexture(descriptor)
   }
 
   func fallbackGlyph(width: Int, height: Int) -> GlyphLease? {
@@ -289,9 +306,15 @@ final class GlyphResidency: @unchecked Sendable {
     submittedPins.formUnion(preparedPins)
     preparedPins.removeAll(keepingCapacity: true)
     for id in submittedPins { pages[id]?.pins += 1 }
+    submittedDirect.formUnion(preparedDirect)
+    preparedDirect.removeAll(keepingCapacity: true)
+    for id in submittedDirect { directResident[id]?.pins += 1 }
   }
 
-  func abandonedPreparedFrame() { preparedPins.removeAll(keepingCapacity: true) }
+  func abandonedPreparedFrame() {
+    preparedPins.removeAll(keepingCapacity: true)
+    preparedDirect.removeAll(keepingCapacity: true)
+  }
 
   func completedSubmission() {
     let releasedPins = !submittedPins.isEmpty
@@ -301,6 +324,12 @@ final class GlyphResidency: @unchecked Sendable {
       pages[id] = page
     }
     submittedPins.removeAll(keepingCapacity: true)
+    for id in submittedDirect {
+      guard var direct = directResident[id] else { continue }
+      direct.pins = max(0, direct.pins - 1)
+      directResident[id] = direct
+    }
+    submittedDirect.removeAll(keepingCapacity: true)
     if releasedPins && capacityWait {
       capacityWait = false
       onReady()
