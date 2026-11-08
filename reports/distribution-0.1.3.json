@@ -1,0 +1,55 @@
+{
+  "verified_at": "2026-11-08T04:33:17Z",
+  "source_commit": "240bced0b95b80822623bdfb7b89a3b21122c299",
+  "bundle_identifier": "no.helgesverre.terminal",
+  "version": "0.1.3",
+  "build": "4",
+  "signing_team": "9Z2L5FBZS3",
+  "notarized_app": {
+    "status": "Accepted",
+    "id": "aa98afea-602c-426d-88fc-a3761b6d230f",
+    "message": "Processing complete"
+  },
+  "notarized_pkg": {
+    "status": "Accepted",
+    "id": "5e8930f9-31ec-44a2-b67f-e81405d2db44",
+    "message": "Processing complete"
+  },
+  "release_pipeline_exit": 0,
+  "app_stapler_validated_in_pipeline": true,
+  "pkg_stapler_validated_in_pipeline": true,
+  "app_stapling_retries": 1,
+  "app_signature_verified": true,
+  "app_hardened_runtime": true,
+  "pkg_signature_verified": true,
+  "app_gatekeeper_accepted": true,
+  "pkg_gatekeeper_accepted": true,
+  "app_executable_sha256": "8fc3e10573891a63416e934ef13bf7047e65c417dee8985380273211cc4293d9",
+  "pkg_sha256": "0d4cf717a5165c548d9ab4dca66da32d764b0e741d83545f998547f377f2d2cc",
+  "zip_sha256": "76d010a284a6ae5663dd04571ffcb53b21047b5e3b4c5a8b253cf3bc66c27327",
+  "ci_run": "https://github.com/HelgeSverre/terminal/actions/runs/42444504815",
+  "ci_conclusion": "success",
+  "release_window_close": {
+    "app_pid": 17156,
+    "child_pid": 17161,
+    "trigger": "last-window-close",
+    "passed": true,
+    "app_exited": true,
+    "child_exited": true,
+    "version": "0.1.3",
+    "source_commit": "240bced0b95b80822623bdfb7b89a3b21122c299"
+  },
+  "release_command_q": {
+    "app_pid": 17245,
+    "child_pid": 17251,
+    "trigger": "cmd+q",
+    "passed": true,
+    "app_exited": true,
+    "child_exited": true,
+    "version": "0.1.3",
+    "source_commit": "240bced0b95b80822623bdfb7b89a3b21122c299"
+  },
+  "installed": false,
+  "installation_deferred_for": "The installed 0.1.1 application still has running user sessions and was preserved.",
+  "note": "Notarized development milestone, not completion of the terminal specification. Source was clean at the recorded commit before building and signing. Both signed-app closure checks reaped their HUP-resistant PTY children and all owned descendants. Fresh independent signature and Gatekeeper checks passed after the pipeline."
+}

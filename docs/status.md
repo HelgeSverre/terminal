@@ -209,6 +209,13 @@ Required work remaining before the requested completion gate:
   Local Developer ID signing and app/PKG notarization now pass; development
   builds remain distinct from those distribution artifacts.
 
+The signed 0.1.3/build 4 milestone was built from clean source `240bced`.
+Both app and PKG were accepted by Apple's notary service, stapled and validated;
+independent signature and Gatekeeper checks also pass. Signed-app final-window
+and Command–Q fixtures exited and reaped their HUP-resistant PTY children.
+`reports/distribution-0.1.3.json` records artifact hashes and the passing source
+CI run. Installation remains deferred while the installed 0.1.1 has user sessions.
+
 The Vulkan-specific requirements have been superseded by the authorized Metal
 platform decision; the terminal behavior and native quality gates remain the goal.
 
