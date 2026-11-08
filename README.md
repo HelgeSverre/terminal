@@ -98,7 +98,9 @@ new shells fall back to home. `just dev --working-directory /tmp` overrides it
 for that launch. The font-size number field supports Up/Down and native stepper
 buttons, bounded to 8–40 pt. Closing the last window quits the application and
 shuts down its terminal sessions. `TERM=xterm-256color` remains an explicit
-bring-up compatibility fallback. Clipboard control through OSC 52 is denied.
+bring-up compatibility fallback. The bundle also contains the audited project
+terminfo entry; see [terminal identity and terminfo](docs/terminfo.md). Clipboard
+control through OSC 52 is denied.
 
 Development builds also expose an AppleScript dictionary for pane discovery,
 text input, screen reads, splits, windows, tabs and validated settings changes.

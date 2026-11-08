@@ -78,6 +78,7 @@ close-smoke: build
     xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Automation.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
     cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
     cp native/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
+    /usr/bin/tic -x -o "$APP_BUNDLE/Contents/Resources/terminfo" native/Terminal.terminfo
     cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
     ditto native/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
     ditto assets/fonts "$APP_BUNDLE/Contents/Resources/Fonts"
@@ -140,6 +141,7 @@ lint:
     ruby tools/native_smoke_test.rb
     mkdir -p target/native/automation-dictionary
     xcrun sdp -fs -o target/native/automation-dictionary native/Terminal.sdef
+    ruby tools/terminfo_smoke.rb
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
     cargo test --locked --workspace
     xcrun clang -Wall -Wextra -Werror -I native native/tests/pty.c native/Spawn.c target/release/libterminal_core.a -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
@@ -264,6 +266,7 @@ logs:
 [group('check')]
 verify: build
     plutil -lint dist/Terminal.app/Contents/Info.plist
+    /usr/bin/infocmp -x -A dist/Terminal.app/Contents/Resources/terminfo helge-terminal >/dev/null
     codesign --verify --strict --deep dist/Terminal.app
 
 # Build a Developer ID signed application, ZIP and PKG installer

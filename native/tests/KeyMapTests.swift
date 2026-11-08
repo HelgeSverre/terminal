@@ -42,6 +42,10 @@ private final class Capture { var data = Data() }
     precondition(encode(76) == Data("\u{1b}OM".utf8))
     precondition(encode(36) == Data([13]))
     precondition(encode(82) == Data("\u{1b}Op".utf8))
+    feed("\u{1b}[?1h")
+    precondition(encode(115) == Data("\u{1b}OH".utf8))
+    precondition(encode(119) == Data("\u{1b}OF".utf8))
+    feed("\u{1b}[?1l")
     precondition(encode(76, release: true).isEmpty)
     feed("\u{1b}[>3u")
     precondition(encode(76) == Data("\u{1b}[57414;1:1u".utf8))
@@ -58,7 +62,7 @@ private final class Capture { var data = Data() }
       precondition(text == expected)
     }
     print(
-      "PASS native key map: all numeric-pad keys, localized decimal, Return distinction, application mode, enhanced release"
+      "PASS native key map: numeric-pad keys, Home/End/Return application wire, localized decimal, and enhanced release"
     )
   }
 }
