@@ -50,6 +50,7 @@ final class MetalRenderer: @unchecked Sendable {
   private var imageTextures: [ImageKey: MTLTexture] = [:]
   private let queue = DispatchQueue(label: "no.helgesverre.terminal.render", qos: .userInteractive)
   private let lock = NSLock()
+  private let completionLock = NSLock()
   private var latest: RenderRequest?
   private var scheduled = false
   private let inFlight = DispatchSemaphore(value: 2)
@@ -74,6 +75,7 @@ final class MetalRenderer: @unchecked Sendable {
   private var italicFont: CTFont
   private var boldItalicFont: CTFont
   private var submissions: UInt64 = 0
+  private var completedSnapshotRevision: UInt64 = 0
   init(layer: CAMetalLayer) throws {
     guard let gpu = MTLCreateSystemDefaultDevice(), let commands = gpu.makeCommandQueue() else {
       throw RendererError.noDevice
@@ -118,6 +120,16 @@ final class MetalRenderer: @unchecked Sendable {
     resetAtlas()
   }
   enum RendererError: Error { case noDevice, noShaders, noMemory }
+  func completedRevision() -> UInt64 {
+    completionLock.lock()
+    defer { completionLock.unlock() }
+    return completedSnapshotRevision
+  }
+  private func recordCompletedRevision(_ revision: UInt64) {
+    completionLock.lock()
+    completedSnapshotRevision = max(completedSnapshotRevision, revision)
+    completionLock.unlock()
+  }
   func request(_ value: RenderRequest) {
     lock.lock()
     latest = value
@@ -606,9 +618,10 @@ final class MetalRenderer: @unchecked Sendable {
     let semaphore = inFlight
     let retainedFallbackTextures =
       textDirectGlyphQuads.map(\.texture) + overlayDirectGlyphQuads.map(\.texture)
-    command.addCompletedHandler { [retainedFallbackTextures] command in
+    command.addCompletedHandler { [self, retainedFallbackTextures] command in
       RendererMetrics.completed(
         gpuMs: (command.gpuEndTime - command.gpuStartTime) * 1000, error: command.error != nil)
+      if command.error == nil { recordCompletedRevision(snap.revision) }
       _ = retainedFallbackTextures
       semaphore.signal()
     }
