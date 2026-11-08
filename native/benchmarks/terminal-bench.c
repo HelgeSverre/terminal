@@ -297,9 +297,18 @@ int main(int argc, char **argv) {
             rates[run] = (double)bytes / 1048576 / elapsed;
             if (footprint > max_footprint) max_footprint = footprint;
         }
-        fprintf(report, "%s{\"name\":\"%s\",\"source_bytes_per_run\":%llu,\"mib_per_second\":",
+        fprintf(report, "%s{\"name\":\"%s\",\"source_bytes_per_run\":%llu,\"run_samples\":[",
                 first_workload ? "" : ",", workloads[workload].name, (unsigned long long)bytes);
         first_workload = false;
+        // Preserve paired observations in execution order before distribution()
+        // sorts each array independently. This exposes warmup and sustained drift.
+        for (size_t run = 0; run < runs; ++run) {
+            fprintf(report, "%s{\"run\":%zu,\"mib_per_second\":%.6f,\"elapsed_seconds\":%.6f,\"terminal_cpu_seconds\":",
+                    run ? "," : "", run + 1, rates[run], elapsed_values[run]);
+            if (resource_available) fprintf(report, "%.6f}", cpu_values[run]);
+            else fputs("null}", report);
+        }
+        fputs("],\"mib_per_second\":", report);
         distribution(report, rates, (size_t)runs);
         fputs(",\"elapsed_seconds\":", report); distribution(report, elapsed_values, (size_t)runs);
         fputs(",\"terminal_cpu_seconds\":", report);
