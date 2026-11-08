@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "candidate": {
+    "commit": "4c8bfc8cebbc0a0a189253316e89a22c7f787eb5",
+    "tag": "swift-candidate-4c8bfc8",
+    "workspace": "/Users/helge/code/terminal-swift-experiment"
+  },
+  "successful_session_run": {
+    "command": "just _session-test",
+    "run_id": "9DFFC7B9-BF5C-49E4-B584-5950032CAB0E",
+    "exit_status": 0,
+    "passed": true,
+    "failures": [],
+    "checks": {
+      "all_owned_children_reaped": true,
+      "cancel_close_under_three_seconds": true,
+      "closed_focus_and_key_releases_are_quiet": true,
+      "closed_text_input_is_reported": true,
+      "committed_text_round_trip": true,
+      "focus_release_preserves_viewport": true,
+      "input_admitted_for_ordered_output": true,
+      "input_after_accepted_output_is_bracketed": true,
+      "input_before_mode_suffix_is_unbracketed": true,
+      "large_paste_accepted": true,
+      "ordered_mode_encoding_after_rep": true,
+      "ordinary_ingress_busy": true,
+      "oversize_paste_rejected": true,
+      "release_admitted_under_ingress_pressure": true,
+      "rep_completed": true,
+      "saturated_cancel_close_reaped": true,
+      "search_close_cancelled": true,
+      "search_found_and_highlighted": true,
+      "search_latest_query_completed": true,
+      "search_owner_probe_under_100ms": true,
+      "search_replacement_cancelled": true,
+      "split_children_reaped": true,
+      "split_inherits_cwd": true,
+      "typing_follows_tail": true,
+      "viewport_scroll_anchored": true
+    },
+    "owned_session_cleanup": {
+      "expected": 7,
+      "reported": 7,
+      "all_children_reaped": true,
+      "unreaped_pids": []
+    }
+  },
+  "initial_ci_failure": {
+    "run_id": 42525367796,
+    "candidate_commit": "88aa5ef0f183a3c11b65e01b8846124501f08997",
+    "conclusion": "failure",
+    "termination": "signal 5 at the final SessionTests assertion",
+    "artifact_freshness": {
+      "artifact_sha256": "afd1961d45c3236ab973cf4432c72b2694f2ecfd748cda712cd35cc232e6167a",
+      "tracked_pre_run_sha256": "e9a5500e3ddd4ad859fbaedf8edc3c0584af823ece799c6e2da9e7a86ebefabb",
+      "fresh": true
+    },
+    "checks": {
+      "accepted_input_during_rep": true,
+      "cancel_close_under_three_seconds": true,
+      "closed_focus_and_key_releases_are_quiet": true,
+      "closed_text_input_is_reported": true,
+      "committed_text_round_trip": true,
+      "focus_release_preserves_viewport": true,
+      "input_before_mode_suffix": false,
+      "large_paste_accepted": true,
+      "ordered_mode_encoding_after_rep": true,
+      "ordinary_ingress_busy": true,
+      "oversize_paste_rejected": true,
+      "release_admitted_under_ingress_pressure": true,
+      "rep_completed": true,
+      "saturated_cancel_close_reaped": true,
+      "search_close_cancelled": true,
+      "search_found_and_highlighted": true,
+      "search_latest_query_completed": true,
+      "search_owner_probe_under_100ms": true,
+      "search_replacement_cancelled": true,
+      "split_children_reaped": true,
+      "split_inherits_cwd": true,
+      "typing_follows_tail": true,
+      "viewport_scroll_anchored": true
+    }
+  }
+}

@@ -1,0 +1,7 @@
+# Swift candidate workspace: /Users/helge/code/terminal-swift-experiment
+# Successful isolated Session run: 9DFFC7B9-BF5C-49E4-B584-5950032CAB0E
+# Candidate commit/tag: 4c8bfc8cebbc0a0a189253316e89a22c7f787eb5 / swift-candidate-4c8bfc8
+01c3d467534c2e282f1aa9dca909e8dd252346d7a43f97e5906e5d53ad14947f  native/tests/SessionTests.swift
+49a0adec2269a840e11045b1c9e983cf3712ace5388e190d0d5d8f2162e6f8cc  justfile
+c4b8768faefc6da17b66d9998c71e157f0c2f45de5fed0ed348f63f1bd4e8619  .github/workflows/ci.yml
+556a6561694a9e03036fba4a98401d48ef8ad9436436f4f21f66b0ce0b66867d  native/SwiftUnicode18Tables.swift
