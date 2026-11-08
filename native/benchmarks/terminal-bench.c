@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <libproc.h>
+#include <mach/mach_time.h>
 #include <math.h>
 #include <poll.h>
 #include <signal.h>
@@ -26,7 +27,19 @@ static bool completed;
 static char failure_reason[512] = "Benchmark did not complete; inspect its launch log.";
 static bool resource_available = true;
 static int resource_error;
+static mach_timebase_info_data_t cpu_timebase;
+static bool cpu_timebase_attempted;
+static bool cpu_timebase_available;
 static volatile sig_atomic_t interrupted;
+static const struct {
+    const char *name;
+    const char *pattern;
+} workloads[] = {
+    {"ascii_short_lines", "0123456789 abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ\n"},
+    {"ascii_long_lines", "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ "},
+    {"ansi_truecolor", "\033[38;2;84;210;160mcolored\033[0m \033[48;2;18;35;70mbackground\033[0m\n"},
+    {"unicode", "Unicode: 猫 é 👩🏽‍💻 🇳🇴 ∑─▁▂▃▄▅▆▇█\n"}
+};
 static double clock_seconds(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -101,7 +114,22 @@ static double barrier(void) {
     fail("ordered DSR drain");
     return 0;
 }
+static bool load_cpu_timebase(void) {
+    if (cpu_timebase_attempted) return cpu_timebase_available;
+    cpu_timebase_attempted = true;
+    if (mach_timebase_info(&cpu_timebase) != KERN_SUCCESS || cpu_timebase.denom == 0) {
+        resource_available = false;
+        resource_error = EIO;
+        return false;
+    }
+    cpu_timebase_available = true;
+    return true;
+}
 static double cpu(pid_t pid, uint64_t *footprint) {
+    if (!load_cpu_timebase()) {
+        *footprint = 0;
+        return 0;
+    }
     struct rusage_info_v4 usage = {0};
     if (proc_pid_rusage(pid, RUSAGE_INFO_V4, (rusage_info_t *)&usage) != 0) {
         resource_available = false;
@@ -110,7 +138,8 @@ static double cpu(pid_t pid, uint64_t *footprint) {
         return 0;
     }
     *footprint = usage.ri_phys_footprint;
-    return (double)(usage.ri_user_time + usage.ri_system_time) / 1e9;
+    const long double ticks = (long double)usage.ri_user_time + (long double)usage.ri_system_time;
+    return (double)(ticks * cpu_timebase.numer / cpu_timebase.denom / 1000000000.0L);
 }
 static int compare(const void *a, const void *b) {
     double x = *(const double *)a, y = *(const double *)b;
@@ -134,6 +163,7 @@ static uint64_t number(const char *value) {
 static void help(void) {
     puts("Usage: terminal-bench --output FILE --terminal NAME [--bytes N] [--runs N]\n"
          "                      [--columns N] [--rows N] [--idle-seconds N]\n"
+         "                      [--workload ascii_short_lines|ascii_long_lines|ansi_truecolor|unicode]\n"
          "Run inside the terminal being measured. Defaults: 16 MiB/workload, 5 runs,\n"
          "100 columns, 30 rows, 3 idle seconds. Writes ANSI/Unicode to an alternate\n"
          "screen and saves JSON metadata, throughput, DSR RTT, CPU, and footprint.\n"
@@ -141,13 +171,14 @@ static void help(void) {
          "--help and --version do not require a terminal.");
 }
 int main(int argc, char **argv) {
-    const char *output = NULL, *name = NULL;
+    const char *output = NULL, *name = NULL, *selected_workload = NULL;
     uint64_t bytes = 16 * 1024 * 1024, runs = 5, columns = 100, rows = 30, idle = 3;
     static struct option options[] = {
         {"output", required_argument, NULL, 'o'}, {"terminal", required_argument, NULL, 't'},
         {"bytes", required_argument, NULL, 'b'}, {"runs", required_argument, NULL, 'r'},
         {"columns", required_argument, NULL, 'c'}, {"rows", required_argument, NULL, 'l'},
         {"idle-seconds", required_argument, NULL, 'i'}, {"help", no_argument, NULL, 'h'},
+        {"workload", required_argument, NULL, 'w'},
         {"version", no_argument, NULL, 'v'}, {NULL, 0, NULL, 0}};
     int option;
     while ((option = getopt_long(argc, argv, "", options, NULL)) != -1) {
@@ -156,12 +187,22 @@ int main(int argc, char **argv) {
         case 'b': bytes = number(optarg); break; case 'r': runs = number(optarg); break;
         case 'c': columns = number(optarg); break; case 'l': rows = number(optarg); break;
         case 'i': idle = number(optarg); break;
-        case 'h': help(); return 0; case 'v': puts("terminal-bench 0.1.0"); return 0;
+        case 'w': selected_workload = optarg; break;
+        case 'h': help(); return 0; case 'v': puts("terminal-bench 0.3.0"); return 0;
         default: return 2;
         }
     }
     if (!name || !output || optind != argc || runs > 100 || bytes > 1024ULL*1024*1024
         || columns > 4096 || rows > 4096 || idle > 60) { help(); return 2; }
+    if (selected_workload) {
+        bool found = false;
+        for (size_t i = 0; i < sizeof(workloads) / sizeof(workloads[0]); ++i)
+            if (strcmp(selected_workload, workloads[i].name) == 0) found = true;
+        if (!found) {
+            fprintf(stderr, "terminal-bench: unknown workload: %s\n", selected_workload);
+            return 2;
+        }
+    }
     report_path = output;
     atexit(failure_marker);
     // Restrict label to safe JSON characters, avoiding arbitrary command/config interpolation.
@@ -213,11 +254,15 @@ int main(int argc, char **argv) {
     while (nanosleep(&delay, &delay) && errno == EINTR && !interrupted) {}
     double idle_elapsed = clock_seconds() - idle_start;
     double idle_percent = (cpu(terminal, &footprint) - idle_cpu) / idle_elapsed * 100;
-    fprintf(report, "{\"schema\":1,\"terminal\":\"%s\",\"terminal_pid\":%d,"
+    fprintf(report, "{\"schema\":2,\"driver_version\":\"0.3.0\",\"terminal\":\"%s\",\"terminal_pid\":%d,"
             "\"columns\":%u,\"rows\":%u,\"pixel_width\":%u,\"pixel_height\":%u,"
             "\"output_post_processing\":%s,\"idle_seconds\":%.6f,", name, terminal,
             size.ws_col, size.ws_row, size.ws_xpixel, size.ws_ypixel,
             (mode.c_oflag & OPOST) ? "true" : "false", idle_elapsed);
+    if (cpu_timebase_available)
+        fprintf(report, "\"cpu_timebase\":{\"numer\":%u,\"denom\":%u},",
+                cpu_timebase.numer, cpu_timebase.denom);
+    else fputs("\"cpu_timebase\":null,", report);
     fprintf(report, "\"resource_usage_available\":%s,\"resource_usage_errno\":%d,",
             resource_available ? "true" : "false", resource_error);
     if (resource_available)
@@ -225,17 +270,14 @@ int main(int argc, char **argv) {
                 idle_percent, (unsigned long long)footprint);
     else fputs("\"idle_cpu_percent_one_core\":null,\"idle_physical_bytes\":null,", report);
     fputs("\"workloads\":[", report);
-    const char *labels[] = {"ascii_short_lines", "ascii_long_lines", "ansi_truecolor", "unicode"};
-    const char *patterns[] = {
-        "0123456789 abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ\n",
-        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ",
-        "\033[38;2;84;210;160mcolored\033[0m \033[48;2;18;35;70mbackground\033[0m\n",
-        "Unicode: 猫 é 👩🏽‍💻 🇳🇴 ∑─▁▂▃▄▅▆▇█\n"};
     unsigned char block[32768];
-    for (size_t workload = 0; workload < 4; ++workload) {
-        size_t length = strlen(patterns[workload]), used = 0;
+    bool first_workload = true;
+    for (size_t workload = 0; workload < sizeof(workloads) / sizeof(workloads[0]); ++workload) {
+        if (selected_workload && strcmp(selected_workload, workloads[workload].name) != 0) continue;
+        const char *pattern = workloads[workload].pattern;
+        size_t length = strlen(pattern), used = 0;
         while (used + length <= sizeof(block)) {
-            memcpy(block + used, patterns[workload], length); used += length;
+            memcpy(block + used, pattern, length); used += length;
         }
         double rates[100], cpu_values[100], elapsed_values[100];
         uint64_t max_footprint = 0;
@@ -255,8 +297,18 @@ int main(int argc, char **argv) {
             rates[run] = (double)bytes / 1048576 / elapsed;
             if (footprint > max_footprint) max_footprint = footprint;
         }
-        fprintf(report, "%s{\"name\":\"%s\",\"source_bytes_per_run\":%llu,\"mib_per_second\":",
-                workload ? "," : "", labels[workload], (unsigned long long)bytes);
+        fprintf(report, "%s{\"name\":\"%s\",\"source_bytes_per_run\":%llu,\"run_samples\":[",
+                first_workload ? "" : ",", workloads[workload].name, (unsigned long long)bytes);
+        first_workload = false;
+        // Preserve paired observations in execution order before distribution()
+        // sorts each array independently. This exposes warmup and sustained drift.
+        for (size_t run = 0; run < runs; ++run) {
+            fprintf(report, "%s{\"run\":%zu,\"mib_per_second\":%.6f,\"elapsed_seconds\":%.6f,\"terminal_cpu_seconds\":",
+                    run ? "," : "", run + 1, rates[run], elapsed_values[run]);
+            if (resource_available) fprintf(report, "%.6f}", cpu_values[run]);
+            else fputs("null}", report);
+        }
+        fputs("],\"mib_per_second\":", report);
         distribution(report, rates, (size_t)runs);
         fputs(",\"elapsed_seconds\":", report); distribution(report, elapsed_values, (size_t)runs);
         fputs(",\"terminal_cpu_seconds\":", report);

@@ -55,7 +55,22 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       }
       if text == "Session finished" {
         self?.window?.title = "Terminal — Finished"
-        if CommandLine.arguments.contains("--exit-after-command") { NSApp.terminate(nil) }
+        if CommandLine.arguments.contains("--exit-after-command") {
+          let arguments = Array(CommandLine.arguments.prefix { $0 != "--execute" })
+          if let index = arguments.firstIndex(of: "--session-statistics-file"), index + 1 < arguments.count, let pane {
+            let path = arguments[index + 1]
+            pane.session.statistics { statistics in
+              do {
+                try JSONSerialization.data(withJSONObject: statistics, options: [.prettyPrinted, .sortedKeys])
+                  .write(to: URL(fileURLWithPath: path), options: .atomic)
+                NSApp.terminate(nil)
+              } catch {
+                NSLog("Session diagnostic write failed: %@", String(describing: error))
+                exit(1)
+              }
+            }
+          } else { NSApp.terminate(nil) }
+        }
       }
     }
     pane.onTitle = { [weak self] title in if !title.isEmpty { self?.window?.title = title } }

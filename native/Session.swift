@@ -208,6 +208,11 @@ struct TerminalKeyEvent {
 }
 // The PTY and Rust handle are confined to this queue. Main receives immutable decoded values.
 final class Session: @unchecked Sendable {
+  private struct StreamStatistics {
+    var readCallbacks = 0, readCalls = 0, outputEvents = 0, pumpSchedules = 0, pumpTurns = 0, feedCalls = 0, queueHighWater = 0, suspends = 0, resumes = 0, publishCalls = 0
+    var feedBytes: UInt64 = 0, readNanoseconds: UInt64 = 0, feedNanoseconds: UInt64 = 0, snapshotNanoseconds: UInt64 = 0, pumpNanoseconds: UInt64 = 0
+    var queuedBytesHighWater = 0
+  }
   let queue = DispatchQueue(label: "no.helgesverre.terminal.owner", qos: .userInteractive)
   private enum Event {
     case output(Data, Int)
@@ -258,6 +263,7 @@ final class Session: @unchecked Sendable {
   private var configuration = TerminalSessionConfiguration()
   private var imageCache: [ImageKey: ImagePixels] = [:]
   private var publishScheduled = false
+  private var streamStatistics: StreamStatistics?
   private let admission = NSLock()
   private var admittedBytes = 0
   private var accepting = true
@@ -273,6 +279,9 @@ final class Session: @unchecked Sendable {
   private var onClipboardClosed: (@MainActor (UUID) -> Void)?
   init(launch: LaunchSpec? = nil) {
     launchSpec = launch
+    if CommandLine.arguments.prefix(while: { $0 != "--execute" }).contains("--session-statistics-file") {
+      streamStatistics = StreamStatistics()
+    }
     queue.async { [self] in start() }
   }
   deinit { if let core { terminal_destroy(core) } }
@@ -475,12 +484,15 @@ final class Session: @unchecked Sendable {
     }
   }
   private func enqueue(_ event: Event) {
+    if case .output = event { streamStatistics?.outputEvents += 1 }
     events.append(event)
+    streamStatistics?.queueHighWater = max(streamStatistics?.queueHighWater ?? 0, events.count - head)
     scheduleOwner()
   }
   private func scheduleOwner() {
     guard !closed, !ownerScheduled, head < events.count else { return }
     ownerScheduled = true
+    streamStatistics?.pumpSchedules += 1
     queue.async { [self] in
       ownerScheduled = false
       pump()
@@ -488,7 +500,12 @@ final class Session: @unchecked Sendable {
   }
   private func pump() {
     guard !closed, head < events.count else { return }
+    let started = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
+    defer {
+      if streamStatistics != nil { streamStatistics!.pumpNanoseconds &+= DispatchTime.now().uptimeNanoseconds - started }
+    }
     let event = events[head]
+    streamStatistics?.pumpTurns += 1
     var complete = true
     switch event {
     case .output(let bytes, let offset):
@@ -496,9 +513,15 @@ final class Session: @unchecked Sendable {
         updateReadInterest()
         return
       }
+      let feedStarted = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
       let used = bytes.withUnsafeBytes {
         terminal_feed(
           core, $0.bindMemory(to: UInt8.self).baseAddress! + offset, bytes.count - offset, Self.now)
+      }
+      if streamStatistics != nil {
+        streamStatistics!.feedCalls += 1
+        streamStatistics!.feedBytes &+= UInt64(used)
+        streamStatistics!.feedNanoseconds &+= DispatchTime.now().uptimeNanoseconds - feedStarted
       }
       queuedOutput -= used
       bytesParsed += UInt64(used)
@@ -607,13 +630,17 @@ final class Session: @unchecked Sendable {
   }
   private func readAvailable() {
     guard !closed, !readEnded else { return }
+    streamStatistics?.readCallbacks += 1
+    let started = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
     var slab = [UInt8](repeating: 0, count: 16_384)
     var total = 0
     while total < 65_536 && queuedOutput < 2 * 1024 * 1024 {
+      streamStatistics?.readCalls += 1
       let count = Darwin.read(master, &slab, slab.count)
       if count > 0 {
         enqueue(.output(Data(slab.prefix(count)), 0))
         queuedOutput += count
+        if streamStatistics != nil { streamStatistics!.queuedBytesHighWater = max(streamStatistics!.queuedBytesHighWater, queuedOutput) }
         bytesRead += UInt64(count)
         if firstReadNs == 0 { firstReadNs = DispatchTime.now().uptimeNanoseconds }
         total += count
@@ -632,6 +659,7 @@ final class Session: @unchecked Sendable {
         break
       }
     }
+    if streamStatistics != nil { streamStatistics!.readNanoseconds &+= DispatchTime.now().uptimeNanoseconds - started }
     updateReadInterest()
   }
   private func updateReadInterest() {
@@ -640,10 +668,12 @@ final class Session: @unchecked Sendable {
       if !readSuspended {
         reader?.suspend()
         readSuspended = true
+        streamStatistics?.suspends += 1
       }
     } else if readSuspended && queuedOutput < 1024 * 1024 && writeBytes < 1536 * 1024 {
       reader?.resume()
       readSuspended = false
+      streamStatistics?.resumes += 1
       queue.async { [weak self] in self?.readAvailable() }
     }
   }
@@ -652,6 +682,7 @@ final class Session: @unchecked Sendable {
     if readSuspended {
       reader?.resume()
       readSuspended = false
+      streamStatistics?.resumes += 1
     }
     reader?.cancel()
     endWrite()
@@ -829,13 +860,26 @@ final class Session: @unchecked Sendable {
       let elapsed =
         lastParseNs > firstReadNs && firstReadNs > 0
         ? Double(lastParseNs - firstReadNs) / 1_000_000_000 : 0
-      let stats: [String: Any] = [
+      var stats: [String: Any] = [
         "bytes_read": bytesRead, "bytes_parsed": bytesParsed, "queued_output_bytes": queuedOutput,
         "history_bytes": terminal_history_bytes(core), "stream_seconds": elapsed,
         "parsed_mib_per_second": elapsed > 0 ? Double(bytesParsed) / 1_048_576 / elapsed : 0,
         "child_reaped": reaped, "read_ended": readEnded, "parser_ended": parserEnded,
         "child_pid": pid,
       ]
+      if let stream = streamStatistics {
+        stats["stream_diagnostic"] = [
+          "read_callbacks": stream.readCallbacks, "read_calls": stream.readCalls,
+          "output_events": stream.outputEvents, "pump_schedules": stream.pumpSchedules,
+          "pump_turns": stream.pumpTurns, "feed_calls": stream.feedCalls,
+          "feed_bytes": stream.feedBytes, "event_queue_high_water": stream.queueHighWater,
+          "queued_output_bytes_high_water": stream.queuedBytesHighWater,
+          "read_suspends": stream.suspends, "read_resumes": stream.resumes,
+          "publish_calls": stream.publishCalls,
+          "read_nanoseconds": stream.readNanoseconds, "feed_nanoseconds": stream.feedNanoseconds,
+          "snapshot_nanoseconds": stream.snapshotNanoseconds, "pump_nanoseconds": stream.pumpNanoseconds,
+        ] as [String: Any]
+      }
       DispatchQueue.main.async { completion(stats) }
     }
   }
@@ -909,7 +953,10 @@ final class Session: @unchecked Sendable {
     }
   private func publish() {
     guard !closed else { return }
+    streamStatistics?.publishCalls += 1
+    let snapshotStarted = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
     let result = SnapshotBridge.readView(core, now: Self.now)
+    if streamStatistics != nil { streamStatistics!.snapshotNanoseconds &+= DispatchTime.now().uptimeNanoseconds - snapshotStarted }
     guard var snapshot = result.snapshot else {
       if let error = result.error { report(error) }
       queue.asyncAfter(deadline: .now() + .milliseconds(150)) { [weak self] in self?.publish() }
@@ -965,6 +1012,7 @@ final class Session: @unchecked Sendable {
       if readSuspended {
         reader?.resume()
         readSuspended = false
+        streamStatistics?.resumes += 1
       }
       reader?.cancel()
       endWrite()

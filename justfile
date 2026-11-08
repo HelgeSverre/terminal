@@ -1,6 +1,11 @@
 # Native macOS terminal. Run `just` to see common workflows.
 set shell := ["bash", "-euo", "pipefail", "-c"]
 set positional-arguments
+
+# Diagnose fixed short-ASCII PTY flow with opt-in owner counters (not acceptance).
+[group('bench')]
+@diagnose-stream app output bytes:
+    ruby tools/session_stream_diagnostic.rb "$1" "$2" "$3"
 export TERMINAL_PROJECT_ROOT := justfile_directory()
 
 # Show available commands
