@@ -21,9 +21,11 @@ import Foundation
   static func replies(_ terminal: OpaquePointer) -> Data {
     let box = Bytes(); terminal_replies(terminal, Unmanaged.passUnretained(box).toOpaque(), collect); return box.value
   }
-  static func input(_ terminal: OpaquePointer, key: UInt32) -> Data {
+  static func input(_ terminal: OpaquePointer, text: String = "", key: UInt32) -> Data {
     let box = Bytes()
-    precondition(terminal_input(terminal, "", key, 0, 0, Unmanaged.passUnretained(box).toOpaque(), collect))
+    precondition(text.withCString {
+      terminal_input(terminal, $0, key, 0, 0, Unmanaged.passUnretained(box).toOpaque(), collect)
+    })
     return box.value
   }
 
@@ -66,6 +68,81 @@ import Foundation
     precondition(input(terminal, key: 10) == Data("\u{1b}[1;1:1A".utf8))
   }
 
+  static func protocolModesAndTabs() {
+    let terminal = terminal_create(16, 2)!; defer { terminal_destroy(terminal) }
+    feed(terminal, "\u{1b}[?9h\u{1b}[?1002h\u{1b}[?1006h")
+    var modes = snapshot(terminal)!["modes"] as! [String: Any]
+    precondition(modes["mouse"] as? Int == 1002 && modes["sgr_mouse"] as? Bool == true)
+    feed(terminal, "\u{1b}[?1002l\u{1b}[?1006l")
+    modes = snapshot(terminal)!["modes"] as! [String: Any]
+    precondition(modes["mouse"] as? Int == 0 && modes["sgr_mouse"] as? Bool == false)
+
+    feed(terminal, "\u{1b}[>3u\u{1b}[>8u\u{1b}[<u\u{1b}[?u")
+    precondition(replies(terminal) == Data("\u{1b}[?3u".utf8))
+    feed(terminal, "\u{1b}[>8u\u{1b}[<0u\u{1b}[?u")
+    precondition(replies(terminal) == Data("\u{1b}[?3u".utf8))
+    feed(terminal, "\u{1b}[=4;1u\u{1b}[=2;2u\u{1b}[=1;3u\u{1b}[?u")
+    precondition(replies(terminal) == Data("\u{1b}[?6u".utf8))
+    feed(terminal, "\u{1b}[?1049h\u{1b}[>8u\u{1b}[?u\u{1b}[?1049l\u{1b}[?u")
+    precondition(replies(terminal) == Data("\u{1b}[?8u\u{1b}[?6u".utf8))
+    precondition(terminal_resize(terminal, 24, 2))
+    feed(terminal, "\u{1b}[?u")
+    precondition(replies(terminal) == Data("\u{1b}[?6u".utf8))
+
+    feed(terminal, "\u{1b}[>1u" + String(repeating: "\u{1b}[>2u", count: 32) + "\u{1b}[<32u\u{1b}[?u")
+    precondition(replies(terminal) == Data("\u{1b}[?1u".utf8))
+
+    feed(terminal, "\u{1b}[3g\u{1b}[1;4H\u{1b}H\u{1b}[1;1H\t")
+    precondition((snapshot(terminal)!["cursor"] as! [String: Any])["col"] as? Int == 3)
+    feed(terminal, "\u{1b}[0g")
+    precondition(terminal_resize(terminal, 32, 2))
+    feed(terminal, "\u{1b}[1;1H\t")
+    precondition((snapshot(terminal)!["cursor"] as! [String: Any])["col"] as? Int == 31)
+
+    feed(terminal, "\u{1b}[20h\u{1b}[1;5H\u{1b}D")
+    precondition((snapshot(terminal)!["cursor"] as! [String: Any])["col"] as? Int == 4)
+    feed(terminal, "\u{1b}[1;1HA\nB")
+    modes = snapshot(terminal)!["modes"] as! [String: Any]
+    precondition(modes["newline"] as? Bool == true && (snapshot(terminal)!["cursor"] as! [String: Any])["col"] as? Int == 1)
+    precondition(input(terminal, key: 22) == Data([13, 10]))
+    feed(terminal, "\u{1b}[20l\u{1b}[1;1HA\nB")
+    precondition((snapshot(terminal)!["cursor"] as! [String: Any])["col"] as? Int == 2)
+
+    feed(terminal, "\u{1b}[?25l\u{1b}[5 q")
+    var cursor = snapshot(terminal)!["cursor"] as! [String: Any]
+    precondition(cursor["visible"] as? Bool == false && cursor["shape"] as? Int == 5)
+    feed(terminal, "\u{1b}[3q")
+    precondition((snapshot(terminal)!["cursor"] as! [String: Any])["shape"] as? Int == 5)
+    feed(terminal, "\u{1b}[?1049h")
+    cursor = snapshot(terminal)!["cursor"] as! [String: Any]
+    precondition(cursor["visible"] as? Bool == true && cursor["shape"] as? Int == 0)
+    feed(terminal, "\u{1b}[?1049l")
+    cursor = snapshot(terminal)!["cursor"] as! [String: Any]
+    precondition(cursor["visible"] as? Bool == false && cursor["shape"] as? Int == 5)
+
+    feed(terminal, "\u{1b}[?1h\u{1b}=\u{1b}[?2004h\u{1b}[?1004h\u{1b}[?5h\u{1b}[?1003h\u{1b}[?1006h\u{1b}]8;;https://example.test/\u{1b}\\X\u{1b}cZ")
+    modes = snapshot(terminal)!["modes"] as! [String: Any]
+    precondition(modes["application_cursor"] as? Bool == false && modes["application_keypad"] as? Bool == false && modes["bracketed_paste"] as? Bool == false && modes["focus"] as? Bool == false && modes["newline"] as? Bool == false && modes["reverse_video"] as? Bool == false && modes["mouse"] as? Int == 0 && modes["sgr_mouse"] as? Bool == false)
+    cursor = snapshot(terminal)!["cursor"] as! [String: Any]
+    precondition(cursor["visible"] as? Bool == true && cursor["shape"] as? Int == 0)
+    precondition(input(terminal, key: 10) == Data("\u{1b}[A".utf8))
+    precondition(input(terminal, text: "1", key: 301) == Data("1".utf8))
+    precondition(!text(snapshot(terminal)!).contains("X"))
+    let resetCell = (snapshot(terminal)!["rows"] as! [[String: Any]]).flatMap { $0["cells"] as! [[String: Any]] }.first { $0["text"] as? String == "Z" }!
+    precondition(resetCell["link"] is NSNull)
+
+    let repeated = terminal_create(8, 2)!; defer { terminal_destroy(repeated) }
+    precondition(terminal_feed(repeated, nil, 0, 0) == 0)
+    let suffix = Data("X\u{1b}c\u{1b}[2bZ".utf8)
+    precondition(feed(repeated, suffix) == suffix.count)
+    var turns = 0
+    while terminal_has_work(repeated) {
+      turns += 1; precondition(turns <= 2)
+      _ = terminal_feed(repeated, nil, 0, 0)
+    }
+    precondition(text(snapshot(repeated)!).contains("Z") && !text(snapshot(repeated)!).contains("X"))
+  }
+
   static func replyPressurePreservesUnconsumedInput() {
     let terminal = terminal_create(8, 2)!; defer { terminal_destroy(terminal) }
     let requests = Data((String(repeating: "\u{1b}[5n", count: 10_000) + "Z").utf8)
@@ -83,7 +160,7 @@ import Foundation
 
   static func main() {
     if CommandLine.arguments.contains("--reply-pressure") { replyPressurePreservesUnconsumedInput(); return }
-    resumableREPDoesNotOvertakeSuffix(); synchronizedOutputUsesABIClockDeadline(); keyboardFlagsAreScreenLocal(); replyPressurePreservesUnconsumedInput()
+    resumableREPDoesNotOvertakeSuffix(); synchronizedOutputUsesABIClockDeadline(); keyboardFlagsAreScreenLocal(); protocolModesAndTabs(); replyPressurePreservesUnconsumedInput()
     print("PASS Terminal scheduler oracle: resumable REP, FIFO suffix, reply pressure, sync deadline, screen-local keyboard, invariants")
   }
 }

@@ -93,6 +93,7 @@ private final class SwiftTerminalCore {
   private var leftRightMargins = false
   private var autoWrap = true
   private var insertMode = false
+  private var newlineMode = false
   private var protectedOutput = false
   private var syncDeadline: UInt64?
   private var clock: UInt64 = 0
@@ -112,8 +113,10 @@ private final class SwiftTerminalCore {
   private var bracketedPaste = false
   private var focusReporting = false
   private var reverseVideo = false
-  private var cursorVisible = true
-  private var cursorShape: UInt8 = 0
+  private var mouseMode = 0
+  private var sgrMouse = false
+  private var tabs: [Bool]
+  private var tabsCleared = false
   private var revision: UInt64 = 1
   private var geometryEpoch: UInt64 = 1
   // TerminalDocument deliberately restarts row IDs after a hard reset. Keep a
@@ -151,6 +154,7 @@ private final class SwiftTerminalCore {
     self.columns = max(1, min(4096, columns))
     self.rowCount = max(1, min(4096, rows))
     document = TerminalDocument(columns: self.columns, rows: self.rowCount)
+    tabs = (0..<self.columns).map { $0 > 0 && $0.isMultiple(of: 8) }
     decodedScalars.reserveCapacity(1024)
     csiParameterScratch.reserveCapacity(16)
   }
@@ -258,7 +262,6 @@ private final class SwiftTerminalCore {
   private func apply(_ effect: TerminalDocument.PrintEffect, mutations: Int = 1) {
     guard mutations > 0 else { return }
     applyAppendedHistory(effect.appendedHistory)
-    pruneGraphicsAnchors()
     if let printed = effect.lastPrinted {
       lastPrinted = printed
       let attributes = effect.repeatAttributes ?? TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)
@@ -294,7 +297,12 @@ private final class SwiftTerminalCore {
     tick(now)
     // REP is intentionally resumable. It keeps the owner responsive and lets
     // an admitted input event observe modes established *after* the repeat.
-    if repeatRemaining > 0, !lastPrinted.isEmpty {
+    if repeatRemaining > 0, lastPrinted.isEmpty {
+      // REP after RIS (or before any printable scalar) is a no-op. Clear it
+      // and continue processing this same ABI turn's suffix.
+      repeatRemaining = 0
+    }
+    if repeatRemaining > 0 {
       let budget = min(4_096, repeatRemaining)
       for _ in 0..<budget { repeatLastPrinted() }
       repeatRemaining -= budget
@@ -408,7 +416,10 @@ private final class SwiftTerminalCore {
     case 0x29: parser = .charset(1)
     case 0x37: saveCursor()
     case 0x38: restoreCursor()
-    case 0x44: lineFeed()
+    case 0x48: tabs[screen.cursorColumn] = true
+    // IND advances within the scroll region but, unlike LF/VT/FF, never
+    // applies LNM's carriage return.
+    case 0x44: resetClusterBoundary(); index(reverse: false)
     case 0x4d: reverseIndex()
     case 0x45: carriageReturn(); lineFeed()
     case 0x63: reset()
@@ -430,10 +441,13 @@ private final class SwiftTerminalCore {
     let rows = document.index(usingAlternate: usingAlternate, reverse: reverse,
                               leftRightMargins: leftRightMargins, eraseStyle: eraseStyle())
     applyAppendedHistory(rows)
-    pruneGraphicsAnchors()
     changed(history: !reverse && !usingAlternate)
   }
-  private func lineFeed() { resetClusterBoundary(); index(reverse: false) }
+  private func lineFeed() {
+    resetClusterBoundary()
+    index(reverse: false)
+    if newlineMode { carriageReturn() }
+  }
   private func carriageReturn() { document.carriageReturn(usingAlternate: usingAlternate, leftRightMargins: leftRightMargins); changed() }
   private func backspace() { resetClusterBoundary(); var s = screen; let left = horizontalMargins.left; s.cursorColumn = max(s.cursorColumn >= left ? left : 0, s.cursorColumn - 1); s.pendingWrap = false; screen = s; changed() }
   private func tab(_ reverse: Bool = false, count: Int = 1) {
@@ -445,11 +459,11 @@ private final class SwiftTerminalCore {
       if reverse {
         guard s.cursorColumn > left else { s.cursorColumn = left; continue }
         s.cursorColumn = stride(from: s.cursorColumn - 1, through: left, by: -1)
-          .first(where: { $0 > 0 && $0 % 8 == 0 }) ?? left
+          .first(where: { tabs[$0] }) ?? left
       } else {
         guard s.cursorColumn < right else { s.cursorColumn = right; continue }
         s.cursorColumn = ((s.cursorColumn + 1)...right)
-          .first(where: { $0 > 0 && $0 % 8 == 0 }) ?? right
+          .first(where: { tabs[$0] }) ?? right
       }
     }
     s.pendingWrap = false; screen = s; changed()
@@ -457,7 +471,24 @@ private final class SwiftTerminalCore {
   private func reverseIndex() { index(reverse: true) }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
-  private func reset() { graphics.clear(); document = TerminalDocument(columns: columns, rows: rowCount); advanceSearchGeneration(); usingAlternate = false; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
+  private func reset() {
+    graphics.clear()
+    document = TerminalDocument(columns: columns, rows: rowCount)
+    advanceSearchGeneration()
+    usingAlternate = false; viewAnchor = nil; viewOffset = 0
+    pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true
+    insertMode = false; newlineMode = false; protectedOutput = false; syncDeadline = nil
+    applicationCursor = false; applicationKeypad = false; bracketedPaste = false
+    focusReporting = false; reverseVideo = false; mouseMode = 0; sgrMouse = false
+    currentLink = nil
+    charsetSpecial = [false, false]; charsetSlot = 0
+    lastPrinted = ""; lastPrintedStyle = SwiftStyle(); lastPrintedLink = nil
+    lastPrintedFlags = 0; repeatRemaining = 0
+    tabs = (0..<columns).map { $0 > 0 && $0.isMultiple(of: 8) }
+    tabsCleared = false
+    resetClusterBoundary()
+    changed(history: true)
+  }
   private struct CSIParameterPacket {
     var values: [Int]
     // CSI > ... u and CSI = ... u historically parsed their first field
@@ -569,19 +600,34 @@ private final class SwiftTerminalCore {
     case "M": deleteLines(n); changedActiveScreen = true
     case "I": tab(false, count: n); changedActiveScreen = true
     case "Z": tab(true, count: n); changedActiveScreen = true
+    case "g":
+      if params.first == 3 { tabs = Array(repeating: false, count: columns); tabsCleared = true }
+      else if params.first ?? 0 == 0 { tabs[s.cursorColumn] = false }
     case "r": setVerticalMargins(params); changedActiveScreen = true
     case "S": resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: true)
     case "T": resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: false, allowHistory: false)
-    case "b": repeatRemaining = min(1_000_000, max(0, params.first ?? 1)); clearsPending = false
+    case "b":
+      repeatRemaining = lastPrinted.isEmpty ? 0 : min(1_000_000, max(0, params.first ?? 1))
+      clearsPending = false
     case "m": applySGR(params, colonSyntax: packet.hasColon ? raw : nil); clearsPending = false
     case "s":
       if leftRightMargins { setHorizontalMargins(params); changedActiveScreen = true }
       else { s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedOrigin = originMode }
     case "u":
       clearsPending = false
-      if first == 0x3e || first == 0x3d { s.keyboardFlags = (packet.keyboardFlags ?? 0) & 31 }
+      if first == 0x3e {
+        if s.keyboardStack.count == 32 { s.keyboardStack.removeFirst() }
+        s.keyboardStack.append(s.keyboardFlags); s.keyboardFlags = (packet.keyboardFlags ?? 0) & 31
+      }
       else if first == 0x3f { replies.append(contentsOf: "\u{1b}[?\(s.keyboardFlags)u".utf8) }
-      else if first == 0x3c { s.keyboardFlags = 0 }
+      else if first == 0x3c { for _ in 0..<min(32, n) { s.keyboardFlags = s.keyboardStack.popLast() ?? 0 } }
+      else if first == 0x3d {
+        let flags = (packet.keyboardFlags ?? 0) & 31
+        let action = raw.split(separator: ";", omittingEmptySubsequences: false).dropFirst().first.flatMap { Int($0) } ?? 1
+        if action == 1 { s.keyboardFlags = flags }
+        else if action == 2 { s.keyboardFlags |= flags }
+        else if action == 3 { s.keyboardFlags &= ~flags }
+      }
       else { originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false }
     case "n": clearsPending = false; if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = s.cursorRow + 1 - (originMode ? s.topMargin : 0); let column = s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0); replies.append(contentsOf: "\u{1b}[\(row);\(column)R".utf8) }
     case "c": clearsPending = false; replies.append(contentsOf: "\u{1b}[?62;4c".utf8)
@@ -590,7 +636,8 @@ private final class SwiftTerminalCore {
       replies.append(contentsOf: "\u{1b}[?\(params.first ?? 0);\(params.first == 69 ? (leftRightMargins ? 1 : 2) : 0)$y".utf8)
     case "p" where last == 0x21: softReset(); changedActiveScreen = true
     case "q" where last == 0x22: protectedOutput = (params.first ?? 0) == 1; clearsPending = false
-    case "q": cursorShape = UInt8(min(6, max(0, params.first ?? 0))); clearsPending = false
+    case "q" where last == 0x20: s.cursorShape = UInt8(min(6, max(0, params.first ?? 0))); clearsPending = false
+    case "q": clearsPending = false; semanticChange = false
     case "h", "l":
       if privateMode, params.allSatisfy({ [47, 1047, 1049].contains($0) }), params.allSatisfy({ _ in usingAlternate == (final == "h") }) { semanticChange = false }
       changedActiveScreen = setMode(params, enabled: final == "h", privateMode: privateMode)
@@ -783,22 +830,40 @@ private final class SwiftTerminalCore {
   }
   private func setMode(_ params: [Int], enabled: Bool, privateMode: Bool) -> Bool {
     var changedActiveScreen = false
-    if !privateMode && params.contains(4) { insertMode = enabled }
+    if !privateMode {
+      for mode in params {
+        if mode == 4 { insertMode = enabled }
+        if mode == 20 { newlineMode = enabled }
+      }
+      return false
+    }
     for mode in params where privateMode {
       switch mode {
       case 1: applicationCursor = enabled
       case 6: originMode = enabled; var s = screen; s.cursorRow = enabled ? s.topMargin : 0; s.cursorColumn = enabled ? horizontalMargins.left : 0; s.pendingWrap = false; screen = s; changedActiveScreen = true
       case 7: autoWrap = enabled; if !enabled { var s = screen; s.pendingWrap = false; screen = s }; changedActiveScreen = true
-      case 25: cursorVisible = enabled
+      case 25:
+        var s = screen; s.cursorVisible = enabled; screen = s
+        changedActiveScreen = true
       case 47, 1047, 1049:
         if usingAlternate != enabled {
           resetClusterBoundary()
           advanceSearchGeneration()
           usingAlternate = enabled
-          if enabled && (mode == 1047 || mode == 1049) { alternate = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns) }
+          if enabled && (mode == 1047 || mode == 1049) {
+            let keyboardFlags = alternate.keyboardFlags
+            let keyboardStack = alternate.keyboardStack
+            let cursorVisible = alternate.cursorVisible
+            let cursorShape = alternate.cursorShape
+            alternate = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns)
+            alternate.keyboardFlags = keyboardFlags; alternate.keyboardStack = keyboardStack
+            alternate.cursorVisible = cursorVisible; alternate.cursorShape = cursorShape
+          }
           changedActiveScreen = true
         }
       case 1004: focusReporting = enabled
+      case 9, 1000, 1002, 1003: mouseMode = enabled ? mode : 0
+      case 1006: sgrMouse = enabled
       case 2004: bracketedPaste = enabled
       case 5: reverseVideo = enabled
       case 69:
@@ -814,11 +879,18 @@ private final class SwiftTerminalCore {
     return changedActiveScreen
   }
   private func softReset() {
-    originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false
+    originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false
+    newlineMode = false; protectedOutput = false
     pen = SwiftStyle(); currentLink = nil; applicationCursor = false; applicationKeypad = false
-    bracketedPaste = false; focusReporting = false; syncDeadline = nil
-    var s = screen; s.topMargin = 0; s.bottomMargin = rowCount - 1; s.cursorRow = 0; s.cursorColumn = 0; s.pendingWrap = false; screen = s
+    bracketedPaste = false; focusReporting = false; reverseVideo = false; mouseMode = 0; sgrMouse = false; syncDeadline = nil
+    lastPrinted = ""; lastPrintedStyle = SwiftStyle(); lastPrintedLink = nil
+    lastPrintedFlags = 0; repeatRemaining = 0
+    var s = screen
+    s.topMargin = 0; s.bottomMargin = rowCount - 1; s.cursorRow = 0; s.cursorColumn = 0
+    s.pendingWrap = false; s.cursorVisible = true; s.cursorShape = 0
+    screen = s
     primary.leftMargin = 0; primary.rightMargin = columns - 1; alternate.leftMargin = 0; alternate.rightMargin = columns - 1
+    primary.keyboardFlags = 0; primary.keyboardStack.removeAll(); alternate.keyboardFlags = 0; alternate.keyboardStack.removeAll()
   }
   private func finishString() {
     let payload = sequence; sequence = ""
@@ -855,6 +927,10 @@ private final class SwiftTerminalCore {
       return
     }
     guard case .apc = parser else { return }
+    // Printing can move history rows, but the graphics protocol is the only
+    // path that needs live anchor membership.  Pruning here keeps ordinary
+    // scalar output O(1) while retaining the placement cap semantics.
+    pruneGraphicsAnchors()
     let s = screen
     let outcome = graphics.consume(Data(payload.utf8), context: KittyGraphicsContext(
       alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
@@ -885,6 +961,8 @@ private final class SwiftTerminalCore {
     guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows), nextColumns <= 1_048_576 / nextRows else { return false }
     if nextColumns == columns && nextRows == rowCount { return true }
     resetClusterBoundary()
+    let oldColumns = columns
+    let oldPrimary = primary
     if !usingAlternate && nextColumns != columns && primary.atPrompt && primary.promptRedraw {
       var promptScreen = primary
       _ = document.clearPromptSuffix(&promptScreen, eraseStyle: eraseStyle())
@@ -893,8 +971,19 @@ private final class SwiftTerminalCore {
     let oldAlternate = alternate
     if nextColumns != columns { graphics.clear(alternate: false) }
     let mapped = document.reflowPrimary(columns: nextColumns, rows: nextRows, anchor: viewAnchor)
-    let resizedAlternate = document.resize(oldAlternate, columns: nextColumns, rows: nextRows)
+    var resizedAlternate = document.resize(oldAlternate, columns: nextColumns, rows: nextRows)
     columns = nextColumns; rowCount = nextRows; alternate = resizedAlternate
+    primary.keyboardFlags = oldPrimary.keyboardFlags; primary.keyboardStack = oldPrimary.keyboardStack
+    primary.cursorVisible = oldPrimary.cursorVisible; primary.cursorShape = oldPrimary.cursorShape
+    resizedAlternate.keyboardFlags = oldAlternate.keyboardFlags; resizedAlternate.keyboardStack = oldAlternate.keyboardStack
+    resizedAlternate.cursorVisible = oldAlternate.cursorVisible; resizedAlternate.cursorShape = oldAlternate.cursorShape
+    alternate = resizedAlternate
+    if nextColumns != oldColumns {
+      tabs = Array(tabs.prefix(nextColumns))
+      if nextColumns > oldColumns {
+        tabs.append(contentsOf: (oldColumns..<nextColumns).map { !tabsCleared && $0 > 0 && $0.isMultiple(of: 8) })
+      }
+    }
     enforceHistoryLimits()
     viewAnchor = mapped.anchor ?? viewAnchor
     resolveViewportAnchor(clamp: true)
@@ -942,10 +1031,11 @@ private final class SwiftTerminalCore {
        !primary.rows.contains(where: { $0.id == retainedAnchor }) {
       clampViewportAfterEviction()
     }
-    if evicted { pruneGraphicsAnchors() }
   }
   private func pruneGraphicsAnchors() {
     guard graphics.hasPlacements else { return }
+    // Retired placements retain only bounded (<= 256) row IDs, never rows.
+    // Rebuilding this membership set is therefore deferred to graphics seams.
     var retained = Set(history.map(\.id))
     retained.formUnion(primary.rows.map(\.id)); retained.formUnion(alternate.rows.map(\.id))
     graphics.pruneAnchors(retaining: retained)
@@ -974,9 +1064,16 @@ private final class SwiftTerminalCore {
       let margins = (current.topMargin, current.bottomMargin, current.leftMargin, current.rightMargin)
       let promptPhase = current.promptPhase
       let promptRedraw = current.promptRedraw
+      let saved = (current.savedRow, current.savedColumn, current.savedPendingWrap, current.savedOrigin, current.savedStyle, current.savedLink)
+      let keyboard = (current.keyboardFlags, current.keyboardStack)
+      let cursorAppearance = (current.cursorVisible, current.cursorShape)
       current = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns)
       current.topMargin = margins.0; current.bottomMargin = margins.1
       current.leftMargin = margins.2; current.rightMargin = margins.3
+      current.savedRow = saved.0; current.savedColumn = saved.1; current.savedPendingWrap = saved.2
+      current.savedOrigin = saved.3; current.savedStyle = saved.4; current.savedLink = saved.5
+      current.keyboardFlags = keyboard.0; current.keyboardStack = keyboard.1
+      current.cursorVisible = cursorAppearance.0; current.cursorShape = cursorAppearance.1
       current.promptPhase = promptPhase
       current.promptRedraw = promptRedraw
       current.promptAnchor = PromptAnchor(row: current.rows[0].id, column: 0, pendingWrap: false)
@@ -995,7 +1092,7 @@ private final class SwiftTerminalCore {
   func input(_ text: String, key: UInt32, modifiers: UInt32, event: UInt32,
              metadata: SwiftInputEncoder.KeyMetadata = .init()) -> Data? {
     let modes = SwiftInputEncoder.Modes(
-      applicationCursor: applicationCursor, applicationKeypad: applicationKeypad,
+      applicationCursor: applicationCursor, applicationKeypad: applicationKeypad, newline: newlineMode,
       bracketedPaste: bracketedPaste, focusReporting: focusReporting, kittyFlags: screen.keyboardFlags)
     // The C ABI's key=0 path represents committed text, not a physical key.
     // It must retain every scalar (automation, IME commits, and multi-scalar
@@ -1272,8 +1369,8 @@ private final class SwiftTerminalCore {
   private func snapshotMetadata(cursor: SwiftScreen, offset: Int,
                                 followingTail: Bool, search: [[String: Int]]) -> [String: Any] {
     let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
-    var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":Int(cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
-    if let currentDirectory { metadata["cwd"] = currentDirectory }
+    var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
+    metadata["cwd"] = currentDirectory as Any? ?? NSNull()
     return metadata
   }
   private func colorJSON(_ color: UInt32) -> Any { if color >> 24 == 1 { return ["Indexed": Int(color & 255)] }; if color >> 24 == 2 { return ["Rgb": [Int((color >> 16) & 255), Int((color >> 8) & 255), Int(color & 255)]] }; return "Default" }

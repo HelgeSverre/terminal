@@ -352,6 +352,11 @@ struct TerminalScreen: Equatable {
   var savedRow = 0; var savedColumn = 0; var savedPendingWrap = false; var savedOrigin = false
   var savedStyle = TerminalStyle(); var savedLink: String?
   var keyboardFlags: UInt32 = 0
+  var keyboardStack: [UInt32] = []
+  // DEC cursor appearance belongs to a screen, just like the keyboard stack.
+  // Alternate-screen selection must restore the cursor that screen owns.
+  var cursorVisible = true
+  var cursorShape: UInt8 = 0
   // OSC 133 prompt identity is screen-local and survives resize by row ID.
   var promptPhase = PromptPhase.none
   var atPrompt: Bool { promptPhase != .none }

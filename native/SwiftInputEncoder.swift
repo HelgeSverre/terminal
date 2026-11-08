@@ -7,6 +7,7 @@ enum SwiftInputEncoder {
   struct Modes: Equatable {
     var applicationCursor = false
     var applicationKeypad = false
+    var newline = false
     var bracketedPaste = false
     var focusReporting = false
     /// Kitty progressive-enhancement flags (CSI > 1 u): disambiguate,
@@ -133,7 +134,7 @@ enum SwiftInputEncoder {
       let final = Character(UnicodeScalar(UInt8(ascii: "P") + UInt8(value - 1)))
       output = Data((modifier == 1 ? "\u{1b}O\(final)" : "\u{1b}[1;\(modifier)\(final)").utf8)
     case .backspace: output = Data([127])
-    case .enter: output = Data([13])
+    case .enter: output = modes.newline ? Data([13, 10]) : Data([13])
     case .tab: output = Data((modifiers.shift ? "\u{1b}[Z" : "\t").utf8)
     case .escape: output = Data([27])
     case .character(let character):
