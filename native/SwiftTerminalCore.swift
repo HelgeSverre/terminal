@@ -256,7 +256,7 @@ private final class SwiftTerminalCore {
   }
   private func apply(_ effect: TerminalDocument.PrintEffect, mutations: Int = 1) {
     guard mutations > 0 else { return }
-    applyAppendedHistory(effect.appendedHistory)
+    applyAppendedHistory(effect.appendedHistoryCount)
     if let printed = effect.lastPrinted {
       lastPrinted = printed
       let attributes = effect.repeatAttributes ?? TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)
@@ -265,9 +265,9 @@ private final class SwiftTerminalCore {
     }
     revision &+= UInt64(mutations); documentEpoch &+= UInt64(mutations); screenEpoch &+= UInt64(mutations)
   }
-  private func applyAppendedHistory(_ rows: [SwiftRow]) {
-    guard !rows.isEmpty else { return }
-    if viewAnchor != nil { viewOffset += rows.count }
+  private func applyAppendedHistory(_ count: Int) {
+    guard count > 0 else { return }
+    if viewAnchor != nil { viewOffset += count }
     enforceHistoryLimits()
     historyEpoch &+= 1
   }
@@ -419,9 +419,9 @@ private final class SwiftTerminalCore {
   }
 
   private func index(reverse: Bool) {
-    let rows = document.index(usingAlternate: usingAlternate, reverse: reverse,
+    let appendedCount = document.index(usingAlternate: usingAlternate, reverse: reverse,
                               leftRightMargins: leftRightMargins, eraseStyle: eraseStyle())
-    applyAppendedHistory(rows)
+    applyAppendedHistory(appendedCount)
     changed(history: !reverse && !usingAlternate)
   }
   private func lineFeed() { resetClusterBoundary(); index(reverse: false) }

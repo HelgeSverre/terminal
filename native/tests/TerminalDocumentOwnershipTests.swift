@@ -246,7 +246,7 @@ import Foundation
     let removedID = document.primary.rows[0].id
     let forward = document.index(usingAlternate: false, reverse: false,
                                  leftRightMargins: false, eraseStyle: TerminalStyle(background: 9))
-    precondition(!document.primary.pendingWrap && forward.count == 1 && document.history.count == 1)
+    precondition(!document.primary.pendingWrap && forward == 1 && document.history.count == 1)
     precondition(document.history[0].id == removedID && document.history[0].cells[0].text == "A")
     precondition(document.primary.rows[1].id != removedID && document.primary.rows[1].cells.allSatisfy { $0.style.background == 9 })
 
@@ -254,20 +254,20 @@ import Foundation
     document.alternate.cursorRow = 1; document.alternate.cursorColumn = 0
     let alternate = document.index(usingAlternate: true, reverse: false,
                                    leftRightMargins: false, eraseStyle: TerminalStyle())
-    precondition(alternate.isEmpty && document.history.count == 1)
+    precondition(alternate == 0 && document.history.count == 1)
     precondition(alternateBefore.rows[0].id != document.alternate.rows[1].id)
 
     document.primary.cursorRow = 0; document.primary.cursorColumn = 0
     let reverse = document.index(usingAlternate: false, reverse: true,
                                  leftRightMargins: false, eraseStyle: TerminalStyle())
-    precondition(reverse.isEmpty && document.history.count == 1)
+    precondition(reverse == 0 && document.history.count == 1)
     precondition(document.hasValidInvariants(document.primary) && document.hasValidInvariants(document.alternate))
 
     document.primary.leftMargin = 1; document.primary.rightMargin = 2
     document.primary.cursorRow = 1; document.primary.cursorColumn = 1
     let partial = document.index(usingAlternate: false, reverse: false,
                                  leftRightMargins: true, eraseStyle: TerminalStyle(background: 3))
-    precondition(partial.isEmpty && document.history.count == 1)
+    precondition(partial == 0 && document.history.count == 1)
     precondition(document.primary.rows[1].cells[1].style.background == 3 && document.primary.rows[1].cells[2].style.background == 3)
   }
 
@@ -412,7 +412,7 @@ import Foundation
       }
       var offset = 0, batchMutations = 0
       var last = TerminalDocument.PrintBatchEffect(
-        effect: .init(appendedHistory: [], lastPrinted: nil, repeatAttributes: nil),
+        effect: .init(appendedHistoryCount: 0, lastPrinted: nil, repeatAttributes: nil),
         consumedScalarCount: 0, mutationCount: 0)
       while offset < values.count {
         last = batch.print(values[offset...], usingAlternate: false, leftRightMargins: leftRightMargins,
@@ -488,13 +488,13 @@ import Foundation
     precondition(retainedAlternate.rows[0].cells.allSatisfy { $0.kind == 0 })
 
     // A span may fill a row, but the following scalar still owns the wrap and
-    // must yield its newly retained history row before further admission.
+    // must report its history append before further admission.
     var history = TerminalDocument(columns: 2, rows: 1)
     let yielded = history.print(Array("ABCD".unicodeScalars), usingAlternate: false,
                                 leftRightMargins: false, autoWrap: true, insertMode: false,
                                 attributes: attributes)
     precondition(yielded.consumedScalarCount == 3 && yielded.mutationCount == 3)
-    precondition(yielded.effect.appendedHistory.count == 1 && history.history.count == 1)
+    precondition(yielded.effect.appendedHistoryCount == 1 && history.history.count == 1)
     precondition(history.history[0].cells[0].text == "A" && history.history[0].cells[1].text == "B")
   }
 
@@ -513,11 +513,42 @@ import Foundation
                        autoWrap: true, insertMode: false, attributes: attributes)
     }
     precondition(effect.consumedScalarCount == offered.count && effect.mutationCount == offered.count)
-    precondition(effect.effect.appendedHistory.isEmpty && batch.history.isEmpty)
+    precondition(effect.effect.appendedHistoryCount == 0 && batch.history.isEmpty)
     precondition(batch.alternate == scalar.alternate)
     precondition(batch.alternate.rows.allSatisfy { $0.id != 0 })
     precondition(retained.rows.allSatisfy { $0.cells.allSatisfy { $0.kind == 0 } })
     precondition(retainedCells.allSatisfy { $0.kind == 0 })
+  }
+
+  static func appendCountsPreserveYieldAndIdentities() {
+    let attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
+    for columns in 1...2 {
+      var document = TerminalDocument(columns: columns, rows: 1)
+      _ = document.print(Array(String(repeating: "A", count: columns).unicodeScalars), usingAlternate: false,
+                         leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+      let oldID = document.primary.rows[0].id
+      let nextID = max(oldID, document.alternate.rows[0].id) + 1
+      let result = document.print(Array("界Z".unicodeScalars), usingAlternate: false,
+                                  leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+      precondition(result.consumedScalarCount == 1 && result.mutationCount == 1)
+      precondition(result.effect.appendedHistoryCount == 1 && document.history.count == 1)
+      precondition(document.history[0].id == oldID && document.primary.rows[0].id == nextID)
+      precondition(document.primary.rows[0].cells[0].text == "界")
+      precondition(document.hasValidInvariants(document.primary))
+      _ = document.index(usingAlternate: false, reverse: false, leftRightMargins: false, eraseStyle: TerminalStyle())
+      precondition(document.primary.rows[0].id == nextID + 1)
+    }
+    var growth = TerminalDocument(columns: 2, rows: 1)
+    _ = growth.print(Array("A©".unicodeScalars), usingAlternate: false, leftRightMargins: false,
+                     autoWrap: true, insertMode: false, attributes: attributes)
+    let nextID = max(growth.primary.rows[0].id, growth.alternate.rows[0].id) + 1
+    let result = growth.print(Array("\u{fe0f}Z".unicodeScalars), usingAlternate: false, leftRightMargins: false,
+                              autoWrap: true, insertMode: false, attributes: attributes)
+    precondition(result.consumedScalarCount == 1 && result.effect.appendedHistoryCount == 1)
+    precondition(growth.history.count == 1 && growth.primary.rows[0].id == nextID)
+    precondition(growth.primary.rows[0].cells[0].text == "©\u{fe0f}" && growth.primary.rows[0].cells[1].kind == 3)
+    _ = growth.index(usingAlternate: false, reverse: false, leftRightMargins: false, eraseStyle: TerminalStyle())
+    precondition(growth.primary.rows[0].id == nextID + 1)
   }
 
   static func discardedAlternateReuseRespectsSnapshots() {
@@ -612,6 +643,19 @@ import Foundation
     })
     precondition(document.history.count == 1 && document.history[0].cells.map(\.text) == ["D", "E", "F"])
     precondition(document.history.byteCount == document.history[0].retainedStorageCost)
+
+    // Keeping the result alive must not keep the appended row alive. Core
+    // needs only the admission count; the document owns the retained value.
+    var heldResult = TerminalDocument(columns: 3, rows: 1)
+    let result = heldResult.print(Array("abcD".unicodeScalars), usingAlternate: false,
+                                   leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+    let resultStorage = identity(heldResult.history[0])
+    _ = heldResult.trimHistory(rowLimit: 0, byteLimit: 0)
+    print("EFG", into: &heldResult)
+    withExtendedLifetime(result) {
+      precondition(identity(heldResult.primary.rows[0]) == resultStorage)
+      precondition(result.effect.appendedHistoryCount == 1 && result.effect.lastPrinted == "D")
+    }
 
     var shared = TerminalDocument(columns: 3, rows: 1)
     print("abcD", into: &shared)
@@ -867,6 +911,7 @@ import Foundation
     alternateMultiwrapBatchDoesNotYieldForReplacements()
     discardedAlternateReuseRespectsSnapshots()
     evictedPrimaryReuseRespectsSnapshots()
+    appendCountsPreserveYieldAndIdentities()
     historyOwnerChargesAndTrimsOnce()
     scalarStorageChargesUTF8WithoutRichText()
     historyOwnerRetainsSnapshotsAndHeterogeneousBoundaries()
