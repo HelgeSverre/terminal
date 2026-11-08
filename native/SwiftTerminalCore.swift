@@ -587,7 +587,10 @@ private final class SwiftTerminalCore {
     return CSIParameterPacket(values: parameters, keyboardFlags: keyboardFlags, hasColon: hasColon)
   }
   private func handleCSI(_ raw: String, final: Character) {
-    if !["m", "n", "c", "u"].contains(final) { resetClusterBoundary() }
+    switch final {
+    case "m", "n", "c", "u": break
+    default: resetClusterBoundary()
+    }
     guard let packet = Self.parseCSIParameters(raw, final: final, into: &csiParameterScratch) else { return }
     let params = packet.values
     let first = raw.utf8.first
@@ -663,7 +666,12 @@ private final class SwiftTerminalCore {
     if !changedActiveScreen { if clearsPending { s.pendingWrap = false }; screen = s }
     // Scroll commits its replacement screen before eviction resolves anchors.
     if final == "S" { enforceHistoryLimits() }
-    if ["J", "L", "M", "S", "T", "h", "l"].contains(final) { pruneGraphicsAnchors() }
+    if graphics.hasPlacements {
+      switch final {
+      case "J", "L", "M", "S", "T", "h", "l": pruneGraphicsAnchors()
+      default: break
+      }
+    }
     if semanticChange { changed() }
   }
   private func eraseDisplay(_ mode: Int, selective: Bool = false) { if mode == 2 { graphics.clear(alternate: usingAlternate) }; var s = screen; switch mode { case 2, 3: if selective { for row in 0..<rowCount { document.erase(&s, row: row, columns: 0..<columns, style: eraseStyle(), selective: true) } } else { s.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) } }; if mode == 3 && !usingAlternate { document.clearHistory(); advanceSearchGeneration(); historyEpoch &+= 1 }; case 1: for row in 0...s.cursorRow { document.erase(&s, row: row, columns: 0..<(row == s.cursorRow ? s.cursorColumn + 1 : columns), style: eraseStyle(), selective: selective) }; default: for row in s.cursorRow..<rowCount { document.erase(&s, row: row, columns: (row == s.cursorRow ? s.cursorColumn : 0)..<columns, style: eraseStyle(), selective: selective) } }; s.pendingWrap = false; screen = s }
