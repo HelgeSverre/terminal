@@ -170,7 +170,10 @@ private final class SwiftTerminalCore {
   }
   private func advanceLine(_ s: inout SwiftScreen) {
     if s.cursorRow + 1 < rowCount { s.cursorRow += 1; return }
-    let removed = s.rows.removeFirst(); s.rows.append(SwiftRow(columns: columns))
+    let removed = s.rows.removeFirst()
+    // New physical rows are document-owned identities. Reflow, viewport and
+    // search proofs can therefore distinguish eviction from replacement.
+    s.rows.append(document.blankRow())
     if !usingAlternate { history.append(removed); if history.count > historyLimit { history.removeFirst(history.count - historyLimit) }; historyEpoch &+= 1 }
   }
   private func lineFeed() { var s = screen; s.pendingWrap = false; advanceLine(&s); screen = s; changed(history: !usingAlternate) }
@@ -180,7 +183,7 @@ private final class SwiftTerminalCore {
   private func reverseIndex() { var s = screen; if s.cursorRow > 0 { s.cursorRow -= 1 } else { s.rows.insert(SwiftRow(columns: columns), at: 0); _ = s.rows.popLast() }; screen = s; changed() }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; screen = s }
   private func restoreCursor() { var s = screen; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; s.pendingWrap = false; screen = s; changed() }
-  private func reset() { primary = SwiftScreen(columns: columns, rows: rowCount); alternate = SwiftScreen(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); pen = SwiftStyle(); changed(history: true) }
+  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); pen = SwiftStyle(); changed(history: true) }
   private func parameters(_ raw: String) -> [Int] { raw.split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 } }
   private func handleCSI(_ raw: String, final: Character) {
     let privateMode = raw.first == "?"
