@@ -177,6 +177,8 @@ final class ClipboardWriteRequest {
 // and focus use Session's legacy raw-input API and cannot accidentally claim a
 // keyboard-layout identity they do not have.
 struct TerminalKeyEvent {
+  private static let retainedOverhead = 128
+  private static let wireOverhead = 256
   let text: String
   let logical: String
   let shifted: String
@@ -190,7 +192,30 @@ struct TerminalKeyEvent {
   // terminal modes queried from the main thread. A modifier can encode to an
   // empty legacy write or a Kitty sequence, but it never changes user intent.
   var isKeyAction: Bool { event != 2 && !isModifierOnly }
+  /// Bytes retained until the owner consumes this event. Every Swift String
+  /// crosses the async queue boundary, even though some only contribute one
+  /// scalar to a Kitty sequence.
+  var retainedCost: Int? {
+    var total = Self.retainedOverhead
+    for value in [text, logical, shifted, baseLayout, legacyText] {
+      let bytes = value.utf8.count
+      guard bytes <= Int.max - total else { return nil }
+      total += bytes
+    }
+    return total
+  }
+  /// A mode-independent upper bound for the PTY write produced by this key.
+  /// Associated text needs at most four decimal/separator bytes per UTF-8 byte;
+  /// it and the legacy Option-as-Escape layout text are alternate branches.
+  var maximumWireBytes: Int? {
+    let (expandedText, overflow) = text.utf8.count.multipliedReportingOverflow(by: 4)
+    guard !overflow else { return nil }
+    let payload = max(expandedText, legacyText.utf8.count)
+    let (total, overheadOverflow) = payload.addingReportingOverflow(Self.wireOverhead)
+    return overheadOverflow ? nil : total
+  }
 }
+private let terminalWriteCapacity = 3 * 1024 * 1024
 // The PTY and Rust handle are confined to this queue. Main receives immutable decoded values.
 final class Session: @unchecked Sendable {
   let queue = DispatchQueue(label: "no.helgesverre.terminal.owner", qos: .userInteractive)
@@ -511,7 +536,7 @@ final class Session: @unchecked Sendable {
     var complete = true
     switch event {
     case .output(let bytes, let offset):
-      guard writeBytes < 3 * 1024 * 1024 else {
+      guard writeBytes < terminalWriteCapacity else {
         updateReadInterest()
         return
       }
@@ -535,7 +560,7 @@ final class Session: @unchecked Sendable {
         break
       }
       // An admitted event waits for write capacity; it is never silently rejected.
-      guard writeBytes + text.utf8.count + 256 <= 3 * 1024 * 1024 else { return }
+      guard writeBytes + text.utf8.count + 256 <= terminalWriteCapacity else { return }
       collectingPaste = key == 1
       let accepted = terminal_input(
         core, text, key, modifiers, event,
@@ -550,7 +575,12 @@ final class Session: @unchecked Sendable {
         report("Input closed before delivery")
         break
       }
-      guard writeBytes + input.text.utf8.count + 256 <= 3 * 1024 * 1024 else { return }
+      guard let wireBytes = input.maximumWireBytes, wireBytes <= terminalWriteCapacity else {
+        release(cost)
+        report("Key input exceeds write limit")
+        break
+      }
+      guard writeBytes <= terminalWriteCapacity - wireBytes else { return }
       let accepted = terminal_input_key(
         core, input.text, input.logical, input.shifted, input.baseLayout, input.legacyText, input.key,
         input.modifiers, input.event, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
@@ -560,7 +590,7 @@ final class Session: @unchecked Sendable {
         terminal_view_follow_tail(core)
       }
     case .raw(let bytes, let cost), .shortcut(let bytes, let cost):
-      guard writeBytes + bytes.count <= 3 * 1024 * 1024 else { return }
+      guard writeBytes + bytes.count <= terminalWriteCapacity else { return }
       writeID += 1
       if !writeEnded { writes.append(WriteTransaction(id: writeID, data: bytes, kind: .ordinary)) }
       if case .shortcut = event, configuration.followTailOnInput { terminal_view_follow_tail(core) }
@@ -650,7 +680,7 @@ final class Session: @unchecked Sendable {
   }
   private func updateReadInterest() {
     guard !closed, !readEnded else { return }
-    if queuedOutput >= 2 * 1024 * 1024 || writeBytes >= 3 * 1024 * 1024 {
+    if queuedOutput >= 2 * 1024 * 1024 || writeBytes >= terminalWriteCapacity {
       if !readSuspended {
         reader?.suspend()
         readSuspended = true
@@ -807,7 +837,14 @@ final class Session: @unchecked Sendable {
     return true
   }
   @discardableResult func input(_ input: TerminalKeyEvent) -> Bool {
-    let cost = input.text.utf8.count + 128
+    guard let cost = input.retainedCost else {
+      report("Key input metadata is too large")
+      return false
+    }
+    guard let wireBytes = input.maximumWireBytes, wireBytes <= terminalWriteCapacity else {
+      report("Key input exceeds write limit")
+      return false
+    }
     let lifecycle = input.event == 2
     let control = cost <= 256 && input.event == 2
     let admission = reserve(cost, control: control)

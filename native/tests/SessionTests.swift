@@ -14,6 +14,8 @@ import Foundation
         "input_after_accepted_output_is_bracketed", "ordered_mode_encoding_after_rep",
         "physical_key_reaches_pty",
         "modifier_keys_preserve_anchored_viewport",
+        "typed_metadata_rejected", "typed_legacy_metadata_rejected", "expanded_key_write_rejected",
+        "typed_key_paths_admitted",
         "rep_completed", "large_paste_accepted", "oversize_paste_rejected",
         "saturated_cancel_close_reaped", "cancel_close_under_three_seconds",
         "ordinary_ingress_busy", "release_admitted_under_ingress_pressure",
@@ -107,6 +109,39 @@ import Foundation
     }
     checks["physical_key_reaches_pty"] = physicalDone
     physical.close()
+    // Typed physical-key metadata is retained across the owner queue. It must
+    // be charged in full, and a Kitty-associated-text expansion that cannot
+    // ever fit the PTY cap must be rejected before it can stall the queue.
+    let bounded = Session(launch: spec("sleep 1"))
+    var boundedStatuses: [String] = []
+    bounded.onStatus = { boundedStatuses.append($0) }
+    let oversizedMetadata = TerminalKeyEvent(
+      text: "", logical: String(repeating: "l", count: 2 * 1024 * 1024),
+      shifted: "", baseLayout: "", legacyText: "", key: 200, modifiers: 0, event: 0)
+    let oversizedLegacyMetadata = TerminalKeyEvent(
+      text: "", logical: "", shifted: "", baseLayout: "",
+      legacyText: String(repeating: "l", count: 2 * 1024 * 1024), key: 200, modifiers: 2, event: 0)
+    let impossibleExpansion = TerminalKeyEvent(
+      text: String(repeating: "x", count: 800_000), logical: "x",
+      shifted: "", baseLayout: "x", legacyText: "", key: 200, modifiers: 0, event: 0)
+    let shiftedKey = TerminalKeyEvent(
+      text: "!", logical: "1", shifted: "!", baseLayout: "1", legacyText: "!", key: 200,
+      modifiers: 1, event: 0)
+    let modifierKey = TerminalKeyEvent(
+      text: "", logical: "", shifted: "", baseLayout: "", legacyText: "", key: 400,
+      modifiers: 1, event: 0)
+    checks["typed_metadata_rejected"] = !bounded.input(oversizedMetadata)
+    checks["typed_legacy_metadata_rejected"] = !bounded.input(oversizedLegacyMetadata)
+    checks["expanded_key_write_rejected"] = !bounded.input(impossibleExpansion)
+    checks["typed_key_paths_admitted"] = bounded.input(shiftedKey) && bounded.input(modifierKey)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    checks["typed_metadata_rejected"] =
+      checks["typed_metadata_rejected"] == true && boundedStatuses.contains("Input busy")
+    checks["typed_legacy_metadata_rejected"] =
+      checks["typed_legacy_metadata_rejected"] == true && boundedStatuses.contains("Input busy")
+    checks["expanded_key_write_rejected"] =
+      checks["expanded_key_write_rejected"] == true && boundedStatuses.contains("Key input exceeds write limit")
+    bounded.close()
     // Modifier-only events must not be treated as typing just because Kitty
     // happens to encode them. Exercise the ordered PTY path in both default
     // and all-keys mode while the user is reading retained output.
