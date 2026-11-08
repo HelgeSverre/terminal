@@ -1,0 +1,12 @@
+{
+  "pid": 96410,
+  "executable_sha256": "7f3226c77075ecbb651e3c821e0a3d996ab3165f4ebadec5ea07f1576690722d",
+  "passed": true,
+  "cleanup_survivors": [],
+  "source_commit": "762a6b7",
+  "session_test_source_sha256": "18ce4151fd66a452ac0290aab49091d7936b09658c2aa631daffa08bc839db7d",
+  "session_checks": {
+    "split_inherits_cwd": true,
+    "split_children_reaped": true
+  }
+}

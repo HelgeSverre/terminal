@@ -33,6 +33,8 @@ import Foundation
         "closed_text_input_is_reported",
         "finished_pty_refuses_text", "finished_pty_retains_search",
       ].map { ($0, false) })
+    checks["split_inherits_cwd"] = false
+    checks["split_children_reaped"] = false
     var statuses: [String] = []
     let splitFolder = FileManager.default.temporaryDirectory.appendingPathComponent("Terminal split 猫 #% \(UUID().uuidString)")
     try! FileManager.default.createDirectory(at: splitFolder, withIntermediateDirectories: false)
@@ -77,6 +79,8 @@ import Foundation
       RunLoop.main.run(until: Date().addingTimeInterval(0.01))
     }
     parent.close(); sibling?.close()
+    checks["split_inherits_cwd"] = siblingMatched
+    checks["split_children_reaped"] = parentEnded && siblingEnded
     precondition(parentEnded && siblingEnded && siblingMatched,
       "split cwd: parent=\(parentEnded), child=\(siblingEnded), match=\(siblingMatched), cwd=\(String(describing: parentCWD)), childText=\(childText)")
     // A UI snapshot is intentionally coalesced, so it cannot timestamp parser order.
