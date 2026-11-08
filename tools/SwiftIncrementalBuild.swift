@@ -10,13 +10,13 @@ enum IncrementalBuildError: Error { case command([String], Int32) }
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let build = root.appendingPathComponent("target/swift-incremental", isDirectory: true)
 let clean = CommandLine.arguments.dropFirst().contains("--clean")
-let sources = [
-  "SwiftUnicode.swift", "SwiftInputEncoder.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift",
-  "Statistics.swift", "Geometry.swift", "Font.swift", "FontCatalog.swift", "Preferences.swift",
-  "Transport.swift", "Session.swift", "SnapshotBridge.swift", "AccessibilityProjection.swift",
-  "Theme.swift", "Settings.swift", "Renderer.swift", "KeyMap.swift", "Canvas.swift", "Smoke.swift",
-  "EditingSmoke.swift", "main.swift",
-].map { root.appendingPathComponent("native/\($0)").path }
+struct SourceGraph: Decodable { let app: [String] }
+let graph: SourceGraph
+do {
+  graph = try JSONDecoder().decode(
+    SourceGraph.self, from: Data(contentsOf: root.appendingPathComponent("tools/swift-sources.json")))
+} catch { fatalError("Invalid tools/swift-sources.json: \(error)") }
+let sources = graph.app.map { root.appendingPathComponent("native/\($0)").path }
 
 func run(_ arguments: [String]) throws {
   let task = Process()

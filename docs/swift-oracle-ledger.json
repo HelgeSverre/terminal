@@ -1,0 +1,436 @@
+{
+  "oracle_commit": "4ae6967",
+  "total": 86,
+  "entries": [
+    {
+      "rust_test": "unicode::tests::official_unicode_18_break_tests",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "alternate_clear_does_nothing_including_retained_primary_view_and_graphics",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "clear_drops_primary_images_but_preserves_other_screen_resources",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "command_markers_leave_prompt_and_reset_clears_prompt_identity",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "prompt_clear_is_local_and_requests_redraw_without_resetting_terminal_modes",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "unmarked_program_preserves_cursor_row_and_everything_below_it",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "cancel_and_oversized_apc_never_leak_payload",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "chunk_atomicity_and_final_cursor_position",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "delete_z_keeps_unrelated_cached_images_and_other_screen_references",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "direct_rgb_rgba_and_placement",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "dmscene_double_buffer_sequence",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "every_byte_partition_and_one_byte_reads",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "kitty_detection_query_is_ordered_and_non_mutating",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "malformed_size_base64_and_file_transports_fail_without_replacing",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "png_and_zlib_are_decoded_with_alpha",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "quiet_modes_and_unsupported_feature_queries",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "replacements_delete_old_placements_and_generate_new_lifetime",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "screen_scope_clear_reset_and_scrolling",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "zero_source_extent_means_remaining_pixels_and_queries_respect_quiet",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "enhanced_keypad_press_repeat_release_and_associated_text",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "legacy_release_suppression_and_disambiguated_keypad",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "numeric_and_application_keypad_are_distinct_and_resettable",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "carriage_return_backspace_and_tabs_respect_horizontal_region",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "every_partition_and_ascii_scalar_paths_agree_with_rectangles",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "horizontal_insert_delete_and_wide_edges",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "margins_origin_home_queries_validation_and_ansi_save_conflict",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "rectangular_index_keeps_row_identity_side_cells_and_history",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "rectangular_insert_delete_lines_and_bce",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "rectangular_scroll_remaps_styles_links_clusters_and_protection",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "regional_wrap_does_not_join_full_rows_or_touch_side_columns",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "screen_scope_reset_resize_and_margin_mode_disable",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "bounded_quanta_overlapping_matches_and_query_admission",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "epochs_eviction_and_row_revisions_invalidate_results_and_decorations",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "immutable_page_runs_off_owner_and_stale_source_is_rejected",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "literal_latest_hit_navigates_physical_history_and_decorates_cells",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "output_is_not_chased_and_alternate_never_searches_primary_history",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "soft_chains_join_but_hard_breaks_and_explicit_spaces_remain",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "unicode_scalar_fold_and_cluster_boundaries_include_wide_continuations",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "alternate_idempotence_and_mixed",
+      "status": "smoke-replayed",
+      "evidence": "reports/swift-port/differential-semantic.json"
+    },
+    {
+      "rust_test": "alternate_never_enters_history",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "ascii_fast_path_matches_scalar",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "c1_not_reinterpreted",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "capped_grapheme_keeps_incremental_boundary_state",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "color_syntax",
+      "status": "smoke-replayed",
+      "evidence": "reports/swift-port/differential-semantic.json"
+    },
+    {
+      "rust_test": "combining_style_adjacency",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "cursor_save_pending_and_pen",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "deferred_wrap",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "ed2_vs_ed3",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "erase_background_only",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "every_byte_partition",
+      "status": "smoke-replayed",
+      "evidence": "reports/swift-port/differential-semantic.json"
+    },
+    {
+      "rust_test": "geometry_rejected_without_mutation",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "history_bounds",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "immutable_rows",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "input_modes_and_paste",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "interior_edit_preserves_wrap_chain",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "invalid_utf8_color_does_not_panic",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "keyboard_stacks_per_screen",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "kitty_event_encoding",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "lf_is_not_cr",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "malformed_utf8_maximal_subpart",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "margins_no_history",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "overflow_invalidates_command",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "parser_eof_drops_control",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "random_byte_partition_and_invariants",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "reflow_roundtrip_text",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "rep_yields_without_consuming_later_bytes",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "resize_inactive_primary",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "ris_resets_both_cursor_appearances",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "saved_cursor_excludes_appearance",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "scroll_closes_cluster_repair",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "selective_erase_protects_whole_wide_glyph",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "string_discard_escape_cannot_inject",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "string_escape_and_abort",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "sync_replies_deadline",
+      "status": "smoke-replayed",
+      "evidence": "reports/swift-port/differential-semantic.json"
+    },
+    {
+      "rust_test": "unicode_clusters",
+      "status": "smoke-replayed",
+      "evidence": "reports/swift-port/differential-semantic.json"
+    },
+    {
+      "rust_test": "unicode_tables_are_pinned_to_18",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "wide_at_edge",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "wide_repair_all_mutations",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "widening_clipped_glyph_clears_clipping_flag",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "alternate_has_no_history_and_retains_primary_view_for_return",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "eviction_clamps_once_without_leaving_anchored_mode",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "height_growth_clamps_to_legal_top_and_anchor_can_move_back_to_history",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "history_clear_and_reset_publish_distinct_identities_and_initial_colors",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "output_preserves_content_and_scroll_is_relative_to_current_anchor",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "publication_gate_does_not_rebase_anchor_and_invalid_resize_is_atomic",
+      "status": "unported",
+      "evidence": null
+    },
+    {
+      "rust_test": "reflow_maps_leading_boundary_including_soft_wrap_and_wide_atoms",
+      "status": "unported",
+      "evidence": null
+    }
+  ]
+}

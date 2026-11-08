@@ -1,0 +1,49 @@
+{
+  "app": [
+    "SwiftUnicode.swift",
+    "SwiftUnicode18Tables.swift",
+    "SwiftInputEncoder.swift",
+    "SwiftGraphics.swift",
+    "SwiftReflow.swift",
+    "SwiftSearchViewport.swift",
+    "SwiftMargins.swift",
+    "SwiftTerminalCore.swift",
+    "Statistics.swift",
+    "Geometry.swift",
+    "Font.swift",
+    "FontCatalog.swift",
+    "Preferences.swift",
+    "Transport.swift",
+    "Session.swift",
+    "SnapshotBridge.swift",
+    "AccessibilityProjection.swift",
+    "Theme.swift",
+    "Settings.swift",
+    "Renderer.swift",
+    "KeyMap.swift",
+    "Canvas.swift",
+    "Smoke.swift",
+    "EditingSmoke.swift",
+    "main.swift"
+  ],
+  "emulation": [
+    "SwiftUnicode.swift",
+    "SwiftUnicode18Tables.swift",
+    "SwiftInputEncoder.swift",
+    "SwiftGraphics.swift",
+    "SwiftReflow.swift",
+    "SwiftSearchViewport.swift",
+    "SwiftMargins.swift",
+    "SwiftTerminalCore.swift"
+  ],
+  "tests": {
+    "swift_core": [
+      "SwiftUnicode.swift",
+      "SwiftUnicode18Tables.swift",
+      "SwiftInputEncoder.swift",
+      "SwiftGraphics.swift",
+      "SwiftTerminalCore.swift",
+      "tests/SwiftCoreTests.swift"
+    ]
+  }
+}
