@@ -1,0 +1,20 @@
+{
+  "source_comparison": "../swift-app-comparison-43ef231-wmo/comparison.json",
+  "source_comparison_sha256": "f0d8c210dceea1948638cd375803487c08c001b9e0ea17fa8f7c0825bb24eb39",
+  "historical_threshold": 0.9,
+  "new_threshold": 0.7,
+  "stretch_threshold": 0.8,
+  "ratios": {
+    "ascii_short_lines": 0.5911055820150474,
+    "ascii_long_lines": 0.5161360967021097,
+    "ansi_truecolor": 0.6232469564866298,
+    "unicode": 0.790219034637836
+  },
+  "per_workload_pass": {
+    "ascii_short_lines": false,
+    "ascii_long_lines": false,
+    "ansi_truecolor": false,
+    "unicode": true
+  },
+  "passed": false
+}
