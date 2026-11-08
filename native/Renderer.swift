@@ -530,10 +530,9 @@ final class MetalRenderer: @unchecked Sendable {
     let matchesRequest = RendererMetrics.recordDrawable(
       requestWidth: request.width, requestHeight: request.height,
       drawableWidth: drawableWidth, drawableHeight: drawableHeight)
-    // `CAMetalLayer` can hand us a drawable for a resize that happened after this
-    // request was queued. Its pixel coordinates describe the old grid, so a
-    // present would temporarily distort or clip the terminal. The geometry change
-    // also queued a replacement request; let it render the current drawable.
+    // The drawable belongs to a different viewport size than this request.
+    // Drop obsolete work; the geometry change queued a replacement request.
+    // This does not synchronize layer geometry with drawable presentation.
     guard matchesRequest else {
       RendererMetrics.recordStaleFrameDrop()
       inFlight.signal()
