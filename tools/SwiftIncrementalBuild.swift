@@ -39,10 +39,14 @@ if arguments.contains("--verify") {
   for (name, values) in graph.tests ?? [:] { groups.append(("tests.\(name)", values)) }
   var count = 0
   for (name, values) in groups {
-    guard Set(values).count == values.count else { fatalError("Duplicate source in \(name)") }
+    guard Set(values).count == values.count else {
+      fputs("Duplicate source in \(name)\n", stderr); exit(2)
+    }
     for value in values {
       let path = root.appendingPathComponent("native/\(value)").path
-      guard FileManager.default.fileExists(atPath: path) else { fatalError("Missing \(name) source: \(path)") }
+      guard FileManager.default.fileExists(atPath: path) else {
+        fputs("Missing \(name) source: \(path)\n", stderr); exit(2)
+      }
       count += 1
     }
   }
@@ -51,7 +55,7 @@ if arguments.contains("--verify") {
   // header, shader, launch helper, plist, shell integration or font tree.
   for relative in ["native/Bridge.h", "native/Spawn.c", "native/Launcher.c", "native/Terminal.metal", "native/Info.plist", "native/ShellIntegration", "assets/fonts"] {
     guard FileManager.default.fileExists(atPath: root.appendingPathComponent(relative).path) else {
-      fatalError("Missing bundle/build input: \(relative)")
+      fputs("Missing bundle/build input: \(relative)\n", stderr); exit(2)
     }
   }
   print("Swift source graph verified: \(graph.app.count) app sources; \(graph.tests?.count ?? 0) test groups; \(count) declared paths; bundle inputs present")

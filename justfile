@@ -133,24 +133,27 @@ lint:
 [group('check')]
 @test: build
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
     just swift-core-test
     xcrun clang -Wall -Wextra -Werror -I native -c native/tests/pty.c -o target/native/swift-pty-tests.o
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftGraphics.swift native/SwiftTerminalCore.swift target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty) target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
     target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
-    xcrun swiftc native/Transport.swift native/tests/TransportTests.swift -o target/native/transport-tests
+    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print transport) -o target/native/transport-tests
     target/native/transport-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftGraphics.swift native/SwiftTerminalCore.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SessionTests.swift target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print session) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests
     target/native/session-tests "$PWD"
-    xcrun swiftc native/Geometry.swift native/tests/GeometryTests.swift -o target/native/geometry-tests
+    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print geometry) -o target/native/geometry-tests
     target/native/geometry-tests
-    xcrun swiftc native/Statistics.swift native/tests/StatisticsTests.swift -o target/native/statistics-tests
+    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print statistics) -o target/native/statistics-tests
     target/native/statistics-tests
-    xcrun swiftc native/Preferences.swift native/tests/PreferencesTests.swift -o target/native/preferences-tests
+    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print preferences) -o target/native/preferences-tests
     target/native/preferences-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftGraphics.swift native/SwiftTerminalCore.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SnapshotBridgeTests.swift target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/snapshot-bridge-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print snapshot_bridge) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/snapshot-bridge-tests
     target/native/snapshot-bridge-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftTerminalCore.swift native/Preferences.swift native/KeyMap.swift native/tests/KeyMapTests.swift -framework AppKit -framework CoreText -framework Security -liconv -o target/native/keymap-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print keymap) -framework AppKit -framework CoreText -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/keymap-tests
     target/native/keymap-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_document_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-document-oracle-tests
+    target/native/terminal-document-oracle-tests
 
 # Swift-only terminal-state smoke.  The original Rust suite remains an
 # independent differential oracle under `just parity-baseline`.
@@ -158,8 +161,7 @@ lint:
 swift-core-test:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    SOURCE_FILES="$(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_core)"
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $SOURCE_FILES -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/swift-core-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_core) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/swift-core-tests
     target/native/swift-core-tests
 
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
