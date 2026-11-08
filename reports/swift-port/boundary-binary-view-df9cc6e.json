@@ -1,0 +1,74 @@
+{
+  "implementation": "swift",
+  "inputs": {
+    "source_commit": "df9cc6ea32ed0b6775645f9ea5baa1b6ef8c9c3b",
+    "source_sha256": {
+      "SwiftUnicode.swift": "0991125cc2658d87a3d33a013c128d46cfff8b1b30a3d4641c6134caff9a6088",
+      "SwiftUnicode18Tables.swift": "7a8fe8592908349ce031f847e9ed4d1fb60a238aee5f9b4c553af141841a96c8",
+      "SwiftInputEncoder.swift": "85959a186dcb4f1e236ac684c95acf6b5d27b047c173df72c8edda55277693f5",
+      "SwiftGraphics.swift": "181b4f8be7b6f369caf0b12816e48919c15ed9f8d46ec7ddee4d371d7841d6cf",
+      "SwiftReflow.swift": "d19472aef4d3f569252630a5460cbe92c6af9457d216fe4c6da2de90003dd5c9",
+      "SwiftSearchViewport.swift": "9aca1b2f46ce17f1d505f84c5cdcb37ea0bd6cc700ce3d0e1e68cfb1c8fed978",
+      "SwiftMargins.swift": "1c10e1ddd4d9cb4409c92ca716b4a6435378f17710c9b67d1b0c907b0c59a939",
+      "TerminalDocument.swift": "0e55d892ab87d6f4e21898a9618ab73b87e4548ecb46ff78c44667680704e797",
+      "DocumentReflow.swift": "48c8837aad94aadbfdec74aca58cea2f8bea2426b676adbc34a8e54df9c69faf",
+      "SwiftTerminalCore.swift": "4bd79889f094e2a4b0145f649e7ca360a99a69ce83252532f32fd55de81c0839",
+      "tests/TerminalBoundaryRegressionTests.swift": "783c3e831269950c79aca5815d039c5a6112cc91c8b7b99aef79a745243ed1d6",
+      "Bridge.h": "e5baa6ffe077d4fa1ceb6f202e91eebd47119172cd1b0102f512ff4a68d86539"
+    },
+    "all_inputs_match_commit": true
+  },
+  "executable_sha256": "7163129a3921d00fdd9886ae9399345f4fffd200fd4c393ed293763988ec7882",
+  "scope": "Eight exact boundary checks; seven shared with Rust ABI, one Swift-only byte-limit adapter. Known additional cluster-owner command invalidation defects remain under review; not overall product parity.",
+  "checks": [
+    {
+      "case": "utf8",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary utf8"
+    },
+    {
+      "case": "strings",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary strings"
+    },
+    {
+      "case": "anchor",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary anchor"
+    },
+    {
+      "case": "retention",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary retention"
+    },
+    {
+      "case": "readiness",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary readiness"
+    },
+    {
+      "case": "cap",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary cap"
+    },
+    {
+      "case": "segmenter",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary segmenter"
+    },
+    {
+      "case": "byte-retention",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary byte-retention"
+    }
+  ],
+  "passed": true
+}
