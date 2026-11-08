@@ -510,6 +510,16 @@ final class TerminalRendering: @unchecked Sendable {
     }
     return pixels
   }
+  private func glyphKind(_ pixels: [UInt8]) -> GlyphLease.Kind {
+    for offset in stride(from: 0, to: pixels.count, by: 4) {
+      let alpha = pixels[offset + 3]
+      guard alpha > 0 else { continue }
+      if pixels[offset] != alpha || pixels[offset + 1] != alpha || pixels[offset + 2] != alpha {
+        return .color
+      }
+    }
+    return .mask
+  }
   private func directGlyph(_ key: GlyphKey, width: Int, height: Int, limited: Bool = true) -> Glyph? {
     guard !limited || (!directGlyphExhausted && directGlyphCount < directGlyphLimit) else { return nil }
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
@@ -530,9 +540,10 @@ final class TerminalRendering: @unchecked Sendable {
       return nil
     }
     let pixels = glyphPixels(key, width: width, height: height)
+    let kind = glyphKind(pixels)
     pixels.withUnsafeBytes { texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width * 4) }
     if limited { directGlyphBytes += allocatedBytes; directGlyphCount += 1; RendererMetrics.recordExactGlyphFallback() }
-    return Glyph(uv: SIMD4(0, 0, 1, 1), width: width, atlasPage: nil, texture: texture, kind: .mask)
+    return Glyph(uv: SIMD4(0, 0, 1, 1), width: width, atlasPage: nil, texture: texture, kind: kind)
   }
   private func glyph(_ key: GlyphKey, cells: Int, request: RenderRequest) -> Glyph? {
     let recipe = GlyphRasterRecipe(text: key.text, width: request.cellWidth * cells,
@@ -552,8 +563,9 @@ final class TerminalRendering: @unchecked Sendable {
       return replacementGlyph
     }
     let pixels = glyphPixels(key, width: width, height: height)
+    let kind = glyphKind(pixels)
     pixels.withUnsafeBytes { atlases[placement.page].replace(region: MTLRegionMake2D(placement.x, placement.y, width, height), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width * 4) }
-    let value = Glyph(uv: SIMD4(Float(placement.x) / Float(atlasSize), Float(placement.y) / Float(atlasSize), Float(width) / Float(atlasSize), Float(height) / Float(atlasSize)), width: width, atlasPage: placement.page, texture: nil, kind: .mask)
+    let value = Glyph(uv: SIMD4(Float(placement.x) / Float(atlasSize), Float(placement.y) / Float(atlasSize), Float(width) / Float(atlasSize), Float(height) / Float(atlasSize)), width: width, atlasPage: placement.page, texture: nil, kind: kind)
     frameAtlasPages.insert(placement.page); glyphs[key] = value; return value
   }
   private func draw(
