@@ -60,6 +60,9 @@ final class GlyphResidency: @unchecked Sendable {
   private var pages: [UUID: Page] = [:]
   private var entries: [GlyphRasterRecipe: Entry] = [:]
   private var pending: Set<GlyphRasterRecipe> = []
+  private var visibleDemand: Set<GlyphRasterRecipe> = []
+  private var currentDemand: Set<GlyphRasterRecipe> = []
+  private var suppressedForDemand: Set<GlyphRasterRecipe> = []
   private var failed: Set<GlyphRasterRecipe> = []
   private var failedOrder: [GlyphRasterRecipe] = []
   private let failedLimit = 1024
@@ -92,6 +95,7 @@ final class GlyphResidency: @unchecked Sendable {
   }
 
   func beginFrame() {
+    currentDemand.removeAll(keepingCapacity: true)
     preparedPins.removeAll(keepingCapacity: true)
     let uploads = uploadQueue
     uploadQueue.removeAll(keepingCapacity: true)
@@ -106,6 +110,7 @@ final class GlyphResidency: @unchecked Sendable {
   func setOnReady(_ callback: @escaping @Sendable () -> Void) { onReady = callback }
 
   func resolve(_ recipe: GlyphRasterRecipe) -> GlyphLease? {
+    currentDemand.insert(recipe)
     if let entry = entries[recipe] {
       if let page = entry.page {
         guard let current = pages[page], current.generation == entry.lease.allocationGeneration else {
@@ -116,7 +121,7 @@ final class GlyphResidency: @unchecked Sendable {
       }
       return entry.lease
     }
-    guard !failed.contains(recipe) else { return nil }
+    guard !failed.contains(recipe), !suppressedForDemand.contains(recipe) else { return nil }
     if pending.insert(recipe).inserted {
       reservations += recipe.width * recipe.height * 4
       let accepted = worker.request(recipe) { [weak self] result, release in
@@ -131,6 +136,18 @@ final class GlyphResidency: @unchecked Sendable {
       }
     }
     return nil
+  }
+
+  // Called after a renderer has resolved every glyph for one complete scene.
+  // Internal raster repaint does not change this set; pane/font/close changes
+  // do, which makes previously suppressed capacity misses eligible again.
+  func finishFrameDemand() {
+    guard currentDemand != visibleDemand else { return }
+    visibleDemand = currentDemand
+    if !suppressedForDemand.isEmpty {
+      suppressedForDemand.removeAll(keepingCapacity: true)
+      onReady()
+    }
   }
 
   // Must run on TerminalRendering's serial executor.
@@ -164,6 +181,10 @@ final class GlyphResidency: @unchecked Sendable {
     guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height,
       allowEviction: false) else {
       guard pages.values.contains(where: { $0.kind == kind && $0.pins > 0 }) else {
+        if pages.values.contains(where: { $0.kind == kind }) {
+          suppressedForDemand.insert(recipe)
+          return .impossible
+        }
         rememberFailure(recipe)
         return .impossible
       }
@@ -281,7 +302,9 @@ final class GlyphResidency: @unchecked Sendable {
       // All charged pages are full. Reclaim only a page no submitted frame can
       // still sample; its generation invalidates every old lease/UV.
       guard allowEviction,
-        let victim = pages.values.first(where: { $0.kind == kind && $0.pins == 0 }) else {
+        let victim = pages.values.first(where: {
+          $0.kind == kind && $0.pins == 0 && pageIsEvictable($0.id)
+        }) else {
         return nil
       }
       evict(victim.id)
@@ -289,6 +312,16 @@ final class GlyphResidency: @unchecked Sendable {
       return reserve(on: recycled, width: width, height: height)
     }
     return result
+  }
+
+  private func pageIsEvictable(_ id: UUID) -> Bool {
+    // With no completed scene yet, preserve the first resident page rather
+    // than churn through a staged batch before demand is known.
+    guard !visibleDemand.isEmpty else { return false }
+    for (recipe, entry) in entries where entry.page == id {
+      if visibleDemand.contains(recipe) { return false }
+    }
+    return true
   }
 
   private func reserve(on source: Page, width: Int, height: Int) -> (page: Page, x: Int, y: Int)? {
@@ -385,6 +418,8 @@ final class GlyphResidency: @unchecked Sendable {
     let stale = GlyphLease(uv: SIMD4(0, 0, 1, 1), width: 8, texture: page.texture,
       kind: .mask, allocation: page.id, allocationGeneration: page.generation)
     entries[recipe] = Entry(lease: stale, page: page.id, bytes: 64)
+    visibleDemand = [GlyphRasterRecipe(text: "other", width: 8, height: 8, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)]
     page.x = page.kind.side - 1
     page.y = page.kind.side - 1
     pages[page.id] = page
@@ -396,6 +431,8 @@ final class GlyphResidency: @unchecked Sendable {
 
   func testingPinnedPageBlocksReclaim() -> Bool {
     guard let first = createPage(.color), var page = pages[first.id] else { return false }
+    visibleDemand = [GlyphRasterRecipe(text: "other", width: 8, height: 8, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)]
     page.x = page.kind.side - 1; page.y = page.kind.side - 1
     pages[page.id] = page
     preparedPins.insert(page.id); submitted()
@@ -439,6 +476,8 @@ final class GlyphResidency: @unchecked Sendable {
 
   func testingOversizeWorkingSetStabilizes() -> Bool {
     guard let first = createPage(.mask), var page = pages[first.id] else { return false }
+    visibleDemand = [GlyphRasterRecipe(text: "other", width: 8, height: 8, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)]
     let charged = diagnostics().residentBytes
     let startGeneration = page.generation
     // Simulate a working set repeatedly exceeding a one-page budget. Every
@@ -476,13 +515,19 @@ final class GlyphResidency: @unchecked Sendable {
     let resultB = GlyphRasterResult(recipe: b, pixels: bitmap, kind: .mask,
       resolvedFonts: ["Menlo-Regular"], glyphIDs: [2])
     guard install(resultA) == .installed, install(resultB) == .impossible,
-      entries[a] != nil, entries[b] == nil, failed.contains(b)
+      entries[a] != nil, entries[b] == nil, suppressedForDemand.contains(b)
     else { return false }
-    // Resolving unchanged demand has a resident A and a deterministic B miss;
-    // it cannot enqueue a new raster or evict A.
+    // First completed scene establishes unchanged visible A+B demand. B is
+    // suppressed (outline), not permanently failed, and A stays resident.
     let residentA = resolve(a) != nil
     let stillMissingB = resolve(b) == nil
-    return residentA && stillMissingB && pages.count == 1
+    finishFrameDemand()
+    guard residentA && stillMissingB && pages.count == 1 else { return false }
+    // A close/demand change to B alone clears suppression; a returned B raster
+    // can now evict invisible A and become resident.
+    currentDemand = [b]; finishFrameDemand()
+    guard install(resultB) == .installed, entries[b] != nil, entries[a] == nil else { return false }
+    return true
   }
   #endif
 }

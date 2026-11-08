@@ -885,6 +885,7 @@ final class TerminalRendering: @unchecked Sendable {
     command.present(drawable)
     let retiredFallbackIDs = frameLegacyIDs
     let completedRevision = snap.revision
+    glyphResidency.finishFrameDemand()
     glyphResidency.submitted()
     residencySubmitted = true
     command.addCompletedHandler { [weak self, retiredFallbackIDs, surface] command in
