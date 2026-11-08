@@ -72,6 +72,18 @@ private final class Capture { var data = Data() }
       context = "keypad legacy keyCode=\(code) expected=\(expected.debugDescription)"
       precondition(encode(UInt16(code), expected) == Data(expected.utf8))
     }
+    // The keypad's current-layout symbol is protocol metadata; numeric-mode
+    // legacy input must use the text AppKit committed for this press instead.
+    let committedKeypadComma = Capture()
+    precondition(terminal_input_key(
+      core, ",", ".", "", "", "", 310, 0, 0,
+      Unmanaged.passUnretained(committedKeypadComma).toOpaque(),
+      { context, bytes, count in
+        guard let context, let bytes else { return }
+        Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().data.append(bytes, count: count)
+      }))
+    context = "numeric keypad comma committed=\(",".debugDescription) logical=\(".".debugDescription) wire=\(hex(committedKeypadComma.data))"
+    precondition(committedKeypadComma.data == Data(",".utf8))
     feed("\u{1b}=")
     precondition(encode(76) == Data("\u{1b}OM".utf8))
     precondition(encode(36) == Data([13]))

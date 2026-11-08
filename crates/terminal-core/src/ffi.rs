@@ -264,7 +264,7 @@ pub unsafe extern "C" fn terminal_input_key(
         23 => Key::Escape,
         100..=111 => Key::Function((key - 99) as u8),
         300..=317 => match KeypadKey::from_index((key - 300) as usize) {
-            Some(keypad) => Key::Keypad(keypad, logical.chars().next()),
+            Some(keypad) => Key::Keypad(keypad, text.chars().next()),
             None => return false,
         },
         400..=411 => Key::Modifier(57441 + key - 400),
