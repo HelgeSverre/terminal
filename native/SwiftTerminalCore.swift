@@ -106,6 +106,7 @@ private final class SwiftTerminalCore {
   private var nextClipboardRequestID: UInt64 = 1
   private var clipboardRequests: [(UInt64, Data)] = []
   private var pendingClipboardRequests = Set<UInt64>()
+  private var palette = TerminalPalette()
   private var title = ""
   private var currentDirectory: String?
   private var applicationCursor = false
@@ -481,6 +482,7 @@ private final class SwiftTerminalCore {
     applicationCursor = false; applicationKeypad = false; bracketedPaste = false
     focusReporting = false; reverseVideo = false; mouseMode = 0; sgrMouse = false
     currentLink = nil
+    palette.reset()
     charsetSpecial = [false, false]; charsetSlot = 0
     lastPrinted = ""; lastPrintedStyle = SwiftStyle(); lastPrintedLink = nil
     lastPrintedFlags = 0; repeatRemaining = 0
@@ -895,24 +897,33 @@ private final class SwiftTerminalCore {
   private func finishString() {
     let payload = sequence; sequence = ""
     if case .osc = parser {
-      // String framing records byte values; decode once at the command seam.
-      guard let payload = String(bytes: payload.unicodeScalars.map { UInt8($0.value) }, encoding: .utf8) else { return }
-      let parts = payload.split(separator: ";", omittingEmptySubsequences: false)
-      guard let command = parts.first else { return }
-      if command == "0" || command == "2" { title = parts.dropFirst().joined(separator: ";") }
+      // OSC bytes are lossy UTF-8 decoded in Rust before command dispatch.
+      let bytes = payload.unicodeScalars.map { UInt8($0.value) }
+      let decoded = String(decoding: bytes, as: UTF8.self)
+      guard let separator = decoded.firstIndex(of: ";") else { return }
+      let command = String(decoded[..<separator])
+      let value = String(decoded[decoded.index(after: separator)...])
+      if command == "0" || command == "2" { title = sanitizedTitle(value) }
       else if command == "7" {
-        let directory = parts.dropFirst().joined(separator: ";")
-        if directory.utf8.count <= 8192 { currentDirectory = directory }
+        if value.utf8.count <= 8192 { currentDirectory = value }
       }
-      else if command == "8" { currentLink = parts.count > 2 ? String(parts.dropFirst(2).joined(separator: ";")) : nil }
+      else if command == "8" {
+        if let parameterSeparator = value.firstIndex(of: ";") {
+          let uri = String(value[value.index(after: parameterSeparator)...])
+          if uri.utf8.count <= 8192 { currentLink = uri.isEmpty ? nil : uri }
+        }
+      }
+      else if ["4", "10", "11", "104"].contains(command) {
+        for reply in palette.applyOSC(command: command, value: value) { replies.append(contentsOf: reply.utf8) }
+      }
       else if command == "133" {
-        let marker = parts.dropFirst().first
+        let marker = value.split(separator: ";", omittingEmptySubsequences: false).first
         var current = screen
         switch marker {
         case "A", "B":
           if marker == "A" {
             current.promptPhase = .drawing
-            current.promptRedraw = parts.dropFirst(2).contains { $0 == "redraw=1" }
+            current.promptRedraw = value.split(separator: ";", omittingEmptySubsequences: false).dropFirst().contains { $0 == "redraw=1" }
             current.promptAnchor = PromptAnchor(row: current.rows[current.cursorRow].id,
                                                 column: current.cursorColumn,
                                                 pendingWrap: current.pendingWrap)
@@ -1260,11 +1271,18 @@ private final class SwiftTerminalCore {
     case .resourceLimit: return 4
     }
   }
-  private func palette() -> [[Int]] {
-    var output = [[27,28,31], [239,68,68], [34,197,94], [250,204,21], [96,165,250], [192,132,252], [34,211,238], [212,212,216], [107,111,118], [248,113,113], [74,222,128], [253,224,71], [147,197,253], [216,180,254], [103,232,249], [250,250,250]]
-    for red in [0,95,135,175,215,255] { for green in [0,95,135,175,215,255] { for blue in [0,95,135,175,215,255] { output.append([red, green, blue]) } } }
-    for index in 0..<24 { let value = 8 + index * 10; output.append([value, value, value]) }
-    return output
+  private func sanitizedTitle(_ value: String) -> String {
+    var result = ""
+    var byteCount = 0
+    // Rust `char::is_control` maps to Unicode's Cc category only. In
+    // particular, format scalars such as ZWJ and WORD JOINER remain titles.
+    for scalar in value.unicodeScalars where scalar.properties.generalCategory != .control {
+      let nextCount = scalar.utf8.count
+      guard byteCount + nextCount <= 4096 else { break }
+      result.unicodeScalars.append(scalar)
+      byteCount += nextCount
+    }
+    return result
   }
   private struct SnapshotSelection {
     var rows: [SwiftRow]
@@ -1369,7 +1387,7 @@ private final class SwiftTerminalCore {
   private func snapshotMetadata(cursor: SwiftScreen, offset: Int,
                                 followingTail: Bool, search: [[String: Int]]) -> [String: Any] {
     let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
-    var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
+    var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette.snapshotPalette,"default_fg":palette.snapshotDefaultForeground,"default_bg":palette.snapshotDefaultBackground]
     metadata["cwd"] = currentDirectory as Any? ?? NSNull()
     return metadata
   }

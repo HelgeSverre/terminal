@@ -57,17 +57,17 @@
     "terminal_palette": ["TerminalPalette.swift", "tests/TerminalPaletteTests.swift"],
     "terminal_graphics_oracle": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
+      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
       "tests/TerminalGraphicsOracleTests.swift"
     ],
     "pty": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift"
+      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift"
     ],
     "transport": ["Transport.swift", "tests/TransportTests.swift"],
     "session": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
+      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
       "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
       "CellPalette.swift", "AccessibilityProjection.swift", "tests/SessionTests.swift"
     ],
@@ -78,13 +78,13 @@
     "preferences": ["Preferences.swift", "tests/PreferencesTests.swift"],
     "snapshot_bridge": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
+      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
       "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
       "CellPalette.swift", "AccessibilityProjection.swift", "tests/SnapshotBridgeTests.swift"
     ],
     "keymap": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
+      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
       "Preferences.swift", "KeyMap.swift", "tests/KeyMapTests.swift"
     ],
     "swift_core": [
@@ -97,6 +97,7 @@
       "SwiftInputEncoder.swift",
       "ClipboardProtocol.swift",
       "SwiftGraphics.swift",
+      "TerminalPalette.swift",
       "UnicodeLowercase.swift",
       "SwiftSearchViewport.swift",
       "SwiftTerminalCore.swift",
@@ -106,7 +107,7 @@
     "terminal_document_oracle": [
       "TerminalDocument.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
       "DocumentReflow.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
+      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
       "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalDocumentOracleTests.swift"
     ],
     "terminal_document_ownership": [
@@ -116,27 +117,27 @@
     ],
     "terminal_viewport_oracle": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift",
-      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
+      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
       "SwiftTerminalCore.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalViewportOracleTests.swift"
     ],
     "terminal_reflow_semantics": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift",
-      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
+      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
       "SwiftTerminalCore.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalReflowSemanticTests.swift"
     ],
     "terminal_prompt_clear_oracle": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift",
-      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
+      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
       "SwiftTerminalCore.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalPromptClearOracleTests.swift"
     ],
     "terminal_scheduler_oracle": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift",
-      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
+      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
       "SwiftTerminalCore.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalSchedulerOracleTests.swift"
     ],
     "terminal_semantic_regression": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift",
-      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
+      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
       "SwiftTerminalCore.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalSemanticRegressionTests.swift"
     ],
     "swift_unicode18_corpus": [
@@ -153,18 +154,18 @@
     ],
     "clipboard_access": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift", "Preferences.swift",
+      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift", "Preferences.swift",
       "Font.swift", "Transport.swift", "Session.swift", "ClipboardAccess.swift", "SnapshotBridge.swift",
       "CellPalette.swift", "AccessibilityProjection.swift", "tests/ClipboardAccessTests.swift"
     ],
     "terminal_boundary_regression": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
+      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
       "tests/TerminalBoundaryRegressionTests.swift"
     ],
     "osc52_protocol": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift", "tests/OSC52ProtocolTests.swift"
+      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift", "tests/OSC52ProtocolTests.swift"
     ],
     "terminal_width": ["TerminalWidth.swift", "TerminalWidthTables.swift", "tests/TerminalWidthTests.swift"],
     "unicode_lowercase": ["UnicodeLowercase.swift", "tests/UnicodeLowercaseTests.swift"],

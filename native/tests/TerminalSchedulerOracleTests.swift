@@ -143,6 +143,38 @@ import Foundation
     precondition(text(snapshot(repeated)!).contains("Z") && !text(snapshot(repeated)!).contains("X"))
   }
 
+  static func oscPaletteTitleAndLinkUseABIState() {
+    let terminal = terminal_create(16, 2)!; defer { terminal_destroy(terminal) }
+    feed(terminal, "\u{1b}]4;1;#010203;2;?\u{1b}\\\u{1b}]10;#112233\u{7}\u{1b}]11;#445566\u{7}")
+    var value = snapshot(terminal)!
+    precondition((value["palette"] as! [[Int]])[1] == [1, 2, 3])
+    precondition(value["default_fg"] as? [Int] == [17, 34, 51])
+    precondition(value["default_bg"] as? [Int] == [68, 85, 102])
+    precondition(replies(terminal) == Data("\u{1b}]4;2;rgb:2222/c5c5/5e5e\u{1b}\\".utf8))
+
+    feed(terminal, "\u{1b}]2;visible\u{200d}\u{2060}\u{1}\u{9f}title\u{7}")
+    value = snapshot(terminal)!
+    precondition(value["title"] as? String == "visible\u{200d}\u{2060}title")
+    let longTitle = String(repeating: "a", count: 4095) + "éZ"
+    feed(terminal, "\u{1b}]0;\(longTitle)\u{7}")
+    precondition((snapshot(terminal)!["title"] as! String).utf8.count == 4095)
+
+    let lossy = Data([0x1b, 0x5d, 0x32, 0x3b, 0x4f, 0xff, 0x4b, 0x07])
+    _ = feed(terminal, lossy)
+    precondition(snapshot(terminal)!["title"] as? String == "O�K")
+
+    feed(terminal, "\u{1b}]8;id=1;https://example.test/\u{1b}\\L\u{1b}]8;id=1;\u{7}U")
+    let cells = (snapshot(terminal)!["rows"] as! [[String: Any]]).flatMap { $0["cells"] as! [[String: Any]] }
+    precondition(cells.first { $0["text"] as? String == "L" }?["link"] as? String == "https://example.test/")
+    precondition(cells.first { $0["text"] as? String == "U" }?["link"] is NSNull)
+
+    feed(terminal, "\u{1b}]4;1;#ffffff\u{7}\u{1b}c")
+    value = snapshot(terminal)!
+    precondition((value["palette"] as! [[Int]])[1] == [239, 68, 68])
+    precondition(value["default_fg"] as? [Int] == [230, 230, 230])
+    precondition(value["default_bg"] as? [Int] == [10, 10, 11])
+  }
+
   static func replyPressurePreservesUnconsumedInput() {
     let terminal = terminal_create(8, 2)!; defer { terminal_destroy(terminal) }
     let requests = Data((String(repeating: "\u{1b}[5n", count: 10_000) + "Z").utf8)
@@ -160,7 +192,7 @@ import Foundation
 
   static func main() {
     if CommandLine.arguments.contains("--reply-pressure") { replyPressurePreservesUnconsumedInput(); return }
-    resumableREPDoesNotOvertakeSuffix(); synchronizedOutputUsesABIClockDeadline(); keyboardFlagsAreScreenLocal(); protocolModesAndTabs(); replyPressurePreservesUnconsumedInput()
+    resumableREPDoesNotOvertakeSuffix(); synchronizedOutputUsesABIClockDeadline(); keyboardFlagsAreScreenLocal(); protocolModesAndTabs(); oscPaletteTitleAndLinkUseABIState(); replyPressurePreservesUnconsumedInput()
     print("PASS Terminal scheduler oracle: resumable REP, FIFO suffix, reply pressure, sync deadline, screen-local keyboard, invariants")
   }
 }
