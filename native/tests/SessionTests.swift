@@ -12,6 +12,8 @@ import Foundation
       uniqueKeysWithValues: [
         "input_admitted_for_ordered_output", "input_before_mode_suffix_is_unbracketed",
         "input_after_accepted_output_is_bracketed", "ordered_mode_encoding_after_rep",
+        "physical_key_reaches_pty",
+        "modifier_keys_preserve_anchored_viewport",
         "rep_completed", "large_paste_accepted", "oversize_paste_rejected",
         "saturated_cancel_close_reaped", "cancel_close_under_three_seconds",
         "ordinary_ingress_busy", "release_admitted_under_ingress_pressure",
@@ -82,6 +84,75 @@ import Foundation
     while !done && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
     checks["rep_completed"] = done
     ordered.close()
+    // Exercise the full typed physical-key queue and PTY write path. Mapping
+    // tests alone cannot detect accidentally sending the unshifted logical key
+    // to a legacy program.
+    let physical = Session(launch: spec(
+      #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; print "PHYSICAL_READY"; key=STDIN.read(1); print(key=="!" ? "\r\nPHYSICAL_KEY_OK" : "\r\nPHYSICAL_KEY_BAD")'"#))
+    var physicalSent = false
+    var physicalDone = false
+    physical.onSnapshot = { snapshot in
+      let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
+      if !physicalSent && text.contains("PHYSICAL_READY") {
+        physicalSent = true
+        precondition(physical.input(TerminalKeyEvent(
+          text: "!", logical: "1", shifted: "!", baseLayout: "1", legacyText: "!", key: 200,
+          modifiers: 1, event: 0)))
+      }
+      physicalDone = physicalDone || text.contains("PHYSICAL_KEY_OK")
+    }
+    let physicalDeadline = Date().addingTimeInterval(5)
+    while !physicalDone && Date() < physicalDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["physical_key_reaches_pty"] = physicalDone
+    physical.close()
+    // Modifier-only events must not be treated as typing just because Kitty
+    // happens to encode them. Exercise the ordered PTY path in both default
+    // and all-keys mode while the user is reading retained output.
+    let shiftPress = TerminalKeyEvent(
+      text: "", logical: "", shifted: "", baseLayout: "", legacyText: "", key: 400, modifiers: 1, event: 0)
+    let commandPress = TerminalKeyEvent(
+      text: "", logical: "", shifted: "", baseLayout: "", legacyText: "", key: 403, modifiers: 9, event: 0)
+    precondition(!shiftPress.isKeyAction)
+    precondition(!commandPress.isKeyAction)
+    func preservesModifierViewport(kitty: Bool) -> Bool {
+      let mode = kitty ? "print \"\\e[=8u\"; " : ""
+      let read = kitty ? 2 : 1
+      let modifierView = Session(launch: spec(
+        "stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; \(mode)30.times{|i| print \"modifier#{i}\\r\\n\"}; print \"MODIFIER_READY\"; STDIN.read(\(read)); print \"MODIFIER_TICK\"; sleep 1'"))
+      var phase = 0
+      var revision: UInt64 = 0
+      var rows: [RowSnapshot] = []
+      var passed = false
+      modifierView.onSnapshot = { snapshot in
+        let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
+        switch phase {
+        case 0 where text.contains("MODIFIER_READY"):
+          phase = 1
+          modifierView.scroll(3)
+        case 1 where !snapshot.following_tail:
+          phase = 2
+          revision = snapshot.revision
+          rows = snapshot.rows
+          precondition(modifierView.input(shiftPress))
+          precondition(modifierView.input(commandPress))
+          if !kitty { modifierView.rawInput(Data([0])) }
+        case 2 where snapshot.revision > revision:
+          passed = !snapshot.following_tail && snapshot.scroll_offset == 3 && snapshot.rows == rows
+          phase = 3
+        default: break
+        }
+      }
+      let deadline = Date().addingTimeInterval(5)
+      while phase != 3 && Date() < deadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+      }
+      modifierView.close()
+      return phase == 3 && passed
+    }
+    checks["modifier_keys_preserve_anchored_viewport"] =
+      preservesModifierViewport(kitty: false) && preservesModifierViewport(kitty: true)
     // A finished child can leave its screen open. Its input admission must
     // close before callers (including AppleScript) are told text was accepted.
     let finished = Session(launch: spec("printf FINISHED_PTY_READY"))

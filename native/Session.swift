@@ -172,12 +172,32 @@ final class ClipboardWriteRequest {
     complete(allowed, completion)
   }
 }
+
+// Complete physical-key facts are admitted as one object. Text commits, paste
+// and focus use Session's legacy raw-input API and cannot accidentally claim a
+// keyboard-layout identity they do not have.
+struct TerminalKeyEvent {
+  let text: String
+  let logical: String
+  let shifted: String
+  let baseLayout: String
+  let legacyText: String
+  let key: UInt32
+  let modifiers: UInt32
+  let event: UInt32
+  private var isModifierOnly: Bool { (400...412).contains(key) }
+  // Presentation policy belongs to the immutable input fact, not to mutable
+  // terminal modes queried from the main thread. A modifier can encode to an
+  // empty legacy write or a Kitty sequence, but it never changes user intent.
+  var isKeyAction: Bool { event != 2 && !isModifierOnly }
+}
 // The PTY and Rust handle are confined to this queue. Main receives immutable decoded values.
 final class Session: @unchecked Sendable {
   let queue = DispatchQueue(label: "no.helgesverre.terminal.owner", qos: .userInteractive)
   private enum Event {
     case output(Data, Int)
     case input(String, UInt32, UInt32, UInt32, Int)
+    case keyInput(TerminalKeyEvent, Int)
     case raw(Data, Int)
     case shortcut(Data, Int)
     case resize(Int, Int, Int, Int)
@@ -518,11 +538,27 @@ final class Session: @unchecked Sendable {
       guard writeBytes + text.utf8.count + 256 <= 3 * 1024 * 1024 else { return }
       collectingPaste = key == 1
       let accepted = terminal_input(
-        core, text, key, modifiers, event, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
+        core, text, key, modifiers, event,
+        Unmanaged.passUnretained(self).toOpaque(), Self.collect)
       collectingPaste = false
       release(cost)
       if !accepted { report("Input rejected by encoding policy") }
       if accepted && key != 2 && event != 2 && configuration.followTailOnInput { terminal_view_follow_tail(core) }
+    case .keyInput(let input, let cost):
+      if writeEnded {
+        release(cost)
+        report("Input closed before delivery")
+        break
+      }
+      guard writeBytes + input.text.utf8.count + 256 <= 3 * 1024 * 1024 else { return }
+      let accepted = terminal_input_key(
+        core, input.text, input.logical, input.shifted, input.baseLayout, input.legacyText, input.key,
+        input.modifiers, input.event, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
+      release(cost)
+      if !accepted { report("Input rejected by encoding policy") }
+      if accepted && input.isKeyAction && configuration.followTailOnInput {
+        terminal_view_follow_tail(core)
+      }
     case .raw(let bytes, let cost), .shortcut(let bytes, let cost):
       guard writeBytes + bytes.count <= 3 * 1024 * 1024 else { return }
       writeID += 1
@@ -770,6 +806,25 @@ final class Session: @unchecked Sendable {
     }
     return true
   }
+  @discardableResult func input(_ input: TerminalKeyEvent) -> Bool {
+    let cost = input.text.utf8.count + 128
+    let lifecycle = input.event == 2
+    let control = cost <= 256 && input.event == 2
+    let admission = reserve(cost, control: control)
+    guard admission == .accepted else {
+      if admission != .closed || !lifecycle { report(admission.message) }
+      return false
+    }
+    queue.async { [self] in
+      guard !closed, !writeEnded else {
+        release(cost)
+        if !lifecycle { report("Input closed") }
+        return
+      }
+      enqueue(.keyInput(input, cost))
+    }
+    return true
+  }
   func rawInput(_ bytes: Data) {
     _ = submitRaw(bytes, event: Event.raw)
   }
@@ -928,7 +983,8 @@ final class Session: @unchecked Sendable {
       historySearch.cancel()
       for index in head..<events.count {
         switch events[index] {
-        case .input(_, _, _, _, let cost), .raw(_, let cost), .shortcut(_, let cost): release(cost)
+        case .input(_, _, _, _, let cost), .keyInput(_, let cost), .raw(_, let cost), .shortcut(_, let cost):
+          release(cost)
         case .find(_, let completion): DispatchQueue.main.async { completion(.cancelled) }
         default: break
         }

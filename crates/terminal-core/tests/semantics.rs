@@ -1,6 +1,6 @@
 use terminal_core::{
     Terminal,
-    input::{Key, Modifiers},
+    input::{Key, KeyMetadata, Modifiers},
     model::*,
     parser::{Operation, VtParser},
 };
@@ -417,6 +417,238 @@ fn kitty_event_encoding() {
             true
         ),
         b"\x1b[97:65;2:3u"
+    );
+}
+#[test]
+fn kitty_alternate_layout_and_modifier_events() {
+    let compatibility = Terminal::new(8, 2).unwrap();
+    assert!(
+        compatibility
+            .encode_key(Key::Modifier(57442), Modifiers::default(), false, false)
+            .is_empty()
+    );
+    assert_eq!(
+        compatibility.encode_key(
+            Key::Up,
+            Modifiers {
+                caps_lock: true,
+                num_lock: true,
+                ..Modifiers::default()
+            },
+            false,
+            false,
+        ),
+        b"\x1b[A"
+    );
+    let t = terminal(8, 2, "\x1b[=31u");
+    assert_eq!(
+        t.encode_key_with_metadata(
+            Key::Character('с'),
+            Modifiers {
+                control: true,
+                ..Modifiers::default()
+            },
+            false,
+            false,
+            KeyMetadata {
+                base_layout: Some('c'),
+                associated_text: Some("с"),
+                ..KeyMetadata::default()
+            },
+        ),
+        "\x1b[1089::99;5:1u".as_bytes()
+    );
+    assert_eq!(
+        t.encode_key_with_metadata(
+            Key::Character('='),
+            Modifiers {
+                shift: true,
+                ..Modifiers::default()
+            },
+            false,
+            false,
+            KeyMetadata {
+                shifted: Some('+'),
+                base_layout: Some('='),
+                associated_text: Some("+"),
+                ..KeyMetadata::default()
+            },
+        ),
+        b"\x1b[61:43:61;2:1;43u"
+    );
+    assert_eq!(
+        t.encode_key_with_metadata(
+            Key::Character('x'),
+            Modifiers::default(),
+            false,
+            false,
+            KeyMetadata {
+                associated_text: Some(""),
+                ..KeyMetadata::default()
+            },
+        ),
+        b"\x1b[120;1:1u"
+    );
+    assert_eq!(
+        t.encode_key_with_metadata(
+            Key::Modifier(57442),
+            Modifiers {
+                control: true,
+                caps_lock: true,
+                ..Modifiers::default()
+            },
+            false,
+            false,
+            KeyMetadata::default(),
+        ),
+        b"\x1b[57442;69:1u"
+    );
+    assert_eq!(
+        t.encode_key_with_metadata(
+            Key::Modifier(57442),
+            Modifiers {
+                caps_lock: true,
+                ..Modifiers::default()
+            },
+            false,
+            true,
+            KeyMetadata::default(),
+        ),
+        b"\x1b[57442;65:3u"
+    );
+    assert_eq!(
+        t.encode_key_with_metadata(
+            Key::Modifier(57358),
+            Modifiers {
+                caps_lock: true,
+                ..Modifiers::default()
+            },
+            false,
+            false,
+            KeyMetadata::default(),
+        ),
+        b"\x1b[57358;65:1u"
+    );
+}
+#[test]
+fn legacy_physical_keys_preserve_committed_text() {
+    let t = Terminal::new(8, 2).unwrap();
+    let key = |logical, text, modifiers| {
+        t.encode_key_with_metadata(
+            Key::Character(logical),
+            modifiers,
+            false,
+            false,
+            KeyMetadata {
+                associated_text: Some(text),
+                ..KeyMetadata::default()
+            },
+        )
+    };
+    assert_eq!(
+        key(
+            'a',
+            "A",
+            Modifiers {
+                shift: true,
+                ..Modifiers::default()
+            }
+        ),
+        b"A"
+    );
+    assert_eq!(
+        key(
+            '1',
+            "!",
+            Modifiers {
+                shift: true,
+                ..Modifiers::default()
+            }
+        ),
+        b"!"
+    );
+    assert_eq!(key('a', "æ", Modifiers::default()), "æ".as_bytes());
+    assert_eq!(
+        key(
+            'å',
+            "Å",
+            Modifiers {
+                caps_lock: true,
+                ..Modifiers::default()
+            },
+        ),
+        "Å".as_bytes()
+    );
+    assert_eq!(
+        key(
+            '1',
+            "!",
+            Modifiers {
+                shift: true,
+                super_key: true,
+                ..Modifiers::default()
+            },
+        ),
+        b"\x1b[49;10u"
+    );
+    assert_eq!(
+        key(
+            'c',
+            "ç",
+            Modifiers {
+                control: true,
+                ..Modifiers::default()
+            },
+        ),
+        &[3]
+    );
+    assert_eq!(
+        key(
+            'a',
+            "æ",
+            Modifiers {
+                alt: true,
+                ..Modifiers::default()
+            },
+        ),
+        b"\x1ba"
+    );
+    assert_eq!(
+        t.encode_key_with_metadata(
+            Key::Character('1'),
+            Modifiers {
+                shift: true,
+                alt: true,
+                ..Modifiers::default()
+            },
+            false,
+            false,
+            KeyMetadata {
+                shifted: Some('!'),
+                legacy_text: Some("!"),
+                associated_text: Some("¡"),
+                ..KeyMetadata::default()
+            },
+        ),
+        b"\x1b!"
+    );
+    assert_eq!(
+        t.encode_key_with_metadata(
+            Key::Character('a'),
+            Modifiers {
+                alt: true,
+                caps_lock: true,
+                ..Modifiers::default()
+            },
+            false,
+            false,
+            KeyMetadata {
+                legacy_text: Some("A"),
+                associated_text: Some("å"),
+                ..KeyMetadata::default()
+            },
+        ),
+        b"\x1bA"
     );
 }
 #[test]

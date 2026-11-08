@@ -9,7 +9,7 @@ pub unsafe extern "C" fn terminal_clear_display(terminal: *mut crate::Terminal) 
 }
 use crate::{
     Terminal,
-    input::{Key, KeypadKey, Modifiers},
+    input::{Key, KeyMetadata, KeypadKey, Modifiers},
 };
 use std::{
     ffi::{CStr, CString, c_char},
@@ -207,11 +207,93 @@ pub unsafe extern "C" fn terminal_input(
                 alt: modifiers & 2 != 0,
                 control: modifiers & 4 != 0,
                 super_key: modifiers & 8 != 0,
+                caps_lock: modifiers & 64 != 0,
+                num_lock: modifiers & 128 != 0,
             },
             event == 1,
             event == 2,
         )
     };
+    callback(context, bytes.as_ptr(), bytes.len());
+    true
+}
+/// # Safety
+/// Handle is live and exclusive; all non-null strings are valid NUL-terminated UTF-8.
+/// The callback borrows bytes only for its invocation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn terminal_input_key(
+    terminal: *mut Terminal,
+    text: *const c_char,
+    logical: *const c_char,
+    shifted: *const c_char,
+    base_layout: *const c_char,
+    legacy_text: *const c_char,
+    key: u32,
+    modifiers: u32,
+    event: u32,
+    context: *mut std::ffi::c_void,
+    callback: extern "C" fn(*mut std::ffi::c_void, *const u8, usize),
+) -> bool {
+    if terminal.is_null() {
+        return false;
+    }
+    // SAFETY: caller guarantees a live exclusive handle and readable C strings.
+    let string = |value: *const c_char| {
+        if value.is_null() {
+            ""
+        } else {
+            unsafe { CStr::from_ptr(value) }.to_str().unwrap_or("")
+        }
+    };
+    let text = string(text);
+    let logical = string(logical);
+    let key = match key {
+        10 => Key::Up,
+        11 => Key::Down,
+        12 => Key::Right,
+        13 => Key::Left,
+        14 => Key::Home,
+        15 => Key::End,
+        16 => Key::PageUp,
+        17 => Key::PageDown,
+        18 => Key::Insert,
+        19 => Key::Delete,
+        20 => Key::Backspace,
+        21 => Key::Tab,
+        22 => Key::Enter,
+        23 => Key::Escape,
+        100..=111 => Key::Function((key - 99) as u8),
+        300..=317 => match KeypadKey::from_index((key - 300) as usize) {
+            Some(keypad) => Key::Keypad(keypad, logical.chars().next()),
+            None => return false,
+        },
+        400..=411 => Key::Modifier(57441 + key - 400),
+        412 => Key::Modifier(57358),
+        _ => match logical.chars().next() {
+            Some(character) => Key::Character(character),
+            None => return false,
+        },
+    };
+    let t = unsafe { &mut *terminal };
+    let bytes = t.encode_key_with_metadata(
+        key,
+        Modifiers {
+            shift: modifiers & 1 != 0,
+            alt: modifiers & 2 != 0,
+            control: modifiers & 4 != 0,
+            super_key: modifiers & 8 != 0,
+            caps_lock: modifiers & 64 != 0,
+            num_lock: modifiers & 128 != 0,
+        },
+        event == 1,
+        event == 2,
+        KeyMetadata {
+            shifted: string(shifted).chars().next(),
+            base_layout: string(base_layout).chars().next(),
+            legacy_text: (!string(legacy_text).is_empty()).then_some(string(legacy_text)),
+            associated_text: (!text.is_empty()).then_some(text),
+        },
+    );
     callback(context, bytes.as_ptr(), bytes.len());
     true
 }

@@ -47,6 +47,7 @@ import Darwin
       "command_left_begins_line", "command_right_accepts_zsh_suggestion",
       "command_k_shortcut_registered",
       "command_k_clears_history_and_redraws_prompt",
+      "modifier_keys_preserve_selection",
       "starting_directory",
     ].map { ($0, false) })
   var measurements: [String: Any] = [:]
@@ -78,6 +79,27 @@ import Darwin
     pane.onObservedSnapshot = { [weak self] snapshot in self?.observe(snapshot) }
     pane.session.semanticProbe { _ in }
   }
+  private func modifierKeysPreserveSelection(_ pane: TerminalCanvasView) -> Bool {
+    let selection = pane.accessibilityRange(for: 0)
+    guard selection.location != NSNotFound, selection.length > 0 else { return false }
+    pane.setAccessibilitySelectedTextRange(selection)
+    let event = { (flags: NSEvent.ModifierFlags, key: UInt16) in
+      NSEvent.keyEvent(
+        with: .flagsChanged, location: .zero, modifierFlags: flags,
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: pane.window?.windowNumber ?? 0,
+        context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: key)
+    }
+    guard let shiftDown = event(.shift, 56),
+      let commandDown = event([.shift, .command], 55),
+      let commandUp = event(.shift, 55),
+      let shiftUp = event([], 56)
+    else { return false }
+    for value in [shiftDown, commandDown, commandUp, shiftUp] {
+      pane.flagsChanged(with: value)
+      guard pane.accessibilitySelectedTextRange() == selection else { return false }
+    }
+    return true
+  }
   private func runCommand() {
     guard let pane = controller.panes.first else { return }
     pane.insertText(
@@ -100,6 +122,9 @@ import Darwin
   func observe(_ snapshot: TerminalSnapshot) {
     if phase == -1 {
       guard snapshot.at_prompt && snapshot.modes.bracketed_paste else { return }
+      if let pane = controller.panes.first {
+        checks["modifier_keys_preserve_selection"] = modifierKeysPreserveSelection(pane)
+      }
       phase = 0
       runCommand()
       return
@@ -228,6 +253,20 @@ import Darwin
       checks["command_k_clears_history_and_redraws_prompt"] = snapshot.history_rows == 0
         && !text.contains("CMD_SUGGEST_OK") && !text.contains("SMOKE_SENTINEL")
       phase = 11
+      if let pane = controller.panes.first {
+        pane.insertText(
+          "printf '\\033[=8uKITTY_SELECTION_%s\\n' READY",
+          replacementRange: NSRange(location: NSNotFound, length: 0))
+        pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+      }
+    } else if phase == 11
+      && lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "KITTY_SELECTION_READY" })
+    {
+      if let pane = controller.panes.first {
+        checks["modifier_keys_preserve_selection"] =
+          checks["modifier_keys_preserve_selection"] == true && modifierKeysPreserveSelection(pane)
+      }
+      phase = 12
       if idle {
         controller.closePane(nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [self] in measureIdle() }

@@ -31,6 +31,10 @@ void terminal_replies(Terminal *,void *,void (*)(void *,const uint8_t *,size_t))
 void terminal_take_clipboard_requests(Terminal *,void *,void (*)(void *,uint64_t,const uint8_t *,size_t));
 bool terminal_complete_clipboard_request(Terminal *,uint64_t);
 bool terminal_input(Terminal *,const char *,uint32_t,uint32_t,uint32_t,void *,void (*)(void *,const uint8_t *,size_t));
+/* Physical-key path. `logical` is the current-layout unshifted key; `text` is
+ * AppKit's committed text; shifted/base_layout are Kitty alternate-key values;
+ * `legacy_text` is layout text with Option removed. Empty strings are absent. */
+bool terminal_input_key(Terminal *,const char *,const char *,const char *,const char *,const char *,uint32_t,uint32_t,uint32_t,void *,void (*)(void *,const uint8_t *,size_t));
 typedef struct SearchTask TerminalSearch;
 /* Exclusive task ownership migrates owner -> worker -> owner. No terminal
  * access on worker. Status: 0=work,1=page,2=done,3=changed,4=limit; accept 5=hit. */
