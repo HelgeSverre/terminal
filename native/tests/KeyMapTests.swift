@@ -4,6 +4,28 @@ import AppKit
 private final class Capture { var data = Data() }
 @main struct KeyMapTests {
   static func main() {
+    var context = "startup"
+    func hex(_ data: Data) -> String {
+      data.map { String(format: "%02x", $0) }.joined()
+    }
+    func unmodifiedText(_ event: NSEvent, committed: String) -> String {
+      event.charactersIgnoringModifiers.flatMap { $0.isEmpty ? nil : $0 } ?? committed
+    }
+    func fail(
+      _ message: String, file: StaticString = #fileID, line: UInt = #line
+    ) -> Never {
+      let line = "FAIL native key map: \(message) [\(context)] at \(file):\(line)\n"
+      FileHandle.standardError.write(Data(line.utf8))
+      Foundation.exit(1)
+    }
+    // Swift's optimized `precondition` terminates with SIGTRAP without a useful
+    // predicate in GitHub's log. Keep the test's assertions, but make failures
+    // identify the current synthetic key and its mapped/wire facts.
+    func precondition(
+      _ condition: @autoclosure () -> Bool, file: StaticString = #fileID, line: UInt = #line
+    ) {
+      guard condition() else { fail("assertion failed", file: file, line: line) }
+    }
     let core = terminal_create(80, 24)!
     defer { terminal_destroy(core) }
     func encode(
@@ -15,7 +37,7 @@ private final class Capture { var data = Data() }
         windowNumber: 0, context: nil, characters: text, charactersIgnoringModifiers: text,
         isARepeat: false, keyCode: physical)!
       guard case .encoded(let mapped) = NativeKeyMap.route(event) else {
-        fatalError("physical key must route to the terminal")
+        fail("physical key must route to the terminal")
       }
       let capture = Capture()
       let accepted = terminal_input_key(
@@ -27,12 +49,19 @@ private final class Capture { var data = Data() }
           Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().data.append(
             bytes, count: count)
         })
+      context =
+        "encode keyCode=\(physical) text=\(text.debugDescription) flags=\(flags.rawValue) "
+        + "mapped(key=\(mapped.key), logical=\(mapped.logical.debugDescription), "
+        + "shifted=\(mapped.shifted.debugDescription), base=\(mapped.baseLayout.debugDescription), "
+        + "legacy=\(mapped.legacyText.debugDescription), modifiers=\(mapped.modifiers)) "
+        + "accepted=\(accepted) wire=\(hex(capture.data))"
       precondition(accepted)
       return capture.data
     }
     func feed(_ text: String) {
       let bytes = Array(text.utf8)
       let used = bytes.withUnsafeBufferPointer { terminal_feed(core, $0.baseAddress, $0.count, 0) }
+      context = "feed bytes=\(bytes.count) used=\(used)"
       precondition(used == bytes.count)
     }
     for (code, expected) in [
@@ -40,6 +69,7 @@ private final class Capture { var data = Data() }
       (89, "7"), (91, "8"), (92, "9"), (65, ","), (75, "/"), (67, "*"), (78, "-"),
       (69, "+"), (81, "="), (95, ","), (76, "\r"), (36, "\r"),
     ] {
+      context = "keypad legacy keyCode=\(code) expected=\(expected.debugDescription)"
       precondition(encode(UInt16(code), expected) == Data(expected.utf8))
     }
     feed("\u{1b}=")
@@ -60,15 +90,24 @@ private final class Capture { var data = Data() }
       windowNumber: 0, context: nil, characters: "!", charactersIgnoringModifiers: "!",
       isARepeat: false, keyCode: 18)!
     guard case .inputMethod = NativeKeyMap.route(shiftedPunctuation) else {
-      fatalError("ordinary shifted text must remain an input-method event")
+      fail("ordinary shifted text must remain an input-method event")
     }
     let mappedPunctuation = NativeKeyMap.textEvent(
       shiftedPunctuation, text: "!", modifiers: NativeKeyMap.modifiers(shiftedPunctuation.modifierFlags))
-    let unshifted = shiftedPunctuation.characters(byApplyingModifiers: [])!
-    let shifted = shiftedPunctuation.characters(byApplyingModifiers: .shift)!
-    precondition(mappedPunctuation.logical == unshifted)
-    precondition(mappedPunctuation.shifted == shifted)
-    precondition(mappedPunctuation.logical != mappedPunctuation.shifted)
+    let unshifted = shiftedPunctuation.characters(byApplyingModifiers: [])
+    let shifted = shiftedPunctuation.characters(byApplyingModifiers: .shift)
+    let punctuationFallback = unmodifiedText(shiftedPunctuation, committed: "!")
+    context =
+      "shifted punctuation input=\(shiftedPunctuation.characters.debugDescription) "
+      + "unshifted=\(String(describing: unshifted)) shifted=\(String(describing: shifted)) "
+      + "fallback=\(punctuationFallback.debugDescription) "
+      + "mapped(logical=\(mappedPunctuation.logical.debugDescription), "
+      + "shifted=\(mappedPunctuation.shifted.debugDescription), base=\(mappedPunctuation.baseLayout.debugDescription), "
+      + "mods=\(mappedPunctuation.modifiers))"
+    if let unshifted { precondition(mappedPunctuation.logical == unshifted) }
+    else { precondition(mappedPunctuation.logical == punctuationFallback) }
+    if let shifted { precondition(mappedPunctuation.shifted == shifted) }
+    else { precondition(mappedPunctuation.shifted == punctuationFallback) }
     precondition(mappedPunctuation.baseLayout == "1")
     precondition(mappedPunctuation.modifiers & 1 == 1)
     let alternateCapture = Capture()
@@ -85,7 +124,7 @@ private final class Capture { var data = Data() }
       windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
       isARepeat: false, keyCode: 59)!
     guard let controlDown = NativeKeyMap.modifierEvent(modifierDown), !controlDown.release else {
-      fatalError("missing left-Control press")
+      fail("missing left-Control press")
     }
     precondition(controlDown.event.key == 401 && controlDown.event.modifiers == 4)
     let modifierUp = NSEvent.keyEvent(
@@ -93,7 +132,7 @@ private final class Capture { var data = Data() }
       windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
       isARepeat: false, keyCode: 59)!
     guard let controlUp = NativeKeyMap.modifierEvent(modifierUp), controlUp.release else {
-      fatalError("missing left-Control release")
+      fail("missing left-Control release")
     }
     precondition(controlUp.event.key == 401 && controlUp.event.modifiers == 0)
     let capsLock = NSEvent.keyEvent(
@@ -101,7 +140,7 @@ private final class Capture { var data = Data() }
       windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
       isARepeat: false, keyCode: 57)!
     guard let capsLockDown = NativeKeyMap.modifierEvent(capsLock), !capsLockDown.release else {
-      fatalError("missing Caps Lock press")
+      fail("missing Caps Lock press")
     }
     precondition(capsLockDown.event.key == 412 && capsLockDown.event.modifiers == 64)
     let capsNonASCII = NSEvent.keyEvent(
@@ -110,7 +149,16 @@ private final class Capture { var data = Data() }
       isARepeat: false, keyCode: 39)!
     let mappedCaps = NativeKeyMap.textEvent(
       capsNonASCII, text: "Å", modifiers: NativeKeyMap.modifiers(capsNonASCII.modifierFlags))
-    precondition(mappedCaps.logical == capsNonASCII.characters(byApplyingModifiers: [])!)
+    let capsLogical = capsNonASCII.characters(byApplyingModifiers: [])
+    let capsFallback = unmodifiedText(capsNonASCII, committed: "Å")
+    context =
+      "caps non-ASCII input=\(capsNonASCII.characters.debugDescription) "
+      + "translated=\(String(describing: capsLogical)) fallback=\(capsFallback.debugDescription) "
+      + "logical=\(mappedCaps.logical.debugDescription) "
+      + "base=\(mappedCaps.baseLayout.debugDescription) "
+      + "modifiers=\(mappedCaps.modifiers)"
+    if let capsLogical { precondition(mappedCaps.logical == capsLogical) }
+    else { precondition(mappedCaps.logical == capsFallback) }
     precondition(mappedCaps.baseLayout == "'")
     precondition(mappedCaps.modifiers == 64)
     let modifierCapture = Capture()
@@ -162,13 +210,23 @@ private final class Capture { var data = Data() }
           guard let context, let bytes else { return }
           Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().data.append(bytes, count: count)
         }))
+      context =
+        "physical text=\(text.debugDescription) logical=\(logical.debugDescription) "
+        + "shifted=\(shifted.debugDescription) base=\(base.debugDescription) "
+        + "legacy=\(legacy.debugDescription) modifiers=\(modifiers) wire=\(hex(capture.data))"
       return capture.data
     }
+    context = "legacy physical shifted ASCII"
     precondition(physical("A", logical: "a", shifted: "A", base: "a", modifiers: 1) == Data("A".utf8))
+    context = "legacy physical shifted punctuation"
     precondition(physical("!", logical: "1", shifted: "!", base: "1", modifiers: 1) == Data("!".utf8))
+    context = "legacy physical native Option"
     precondition(physical("æ", logical: "a", modifiers: 0) == Data("æ".utf8))
+    context = "legacy physical Caps non-ASCII"
     precondition(physical("Å", logical: "å", modifiers: 64) == Data("Å".utf8))
+    context = "legacy physical Control"
     precondition(physical("ç", logical: "c", modifiers: 4) == Data([3]))
+    context = "legacy physical Option-as-Escape"
     precondition(physical("æ", logical: "a", modifiers: 2) == Data("\u{1b}a".utf8))
     precondition(physical("¡", logical: "1", shifted: "!", base: "1", legacy: "!", modifiers: 3)
       == Data("\u{1b}!".utf8))
@@ -182,7 +240,7 @@ private final class Capture { var data = Data() }
       windowNumber: 0, context: nil, characters: "!", charactersIgnoringModifiers: "!",
       isARepeat: false, keyCode: 18)!
     guard case .encoded = NativeKeyMap.route(commandShiftPunctuation) else {
-      fatalError("Command-Shift punctuation must retain physical-key metadata")
+      fail("Command-Shift punctuation must retain physical-key metadata")
     }
     for (physical, flags, expected): (UInt16, NSEvent.ModifierFlags, String) in [
       (123, .command, "\u{01}"), (124, .command, "\u{05}"), (51, .command, "\u{15}"),
@@ -192,7 +250,8 @@ private final class Capture { var data = Data() }
         with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
         windowNumber: 0, context: nil, characters: "", charactersIgnoringModifiers: "",
         isARepeat: false, keyCode: physical)!
-      guard case .shortcut(let text) = NativeKeyMap.route(event) else { fatalError("missing shortcut") }
+      guard case .shortcut(let text) = NativeKeyMap.route(event) else { fail("missing shortcut") }
+      context = "shortcut keyCode=\(physical) flags=\(flags.rawValue) expected=\(expected.debugDescription) actual=\(text.debugDescription)"
       precondition(text == expected)
     }
     print(

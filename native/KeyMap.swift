@@ -124,15 +124,17 @@ enum NativeKeyMap {
     // `charactersIgnoringModifiers` deliberately preserves Shift. Kitty's
     // primary key must instead be the current-layout value with all modifiers
     // replaced, while its shifted alternate is a separate value.
-    let logical = event.characters(byApplyingModifiers: []) ?? ""
+    let committed = text ?? event.characters ?? ""
+    let unmodified = event.charactersIgnoringModifiers.flatMap { $0.isEmpty ? nil : $0 } ?? committed
+    let logical = event.characters(byApplyingModifiers: []) ?? unmodified
     let shifted = modifiers & 1 != 0
-      ? event.characters(byApplyingModifiers: .shift) ?? "" : ""
+      ? event.characters(byApplyingModifiers: .shift) ?? unmodified : ""
     var legacyModifiers: NSEvent.ModifierFlags = []
     if modifiers & 1 != 0 { legacyModifiers.insert(.shift) }
     if modifiers & 64 != 0 { legacyModifiers.insert(.capsLock) }
-    let legacyText = event.characters(byApplyingModifiers: legacyModifiers) ?? logical
+    let legacyText = event.characters(byApplyingModifiers: legacyModifiers) ?? unmodified
     return KeyEvent(
-      key: key, logical: logical, text: text ?? event.characters ?? "", shifted: shifted,
+      key: key, logical: logical, text: committed, shifted: shifted,
       baseLayout: baseLayout[event.keyCode] ?? "", legacyText: legacyText, modifiers: modifiers)
   }
   private static let special: [UInt16: UInt32] = [
