@@ -176,3 +176,20 @@ and headless engine measurements stay separate.
 The [snapshot optimization report](../reports/swift-app-comparison-ca252d0/summary.md)
 records a measured 3.7–3.9× app improvement after removing the full-grid JSON
 round trip. Its four Swift/Rust ratios remain below the replacement target.
+
+The [same-source WMO comparison](../reports/swift-app-comparison-4ca285f-wmo/summary.md)
+then measures Swift at 7.87/9.94/3.79/9.07 MiB/s for the four workloads,
+respectively. This improves the batched incremental build, but all four
+ratios remain below 90%. Compiler mode, source changes and workload changes
+are measured separately.
+
+For the next diagnostic stack capture, use:
+
+```sh
+just profile-app /absolute/path/to/Terminal.app reports/new-profile
+```
+
+This builds the common driver, launches an owned app, then samples only its
+derived PID after startup. Both sampler and app must exit cleanly; failures
+still clean up both owned trees. The saved driver wall/CPU numbers are
+diagnostic-only because sampling perturbs them.

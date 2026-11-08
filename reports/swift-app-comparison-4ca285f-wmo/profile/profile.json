@@ -1,0 +1,133 @@
+{
+  "schema": 1,
+  "passed": true,
+  "contract": {
+    "columns": 100,
+    "rows": 30,
+    "font": "Obel Mono",
+    "font_size": 14,
+    "bytes_per_workload": 67108864,
+    "runs_per_workload": 1,
+    "idle_seconds": 3,
+    "sample_seconds": 5,
+    "sample_interval_ms": 1
+  },
+  "provenance": {
+    "runner_sha256": "c66f54a081d9ad541a3ea04be198a14053ac087d4b4d6338224d776d8e40593d",
+    "app_bundle": "/Users/helge/code/terminal-swift-experiment/target/frozen-4ca-wmo.app",
+    "app_executable_sha256": "3fb5564cf825ee477f9129cfea6352d230447f69129a20ab47dc09bda3527894",
+    "driver_source": "/Users/helge/code/terminal/native/benchmarks/terminal-bench.c",
+    "driver_source_sha256": "f426f5aaf9acb5e3b62f0e8699be5e9f4598fa3951d190635844d9fa6fd172f0",
+    "driver_sha256": "0a739a18d3928ef0fef20041e7c91c52ba05cb9f129b9ce1bf7c7c47fd779cfb",
+    "driver_build_command": [
+      "xcrun",
+      "clang",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-O2",
+      "/Users/helge/code/terminal/native/benchmarks/terminal-bench.c",
+      "-o",
+      "/Users/helge/code/terminal/reports/swift-app-comparison-4ca285f-wmo/profile/terminal-bench"
+    ],
+    "app_command": [
+      "/Users/helge/code/terminal-swift-experiment/target/frozen-4ca-wmo.app/Contents/MacOS/Terminal",
+      "--columns",
+      "100",
+      "--rows",
+      "30",
+      "--font-size",
+      "14",
+      "--exit-after-command",
+      "--execute",
+      "/Users/helge/code/terminal/reports/swift-app-comparison-4ca285f-wmo/profile/terminal-bench",
+      "--output",
+      "/Users/helge/code/terminal/reports/swift-app-comparison-4ca285f-wmo/profile/driver.json",
+      "--terminal",
+      "profiled-app",
+      "--bytes",
+      "67108864",
+      "--runs",
+      "1",
+      "--columns",
+      "100",
+      "--rows",
+      "30",
+      "--idle-seconds",
+      "3"
+    ],
+    "sample_command": [
+      "/usr/bin/sample",
+      "97680",
+      "5",
+      "1",
+      "-file",
+      "/Users/helge/code/terminal/reports/swift-app-comparison-4ca285f-wmo/profile/sample.txt"
+    ]
+  },
+  "lifecycle": {
+    "app": {
+      "pid": 97680,
+      "natural_exit": true,
+      "exitstatus": 0,
+      "termsig": null,
+      "success": true,
+      "forced_cleanup": false,
+      "cleanup_survivors": [],
+      "final_status": {
+        "exitstatus": 0,
+        "termsig": null,
+        "success": true
+      }
+    },
+    "sample": {
+      "pid": 97758,
+      "natural_exit": true,
+      "exitstatus": 0,
+      "termsig": null,
+      "success": true,
+      "forced_cleanup": false,
+      "cleanup_survivors": [],
+      "final_status": {
+        "exitstatus": 0,
+        "termsig": null,
+        "success": true
+      }
+    }
+  },
+  "interpretation": "The benchmark driver wall and CPU fields are diagnostic-only here: the concurrent sampler perturbs them and they are not comparison timing.",
+  "driver_report_sha256": "4a3749f594a9ab93fe6eb20639c900d87eba3c964bf83a9439d16abc7647a92d",
+  "driver_report_summary": {
+    "idle_cpu_percent_one_core": 0.143649,
+    "workload_terminal_cpu_seconds": {
+      "ascii_short_lines": {
+        "samples": 1,
+        "p50": 9.045781,
+        "p95": 9.045781,
+        "p99": 9.045781,
+        "max": 9.045781
+      },
+      "ascii_long_lines": {
+        "samples": 1,
+        "p50": 7.34917,
+        "p95": 7.34917,
+        "p99": 7.34917,
+        "max": 7.34917
+      },
+      "ansi_truecolor": {
+        "samples": 1,
+        "p50": 17.214904,
+        "p95": 17.214904,
+        "p99": 17.214904,
+        "max": 17.214904
+      },
+      "unicode": {
+        "samples": 1,
+        "p50": 7.653089,
+        "p95": 7.653089,
+        "p99": 7.653089,
+        "max": 7.653089
+      }
+    }
+  }
+}

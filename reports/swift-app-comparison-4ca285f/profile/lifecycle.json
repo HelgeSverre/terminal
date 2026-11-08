@@ -1,0 +1,11 @@
+{
+  "purpose": "stack profile only; timings are not comparison samples",
+  "app_sha256": "3375dd56a53797c7ae300fff0ddc8a8c6be57a5111ed8e60b4e6e05e6fc1608e",
+  "driver_sha256": "0a739a18d3928ef0fef20041e7c91c52ba05cb9f129b9ce1bf7c7c47fd779cfb",
+  "requested_bytes_per_workload": 67108864,
+  "runs": 1,
+  "pid": 83322,
+  "exit_status": 0,
+  "natural_exit": true,
+  "cleanup_survivors": []
+}

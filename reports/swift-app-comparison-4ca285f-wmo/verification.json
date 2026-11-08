@@ -1,0 +1,8 @@
+{
+  "source_commit": "4ca285f0c4dcf9de200c75b91e83cc5649db2f22",
+  "compile_mode": "-O -whole-module-optimization",
+  "native_smoke": true,
+  "sample_sha256": "906d651d0bfe55f8ca03c7eb850198c78107e1977c29f64248ddf09f7c64267d",
+  "source_input_manifest_sha256": "328bd2b4cb17935b821917dac784fae68734db0519c62790ec1a46fa35af6cae",
+  "performance_target_met": false
+}

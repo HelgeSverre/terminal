@@ -1,0 +1,53 @@
+{
+  "passed": true,
+  "requested_bytes": 2097152,
+  "runs_per_workload": 3,
+  "geometry": [
+    100,
+    30
+  ],
+  "font": "Obel Mono",
+  "font_size": 14,
+  "runner_sha256": "93981c37d1e91df81d3e237bc4957ca032e5ab1e9345e3fab1197797b964b72c",
+  "order": [
+    "rust",
+    "swift"
+  ],
+  "apps": {
+    "rust": {
+      "bundle": "/Users/helge/code/terminal/dist/Terminal.app",
+      "executable_sha256": "c88793ef2a309a973ad26536b0f3f450b2134e15ce1469a831ef9af2034c5808",
+      "executable_bytes": 3743056,
+      "bundle_regular_file_bytes": 9022529,
+      "natural_exit": true,
+      "cleanup_survivors": [],
+      "pid": 79611,
+      "exit_status": 0,
+      "report": "rust.json"
+    },
+    "swift": {
+      "bundle": "/Users/helge/code/terminal-swift-experiment/dist/Terminal.app",
+      "executable_sha256": "3375dd56a53797c7ae300fff0ddc8a8c6be57a5111ed8e60b4e6e05e6fc1608e",
+      "executable_bytes": 1888224,
+      "bundle_regular_file_bytes": 7165920,
+      "natural_exit": true,
+      "cleanup_survivors": [],
+      "pid": 79817,
+      "exit_status": 0,
+      "report": "swift.json"
+    }
+  },
+  "scope": "Sequential visible-app PTY pilot; parser barriers are not display latency. History is excluded by the driver alternate screen.",
+  "driver_sha256": "0a739a18d3928ef0fef20041e7c91c52ba05cb9f129b9ce1bf7c7c47fd779cfb",
+  "driver_source_sha256": "f426f5aaf9acb5e3b62f0e8699be5e9f4598fa3951d190635844d9fa6fd172f0",
+  "performance_gate": {
+    "minimum_swift_to_rust_ratio": 0.9,
+    "observed_ratios": {
+      "ascii_short_lines": 0.05974955427996405,
+      "ascii_long_lines": 0.05444466545818412,
+      "ansi_truecolor": 0.1629359219093838,
+      "unicode": 0.412557371186253
+    },
+    "passed": false
+  }
+}
