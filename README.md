@@ -69,6 +69,11 @@ just package         # Signed app, ZIP and PKG under dist/release
 just release         # Also notarize, staple and validate the app and PKG
 ```
 
+Verify shutdown against the signed artifact with
+`ruby tools/close_smoke.rb "dist/release/Helge Terminal.app"`.
+Both window closure and Command–Q must exit and reap their PTY descendants;
+the runner also cleans up its own processes when a check fails.
+
 Distribution uses existing Keychain identities and a Keychain notarization
 profile. Set `APPLE_NOTARY_PROFILE`, or put `notaryProfile` in
 `~/.config/terminal/release.json`. Application and installer identities are
