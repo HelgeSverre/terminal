@@ -1,0 +1,221 @@
+{
+  "scope": "Manual inspection of explicitly listed current-run PNGs plus automated trace crosscheck. No earlier run or instrumented-probe frames reused.",
+  "run_kind": "candidate",
+  "source_commit": "65cb446e46f7b6764cb98e5e0a6defd4b252e020",
+  "executable_sha256": "d17a2f958ecfd1787bc2f39b745016ed0b4db03c5510d19c3558498e8a52db03",
+  "identity": {
+    "pid": 50402,
+    "window": 27505,
+    "executable": "/Users/helge/.codex/artifacts/rendering-final-65-focused-candidate/Frozen Terminal.app/Contents/MacOS/Terminal",
+    "cell_width_pixels": 17,
+    "cell_height_pixels": 41
+  },
+  "helper_sha256": {
+    "Capture": "0d2e28d99a584559e4dc60c2a3a818a7f679fef41e9d2232a05a9e36626f2cd1",
+    "Driver": "c6ea3c7ad37e607e40c3d39a936e0b74aad5c79a46915840bb51bab9c15f7517"
+  },
+  "artifacts_sha256": {
+    "analysis.json": "425a2b238ff513f21135f53f45b28514e9dfdeab62f6ac16fef45a55b1454e50",
+    "frames.jsonl": "ca487003f356ceb5783a328b0df06108b16ab06dcf0b9b8c685251009b1b5e87",
+    "summary.json": "26c464904702173ab118aa58ed1a3bd550171575611a01395c947de993b1f8f4",
+    "capture.mp4": "05bf70304b8ccdcff4c251c77a7e0eb27eede52088205a5272020b5804a5197a",
+    "identity.json": "f75b8638fffacb1fbaf7718c7f2668f19c1194b5915ab8cfa7ba6a266f643940",
+    "input-events.json": "808317d9749f9f16dfeb0954cdd69a73959e076a244ea14077655e93ed55ed44",
+    "ax-window-queries.jsonl": "111a768a9abef5650a54a5e51a6df79464fa1c53c8b75d83807e311a3b133526"
+  },
+  "inspected_images_sha256": {
+    "sample-0000.png": "f65921a3ad7452693f0fc0b117310071b83e4cfeefd45ec364fb1a8adaa46434",
+    "sample-0043.png": "e21d8e7c043cbc86b28de2fd713fa0c8040ae2e5738ddcb45e2b413029447a24",
+    "sample-0045.png": "78cdc13ac2aa408a9fa7ca944b3b84e77d6b03c211924b43f02fec941e3db1ce",
+    "sample-0046.png": "ec95f15cc34b4c3a392d014ef1b37f8e390b2bf5fb9c6cf10022f2b6622a9068",
+    "sample-0049.png": "1b66eb620b0efc1566059d46f8110720cc2764296deb87e591625ec238c61b51",
+    "sample-0050.png": "1b66eb620b0efc1566059d46f8110720cc2764296deb87e591625ec238c61b51",
+    "sample-0051.png": "78f04edbbf772633ca16b333861b76eec6f9c7b4805b66d707fbfcdfd4a6653c",
+    "sample-0052.png": "dbbdd31dbcc5fd5be5f5a110cfe80ebc699bd4cfc049471adbeeab1a6955e5e1",
+    "sample-0408.png": "fe060e10b79ed60ad3075d53dd56473dedfe58950b265a236a97ba2efb0ef2bf",
+    "sample-0643.png": "85fd24290199053e731db8a8f13e770b8f1a89f9ceac9dab43b6ed71d8684846"
+  },
+  "observations": [
+    {
+      "samples": [
+        0,
+        43,
+        45,
+        46,
+        49,
+        50,
+        51,
+        52
+      ],
+      "finding": "Inspected all eight startup inconclusives. One or two panes contain synthetic output; new panes are blank or show cursor before their fixture paint. Existing glyphs and markers are visually proportionate. Missing markers remain inconclusive under the three-pane oracle."
+    },
+    {
+      "samples": [
+        408
+      ],
+      "finding": "Inspected current-run sample408. Three main markers are102x82, but a separate64x2 green component at(256,0) joins a thin white/colored strip above native titlebar. Main top markers sit at y197 versus y195 in adjacent407 and409; the visible titlebar/window composition is also displaced about2pixels. This is a captured composition/position discontinuity, not measured main-marker scaling. It remains inconclusive; the window-only recording cannot attribute it to SCK alone or certify what appeared on the physical display."
+    },
+    {
+      "samples": [
+        643
+      ],
+      "finding": "Representative programmatic-resize image shows the intended left stacked/right spanning panes, proportionate glyphs, and102x82 markers. Retained-content boundaries differ from the resized pane bounds in this intermediate frame; no same-frame native offset oracle is available."
+    }
+  ],
+  "recorded_summary": {
+    "complete_frames": 545,
+    "correct_frames": 536,
+    "failure_frames": 0,
+    "inconclusive_complete_frames": 9,
+    "oracle_scope": "absolute marker dimensions and visible PTY generation only; no native pane-local reference or drawable presented-handler proof",
+    "recording_finished": true,
+    "recording_valid": true,
+    "samples": 1243,
+    "scope": "Pane-specific absolute dimensions and checksum-visible PTY generations only; offsets, gaps, incomplete and inconclusive samples are not verified.",
+    "statuses": {
+      "0": 545,
+      "1": 698
+    },
+    "timestamp_gaps": 11,
+    "video_bytes": 1188749
+  },
+  "native_phases": {
+    "native_outer_divider": {
+      "complete": true,
+      "geometry_changed_within_pane": true,
+      "geometry_states": 52,
+      "complete_capture_callbacks": 134,
+      "appkit_live_resize_callbacks_available": false
+    },
+    "native_inner_divider": {
+      "complete": true,
+      "geometry_changed_within_pane": true,
+      "geometry_states": 9,
+      "complete_capture_callbacks": 131,
+      "appkit_live_resize_callbacks_available": false
+    },
+    "native_window_resize": {
+      "complete": true,
+      "geometry_changed_within_pane": true,
+      "geometry_states": 28,
+      "complete_capture_callbacks": 121,
+      "appkit_live_resize_callbacks_available": false
+    }
+  },
+  "final_visible_generation_gate": true,
+  "first_matching_final_frame": {
+    "sample": 648,
+    "pts": 343594.552749625,
+    "host_time": 343594.553288,
+    "panes": [
+      {
+        "delta_wh": [
+          0,
+          0
+        ],
+        "expected_wh": [
+          102,
+          82
+        ],
+        "metal": [
+          [
+            50,
+            195,
+            102,
+            82
+          ]
+        ],
+        "pane": 0,
+        "pane_local_offset_verified": false,
+        "reason": "absolute_dimensions_only",
+        "result": "correct",
+        "validated_visible_generation": 37438,
+        "visible_columns": 62,
+        "visible_final_flag": true,
+        "visible_rows": 18
+      },
+      {
+        "delta_wh": [
+          0,
+          0
+        ],
+        "expected_wh": [
+          102,
+          82
+        ],
+        "metal": [
+          [
+            1151,
+            195,
+            102,
+            82
+          ]
+        ],
+        "pane": 1,
+        "pane_local_offset_verified": false,
+        "reason": "absolute_dimensions_only",
+        "result": "correct",
+        "validated_visible_generation": 42046,
+        "visible_columns": 62,
+        "visible_final_flag": true,
+        "visible_rows": 36
+      },
+      {
+        "delta_wh": [
+          0,
+          0
+        ],
+        "expected_wh": [
+          102,
+          82
+        ],
+        "metal": [
+          [
+            50,
+            968,
+            102,
+            82
+          ]
+        ],
+        "pane": 2,
+        "pane_local_offset_verified": false,
+        "reason": "absolute_dimensions_only",
+        "result": "correct",
+        "validated_visible_generation": 37438,
+        "visible_columns": 62,
+        "visible_final_flag": true,
+        "visible_rows": 18
+      }
+    ]
+  },
+  "negative_control_gate": false,
+  "frames_with_all_three_expected_negative_widths": 0,
+  "frames_with_any_inconclusive_pane": 9,
+  "passed_documented_automated_gates": true,
+  "recording_finalized_nonempty": true,
+  "owned_process_cleanup": [
+    {
+      "pid": 50471,
+      "survivors": []
+    },
+    {
+      "pid": 50427,
+      "survivors": []
+    },
+    {
+      "pid": 50416,
+      "survivors": []
+    },
+    {
+      "pid": 50402,
+      "survivors": []
+    }
+  ],
+  "limitations": [
+    "No physical-display guarantee or complete display-frame coverage: SCK requested60fps, but statuses/PTS gaps are retained. Candidate has11 timestamp gaps; negative has214; these are not isolated performance benchmarks.",
+    "No actual MTLDrawable presented-handler proof, same-frame native pane-local offset references, or AppKit live-resize begin/end callbacks. Phase effectiveness comes from changed PTY geometry plus captured callbacks; callback receipt time can lag acquisition.",
+    "Correct classification means absolute marker dimensions and validated barcode where available, not every glyph/pixel/offset verified. Inconclusive frames are not converted to passing frames by manual inspection.",
+    "Negative failure classification takes priority over inconclusive panes, so zero inconclusive_complete_frames in that run does not mean no markers were missing during startup.",
+    "Videos are finalized and hash-linked; this review inspected listed PNGs and traces, not every video frame."
+  ]
+}

@@ -1,0 +1,288 @@
+{
+  "source_sha": "65cb446e46f7b6764cb98e5e0a6defd4b252e020",
+  "executable_sha256": "d17a2f958ecfd1787bc2f39b745016ed0b4db03c5510d19c3558498e8a52db03",
+  "input_app": "/Users/helge/code/terminal-swift-experiment/target/frozen-65cb446-release.app",
+  "host_clock": "ProcessInfo.systemUptime / CLOCK_UPTIME_RAW, cross-checked by prepare",
+  "verified_bundle_manifest": {
+    "Contents/Info.plist": {
+      "sha256": "b8ef3e786df4648d4811312585d75e3fafb9f237bec9fab6cb033a65697dfe19",
+      "bytes": 1197
+    },
+    "Contents/MacOS/Terminal": {
+      "sha256": "d17a2f958ecfd1787bc2f39b745016ed0b4db03c5510d19c3558498e8a52db03",
+      "bytes": 1998656
+    },
+    "Contents/MacOS/TerminalLauncher": {
+      "sha256": "6993668b4c85f17ad2a37dcc9fb9dfc6fcab8b8564f9638900cb1fac5d6302f8",
+      "bytes": 52000
+    },
+    "Contents/Resources/Fonts/README.md": {
+      "sha256": "e3ef1e7e924d0a7d7944adea6e4c82c2f0b72a933f137faa558658e8dafe3bc1",
+      "bytes": 1517
+    },
+    "Contents/Resources/Fonts/nerd-symbols/LICENSE": {
+      "sha256": "84a7a98c82140fb12c37fe42b93805baa16024cb3e5acc599b7ffe612c55d847",
+      "bytes": 1082
+    },
+    "Contents/Resources/Fonts/nerd-symbols/README.md": {
+      "sha256": "7f0b65aef1b8bc05aed58e96ea021b7f7af7e34131348535b2b0d29285e092b4",
+      "bytes": 3889
+    },
+    "Contents/Resources/Fonts/nerd-symbols/SymbolsNerdFontMono-Regular.ttf": {
+      "sha256": "fe471e538392f51910faab985fa8e192a39dd3426125edd15b71b3680df0e749",
+      "bytes": 2610012
+    },
+    "Contents/Resources/Fonts/obel-mono/AUTHORS.txt": {
+      "sha256": "dd08747a1152757c7651c828846fda891c69f8af6c0254fdfac6ce6c5b8b6177",
+      "bytes": 175
+    },
+    "Contents/Resources/Fonts/obel-mono/OFL.txt": {
+      "sha256": "6fd1d5747b4d6988d19b4b2b0456fb16d567a0b4e9c4ec8008fbe489478b343e",
+      "bytes": 4378
+    },
+    "Contents/Resources/Fonts/obel-mono/ObelMono-Bold.ttf": {
+      "sha256": "cc473b761e974f8f29918d27112ad886f81e37152a5c7d7fae12393cbe5fdab9",
+      "bytes": 335988
+    },
+    "Contents/Resources/Fonts/obel-mono/ObelMono-BoldItalic.ttf": {
+      "sha256": "516f79f7466f23a7d2ff16b64174938eae9342be10aa65c9e3633795612cfa4f",
+      "bytes": 343720
+    },
+    "Contents/Resources/Fonts/obel-mono/ObelMono-Italic.ttf": {
+      "sha256": "7214106e603c162baa3f68e0c8f51af72e84abfda23fe4f54648a3e9eaa764f4",
+      "bytes": 343616
+    },
+    "Contents/Resources/Fonts/obel-mono/ObelMono-Regular.ttf": {
+      "sha256": "7bdc99e1d7f5923dcd67976c092913de5bb9e2f3482cd7e3334aaa80701f0526",
+      "bytes": 336044
+    },
+    "Contents/Resources/Fonts/obel-mono/README.txt": {
+      "sha256": "6e9a2a385605ef0720c1614f50657bf9037a84e31b321bdac08ac2574c7838a9",
+      "bytes": 992
+    },
+    "Contents/Resources/ShellIntegration/ResizeSmokeZsh/.zshrc": {
+      "sha256": "0d7dfde9f1c6385f9a3574f98ba1966a8c480425e2b15ea9d5673dcd707acaaf",
+      "bytes": 1152
+    },
+    "Contents/Resources/ShellIntegration/ResizeSmokeZsh/starship.toml": {
+      "sha256": "71d14c9d6538d8e277dfe9a6a40f9479c07ff264392e4350048091884f394349",
+      "bytes": 194
+    },
+    "Contents/Resources/ShellIntegration/zsh/.zprofile": {
+      "sha256": "f728044419131ebf5fcae18143a8c6cce066d62fd58314f382222a3f593ce717",
+      "bytes": 214
+    },
+    "Contents/Resources/ShellIntegration/zsh/.zshenv": {
+      "sha256": "fcd972f7f7bf91fe445c79fe47902874f75aad767b8022db1eca5cd16d90652c",
+      "bytes": 589
+    },
+    "Contents/Resources/ShellIntegration/zsh/.zshrc": {
+      "sha256": "c1d2107faefacd5530a17438796695cac06294197c9c50a784ab54c3208d875c",
+      "bytes": 310
+    },
+    "Contents/Resources/ShellIntegration/zsh/hooks.zsh": {
+      "sha256": "da3511420213c6ec4a6616e9c3fac2bb960335de3f07b5dfc98bbab3e6f92027",
+      "bytes": 894
+    },
+    "Contents/Resources/ShellIntegration/zsh/restore.zsh": {
+      "sha256": "1e33781d33597b2b3742590fab0a09f8d6c35f661ea1cb9d91a7801f493ab84b",
+      "bytes": 238
+    },
+    "Contents/Resources/ShellIntegration/zsh/save.zsh": {
+      "sha256": "0869603f433dc9ddab7b192c45eff5a2c2fb77eaae9927bab19744a96cdccdc0",
+      "bytes": 210
+    },
+    "Contents/Resources/Terminal.icns": {
+      "sha256": "880e1f69569b64a5e05c47444ea8f8d9f2be61997566f8436ecc4798e0f12925",
+      "bytes": 1213667
+    },
+    "Contents/Resources/Terminal.metallib": {
+      "sha256": "9c6c50477949fe23a95b016a50a735eeda7a14167839a69c070f64b7afe12569",
+      "bytes": 12457
+    },
+    "Contents/Resources/Terminal.sdef": {
+      "sha256": "3bb89f5848306b7546cfe9922fde67e6c928397c79705400cfd1249ca95232c4",
+      "bytes": 5574
+    },
+    "Contents/Resources/terminfo/68/helge-terminal": {
+      "sha256": "8513c18da284af8f4eb56c7496908f44139a4cb761ad1f219ff8e1ee5ad5b63d",
+      "bytes": 1519
+    },
+    "Contents/_CodeSignature/CodeResources": {
+      "sha256": "6385145efeda7284b2e5a6f8bfb5c7842734858983539e750822baca260c6051",
+      "bytes": 8512
+    }
+  },
+  "frozen_app": "/Users/helge/.codex/artifacts/rendering-final-65-focused-candidate/Frozen Terminal.app",
+  "negative_control": false,
+  "negative_control_kind": "fixture rectangle doubled in width; not a compositor-gravity toggle",
+  "prior_evidence_reused": false,
+  "helper_sha256": {
+    "Capture": "0d2e28d99a584559e4dc60c2a3a818a7f679fef41e9d2232a05a9e36626f2cd1",
+    "Driver": "c6ea3c7ad37e607e40c3d39a936e0b74aad5c79a46915840bb51bab9c15f7517"
+  },
+  "source_sha256": {
+    "Capture.swift": "4cdbd455b1f0a533ce168c7cdf913f6cc32ae39933f5de76443d699e64e8c43c",
+    "Driver.swift": "6311d7febe899075455fa708947a5b2b4fa6b11767b4aaab1050461e98b75609",
+    "FixtureTests.rb": "2c425f43f846be610e950babc50db013b11a7485393f6e613810b6e8cdefa4a8",
+    "README.md": "750a242741d574e890679a736f4de705cd14550ba7aaf8d95993be0181e0f1cb",
+    "RecordingEvidenceTests.rb": "36b080a48756d0fb06d46a261761c05b0ac33ac0af1f61e323c77e4431fa3403",
+    "fixture.rb": "2208cf144f4856c0e12a9167d86e2b284070430df6fc616a28de543e9c17aa0a",
+    "recording_evidence.rb": "3116449ab458faa5ddfd120398f09d12df4ca2476697eb64ce9c489c42c89097",
+    "run.rb": "e9cdc43ba3d1bbf8a3c21c8f0c1b12201c6e8d7c6387f7d16a7f8a060cdbd64d"
+  },
+  "identity": {
+    "backing_scale": 2,
+    "cell_height_pixels": 41,
+    "cell_width_pixels": 17,
+    "executable": "/Users/helge/.codex/artifacts/rendering-final-65-focused-candidate/Frozen Terminal.app/Contents/MacOS/Terminal",
+    "initial_window_frame": [
+      30,
+      68,
+      1100,
+      800
+    ],
+    "oracle_scope": "Independent AX cell dimensions; no same-frame native pane references or drawable presentation callbacks",
+    "pid": 50402,
+    "window": 27505,
+    "window_correlation": {
+      "ax_frame": [
+        30,
+        68,
+        1100,
+        800
+      ],
+      "cg_frame": [
+        30,
+        68,
+        1100,
+        800
+      ],
+      "coordinate_space": "global top-left logical screen points; no scale or Y inversion",
+      "delta_xywh_points": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "matched_window": 27505,
+      "matching_candidates": 1,
+      "same_pid_layer_zero_candidates": 1,
+      "tolerance_points": 1
+    }
+  },
+  "recording_evidence": {
+    "summary": {
+      "complete_frames": 545,
+      "correct_frames": 536,
+      "failure_frames": 0,
+      "inconclusive_complete_frames": 9,
+      "oracle_scope": "absolute marker dimensions and visible PTY generation only; no native pane-local reference or drawable presented-handler proof",
+      "recording_finished": true,
+      "recording_valid": true,
+      "samples": 1243,
+      "scope": "Pane-specific absolute dimensions and checksum-visible PTY generations only; offsets, gaps, incomplete and inconclusive samples are not verified.",
+      "statuses": {
+        "0": 545,
+        "1": 698
+      },
+      "timestamp_gaps": 11,
+      "video_bytes": 1188749
+    },
+    "video_bytes": 1188749,
+    "finalized_nonempty_video": true
+  },
+  "expected_final_panes": {
+    "0": {
+      "pane": 0,
+      "generation": 37438,
+      "final": true,
+      "rows": 18,
+      "columns": 62,
+      "host_time": 343594.494212083,
+      "pid": 50408
+    },
+    "1": {
+      "pane": 1,
+      "generation": 42046,
+      "final": true,
+      "rows": 36,
+      "columns": 62,
+      "host_time": 343594.496009,
+      "pid": 50484
+    },
+    "2": {
+      "pane": 2,
+      "generation": 37438,
+      "final": true,
+      "rows": 18,
+      "columns": 62,
+      "host_time": 343594.503999958,
+      "pid": 50492
+    }
+  },
+  "final_visible_generation_gate": true,
+  "native_phases": {
+    "native_outer_divider": {
+      "complete": true,
+      "geometry_changed_within_pane": true,
+      "geometry_states": 52,
+      "complete_capture_callbacks": 134,
+      "appkit_live_resize_callbacks_available": false
+    },
+    "native_inner_divider": {
+      "complete": true,
+      "geometry_changed_within_pane": true,
+      "geometry_states": 9,
+      "complete_capture_callbacks": 131,
+      "appkit_live_resize_callbacks_available": false
+    },
+    "native_window_resize": {
+      "complete": true,
+      "geometry_changed_within_pane": true,
+      "geometry_states": 28,
+      "complete_capture_callbacks": 121,
+      "appkit_live_resize_callbacks_available": false
+    }
+  },
+  "classifications": {
+    "inconclusive": 9,
+    "inconclusive_noncomplete_status": 698,
+    "correct": 536,
+    "recording_event": 1
+  },
+  "capture_errors": [],
+  "scope": "Absolute per-pane marker dimensions + checksum-validated visible final PTY geometry; no same-frame native offset references or actual drawable presentation callbacks. Native phase geometry comes from PTY WINCH, not injection success alone. Frame phase attribution uses callback receipt host_time, not SCK presentation timestamps; queued callbacks may lag their image acquisition.",
+  "negative_control_expected_delta_wh": [
+    102,
+    0
+  ],
+  "negative_control_gate": false,
+  "passed": true,
+  "cleanup": [
+    {
+      "pid": 50471,
+      "survivors": []
+    },
+    {
+      "pid": 50427,
+      "survivors": []
+    },
+    {
+      "pid": 50416,
+      "survivors": []
+    },
+    {
+      "pid": 50402,
+      "survivors": []
+    }
+  ],
+  "sha256": {
+    "frames.jsonl": "ca487003f356ceb5783a328b0df06108b16ab06dcf0b9b8c685251009b1b5e87",
+    "capture.mp4": "05bf70304b8ccdcff4c251c77a7e0eb27eede52088205a5272020b5804a5197a",
+    "summary.json": "26c464904702173ab118aa58ed1a3bd550171575611a01395c947de993b1f8f4",
+    "input-events.json": "808317d9749f9f16dfeb0954cdd69a73959e076a244ea14077655e93ed55ed44",
+    "identity.json": "f75b8638fffacb1fbaf7718c7f2668f19c1194b5915ab8cfa7ba6a266f643940",
+    "ax-window-queries.jsonl": "111a768a9abef5650a54a5e51a6df79464fa1c53c8b75d83807e311a3b133526"
+  }
+}

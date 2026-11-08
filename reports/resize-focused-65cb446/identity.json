@@ -1,0 +1,40 @@
+{
+  "backing_scale" : 2,
+  "cell_height_pixels" : 41,
+  "cell_width_pixels" : 17,
+  "executable" : "\/Users\/helge\/.codex\/artifacts\/rendering-final-65-focused-candidate\/Frozen Terminal.app\/Contents\/MacOS\/Terminal",
+  "initial_window_frame" : [
+    30,
+    68,
+    1100,
+    800
+  ],
+  "oracle_scope" : "Independent AX cell dimensions; no same-frame native pane references or drawable presentation callbacks",
+  "pid" : 50402,
+  "window" : 27505,
+  "window_correlation" : {
+    "ax_frame" : [
+      30,
+      68,
+      1100,
+      800
+    ],
+    "cg_frame" : [
+      30,
+      68,
+      1100,
+      800
+    ],
+    "coordinate_space" : "global top-left logical screen points; no scale or Y inversion",
+    "delta_xywh_points" : [
+      0,
+      0,
+      0,
+      0
+    ],
+    "matched_window" : 27505,
+    "matching_candidates" : 1,
+    "same_pid_layer_zero_candidates" : 1,
+    "tolerance_points" : 1
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "complete_frames" : 250,
+  "correct_frames" : 0,
+  "failure_frames" : 250,
+  "inconclusive_complete_frames" : 0,
+  "oracle_scope" : "absolute marker dimensions and visible PTY generation only; no native pane-local reference or drawable presented-handler proof",
+  "recording_finished" : true,
+  "recording_valid" : true,
+  "samples" : 971,
+  "scope" : "Pane-specific absolute dimensions and checksum-visible PTY generations only; offsets, gaps, incomplete and inconclusive samples are not verified.",
+  "statuses" : {
+    "0" : 250,
+    "1" : 721
+  },
+  "timestamp_gaps" : 214,
+  "video_bytes" : 707140
+}

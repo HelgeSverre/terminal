@@ -1,0 +1,113 @@
+{
+  "scope": "Manual inspection of explicitly listed current-run PNGs plus automated trace crosscheck. No earlier run or instrumented-probe frames reused.",
+  "run_kind": "negative",
+  "source_commit": "65cb446e46f7b6764cb98e5e0a6defd4b252e020",
+  "executable_sha256": "d17a2f958ecfd1787bc2f39b745016ed0b4db03c5510d19c3558498e8a52db03",
+  "identity": {
+    "pid": 52428,
+    "window": 27520,
+    "executable": "/Users/helge/.codex/artifacts/rendering-final-65-focused-negative/Frozen Terminal.app/Contents/MacOS/Terminal",
+    "cell_width_pixels": 17,
+    "cell_height_pixels": 41
+  },
+  "helper_sha256": {
+    "Capture": "0d2e28d99a584559e4dc60c2a3a818a7f679fef41e9d2232a05a9e36626f2cd1",
+    "Driver": "c6ea3c7ad37e607e40c3d39a936e0b74aad5c79a46915840bb51bab9c15f7517"
+  },
+  "artifacts_sha256": {
+    "analysis.json": "67023e5e81e7e2878514a3a3d4e3c1f476be32bba8768605a46d8049eaa6d2f4",
+    "frames.jsonl": "5590a6e2ef2703fa306535527f09fadd8be45da3505b7f90eeb941bd678a4a8f",
+    "summary.json": "0e74bdd75ee6f327860c3f0ea2a0b43ab5c25daec1f8421423d725340eae850e",
+    "capture.mp4": "18699cb3a2643a2b5e328c2b8a5a064135f2a57d7db10c84c427917490b7bdc4",
+    "identity.json": "764254dcf18954a20a6e6583cbe5dd8e62f73a462d85c1e9b81bbe6505a9468e",
+    "input-events.json": "98ea9c01b64a2416bb3c5fea8b05842b2069a315fd727c237bf9d64e0bae51a8",
+    "ax-window-queries.jsonl": "3a7d3e87386c523d8c882b74e214941562175a438a6d6ecf3966635a2595bd25"
+  },
+  "inspected_images_sha256": {
+    "sample-0058.png": "48c5116ddacd7c21b3bb659d7b7a69b59c5cafdd1ebdf87a7ffcf2e738bcc49d",
+    "sample-0220.png": "01e75b6f25752aabc2484f7463d1b1f407833f0b622e20a7e5ba734f4681a507",
+    "sample-0375.png": "fe6de7f4672fb17e9898d093c401f5a7d690c08f1da2c1d0067c0b13390cda93"
+  },
+  "observations": [
+    {
+      "samples": [
+        58,
+        220,
+        375
+      ],
+      "finding": "Representative early, inner-divider and final images visibly show204x82 rectangles in all3panes, exactly the injected+102pixel width and unchanged height. Text/emoji and barcode cells remain proportionate. This control changes fixture rectangle width only; it does not reproduce compositor stretching or serve as an old-renderer baseline. Sample375 visibly displays FINAL=true in all3panes, but automatic final-generation proof is intentionally unavailable because decode requires dimension-correct markers."
+    }
+  ],
+  "recorded_summary": {
+    "complete_frames": 250,
+    "correct_frames": 0,
+    "failure_frames": 250,
+    "inconclusive_complete_frames": 0,
+    "oracle_scope": "absolute marker dimensions and visible PTY generation only; no native pane-local reference or drawable presented-handler proof",
+    "recording_finished": true,
+    "recording_valid": true,
+    "samples": 971,
+    "scope": "Pane-specific absolute dimensions and checksum-visible PTY generations only; offsets, gaps, incomplete and inconclusive samples are not verified.",
+    "statuses": {
+      "0": 250,
+      "1": 721
+    },
+    "timestamp_gaps": 214,
+    "video_bytes": 707140
+  },
+  "native_phases": {
+    "native_outer_divider": {
+      "complete": true,
+      "geometry_changed_within_pane": true,
+      "geometry_states": 52,
+      "complete_capture_callbacks": 56,
+      "appkit_live_resize_callbacks_available": false
+    },
+    "native_inner_divider": {
+      "complete": true,
+      "geometry_changed_within_pane": true,
+      "geometry_states": 9,
+      "complete_capture_callbacks": 57,
+      "appkit_live_resize_callbacks_available": false
+    },
+    "native_window_resize": {
+      "complete": true,
+      "geometry_changed_within_pane": true,
+      "geometry_states": 28,
+      "complete_capture_callbacks": 56,
+      "appkit_live_resize_callbacks_available": false
+    }
+  },
+  "final_visible_generation_gate": false,
+  "first_matching_final_frame": null,
+  "negative_control_gate": true,
+  "frames_with_all_three_expected_negative_widths": 240,
+  "frames_with_any_inconclusive_pane": 10,
+  "passed_documented_automated_gates": true,
+  "recording_finalized_nonempty": true,
+  "owned_process_cleanup": [
+    {
+      "pid": 52462,
+      "survivors": []
+    },
+    {
+      "pid": 52456,
+      "survivors": []
+    },
+    {
+      "pid": 52447,
+      "survivors": []
+    },
+    {
+      "pid": 52428,
+      "survivors": []
+    }
+  ],
+  "limitations": [
+    "No physical-display guarantee or complete display-frame coverage: SCK requested60fps, but statuses/PTS gaps are retained. Candidate has11 timestamp gaps; negative has214; these are not isolated performance benchmarks.",
+    "No actual MTLDrawable presented-handler proof, same-frame native pane-local offset references, or AppKit live-resize begin/end callbacks. Phase effectiveness comes from changed PTY geometry plus captured callbacks; callback receipt time can lag acquisition.",
+    "Correct classification means absolute marker dimensions and validated barcode where available, not every glyph/pixel/offset verified. Inconclusive frames are not converted to passing frames by manual inspection.",
+    "Negative failure classification takes priority over inconclusive panes, so zero inconclusive_complete_frames in that run does not mean no markers were missing during startup.",
+    "Videos are finalized and hash-linked; this review inspected listed PNGs and traces, not every video frame."
+  ]
+}
