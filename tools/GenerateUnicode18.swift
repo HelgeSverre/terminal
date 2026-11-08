@@ -6,7 +6,7 @@ import CryptoKit
     let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     let fixture = root.appendingPathComponent("tools/unicode/GraphemeBreakTest-18.0.0.txt")
     let source = root.appendingPathComponent("tools/unicode/grapheme-ranges-18.0.0.txt")
-    let output = root.appendingPathComponent("native/SwiftUnicode18Tables.swift")
+    let output = root.appendingPathComponent("native/Text/Unicode18GraphemeTables.swift")
     let digest = SHA256.hash(data: try Data(contentsOf: fixture)).map { String(format: "%02x", $0) }.joined()
     guard digest == "b0cf047ee94485bbdc846de2b902f5f8a815f6b674f9d04223cddadd91c9df31" else { fatalError("fixture checksum changed: \(digest)") }
     let records = try Data(contentsOf: source)
@@ -24,7 +24,7 @@ import CryptoKit
     let generated = """
     // Generated from tools/unicode/grapheme-ranges-18.0.0.txt (Unicode 18.0.0).
     // Do not edit: regeneration commands are in tools/unicode/README.md.
-    enum SwiftUnicode18Tables {
+    enum Unicode18GraphemeTables {
       enum Category: UInt8 { case Other, CR, Control, Extend, Extended_Pictographic, InCB_Consonant, L, LF, LV, LVT, Prepend, Regional_Indicator, SpacingMark, T, V, ZWJ }
       static let unicodeVersion = "18.0.0"
       static let uaxRevision = 49

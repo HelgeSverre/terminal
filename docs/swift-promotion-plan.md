@@ -47,8 +47,8 @@ clean-build and focused correctness checks before calling the result equivalent.
    benchmark inputs/configuration and hashes; Git alone does not retain built
    comparison artifacts. `swift-publication-prototype-a600105` is a Swift
    prototype backup and does not replace this Rust backup.
-2. **Reconcile onto latest Main.** Use a normal merge/reviewable integration
-   branch, not a wholesale copy of the experiment tree. The experiment lacks
+2. **Reconcile onto latest Main.** Merge directly onto Main without creating
+   an integration branch or replacing either tree wholesale. The experiment originally lacked
    newer Main files including `tools/cat_stress.rb`, `compare_terminal_apps.rb`
    and its tests, `profile_terminal.rb` and its tests, `compare_swift_rows.rb`,
    `RowStorageCompatibilityProbe.swift`, `DistributionTests.swift`, close/native/
@@ -89,34 +89,28 @@ launching, while `Bridge.h` and Swift's C exports still serve existing Session
 calls and independent ABI tests. Removing these prematurely would combine a
 host-interface migration with language replacement.
 
-## Small naming changes, then one meaningful interface change
+## Responsibility-based naming
 
-First make one mechanical rename commit, updating symbols, source graph,
-generators, tests and references together. Do not split every declaration into
-a file or introduce new compiler modules.
+The mechanical cleanup is implemented in the current source tree, with one
+Swift compiler module and the stable C ABI retained:
 
-| Current file / concept | Target | Ownership retained |
-| --- | --- | --- |
-| `SwiftTerminalCore.swift` / `SwiftTerminalCore` | `TerminalEmulator.swift` / `TerminalEmulator` | Ordered byte parsing, commands, protocol state and admission |
-| `SwiftGraphics.swift` | `KittyGraphics.swift` | Transport validation, resources, placement lifecycle and budgets |
-| `SwiftSearchViewport.swift` | `HistorySearch.swift` | Bounded immutable search pages, worker matching and acceptance proofs |
-| `SwiftInputEncoder.swift` | `TerminalInput.swift` | Negotiated terminal input bytes |
-| `SwiftUnicode.swift` | `TerminalText.swift` | Incremental UTF-8 and grapheme state used by printing |
-| `SwiftUnicode18Tables.swift` | `Unicode18GraphemeTables.swift` | Generated pinned category data |
-| `SwiftCoreTests.swift` | `TerminalEmulatorTests.swift` | Public emulator behavior and malformed-input boundaries |
+| Source | Responsibility |
+| --- | --- |
+| `native/Emulation/TerminalEmulator.swift` | Ordered VT interpretation, commands, protocol state and admission |
+| `native/Emulation/TerminalDocument.swift`, `DocumentReflow.swift` | Rows, history and geometry transformations |
+| `native/Emulation/KittyGraphics.swift` | Image protocol validation, resources and placement lifetime |
+| `native/Emulation/HistorySearch.swift` | Immutable search pages, bounded matching and acceptance proofs |
+| `native/Emulation/TerminalInputEncoder.swift` | Negotiated terminal input bytes |
+| `native/Emulation/TerminalPalette.swift`, `TerminalSnapshot.swift`, `ClipboardProtocol.swift` | Protocol-owned palette, immutable publication values and OSC52 decoding |
+| `native/Text/` | Incremental text state and pinned grapheme, width and lowercase tables |
+| `native/tests/EmulatorTests.swift` | Public emulator smoke and malformed-input boundaries |
 
-Keep `TerminalDocument.swift`, `DocumentReflow.swift`, `TerminalSnapshot.swift`,
-`TerminalPalette.swift` and width/lowercase names: they already name real
-concepts. Keep Unicode18 grapheme/width and Unicode17 search-case policies
-explicit; a common “Unicode helpers” bucket would hide a meaningful distinction.
-
-Next group the existing files into `native/Emulation/` (emulator, document,
-reflow, history/search, text/input, graphics, palette and snapshot values) and
-`native/Compatibility/` (extracted C exports and borrowed-view adapters).
-Leave host/rendering files where they are until a separate move has a clear
-benefit. Update `tools/swift-sources.json` as the single build/test source map.
-Extracting ABI exports may need an internal access seam; make that a separate
-review from file moves rather than weakening every private member.
+Host and rendering files retain their existing locations. ABI exports remain
+with the emulator until an extraction provides a useful access boundary;
+there is no placeholder compatibility module. Generated output paths,
+source graph, callers and current commands move together. Archived comparison
+tools recognize old source-group names internally rather than exposing an
+obsolete runtime alias.
 
 The next substantive interface improvement is to let `Session` own a typed
 `TerminalEmulator` on its existing owner queue. Today it still creates an

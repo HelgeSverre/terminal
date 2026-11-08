@@ -1,22 +1,31 @@
-# Swift-core differential test plan
+# Emulator validation
 
-`native/tests/SwiftCoreTests.swift` is intentionally a narrow ABI smoke test.
-It covers behavior the current Swift implementation owns: basic grid updates,
-SGR snapshots, alternate-screen isolation, PTY input bytes, bracketed paste,
-terminal replies, and safe byte-at-a-time feeding.
+`native/tests/EmulatorTests.swift` is the narrow public-ABI smoke test, invoked
+by `just emulator-test`. It covers basic grid updates, SGR snapshots,
+alternate-screen isolation, input bytes, paste, replies and chunked feeding.
+It is one gate, not a declaration of parity or full v1 completion.
 
-It is not evidence of feature parity. Before the experiment can replace the
-Rust baseline, add or replay the following independent oracles:
+The mandatory `just test` workflow also runs independent document ownership,
+viewport, reflow, semantic, malformed-boundary, scheduler, prompt, graphics,
+palette, Unicode18, UTF-8 decoder, width, lowercase, input, OSC52, PTY,
+Session, clipboard, snapshot, rendering, keymap and terminfo checks. The source
+manifest at `tools/swift-sources.json` is the authoritative build/test graph.
 
-1. The existing 41 semantic cases under arbitrary byte partitioning, including
-   maximal-subpart invalid UTF-8 and pinned Unicode 18 grapheme segmentation.
-2. Margins, rectangular operations, resize/reflow, and viewport anchor cases.
-3. Search cancellation/order/resource limits and all keyboard/keypad variants.
-4. Kitty graphics with direct RGBA, PNG/zlib, chunking, deletion, and the
-   dmscene double-buffer transcript.
-5. Native PTY application corpus (shells, nvim, tmux and fzf) plus the real
-   app's controlled self-terminating smoke.
+Maintain these contracts when changing the emulator:
 
-Each translated/replayed case must compare snapshot, replies, input bytes and
-observable resource behavior against the Rust oracle. Platform Unicode APIs are
-not a substitute for the version-pinned tables used by that oracle.
+1. Compare snapshots, replies, encoded input and observable resource behavior;
+   do not normalize away identity, accounting or clamp differences.
+2. Keep Unicode18 grapheme/width data and Unicode17 lowercase policy pinned to
+   the committed neutral inputs. Host-platform Unicode is not a substitute.
+3. Exercise multiple byte partitions and retained snapshots across mutation,
+   eviction, reflow and object destruction.
+4. Cover graphics transport, placement/deletion, generation and resource bounds
+   separately from native dmscene playback.
+5. Run owned native application fixtures for input, settings, accessibility,
+   automation, quit, glyph pressure and resizing. Always reap their PTY children.
+
+`tools/compare_swift_rows.rb` compiles one probe against two immutable Git
+revisions. It recognizes each archived revision's source-group name, so the
+naming cleanup does not discard earlier compatibility checkpoints. Native
+pixel captures and real input-method/VoiceOver validation remain distinct
+from headless ABI assertions.

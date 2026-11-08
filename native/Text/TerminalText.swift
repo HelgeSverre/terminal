@@ -6,7 +6,7 @@ import Foundation
 /// uses generated Unicode 18 tables rather than delegating segmentation to
 /// `Character` (whose data follows the host OS).  The strict official fixture
 /// is the regression gate for this declared pin.
-enum SwiftUnicode {
+enum TerminalText {
   static let unicode18Parity = true
 
   enum Category: Equatable {
@@ -24,7 +24,7 @@ enum SwiftUnicode {
     private var linkerTail = false
 
     mutating func push(_ scalar: Unicode.Scalar) -> Bool {
-      push(scalar, category: SwiftUnicode.category(of: scalar))
+      push(scalar, category: TerminalText.category(of: scalar))
     }
 
     mutating func push(_ scalar: Unicode.Scalar, category current: Category) -> Bool {
@@ -55,7 +55,7 @@ enum SwiftUnicode {
       let afterExtendedPictographic = extendedPictographicTail
       zwjAfterExtendedPictographic = current == .zwj && afterExtendedPictographic
       extendedPictographicTail = current == .extendedPictographic || (current == .extend && afterExtendedPictographic)
-      if SwiftUnicode18Tables.isIncbLinker(scalar.value) {
+      if Unicode18GraphemeTables.isIncbLinker(scalar.value) {
         linkerTail = true
       } else if !((current == .extend || current == .zwj) && scalar.value != 0x200c) {
         linkerTail = false
@@ -240,7 +240,7 @@ enum SwiftUnicode {
     let value = scalar.value
     // Generated Unicode 18 GCB + Extended_Pictographic + InCB-Consonant
     // classification, independent of the macOS Unicode database.
-    switch SwiftUnicode18Tables.category(value) {
+    switch Unicode18GraphemeTables.category(value) {
     case .Other: break
     case .CR: return .cr
     case .LF: return .lf

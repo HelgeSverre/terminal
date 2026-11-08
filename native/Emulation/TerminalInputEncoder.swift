@@ -3,7 +3,7 @@ import Foundation
 /// The one place that turns an AppKit key event into bytes for a PTY.  Callers
 /// supply semantic key/mode data; they do not decide between legacy and Kitty
 /// encodings, filter a paste, or special-case keypad values themselves.
-enum SwiftInputEncoder {
+enum TerminalInputEncoder {
   struct Modes: Equatable {
     var applicationCursor = false
     var applicationKeypad = false

@@ -1,6 +1,6 @@
 // Generated from tools/unicode/grapheme-ranges-18.0.0.txt (Unicode 18.0.0).
 // Do not edit: regeneration commands are in tools/unicode/README.md.
-enum SwiftUnicode18Tables {
+enum Unicode18GraphemeTables {
   enum Category: UInt8 { case Other, CR, Control, Extend, Extended_Pictographic, InCB_Consonant, L, LF, LV, LVT, Prepend, Regional_Indicator, SpacingMark, T, V, ZWJ }
   static let unicodeVersion = "18.0.0"
   static let uaxRevision = 49

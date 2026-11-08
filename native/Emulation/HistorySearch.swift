@@ -4,17 +4,17 @@ import Foundation
 // `fill`; `step` retains a single value row and may therefore run without the
 // terminal or document. Callers cannot tune its memory or work budgets.
 
-enum SwiftSearchCellKind: Equatable {
+enum TerminalSearchCellKind: Equatable {
   case empty, lead1, lead2, continuation, wrapSpacer
 }
 
-struct SwiftSearchCell: Equatable {
+struct TerminalSearchCell: Equatable {
   var text: String
-  var kind: SwiftSearchCellKind
+  var kind: TerminalSearchCellKind
   /// Only non-default BCE background makes an otherwise blank hard-row cell
   /// searchable. This mirrors the terminal model's trimming contract.
   var hasBackground: Bool
-  init(_ text: String = "", _ kind: SwiftSearchCellKind = .empty, hasBackground: Bool = false) {
+  init(_ text: String = "", _ kind: TerminalSearchCellKind = .empty, hasBackground: Bool = false) {
     self.text = text
     self.kind = kind
     self.hasBackground = hasBackground
@@ -24,24 +24,24 @@ struct SwiftSearchCell: Equatable {
   var endsHardRow: Bool { kind == .lead1 || kind == .lead2 || hasBackground }
 }
 
-struct SwiftSearchRow: Equatable {
+struct TerminalSearchRow: Equatable {
   let id: UInt64
   let revision: UInt64
-  let cells: [SwiftSearchCell]
+  let cells: [TerminalSearchCell]
   /// A soft continuation joins the next row without an implicit newline.
   let softWrapsToNext: Bool
-  init(id: UInt64, revision: UInt64 = 0, cells: [SwiftSearchCell], softWrapsToNext: Bool = false) {
+  init(id: UInt64, revision: UInt64 = 0, cells: [TerminalSearchCell], softWrapsToNext: Bool = false) {
     self.id = id
     self.revision = revision
     self.cells = cells
     self.softWrapsToNext = softWrapsToNext
   }
   var retainedBytes: Int {
-    cells.reduce(0) { $0 + $1.text.utf8.count + MemoryLayout<SwiftSearchCell>.stride }
+    cells.reduce(0) { $0 + $1.text.utf8.count + MemoryLayout<TerminalSearchCell>.stride }
   }
 }
 
-struct SwiftSearchStamp: Equatable {
+struct TerminalSearchStamp: Equatable {
   let document: UInt64
   let history: UInt64
   let geometry: UInt64
@@ -56,15 +56,15 @@ struct SwiftSearchStamp: Equatable {
   }
 }
 
-struct SwiftSearchDocument {
-  let stamp: SwiftSearchStamp
-  let rows: [SwiftSearchRow]
-  init(stamp: SwiftSearchStamp, rows: [SwiftSearchRow]) {
+struct TerminalSearchDocument {
+  let stamp: TerminalSearchStamp
+  let rows: [TerminalSearchRow]
+  init(stamp: TerminalSearchStamp, rows: [TerminalSearchRow]) {
     self.stamp = stamp
     self.rows = rows
   }
-  var source: SwiftSearchSource {
-    SwiftSearchSource(
+  var source: TerminalSearchSource {
+    TerminalSearchSource(
       stamp: stamp, rowCount: rows.count,
       rowAt: { rows.indices.contains($0) ? rows[$0] : nil },
       rowIDAt: { rows.indices.contains($0) ? rows[$0].id : nil },
@@ -72,7 +72,7 @@ struct SwiftSearchDocument {
         guard rows.indices.contains(index) else { return nil }
         let row = rows[index]
         let successor = row.softWrapsToNext && rows.indices.contains(index + 1) ? rows[index + 1].id : nil
-        return SwiftSearchProof(row, softNextID: successor)
+        return TerminalSearchProof(row, softNextID: successor)
       },
       softNextIDAt: { index in
         guard rows.indices.contains(index), rows[index].softWrapsToNext,
@@ -86,14 +86,14 @@ struct SwiftSearchDocument {
 /// Owner-only access to the live document. The closures must never escape a
 /// fill/accept call. A task retains only one converted row page, not this
 /// source nor a copy of scrollback.
-struct SwiftSearchSource {
-  let stamp: SwiftSearchStamp
+struct TerminalSearchSource {
+  let stamp: TerminalSearchStamp
   let rowCount: Int
-  let rowAt: (Int) -> SwiftSearchRow?
+  let rowAt: (Int) -> TerminalSearchRow?
   let rowIDAt: (Int) -> UInt64?
   /// Cheap structural proof lookup. Publication and acceptance use this
   /// rather than projecting rich cells for every retained search span.
-  let proofAt: (Int) -> SwiftSearchProof?
+  let proofAt: (Int) -> TerminalSearchProof?
   /// Physical successor identity for an active soft wrap. This is part of a
   /// search proof: a row that keeps its text but is relinked must not retain a
   /// cross-row match.
@@ -102,22 +102,22 @@ struct SwiftSearchSource {
   let retainedBytesAt: (Int) -> Int?
 }
 
-struct SwiftSearchHighlight: Equatable {
+struct TerminalSearchHighlight: Equatable {
   let row: Int
   let start: Int
   let end: Int
 }
 
-enum SwiftSearchStatus: Equatable {
+enum TerminalSearchStatus: Equatable {
   case working, needsPage, complete, changed, resourceLimit, cancelled
 }
 
-enum SwiftSearchAdmissionError: Error, Equatable { case query }
+enum TerminalSearchAdmissionError: Error, Equatable { case query }
 
-enum SwiftSearchAcceptance: Equatable {
+enum TerminalSearchAcceptance: Equatable {
   /// `anchor` is the first physical source row, including zero-width newline
   /// spans that intentionally have no drawable highlight.
-  case found(anchor: Int, spans: [SwiftSearchResolvedSpan])
+  case found(anchor: Int, spans: [TerminalSearchResolvedSpan])
   case missing
   case working
   case needsPage
@@ -126,7 +126,7 @@ enum SwiftSearchAcceptance: Equatable {
   case cancelled
 }
 
-struct SwiftSearchProof: Equatable {
+struct TerminalSearchProof: Equatable {
   let id: UInt64
   let revision: UInt64
   let softNextID: UInt64?
@@ -135,24 +135,24 @@ struct SwiftSearchProof: Equatable {
     self.revision = revision
     self.softNextID = softNextID
   }
-  init(_ row: SwiftSearchRow, softNextID: UInt64? = nil) {
+  init(_ row: TerminalSearchRow, softNextID: UInt64? = nil) {
     self.init(id: row.id, revision: row.revision, softNextID: softNextID)
   }
 }
 
-struct SwiftSearchSpan: Equatable {
-  let proof: SwiftSearchProof
+struct TerminalSearchSpan: Equatable {
+  let proof: TerminalSearchProof
   var start: Int
   var end: Int
 }
 
-struct SwiftSearchResolvedSpan: Equatable {
+struct TerminalSearchResolvedSpan: Equatable {
   let row: Int
-  let span: SwiftSearchSpan
+  let span: TerminalSearchSpan
 }
 
-private struct SwiftSearchPage {
-  let row: SwiftSearchRow
+private struct TerminalSearchPage {
+  let row: TerminalSearchRow
   let softNextID: UInt64?
   var column: Int
   let end: Int
@@ -161,29 +161,29 @@ private struct SwiftSearchPage {
 
 /// A bounded KMP literal task. It returns only the latest hit, matching the
 /// renderer's single-decoration policy while retaining O(query) state.
-struct SwiftSearchTask {
+struct TerminalSearchTask {
   private static let maxQueryBytes = 4_096
   private static let maxRowBytes = 16 * 1024 * 1024
   private static let cellsPerStep = 64
 
-  private let stamp: SwiftSearchStamp
+  private let stamp: TerminalSearchStamp
   private let pattern: [Unicode.Scalar]
   private let failure: [Int]
   private let stop: UInt64?
   private var next: UInt64?
   private var hint = 0
-  private var page: SwiftSearchPage?
+  private var page: TerminalSearchPage?
   private var matched = 0
-  private var recent: [SwiftSearchSpan] = []
-  private var latest: [SwiftSearchSpan]?
-  private(set) var status: SwiftSearchStatus = .needsPage
+  private var recent: [TerminalSearchSpan] = []
+  private var latest: [TerminalSearchSpan]?
+  private(set) var status: TerminalSearchStatus = .needsPage
 
-  init(query: String, source: SwiftSearchSource) throws {
+  init(query: String, source: TerminalSearchSource) throws {
     guard !query.isEmpty, query.utf8.count <= Self.maxQueryBytes else {
-      throw SwiftSearchAdmissionError.query
+      throw TerminalSearchAdmissionError.query
     }
     let folded = query.unicodeScalars.flatMap(Self.lowercase)
-    guard !folded.isEmpty else { throw SwiftSearchAdmissionError.query }
+    guard !folded.isEmpty else { throw TerminalSearchAdmissionError.query }
     var table = Array(repeating: 0, count: folded.count)
     if folded.count > 1 {
       for index in 1..<folded.count {
@@ -205,7 +205,7 @@ struct SwiftSearchTask {
 
   /// Owner-only. It validates all epochs before lending exactly one immutable
   /// row to the worker. New output is never followed past `stopIndex`.
-  mutating func fill(from source: SwiftSearchSource) -> SwiftSearchStatus {
+  mutating func fill(from source: TerminalSearchSource) -> TerminalSearchStatus {
     guard source.stamp == stamp else {
       status = .changed
       return status
@@ -246,7 +246,7 @@ struct SwiftSearchTask {
     } else {
       end = (row.cells.lastIndex { $0.endsHardRow }.map { $0 + 1 }) ?? 0
     }
-    page = SwiftSearchPage(row: row, softNextID: actualSoftNext,
+    page = TerminalSearchPage(row: row, softNextID: actualSoftNext,
                            column: 0, end: end, hardBreak: hasNext && !soft)
     self.next = nextID
     hint = index + 1
@@ -256,7 +256,7 @@ struct SwiftSearchTask {
 
   /// Worker-only. It touches no mutable terminal/document state and advances at
   /// most 64 physical cells. The task is safe to continue after owner teardown.
-  mutating func step() -> SwiftSearchStatus {
+  mutating func step() -> TerminalSearchStatus {
     guard status == .working, var page else { return status }
     let stop = min(page.end, page.column + Self.cellsPerStep)
     var matchEnd: Int?
@@ -264,8 +264,8 @@ struct SwiftSearchTask {
       let column = page.column
       let cell = page.row.cells[column]
       page.column += 1
-      let span = SwiftSearchSpan(
-        proof: SwiftSearchProof(page.row, softNextID: page.softNextID), start: column, end: column + cell.columnWidth)
+      let span = TerminalSearchSpan(
+        proof: TerminalSearchProof(page.row, softNextID: page.softNextID), start: column, end: column + cell.columnWidth)
       if cell.kind == .empty {
         push(Unicode.Scalar(0x20)!, span: span, matchEnd: &matchEnd)
       } else if cell.kind == .lead1 || cell.kind == .lead2 {
@@ -274,7 +274,7 @@ struct SwiftSearchTask {
     }
     if page.column == page.end {
       if page.hardBreak {
-        let point = SwiftSearchSpan(proof: SwiftSearchProof(page.row, softNextID: page.softNextID), start: page.end, end: page.end)
+        let point = TerminalSearchSpan(proof: TerminalSearchProof(page.row, softNextID: page.softNextID), start: page.end, end: page.end)
         push(Unicode.Scalar(0x0a)!, span: point, matchEnd: &matchEnd)
       }
       self.page = nil
@@ -284,7 +284,7 @@ struct SwiftSearchTask {
     }
     if let matchEnd {
       let start = matchEnd - pattern.count
-      var spans: [SwiftSearchSpan] = []
+      var spans: [TerminalSearchSpan] = []
       for span in recent[start..<matchEnd] {
         if let index = spans.indices.last, spans[index].proof == span.proof {
           spans[index].start = min(spans[index].start, span.start)
@@ -303,7 +303,7 @@ struct SwiftSearchTask {
 
   /// Owner-only acceptance. It rechecks epochs and per-row proofs, so a stale
   /// worker result can never navigate/highlight unrelated output.
-  func accept(in source: SwiftSearchSource) -> SwiftSearchAcceptance {
+  func accept(in source: TerminalSearchSource) -> TerminalSearchAcceptance {
     guard source.stamp == stamp else { return .changed }
     switch status {
     case .changed: return .changed
@@ -317,13 +317,13 @@ struct SwiftSearchTask {
     guard let first = latest.first,
           let firstIndex = searchIndex(of: first.proof.id, hint: 0, source: source)
     else { return .changed }
-    var spans: [SwiftSearchResolvedSpan] = []
+    var spans: [TerminalSearchResolvedSpan] = []
     for (offset, span) in latest.enumerated() {
       let index = firstIndex + offset
       guard source.rowIDAt(index) == span.proof.id,
             source.proofAt(index) == span.proof
       else { return .changed }
-      spans.append(SwiftSearchResolvedSpan(row: index, span: span))
+      spans.append(TerminalSearchResolvedSpan(row: index, span: span))
     }
     return .found(anchor: firstIndex, spans: spans)
   }
@@ -331,12 +331,12 @@ struct SwiftSearchTask {
   private static func lowercase(_ scalar: Unicode.Scalar) -> [Unicode.Scalar] {
     UnicodeLowercase.lowercase(scalar)
   }
-  private func searchIndex(of id: UInt64, hint: Int, source: SwiftSearchSource) -> Int? {
+  private func searchIndex(of id: UInt64, hint: Int, source: TerminalSearchSource) -> Int? {
     if source.rowIDAt(hint) == id { return hint }
     for index in 0..<source.rowCount where source.rowIDAt(index) == id { return index }
     return nil
   }
-  private mutating func push(_ scalar: Unicode.Scalar, span: SwiftSearchSpan, matchEnd: inout Int?) {
+  private mutating func push(_ scalar: Unicode.Scalar, span: TerminalSearchSpan, matchEnd: inout Int?) {
     recent.append(span)
     var candidate = matched
     while candidate > 0 && scalar != pattern[candidate] { candidate = failure[candidate - 1] }

@@ -2,7 +2,7 @@
 
 ## unicode-width 0.2.3
 
-`TerminalWidth.swift` and `TerminalWidthTables.swift` are derived from the
+`Text/TerminalWidth.swift` and `Text/TerminalWidthTables.swift` are derived from the
 Unicode 18.0.0 non-CJK lookup tables and sequence-state algorithm in
 [`unicode-width` 0.2.3](https://crates.io/crates/unicode-width), Copyright
 2012–2026 The Rust Project Developers.

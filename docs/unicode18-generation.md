@@ -11,7 +11,7 @@ licenses and regeneration commands. No Rust workspace or Cargo cache is needed.
 Run the verifier with:
 
 ```sh
-just swift-unicode18-corpus
+just unicode18-corpus
 just terminal-width
 ```
 

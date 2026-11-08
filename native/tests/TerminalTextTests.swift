@@ -1,8 +1,8 @@
 import Foundation
 
-@main enum SwiftUnicodeTests {
+@main enum TerminalTextTests {
   static func main() {
-    func append(_ emission: SwiftUnicode.UTF8Decoder.Emission, to output: inout [Unicode.Scalar]) {
+    func append(_ emission: TerminalText.UTF8Decoder.Emission, to output: inout [Unicode.Scalar]) {
       switch emission {
       case .none: break
       case .one(let scalar): output.append(scalar)
@@ -10,22 +10,22 @@ import Foundation
       }
     }
     func decode(_ bytes: [UInt8], finish: Bool = true) -> String {
-      var decoder = SwiftUnicode.UTF8Decoder()
+      var decoder = TerminalText.UTF8Decoder()
       var output: [Unicode.Scalar] = []
       for byte in bytes { append(decoder.push(byte), to: &output) }
       if finish { append(decoder.finish(), to: &output) }
       return String(String.UnicodeScalarView(output))
     }
 
-    precondition(SwiftUnicode.clusters(in: "e\u{301}") == ["e\u{301}"])
-    precondition(SwiftUnicode.clusters(in: "👩\u{200d}💻") == ["👩\u{200d}💻"])
-    precondition(SwiftUnicode.clusters(in: "🇳🇴🇯🇵").count == 2)
-    precondition(SwiftUnicode.cellWidth(of: "界") == 2)
-    precondition(SwiftUnicode.cellWidth(of: "e\u{301}") == 1)
+    precondition(TerminalText.clusters(in: "e\u{301}") == ["e\u{301}"])
+    precondition(TerminalText.clusters(in: "👩\u{200d}💻") == ["👩\u{200d}💻"])
+    precondition(TerminalText.clusters(in: "🇳🇴🇯🇵").count == 2)
+    precondition(TerminalText.cellWidth(of: "界") == 2)
+    precondition(TerminalText.cellWidth(of: "e\u{301}") == 1)
     // Supplementary private-use Nerd glyphs are printable single-width cells.
-    precondition(SwiftUnicode.cellWidth(of: "\u{f101}") == 1)
+    precondition(TerminalText.cellWidth(of: "\u{f101}") == 1)
 
-    var decoder = SwiftUnicode.UTF8Decoder()
+    var decoder = TerminalText.UTF8Decoder()
     var output: [Unicode.Scalar] = []
     for byte in Array("€".utf8) { append(decoder.push(byte), to: &output) }
     append(decoder.finish(), to: &output)
@@ -61,7 +61,7 @@ import Foundation
         precondition(decode(bytes) == String(decoding: bytes, as: UTF8.self))
       }
     }
-    precondition(SwiftUnicode.unicode18Parity)
+    precondition(TerminalText.unicode18Parity)
     print("PASS Swift Unicode smoke: clusters, widths, chunked UTF-8, malformed-prefix oracle and Unicode 18 pin")
   }
 }

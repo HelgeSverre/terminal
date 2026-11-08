@@ -147,6 +147,13 @@ explicit frozen binaries; the active repository contains no Rust implementation.
 Pinned Unicode data, licenses and reproduction commands live in
 [tools/unicode](tools/unicode/README.md).
 
+The native sources share one Swift compiler module. `native/Emulation` owns
+VT interpretation, document/history, input encoding, search, graphics protocol
+state and immutable snapshots. `native/Text` owns streaming text processing and
+the pinned grapheme, width and lowercase tables. AppKit, PTY scheduling and
+Metal rendering remain in `native`; the source graph lists every app and test
+input explicitly.
+
 See [the original spec](docs/spec.md), [platform decisions](docs/decisions.md),
 and [implementation status](docs/status.md). Reports contain actual local test
 and benchmark results; acceptance targets are not represented as measurements.

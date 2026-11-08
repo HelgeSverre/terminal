@@ -1,12 +1,42 @@
-# Swift port experiment
+# Swift replacement validation
 
-This detached worktree is deliberately a Swift-only build: `just build` compiles
-`native/SwiftTerminalCore.swift` and never invokes Cargo or links
-`libterminal_core.a`. Rust source remains only as a pinned behavioral oracle
-during the experiment; it is not part of the app, test, or runtime dependency
-graph.
+The app builds entirely from Swift, C and Metal. `just build` compiles the
+emulator at `native/Emulation/TerminalEmulator.swift`; `just release-build`
+uses whole-module optimization. No supported build, test or data-generation
+command requires Cargo. The Rust implementation is retained on the private
+`archive/rust-2026-11-08` snapshot branch, alongside frozen comparison apps.
 
-## Baseline
+## Current evidence
+
+The frozen `65cb446` application reached 86.8–96.3% of matched Rust throughput
+across short ASCII, long ASCII, ANSI and Unicode workloads in both run orders.
+Each workload used ten 16 MiB samples. Full SQL ingestion passed in 165.6 s
+at 47.1 MiB/s, or 69.6% of the paired Rust run; this history-heavy result stays
+separate from the four-workload acceptance gate. Full-file figure-eight motion
+and resizing also passed in 237.1 s with 14,224 movement ticks. These are
+source-scoped results, not measurements of arbitrary later revisions.
+
+Subsequent reconciliation restores Main's input/clipboard termination behavior,
+startup FIFO and physical-key regressions. The focused Session and clipboard
+suites passed 35 and 17 checks respectively at `76dd3cd`. Official Unicode18
+coverage is 853/853; the mandatory graphics ABI suite covers 17 groups.
+The naming cleanup retains the C ABI and those protocols while grouping
+emulation and version-pinned text behavior by responsibility.
+
+Final integrated CI and release validation remain required before promotion.
+A hosted Apple Paravirtual GPU independently crashes on a valid shared-heap
+texture upload; CI records that exact hardware case as skipped, while local
+Metal gates remain mandatory. Full original-spec completion is separate from
+Rust replacement; resumable, budgeted reflow and owner-confined selection are
+among the remaining requirements.
+
+## Historical experiment record
+
+Everything below records early, incomplete checkpoints. Counts, paths, build
+sizes and timings in these sections are historical and do not describe the
+current implementation. Raw measurements are preserved unchanged.
+
+## Initial baseline
 
 On this Mac, before the replacement, the Rust core passed all 86 core tests.
 The clean release compile was 5.82 s (309.6 MB maximum resident memory), the
@@ -38,7 +68,8 @@ linked Swift executable.
 | Kitty graphics (PNG/zlib/direct, placements/cache) | 13 graphics + dmscene | Direct RGBA/PNG/zlib/chunks/placements standalone tests pass; dmscene and original 13-case replay remain |
 | Binary snapshot ABI | bridge tests | Original typed borrowed callback restored; SnapshotBridge executable passes |
 
-`just swift-core-test` currently passes. The full native Session exercise is
+At that early checkpoint, `just swift-core-test` passed (the current command is
+`just emulator-test`). The full native Session exercise was
 run separately while porting; its generated report is not committed.
 
 After binary-snapshot, search, input and graphics integration, the real native

@@ -1,18 +1,18 @@
 {
   "app": [
-    "TerminalWidth.swift",
-    "TerminalWidthTables.swift",
-    "SwiftUnicode.swift",
-    "SwiftUnicode18Tables.swift",
-    "SwiftInputEncoder.swift",
-    "ClipboardProtocol.swift",
-    "SwiftGraphics.swift",
-    "TerminalPalette.swift",
-    "UnicodeLowercase.swift",
-    "SwiftSearchViewport.swift",
-    "TerminalDocument.swift",
-    "DocumentReflow.swift",
-    "TerminalSnapshot.swift", "SwiftTerminalCore.swift",
+    "Text/TerminalWidth.swift",
+    "Text/TerminalWidthTables.swift",
+    "Text/TerminalText.swift",
+    "Text/Unicode18GraphemeTables.swift",
+    "Emulation/TerminalInputEncoder.swift",
+    "Emulation/ClipboardProtocol.swift",
+    "Emulation/KittyGraphics.swift",
+    "Emulation/TerminalPalette.swift",
+    "Text/UnicodeLowercase.swift",
+    "Emulation/HistorySearch.swift",
+    "Emulation/TerminalDocument.swift",
+    "Emulation/DocumentReflow.swift",
+    "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift",
     "Statistics.swift",
     "Geometry.swift",
     "Font.swift",
@@ -39,37 +39,37 @@
     "main.swift"
   ],
   "emulation": [
-    "TerminalWidth.swift",
-    "TerminalWidthTables.swift",
-    "SwiftUnicode.swift",
-    "SwiftUnicode18Tables.swift",
-    "SwiftInputEncoder.swift",
-    "ClipboardProtocol.swift",
-    "SwiftGraphics.swift",
-    "TerminalPalette.swift",
-    "UnicodeLowercase.swift",
-    "SwiftSearchViewport.swift",
-    "TerminalDocument.swift",
-    "DocumentReflow.swift",
-    "TerminalSnapshot.swift", "SwiftTerminalCore.swift"
+    "Text/TerminalWidth.swift",
+    "Text/TerminalWidthTables.swift",
+    "Text/TerminalText.swift",
+    "Text/Unicode18GraphemeTables.swift",
+    "Emulation/TerminalInputEncoder.swift",
+    "Emulation/ClipboardProtocol.swift",
+    "Emulation/KittyGraphics.swift",
+    "Emulation/TerminalPalette.swift",
+    "Text/UnicodeLowercase.swift",
+    "Emulation/HistorySearch.swift",
+    "Emulation/TerminalDocument.swift",
+    "Emulation/DocumentReflow.swift",
+    "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift"
   ],
   "tests": {
-    "terminfo_probe": ["TerminalWidth.swift","TerminalWidthTables.swift","SwiftUnicode.swift","SwiftUnicode18Tables.swift","SwiftInputEncoder.swift","ClipboardProtocol.swift","SwiftGraphics.swift","TerminalPalette.swift","UnicodeLowercase.swift","SwiftSearchViewport.swift","TerminalDocument.swift","DocumentReflow.swift","TerminalSnapshot.swift","SwiftTerminalCore.swift","tests/TerminfoProbe.swift"],
+    "terminfo_probe": ["Text/TerminalWidth.swift","Text/TerminalWidthTables.swift","Text/TerminalText.swift","Text/Unicode18GraphemeTables.swift","Emulation/TerminalInputEncoder.swift","Emulation/ClipboardProtocol.swift","Emulation/KittyGraphics.swift","Emulation/TerminalPalette.swift","Text/UnicodeLowercase.swift","Emulation/HistorySearch.swift","Emulation/TerminalDocument.swift","Emulation/DocumentReflow.swift","Emulation/TerminalSnapshot.swift","Emulation/TerminalEmulator.swift","tests/TerminfoProbe.swift"],
     "metal_upload_probe": ["tests/MetalUploadProbe.swift"],
-    "terminal_palette": ["TerminalPalette.swift", "tests/TerminalPaletteTests.swift"],
+    "terminal_palette": ["Emulation/TerminalPalette.swift", "tests/TerminalPaletteTests.swift"],
     "terminal_graphics_oracle": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "TerminalSnapshot.swift", "SwiftTerminalCore.swift",
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift",
       "tests/TerminalGraphicsOracleTests.swift"
     ],
     "pty": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "TerminalSnapshot.swift", "SwiftTerminalCore.swift"
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift"
     ],
     "transport": ["Transport.swift", "tests/TransportTests.swift"],
     "session": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "TerminalSnapshot.swift", "SwiftTerminalCore.swift",
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift",
       "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
       "CellPalette.swift", "AccessibilityProjection.swift", "tests/SessionTests.swift"
     ],
@@ -79,98 +79,98 @@
     "glyph_residency": ["Font.swift", "GlyphRasterWorker.swift", "GlyphResidency.swift", "tests/GlyphResidencyScenarioTests.swift", "tests/GlyphResidencyTests.swift"],
     "preferences": ["Preferences.swift", "tests/PreferencesTests.swift"],
     "snapshot_bridge": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "TerminalSnapshot.swift", "SwiftTerminalCore.swift",
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift",
       "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
       "CellPalette.swift", "AccessibilityProjection.swift", "tests/BinarySnapshotOracle.swift", "tests/SnapshotBridgeTests.swift"
     ],
     "keymap": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "TerminalSnapshot.swift", "SwiftTerminalCore.swift",
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift",
       "Preferences.swift", "KeyMap.swift", "tests/KeyMapTests.swift"
     ],
-    "swift_core": [
-      "TerminalDocument.swift",
-      "DocumentReflow.swift",
-      "TerminalWidth.swift",
-      "TerminalWidthTables.swift",
-      "SwiftUnicode.swift",
-      "SwiftUnicode18Tables.swift",
-      "SwiftInputEncoder.swift",
-      "ClipboardProtocol.swift",
-      "SwiftGraphics.swift",
-      "TerminalPalette.swift",
-      "UnicodeLowercase.swift",
-      "SwiftSearchViewport.swift",
-      "TerminalSnapshot.swift", "SwiftTerminalCore.swift",
+    "emulator": [
+      "Emulation/TerminalDocument.swift",
+      "Emulation/DocumentReflow.swift",
+      "Text/TerminalWidth.swift",
+      "Text/TerminalWidthTables.swift",
+      "Text/TerminalText.swift",
+      "Text/Unicode18GraphemeTables.swift",
+      "Emulation/TerminalInputEncoder.swift",
+      "Emulation/ClipboardProtocol.swift",
+      "Emulation/KittyGraphics.swift",
+      "Emulation/TerminalPalette.swift",
+      "Text/UnicodeLowercase.swift",
+      "Emulation/HistorySearch.swift",
+      "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift",
       "tests/TerminalSnapshotTestSupport.swift",
-      "tests/SwiftCoreTests.swift"
+      "tests/EmulatorTests.swift"
     ],
     "terminal_document_oracle": [
-      "TerminalDocument.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "DocumentReflow.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "TerminalSnapshot.swift", "SwiftTerminalCore.swift",
+      "Emulation/TerminalDocument.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
+      "Emulation/DocumentReflow.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift",
       "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalDocumentOracleTests.swift"
     ],
     "terminal_document_ownership": [
-      "TerminalDocument.swift", "TerminalWidth.swift", "TerminalWidthTables.swift",
-      "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
+      "Emulation/TerminalDocument.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift",
+      "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
       "tests/TerminalDocumentOwnershipTests.swift"
     ],
     "terminal_viewport_oracle": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift",
-      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
-      "TerminalSnapshot.swift", "SwiftTerminalCore.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalViewportOracleTests.swift"
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift",
+      "Text/TerminalText.swift", "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift",
+      "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalViewportOracleTests.swift"
     ],
     "terminal_reflow_semantics": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift",
-      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
-      "TerminalSnapshot.swift", "SwiftTerminalCore.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalReflowSemanticTests.swift"
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift",
+      "Text/TerminalText.swift", "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift",
+      "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalReflowSemanticTests.swift"
     ],
     "terminal_prompt_clear_oracle": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift",
-      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
-      "TerminalSnapshot.swift", "SwiftTerminalCore.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalPromptClearOracleTests.swift"
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift",
+      "Text/TerminalText.swift", "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift",
+      "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalPromptClearOracleTests.swift"
     ],
     "terminal_scheduler_oracle": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift",
-      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
-      "TerminalSnapshot.swift", "SwiftTerminalCore.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalSchedulerOracleTests.swift"
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift",
+      "Text/TerminalText.swift", "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift",
+      "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalSchedulerOracleTests.swift"
     ],
     "terminal_semantic_regression": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift",
-      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift",
-      "TerminalSnapshot.swift", "SwiftTerminalCore.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalSemanticRegressionTests.swift"
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift",
+      "Text/TerminalText.swift", "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift",
+      "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalSemanticRegressionTests.swift"
     ],
-    "swift_unicode18_corpus": [
-      "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift", "tests/SwiftUnicode18CorpusTests.swift"
+    "unicode18_corpus": [
+      "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift", "tests/Unicode18CorpusTests.swift"
     ],
-    "swift_unicode_decoder": [
-      "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift", "tests/SwiftUnicodeTests.swift"
+    "unicode_decoder": [
+      "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift", "tests/TerminalTextTests.swift"
     ],
-    "swift_input_encoder": [
-      "SwiftInputEncoder.swift", "tests/SwiftInputEncoderTests.swift"
+    "input_encoder": [
+      "Emulation/TerminalInputEncoder.swift", "tests/TerminalInputEncoderTests.swift"
     ],
     "window_stress_motion": [
       "WindowStressMotion.swift", "tests/WindowStressMotionTests.swift"
     ],
     "clipboard_access": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "TerminalSnapshot.swift", "SwiftTerminalCore.swift", "Preferences.swift",
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift", "Preferences.swift",
       "Font.swift", "Transport.swift", "Session.swift", "ClipboardAccess.swift", "SnapshotBridge.swift",
       "CellPalette.swift", "AccessibilityProjection.swift", "tests/ClipboardAccessTests.swift"
     ],
     "terminal_boundary_regression": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "TerminalSnapshot.swift", "SwiftTerminalCore.swift",
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift",
       "tests/TerminalBoundaryRegressionTests.swift"
     ],
     "osc52_protocol": [
-      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
-      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "TerminalPalette.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "TerminalSnapshot.swift", "SwiftTerminalCore.swift", "tests/OSC52ProtocolTests.swift"
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift", "tests/OSC52ProtocolTests.swift"
     ],
-    "terminal_width": ["TerminalWidth.swift", "TerminalWidthTables.swift", "tests/TerminalWidthTests.swift"],
-    "unicode_lowercase": ["UnicodeLowercase.swift", "tests/UnicodeLowercaseTests.swift"],
-    "swift_search_viewport": ["UnicodeLowercase.swift", "SwiftSearchViewport.swift", "tests/SwiftSearchViewportTests.swift"]
+    "terminal_width": ["Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "tests/TerminalWidthTests.swift"],
+    "unicode_lowercase": ["Text/UnicodeLowercase.swift", "tests/UnicodeLowercaseTests.swift"],
+    "history_search": ["Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "tests/HistorySearchTests.swift"]
   }
 }

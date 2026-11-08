@@ -439,13 +439,13 @@ struct TerminalDocument {
   // writer hold that screen exactly once without accidentally extending an
   // inout row borrow across a wrap or scroll.
   private struct PrintState {
-    var segmenter = SwiftUnicode.Segmenter()
+    var segmenter = TerminalText.Segmenter()
     var openCluster: (row: Int, column: Int)?
     var retainedScalars = 0
     var capped = false
 
     mutating func reset() {
-      segmenter = SwiftUnicode.Segmenter()
+      segmenter = TerminalText.Segmenter()
       openCluster = nil
       retainedScalars = 0
       capped = false
@@ -609,13 +609,13 @@ struct TerminalDocument {
                            retainHistory: true, state: &printState, nextRowID: &nextRowID)
   }
 
-  private static func category(for scalar: Unicode.Scalar) -> SwiftUnicode.Category {
+  private static func category(for scalar: Unicode.Scalar) -> TerminalText.Category {
     switch scalar.value {
     case 0x000d: return .cr
     case 0x000a: return .lf
     case 0x0000...0x001f, 0x007f: return .control
     case 0x0000...0x007f: return .other
-    default: return SwiftUnicode.category(of: scalar)
+    default: return TerminalText.category(of: scalar)
     }
   }
 
@@ -637,7 +637,7 @@ struct TerminalDocument {
       let category = category(for: scalar)
       switch category { case .control, .cr, .lf: continue; default: break }
       let startsCluster = state.segmenter.push(scalar, category: category)
-      if SwiftUnicode.isDefaultIgnorable(scalar) {
+      if TerminalText.isDefaultIgnorable(scalar) {
         if startsCluster || !hasExtendablePrintOwner(state.openCluster, in: screen) {
           state.reset()
           continue
@@ -714,7 +714,7 @@ struct TerminalDocument {
       screen.rows[owner.row].count > owner.column
   }
 
-  private static func print(_ scalar: Unicode.Scalar, category: SwiftUnicode.Category, startsCluster: Bool,
+  private static func print(_ scalar: Unicode.Scalar, category: TerminalText.Category, startsCluster: Bool,
                             in screen: inout TerminalScreen, columns: Int, blankCellCapacity: Int,
                             leftRightMargins: Bool, autoWrap: Bool, insertMode: Bool,
                             attributes: borrowing PrintAttributes, history: inout TerminalHistory,
@@ -789,7 +789,7 @@ struct TerminalDocument {
       state.retainedScalars += 1
       var combined = cell.text
       combined.unicodeScalars.append(scalar)
-      let nominal = min(2, max(1, SwiftUnicode.cellWidth(of: combined)))
+      let nominal = min(2, max(1, TerminalText.cellWidth(of: combined)))
       let oldWidth = cell.kind == 2 ? 2 : 1
       let right = writeBounds(owner.column).right
       if nominal > oldWidth && owner.column + nominal > right + 1 && autoWrap {
@@ -831,11 +831,11 @@ struct TerminalDocument {
       richText = nil
     } else {
       let text = String(scalar)
-      measuredWidth = SwiftUnicode.cellWidth(of: text)
+      measuredWidth = TerminalText.cellWidth(of: text)
       richText = text
     }
     if measuredWidth == 0 {
-      if SwiftUnicode.isDefaultIgnorable(scalar) {
+      if TerminalText.isDefaultIgnorable(scalar) {
         return
       }
       if !startsCluster, screen.cursorColumn > 0 {

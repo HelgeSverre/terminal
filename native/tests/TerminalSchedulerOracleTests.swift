@@ -1,7 +1,7 @@
 import Foundation
 
 // ABI-level scheduling and invariant checks copied from the production semantic
-// contract. These deliberately never reach into SwiftTerminalCore directly.
+// contract. These deliberately never reach into TerminalEmulator directly.
 @main enum TerminalSchedulerOracleTests {
   final class Bytes { var value = Data() }
   static let collect: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void = { context, bytes, count in

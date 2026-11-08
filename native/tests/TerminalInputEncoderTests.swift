@@ -1,7 +1,7 @@
 import Foundation
 
-@main enum SwiftInputEncoderTests {
-  typealias Encoder = SwiftInputEncoder
+@main enum TerminalInputEncoderTests {
+  typealias Encoder = TerminalInputEncoder
   static func bytes(_ text: String) -> Data { Data(text.utf8) }
   static func main() {
     var modes = Encoder.Modes()

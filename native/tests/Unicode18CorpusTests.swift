@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
 
-@main enum SwiftUnicode18CorpusTests {
+@main enum Unicode18CorpusTests {
   static func main() throws {
     let root = CommandLine.arguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
     let fixture = URL(fileURLWithPath: root).appendingPathComponent(
@@ -16,7 +16,7 @@ import Foundation
     for (lineNumber, source) in data.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
       let line = source.prefix { $0 != "#" }.trimmingCharacters(in: .whitespaces)
       guard !line.isEmpty else { continue }
-      var segmenter = SwiftUnicode.Segmenter()
+      var segmenter = TerminalText.Segmenter()
       var expected = true
       for token in line.split(whereSeparator: { $0 == " " || $0 == "\t" }) {
         if token == "÷" { expected = true; continue }

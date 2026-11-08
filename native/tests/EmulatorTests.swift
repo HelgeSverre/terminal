@@ -1,6 +1,6 @@
 import Foundation
 
-@main enum SwiftCoreTests {
+@main enum EmulatorTests {
   private final class Bytes { var value = Data() }
   private final class Metadata { var value = Data() }
   private static let collect: @convention(c) (

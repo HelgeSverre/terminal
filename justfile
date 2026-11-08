@@ -120,10 +120,11 @@ lint:
     just _clipboard-access-tests
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    just swift-core-test
+    just emulator-test
     just terminal-document-ownership
     just terminal-document-oracle
     just terminal-viewport-oracle
+    just history-search-test
     just terminal-reflow-semantics
     just terminal-prompt-clear-oracle
     just terminal-scheduler-oracle
@@ -131,11 +132,11 @@ lint:
     just terminal-boundary-regression
     just terminal-graphics-oracle
     just terminal-palette
-    just swift-unicode18-corpus
-    just swift-unicode-decoder
+    just unicode18-corpus
+    just unicode-decoder
     just unicode-lowercase
     just terminal-width
-    just swift-input-encoder
+    just input-encoder
     just window-stress-motion-test
     just osc52-protocol
     xcrun clang -Wall -Wextra -Werror -I native -c native/tests/pty.c -o target/native/swift-pty-tests.o
@@ -170,11 +171,19 @@ _session-test:
 
 # Swift terminal-state smoke; historical Rust oracles live in the archived branch.
 [group('check')]
-swift-core-test:
+emulator-test:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_core) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/swift-core-tests
-    target/native/swift-core-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print emulator) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/emulator-tests
+    target/native/emulator-tests
+
+# Immutable search pages, cancellation, adjacency and revision proofs.
+[group('check')]
+history-search-test:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print history_search) -framework Foundation -o target/native/history-search-tests
+    target/native/history-search-tests
 
 # Public graphics protocol, resource lifetime and document-anchor regressions.
 [group('check')]
@@ -248,7 +257,6 @@ _glyph-residency-tests:
     xcrun swiftc -D GLYPH_RESIDENCY_TESTING $(xcrun swift tools/SwiftIncrementalBuild.swift --print glyph_residency) -framework AppKit -framework CoreText -framework Metal -o target/native/glyph-residency-tests
     target/native/glyph-residency-tests
 
-
 [group('check')]
 terminal-prompt-clear-oracle:
     mkdir -p target/native
@@ -306,25 +314,25 @@ terminal-boundary-regression:
     target/native/terminal-boundary-regression
 
 [group('check')]
-swift-unicode18-corpus:
+unicode18-corpus:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_unicode18_corpus) -framework Foundation -o target/native/swift-unicode18-corpus
-    target/native/swift-unicode18-corpus "$PWD" --strict
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print unicode18_corpus) -framework Foundation -o target/native/unicode18-corpus
+    target/native/unicode18-corpus "$PWD" --strict
 
 [group('check')]
-swift-unicode-decoder:
+unicode-decoder:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_unicode_decoder) -framework Foundation -o target/native/swift-unicode-decoder-tests
-    target/native/swift-unicode-decoder-tests
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print unicode_decoder) -framework Foundation -o target/native/unicode-decoder-tests
+    target/native/unicode-decoder-tests
 
 [group('check')]
-swift-input-encoder:
+input-encoder:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_input_encoder) -framework Foundation -o target/native/swift-input-encoder-tests
-    target/native/swift-input-encoder-tests
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print input_encoder) -framework Foundation -o target/native/input-encoder-tests
+    target/native/input-encoder-tests
 
 [group('check')]
 osc52-protocol:
@@ -362,7 +370,6 @@ idle: build (_native-smoke "idle")
 # Full local gate, including the GUI smoke
 [group('check')]
 check: test smoke
-
 
 # Compare PTY throughput: just benchmark terminal|ghostty|kitty [new-report-directory]
 [group('bench')]

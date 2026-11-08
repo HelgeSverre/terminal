@@ -41,7 +41,7 @@ import Foundation
     _ = widthDocument.print("\u{00a9}".unicodeScalars.first!, usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: styled)
     let beforeVS = widthDocument.primary
     _ = widthDocument.print("\u{fe0f}".unicodeScalars.first!, usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: styled)
-    precondition(SwiftUnicode.cellWidth(of: "©\u{fe0f}") == 2)
+    precondition(TerminalText.cellWidth(of: "©\u{fe0f}") == 2)
     precondition(beforeVS.rows[0].cells[1].text == "©")
     precondition(widthDocument.primary != beforeVS && widthDocument.primary.cursorRow == 1)
 
