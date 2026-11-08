@@ -222,6 +222,11 @@ benchmark-core:
 @stress-cat app file output:
     ruby tools/cat_stress.rb "$1" "$2" "$3"
 
+# Add figure-eight movement, smooth width changes and slower height changes.
+[group('bench')]
+@stress-cat-motion app file output:
+    ruby tools/cat_stress.rb "$1" "$2" "$3" motion
+
 # Compare frozen Swift row behavior with baseline-derived byte-budget thresholds.
 [group('check')]
 @compare-swift-rows baseline candidate output:
