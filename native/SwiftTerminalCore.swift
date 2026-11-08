@@ -5,37 +5,10 @@ import Foundation
 // snapshots, and input encoding so neither Session nor the renderer needs to
 // duplicate terminal policy.
 
-private struct SwiftStyle {
-  var foreground: UInt32 = 0
-  var background: UInt32 = 0
-  var underline: UInt32 = 0
-  var flags: UInt16 = 0
-  var underlineKind: UInt8 = 0
-}
-
-private struct SwiftCell {
-  var text = ""
-  var kind: UInt8 = 0 // Empty, Lead1, Lead2, Continuation, WrapSpacer
-  var style = SwiftStyle()
-  var link: String?
-  var flags: UInt8 = 0
-}
-
-private struct SwiftRow {
-  var cells: [SwiftCell]
-  var softWrapped = false
-  init(columns: Int) { cells = Array(repeating: SwiftCell(), count: columns) }
-}
-
-private struct SwiftScreen {
-  var rows: [SwiftRow]
-  var cursorRow = 0
-  var cursorColumn = 0
-  var pendingWrap = false
-  var savedRow = 0
-  var savedColumn = 0
-  init(columns: Int, rows count: Int) { rows = Array(repeating: SwiftRow(columns: columns), count: count) }
-}
+private typealias SwiftStyle = TerminalStyle
+private typealias SwiftCell = TerminalCell
+private typealias SwiftRow = TerminalRow
+private typealias SwiftScreen = TerminalScreen
 
 private enum SwiftParserState { case ground, escape, csi, osc, apc }
 
@@ -64,10 +37,11 @@ private final class SwiftBorrowedCells {
 private final class SwiftTerminalCore {
   private(set) var columns: Int
   private(set) var rowCount: Int
-  private var primary: SwiftScreen
-  private var alternate: SwiftScreen
+  private var document: TerminalDocument
+  private var primary: SwiftScreen { get { document.primary } set { document.primary = newValue } }
+  private var alternate: SwiftScreen { get { document.alternate } set { document.alternate = newValue } }
   private var usingAlternate = false
-  private var history: [SwiftRow] = []
+  private var history: [SwiftRow] { get { document.history } set { document.history = newValue } }
   private var historyLimit = 10_000
   private var viewOffset = 0
   private var parser = SwiftParserState.ground
@@ -100,8 +74,7 @@ private final class SwiftTerminalCore {
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
     self.rowCount = max(1, min(4096, rows))
-    primary = SwiftScreen(columns: self.columns, rows: self.rowCount)
-    alternate = SwiftScreen(columns: self.columns, rows: self.rowCount)
+    document = TerminalDocument(columns: self.columns, rows: self.rowCount)
   }
 
   private var screen: SwiftScreen {
