@@ -14,9 +14,13 @@ xcrun swift tools/SwiftDifferential.swift \
 
 Use `--partition whole`, `--partition byte`, or `--partition random` to feed
 the same concatenated bytes as one write, one byte at a time, or deterministic
-1–7 byte chunks. The raw comparison preserves colors, cursor pending-wrap,
-styles, replies, and every published metadata field; it does not normalize
-away schema differences.
+1–7 byte chunks. Reports retain raw Swift and Rust dumps plus a canonical
+semantic snapshot. The canonical comparison includes every field exposed by
+both sides, including colors, cursor pending-wrap, styles, links and cells.
+Swift's screen-local margin observations are retained separately because the
+frozen Rust JSON format does not expose their equivalents. `terminal-tools`
+also has no reply-queue projection; the Swift reply bytes remain an explicit
+observation, not a claimed comparison.
 
 Rust is external to the experiment: it is neither linked into nor built by the
 Swift app. The initial fixtures are deliberately small smoke transcripts. A

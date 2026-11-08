@@ -22,22 +22,30 @@ enum Failure: Error, LocalizedError {
 func process(_ executable: String, _ args: [String], stdin: Data? = nil, cwd: String) throws -> (Data, Data) {
   let task = Process(); task.executableURL = URL(fileURLWithPath: executable); task.arguments = args
   task.currentDirectoryURL = URL(fileURLWithPath: cwd)
-  let out = Pipe(), err = Pipe(); task.standardOutput = out; task.standardError = err
-  let input = Pipe(); if let stdin { task.standardInput = input }
+  // terminal-tools writes a full snapshot, often larger than a pipe buffer.
+  // File-backed capture avoids waiting for a child that is itself blocked
+  // trying to write its JSON before the parent reaches readDataToEndOfFile.
+  let capture = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("terminal-differential-capture-\(UUID().uuidString)")
+  let stdoutPath = capture.appendingPathExtension("out"), stderrPath = capture.appendingPathExtension("err")
+  FileManager.default.createFile(atPath: stdoutPath.path, contents: nil)
+  FileManager.default.createFile(atPath: stderrPath.path, contents: nil)
+  let out = try FileHandle(forWritingTo: stdoutPath), err = try FileHandle(forWritingTo: stderrPath)
+  defer { try? FileManager.default.removeItem(at: stdoutPath); try? FileManager.default.removeItem(at: stderrPath) }
+  task.standardOutput = out; task.standardError = err
+  let input = Pipe(); if stdin != nil { task.standardInput = input }
   try task.run()
   if let stdin { input.fileHandleForWriting.write(stdin); try? input.fileHandleForWriting.close() }
   task.waitUntilExit()
-  let stdout = out.fileHandleForReading.readDataToEndOfFile()
-  let stderr = err.fileHandleForReading.readDataToEndOfFile()
+  try? out.close(); try? err.close()
+  let stdout = try Data(contentsOf: stdoutPath)
+  let stderr = try Data(contentsOf: stderrPath)
   guard task.terminationStatus == 0 else {
     throw Failure.message("\(executable) failed (\(task.terminationStatus)): \(String(decoding: stderr, as: UTF8.self))")
   }
   return (stdout, stderr)
 }
 
-func canonical(_ data: Data) throws -> Any {
-  stripVolatile(try JSONSerialization.jsonObject(with: data))
-}
+func decodedJSON(_ data: Data) throws -> Any { try JSONSerialization.jsonObject(with: data) }
 /// Epochs/revisions describe internal publication accounting rather than the
 /// terminal-visible state. Compare their behavior in dedicated transition
 /// tests; omit them from transcript equivalence so the next semantic delta is
@@ -50,6 +58,35 @@ func stripVolatile(_ value: Any) -> Any {
   }
   if let array = value as? [Any] { return array.map(stripVolatile) }
   return value
+}
+// The ABI snapshot deliberately publishes the three screen-local margin
+// observations below. The frozen Rust JSON oracle predates those fields and
+// cannot project them, so they are retained beside the raw snapshot rather
+// than being deleted from either emulator. All fields Rust does publish,
+// including cells/styles/links/colors and cursor pending-wrap, stay in the
+// canonical comparison.
+let swiftOnlySnapshotObservations: Set<String> = [
+  "primary_margins", "alternate_margins", "vertical_margins",
+]
+func canonicalSnapshot(_ value: Any, observations: inout [String: Any]) throws -> Any {
+  guard var snapshot = value as? [String: Any] else {
+    throw Failure.message("snapshot is not a JSON object")
+  }
+  for key in swiftOnlySnapshotObservations {
+    if let observation = snapshot.removeValue(forKey: key) { observations[key] = observation }
+  }
+  // Row IDs are document-local identities. They are exercised by the viewport
+  // transition oracles, but the Rust JSON snapshot intentionally omits them.
+  // Strip only those row identities from this cross-implementation projection;
+  // image/placement IDs and every cell attribute remain comparable.
+  if let rows = snapshot["rows"] as? [[String: Any]] {
+    snapshot["rows"] = rows.map { row in
+      var canonicalRow = row
+      canonicalRow.removeValue(forKey: "id")
+      return canonicalRow
+    }
+  }
+  return stripVolatile(snapshot)
 }
 func json(_ value: Any) throws -> String {
   String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), as: UTF8.self)
@@ -140,12 +177,24 @@ for fixture in fixtures.fixtures {
   let fixtureData = try JSONSerialization.data(withJSONObject: ["columns": fixture.columns, "rows": fixture.rows, "chunks_base64": encodedChunks])
   let fixturePath = temporary.appendingPathComponent("\(fixture.name).json"); try fixtureData.write(to: fixturePath)
   let swift = try process(runnerExecutable.path, [fixturePath.path], cwd: root)
-  let swiftValue = try canonical(swift.0) as! [String: Any]
+  let swiftRaw = try decodedJSON(swift.0) as! [String: Any]
   let rust = try process("/usr/bin/env", ["cargo", "run", "--quiet", "--release", "--locked", "-p", "terminal-tools", "--bin", "terminal-tools", "--", "\(fixture.columns)", "\(fixture.rows)"], stdin: bytes, cwd: rustRoot)
-  let rustSnapshot = try canonical(rust.0)
-  let swiftSnapshot = swiftValue["snapshot"]!
+  let rustRaw = try decodedJSON(rust.0)
+  var swiftObservations: [String: Any] = [:]
+  let swiftSnapshot = try canonicalSnapshot(swiftRaw["snapshot"]!, observations: &swiftObservations)
+  var rustObservations: [String: Any] = [:]
+  let rustSnapshot = try canonicalSnapshot(rustRaw, observations: &rustObservations)
+  // terminal-tools has no reply-queue JSON projection. Keep Swift replies in
+  // the report, but do not pretend the absent Rust value compared equal.
+  if let replies = swiftRaw["replies_base64"] { swiftObservations["replies_base64"] = replies }
   let difference = firstDifference(rustSnapshot, swiftSnapshot)
-  cases.append(["name": fixture.name, "partition": partition, "chunks": encodedChunks.count, "equal": difference == nil, "first_difference": difference as Any, "swift": swiftValue, "rust": ["snapshot": rustSnapshot, "stderr": String(decoding: rust.1, as: UTF8.self)]])
+  cases.append([
+    "name": fixture.name, "partition": partition, "chunks": encodedChunks.count,
+    "equal": difference == nil, "first_difference": difference as Any,
+    "swift": ["raw": swiftRaw, "canonical_snapshot": swiftSnapshot, "extra_observations": swiftObservations],
+    "rust": ["raw_snapshot": rustRaw, "canonical_snapshot": rustSnapshot,
+             "extra_observations": rustObservations, "stderr": String(decoding: rust.1, as: UTF8.self)],
+  ])
 }
 let result: [String: Any] = ["rust_root": rustRoot, "partition": partition, "fixtures": cases, "passed": cases.allSatisfy { $0["equal"] as? Bool == true }]
 let resultData = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])

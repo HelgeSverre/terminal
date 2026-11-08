@@ -51,11 +51,15 @@ equivalent Swift differential replay and the dmscene/PTY corpus passes. System
 Swift Unicode tables are not considered a replacement for the existing pinned
 Unicode 18 tables.
 
-The machine-readable differential harness now passes its initial 5/5 byte
-transcripts (plain text/LF, SGR/cursor, alternate return, one-byte UTF-8, DSR)
-against frozen Rust after matching default colors, palette and snapshot mode
-shape. It deliberately strips internal revision epochs and Rust-only history
-serialization; those require separate transition/history oracles.
+The machine-readable differential harness passes all 15 frozen replays: five
+smoke transcripts (plain text/LF, SGR/cursor, alternate return, one-byte UTF-8,
+DSR) under whole-buffer, byte-at-a-time and deterministic random 1–7-byte
+partitioning, against Rust `f4268ee`. Its canonical projection retains every
+shared terminal-visible field, including cells, styles, links, colors and
+pending-wrap. Raw reports retain Swift's screen-local margin observations and
+reply bytes because the frozen Rust JSON format does not project equivalents;
+row identities and epochs remain covered by transition/viewport oracles.
+This is evidence for these five transcripts, not complete parity.
 
 ## Preliminary same-machine comparison
 
