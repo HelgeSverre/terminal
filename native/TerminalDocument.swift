@@ -85,6 +85,23 @@ struct TerminalRow: Equatable {
     return TerminalRow(id: id, storage: TerminalRowStorage(slots: slots,
                        logicalCapacity: logicalCellCapacity, detachCapacity: logicalCellCapacity))
   }
+  mutating func resetForReuse(columns: Int, logicalCellCapacity: Int,
+                              style: TerminalStyle, id: UInt64) {
+    if storage.slots.count != columns || !isKnownUniquelyReferenced(&storage) {
+      storage = TerminalRowStorage(slots: Array(repeating: TerminalRowSlot(style: style.erased()), count: columns),
+                                   logicalCapacity: logicalCellCapacity, detachCapacity: logicalCellCapacity)
+      self.id = id; revision = 0; softWrapped = false
+      return
+    }
+    let slot = TerminalRowSlot(style: style.erased())
+    storage.slots.withUnsafeMutableBufferPointer { slots in
+      for index in slots.indices { slots[index] = slot }
+    }
+    storage.payloads.removeAll(keepingCapacity: true)
+    storage.logicalCapacity = logicalCellCapacity
+    storage.detachCapacity = logicalCellCapacity
+    self.id = id; revision = 0; softWrapped = false
+  }
 
   // Read-only rich projection for publication, search, and compatibility at
   // the Core boundary. It retains value/COW snapshots of the two stores and
@@ -392,19 +409,19 @@ struct TerminalDocument {
   mutating func index(usingAlternate: Bool, reverse: Bool,
                       leftRightMargins: Bool, eraseStyle: TerminalStyle) -> [TerminalRow] {
     if usingAlternate {
-      _ = Self.index(&alternate, columns: columns, blankCellCapacity: blankCellCapacity, reverse: reverse,
+      _ = Self.index(&alternate, columns: columns, blankCellCapacity: blankCellCapacity, recycleDiscarded: true, reverse: reverse,
                      leftRightMargins: leftRightMargins, eraseStyle: eraseStyle,
                      nextRowID: &nextRowID)
       return []
     }
-    guard let removed = Self.index(&primary, columns: columns, blankCellCapacity: blankCellCapacity, reverse: reverse,
+    guard let removed = Self.index(&primary, columns: columns, blankCellCapacity: blankCellCapacity, recycleDiscarded: false, reverse: reverse,
                                    leftRightMargins: leftRightMargins, eraseStyle: eraseStyle,
                                    nextRowID: &nextRowID) else { return [] }
     history.append(removed)
     return [removed]
   }
 
-  private static func index(_ screen: inout TerminalScreen, columns: Int, blankCellCapacity: Int,
+  private static func index(_ screen: inout TerminalScreen, columns: Int, blankCellCapacity: Int, recycleDiscarded: Bool,
                             reverse: Bool, leftRightMargins: Bool,
                             eraseStyle: TerminalStyle, nextRowID: inout UInt64) -> TerminalRow? {
     let horizontal = leftRightMargins ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
@@ -412,14 +429,14 @@ struct TerminalDocument {
     screen.pendingWrap = false
     if reverse {
       if screen.cursorRow == screen.topMargin && inside {
-        _ = scrollForIndex(&screen, columns: columns, blankCellCapacity: blankCellCapacity, top: screen.topMargin, bottom: screen.bottomMargin,
+        _ = scrollForIndex(&screen, columns: columns, blankCellCapacity: blankCellCapacity, recycleDiscarded: recycleDiscarded, top: screen.topMargin, bottom: screen.bottomMargin,
                            left: horizontal.0, right: horizontal.1, up: false, eraseStyle: eraseStyle,
                            nextRowID: &nextRowID)
       } else {
         screen.cursorRow = max(0, screen.cursorRow - 1)
       }
     } else if screen.cursorRow == screen.bottomMargin && inside {
-      return scrollForIndex(&screen, columns: columns, blankCellCapacity: blankCellCapacity, top: screen.topMargin, bottom: screen.bottomMargin,
+      return scrollForIndex(&screen, columns: columns, blankCellCapacity: blankCellCapacity, recycleDiscarded: recycleDiscarded, top: screen.topMargin, bottom: screen.bottomMargin,
                             left: horizontal.0, right: horizontal.1, up: true, eraseStyle: eraseStyle,
                             nextRowID: &nextRowID)
     } else {
@@ -428,7 +445,7 @@ struct TerminalDocument {
     return nil
   }
 
-  private static func scrollForIndex(_ screen: inout TerminalScreen, columns: Int, blankCellCapacity: Int,
+  private static func scrollForIndex(_ screen: inout TerminalScreen, columns: Int, blankCellCapacity: Int, recycleDiscarded: Bool,
                                      top: Int, bottom: Int, left: Int, right: Int, up: Bool,
                                      eraseStyle: TerminalStyle, nextRowID: inout UInt64) -> TerminalRow? {
     guard top >= 0, bottom < screen.rows.count, top <= bottom else { return nil }
@@ -437,7 +454,14 @@ struct TerminalDocument {
                              left: left, right: right, count: 1, up: up, eraseStyle: eraseStyle)
       return nil
     }
-    let removed = screen.rows.remove(at: up ? top : bottom)
+    var removed = screen.rows.remove(at: up ? top : bottom)
+    if recycleDiscarded {
+      removed.resetForReuse(columns: columns, logicalCellCapacity: blankCellCapacity,
+                            style: eraseStyle, id: nextRowID)
+      nextRowID &+= 1
+      screen.rows.insert(removed, at: up ? bottom : top)
+      return nil
+    }
     let replacement = TerminalRow.erased(columns: columns, logicalCellCapacity: blankCellCapacity, style: eraseStyle, id: nextRowID)
     nextRowID &+= 1
     screen.rows.insert(replacement, at: up ? bottom : top)
@@ -630,9 +654,14 @@ struct TerminalDocument {
       screen.rows[row].revision &+= 1
     }
     func scrollUpFullWidth() {
-      let removed = screen.rows.remove(at: screen.topMargin)
-      let replacement = TerminalRow.erased(columns: columns, logicalCellCapacity: blankCellCapacity, style: attributes.style)
-      screen.rows.insert(replacement, at: screen.bottomMargin)
+      var removed = screen.rows.remove(at: screen.topMargin)
+      if retainHistory {
+        screen.rows.insert(TerminalRow.erased(columns: columns, logicalCellCapacity: blankCellCapacity, style: attributes.style), at: screen.bottomMargin)
+      } else {
+        removed.resetForReuse(columns: columns, logicalCellCapacity: blankCellCapacity,
+                              style: attributes.style, id: 0)
+        screen.rows.insert(removed, at: screen.bottomMargin)
+      }
       replacementRows.append(screen.bottomMargin)
       if retainHistory && screen.topMargin == 0 && screen.bottomMargin == screen.rows.count - 1 {
         history.append(removed)

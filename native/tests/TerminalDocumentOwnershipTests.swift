@@ -499,6 +499,64 @@ import Foundation
     precondition(retainedCells.allSatisfy { $0.kind == 0 })
   }
 
+  static func discardedAlternateReuseRespectsSnapshots() {
+    func identity(_ row: TerminalRow) -> ObjectIdentifier {
+      let value = Mirror(reflecting: row).children.first { $0.label == "storage" }!.value
+      return ObjectIdentifier(value as AnyObject)
+    }
+    let rich = TerminalCell(text: "a\u{301}", kind: 1, style: TerminalStyle(background: 9),
+                            link: "https://example.test/reuse", flags: 2, protected: true)
+    var unique = TerminalRow(id: 7, cells: [rich, rich, rich])
+    let uniqueIdentity = identity(unique)
+    unique.resetForReuse(columns: 3, logicalCellCapacity: unique.retainedCellCapacity,
+                         style: TerminalStyle(background: 4), id: 8)
+    precondition(identity(unique) == uniqueIdentity && unique.id == 8 && unique.revision == 0 && !unique.softWrapped)
+    precondition(unique.cells.allSatisfy { $0.text.isEmpty && $0.kind == 0 && $0.link == nil && !$0.protected && $0.flags == 0 && $0.style.background == 4 })
+    var shared = TerminalRow(id: 9, cells: [rich, rich, rich])
+    let retained = shared; let cells = shared.cells
+    let sharedIdentity = identity(shared)
+    shared.resetForReuse(columns: 3, logicalCellCapacity: shared.retainedCellCapacity,
+                         style: TerminalStyle(), id: 10)
+    precondition(identity(shared) != sharedIdentity)
+    precondition(retained.cells[0] == rich && cells[0] == rich)
+
+    let attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
+    var document = TerminalDocument(columns: 2, rows: 1)
+    let recycledIdentity = identity(document.alternate.rows[0])
+    _ = document.print(Array("ABC".unicodeScalars), usingAlternate: true,
+                       leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+    precondition(identity(document.alternate.rows[0]) == recycledIdentity && document.alternate.rows[0].id != 0)
+
+    var snapshotDocument = TerminalDocument(columns: 2, rows: 1)
+    let priorIdentity = identity(snapshotDocument.alternate.rows[0])
+    let screen = snapshotDocument.alternate
+    let projection = snapshotDocument.alternate.rows[0].cells
+    _ = snapshotDocument.print(Array("ABC".unicodeScalars), usingAlternate: true,
+                               leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+    precondition(identity(snapshotDocument.alternate.rows[0]) != priorIdentity)
+    precondition(screen.rows[0].cells.allSatisfy { $0.kind == 0 } && projection.allSatisfy { $0.kind == 0 })
+
+    var indexed = TerminalDocument(columns: 3, rows: 1)
+    indexed.alternate.rows[0].setCell(rich, at: 0)
+    let indexIdentity = identity(indexed.alternate.rows[0])
+    let beforeID = indexed.alternate.rows[0].id
+    _ = indexed.index(usingAlternate: true, reverse: false, leftRightMargins: false,
+                      eraseStyle: TerminalStyle(background: 6))
+    let forwardID: UInt64
+    do {
+      let forward = indexed.alternate.rows[0]
+      precondition(identity(forward) == indexIdentity && forward.id != beforeID && forward.revision == 0 && !forward.softWrapped)
+      precondition(forward.retainedStorageCost == 32 + UInt64(forward.retainedCellCapacity) * 64)
+      precondition(forward.cells.allSatisfy { $0.text.isEmpty && $0.kind == 0 && $0.link == nil && !$0.protected && $0.flags == 0 && $0.style.background == 6 })
+      forwardID = forward.id
+    }
+    _ = indexed.index(usingAlternate: true, reverse: true, leftRightMargins: false,
+                      eraseStyle: TerminalStyle(background: 7))
+    let reverse = indexed.alternate.rows[0]
+    precondition(identity(reverse) == indexIdentity && reverse.id != forwardID && reverse.revision == 0)
+    precondition(reverse.cells.allSatisfy { $0.style.background == 7 && $0.kind == 0 })
+  }
+
   static func sparsePayloadsBoundStorageAndKeepLogicalBudget() {
     var row = TerminalRow(columns: 3)
     // Scalar text has no retained String payload; only the exceptional link
@@ -609,6 +667,7 @@ import Foundation
     batchWriterMatchesScalarTransactions()
     asciiSpanMatchesScalarTransactions()
     alternateMultiwrapBatchDoesNotYieldForReplacements()
+    discardedAlternateReuseRespectsSnapshots()
     sparsePayloadsBoundStorageAndKeepLogicalBudget()
     logicalCapacityMatchesFormerRichArray()
     richPayloadMovesAndProjectionsRemainIndependent()
