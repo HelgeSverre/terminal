@@ -246,27 +246,27 @@ import Foundation
   static func physicalKeyMetadataUsesABI() {
     let compatibility = make(); defer { terminal_destroy(compatibility) }
     precondition(input(compatibility, text: "", key: 57_442).isEmpty)
-    precondition(input(compatibility, text: "", key: 10, modifiers: 16 | 32) == Data("\u{1b}[A".utf8))
+    precondition(input(compatibility, text: "", key: 10, modifiers: 64 | 128) == Data("\u{1b}[A".utf8))
 
     let enhanced = make(); defer { terminal_destroy(enhanced) }
     feed(enhanced, "\u{1b}[=31u")
     precondition(input(enhanced, text: "с", key: 200, modifiers: 4, associated: "с", baseLayout: 99) == Data("\u{1b}[1089::99;5:1u".utf8))
     precondition(input(enhanced, text: "=", key: 200, modifiers: 1, associated: "+", shifted: 43, baseLayout: 61) == Data("\u{1b}[61:43:61;2:1;43u".utf8))
     precondition(input(enhanced, text: "x", key: 200, associated: "") == Data("\u{1b}[120;1:1u".utf8))
-    precondition(input(enhanced, text: "", key: 57_442, modifiers: 4 | 16) == Data("\u{1b}[57442;69:1u".utf8))
-    precondition(input(enhanced, text: "", key: 57_442, modifiers: 16, event: 2) == Data("\u{1b}[57442;65:3u".utf8))
-    precondition(input(enhanced, text: "", key: 57_358, modifiers: 16) == Data("\u{1b}[57358;65:1u".utf8))
+    precondition(input(enhanced, text: "", key: 57_442, modifiers: 4 | 64) == Data("\u{1b}[57442;69:1u".utf8))
+    precondition(input(enhanced, text: "", key: 57_442, modifiers: 64, event: 2) == Data("\u{1b}[57442;65:3u".utf8))
+    precondition(input(enhanced, text: "", key: 57_358, modifiers: 64) == Data("\u{1b}[57358;65:1u".utf8))
 
     let legacy = make(); defer { terminal_destroy(legacy) }
     precondition(input(legacy, text: "a", key: 200, modifiers: 1, associated: "A") == Data("A".utf8))
     precondition(input(legacy, text: "1", key: 200, modifiers: 1, associated: "!") == Data("!".utf8))
     precondition(input(legacy, text: "a", key: 200, associated: "æ") == Data("æ".utf8))
-    precondition(input(legacy, text: "å", key: 200, modifiers: 16, associated: "Å") == Data("Å".utf8))
+    precondition(input(legacy, text: "å", key: 200, modifiers: 64, associated: "Å") == Data("Å".utf8))
     precondition(input(legacy, text: "1", key: 200, modifiers: 1 | 8, associated: "!") == Data("\u{1b}[49;10u".utf8))
     precondition(input(legacy, text: "c", key: 200, modifiers: 4, associated: "ç") == Data([3]))
     precondition(input(legacy, text: "a", key: 200, modifiers: 2, associated: "æ") == Data("\u{1b}a".utf8))
     precondition(input(legacy, text: "1", key: 200, modifiers: 1 | 2, associated: "¡", legacy: "!", shifted: 33) == Data("\u{1b}!".utf8))
-    precondition(input(legacy, text: "a", key: 200, modifiers: 2 | 16, associated: "å", legacy: "A") == Data("\u{1b}A".utf8))
+    precondition(input(legacy, text: "a", key: 200, modifiers: 2 | 64, associated: "å", legacy: "A") == Data("\u{1b}A".utf8))
   }
 
   static func snapshotsAreImmutableAndIngressIsPartitionIndependent() {
