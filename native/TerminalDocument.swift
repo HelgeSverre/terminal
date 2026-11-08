@@ -42,32 +42,40 @@ private struct TerminalLegacyCapacityCell {
   var a: UInt64 = 0; var b: UInt64 = 0; var c: UInt64 = 0; var d: UInt64 = 0
   var e: UInt64 = 0; var f: UInt64 = 0; var g: UInt64 = 0; var h: UInt64 = 0
 }
+private final class TerminalRowStorage {
+  var slots: [TerminalRowSlot]
+  var payloads: [Int: TerminalRowPayload]
+  var logicalCapacity: Int
+  var detachCapacity: Int
+  init(slots: [TerminalRowSlot], payloads: [Int: TerminalRowPayload] = [:], logicalCapacity: Int, detachCapacity: Int) {
+    self.slots = slots; self.payloads = payloads
+    self.logicalCapacity = logicalCapacity; self.detachCapacity = detachCapacity
+  }
+}
 
 struct TerminalRow: Equatable {
   var id: UInt64; var revision: UInt64; var softWrapped = false
-  private var slots: [TerminalRowSlot]
+  private var storage: TerminalRowStorage
   // `slots.capacity` is deliberately not the history contract: Swift rounds
   // Array capacity by element stride. Preserve the former 64-byte rich-cell
   // capacity independently without retaining a parallel rich-cell grid.
-  private var logicalCellCapacity: Int
-  // Sparse by construction: entries are removed on overwrite/erase and never
-  // outnumber physical columns. Values are copied with their row snapshots.
-  private var payloads: [Int: TerminalRowPayload] = [:]
 
   init(id: UInt64 = 0, revision: UInt64 = 0, cells: [TerminalCell]) {
     self.id = id; self.revision = revision
-    self.slots = []
+    var slots: [TerminalRowSlot] = []
     // Keep the old array-capacity budget observable to history admission when
     // a caller supplies a deliberately over-reserved rich fixture.
-    self.slots.reserveCapacity(cells.capacity)
-    self.slots.append(contentsOf: repeatElement(TerminalRowSlot(), count: cells.count))
-    self.logicalCellCapacity = cells.capacity
+    slots.reserveCapacity(cells.capacity)
+    slots.append(contentsOf: repeatElement(TerminalRowSlot(), count: cells.count))
+    self.storage = TerminalRowStorage(slots: slots, logicalCapacity: cells.capacity, detachCapacity: Self.blankLogicalCapacity(columns: cells.count))
     for (index, cell) in cells.enumerated() { setCell(cell, at: index) }
   }
   init(columns: Int, logicalCellCapacity: Int? = nil) {
     id = 0; revision = 0
-    slots = Array(repeating: TerminalRowSlot(), count: columns)
-    self.logicalCellCapacity = logicalCellCapacity ?? Self.blankLogicalCapacity(columns: columns)
+    let capacity = logicalCellCapacity ?? Self.blankLogicalCapacity(columns: columns)
+    // Fresh blank rows are already calibrated by their document geometry;
+    // reuse that shape for a later COW detach rather than calibrating again.
+    storage = TerminalRowStorage(slots: Array(repeating: TerminalRowSlot(), count: columns), logicalCapacity: capacity, detachCapacity: capacity)
   }
 
   // Read-only rich projection for publication, search, and compatibility at
@@ -77,24 +85,23 @@ struct TerminalRow: Equatable {
   struct Cells: RandomAccessCollection {
     typealias Index = Int
     typealias Element = TerminalCell
-    private let slots: [TerminalRowSlot]
-    private let payloads: [Int: TerminalRowPayload]
-    fileprivate init(slots: [TerminalRowSlot], payloads: [Int: TerminalRowPayload]) {
-      self.slots = slots; self.payloads = payloads
+    private let storage: TerminalRowStorage
+    fileprivate init(storage: TerminalRowStorage) {
+      self.storage = storage
     }
-    var startIndex: Int { slots.startIndex }
-    var endIndex: Int { slots.endIndex }
+    var startIndex: Int { storage.slots.startIndex }
+    var endIndex: Int { storage.slots.endIndex }
     subscript(position: Int) -> TerminalCell {
-      TerminalRow.project(slots[position], payloads[position])
+      TerminalRow.project(storage.slots[position], storage.payloads[position])
     }
   }
-  var cells: Cells { Cells(slots: slots, payloads: payloads) }
-  var count: Int { slots.count }
-  var payloadCount: Int { payloads.count }
-  var retainedCellCapacity: Int { logicalCellCapacity }
+  var cells: Cells { Cells(storage: storage) }
+  var count: Int { storage.slots.count }
+  var payloadCount: Int { storage.payloads.count }
+  var retainedCellCapacity: Int { storage.logicalCapacity }
 
   func cell(_ index: Int) -> TerminalCell {
-    Self.project(slots[index], payloads[index])
+    Self.project(storage.slots[index], storage.payloads[index])
   }
   private static func project(_ slot: TerminalRowSlot, _ payload: TerminalRowPayload?) -> TerminalCell {
     let text: String
@@ -104,8 +111,16 @@ struct TerminalRow: Equatable {
     return TerminalCell(text: text, kind: slot.kind, style: slot.style,
                         link: payload?.link, flags: slot.flags, protected: slot.protected)
   }
+  private mutating func ensureUniqueForCellEdit() {
+    if !isKnownUniquelyReferenced(&storage) {
+      storage = TerminalRowStorage(slots: storage.slots, payloads: storage.payloads,
+                                   logicalCapacity: storage.detachCapacity,
+                                   detachCapacity: storage.detachCapacity)
+    }
+  }
 
   mutating func setCell(_ cell: TerminalCell, at index: Int) {
+    ensureUniqueForCellEdit()
     var slot = TerminalRowSlot(scalar: 0, style: cell.style, hasScalar: false,
                                kind: cell.kind, flags: cell.flags, protected: cell.protected)
     var payload = TerminalRowPayload(text: nil, link: cell.link)
@@ -116,46 +131,47 @@ struct TerminalRow: Equatable {
     } else if !cell.text.isEmpty {
       payload.text = cell.text
     }
-    slots[index] = slot
-    if payload.text != nil || payload.link != nil { payloads[index] = payload }
-    else { payloads.removeValue(forKey: index) }
+    storage.slots[index] = slot
+    if payload.text != nil || payload.link != nil { storage.payloads[index] = payload }
+    else { storage.payloads.removeValue(forKey: index) }
   }
 
   mutating func setScalar(_ scalar: Unicode.Scalar, at index: Int, kind: UInt8,
                           style: TerminalStyle, link: String?, flags: UInt8, protected: Bool) {
-    slots[index] = TerminalRowSlot(scalar: scalar.value, style: style, hasScalar: true,
+    ensureUniqueForCellEdit()
+    storage.slots[index] = TerminalRowSlot(scalar: scalar.value, style: style, hasScalar: true,
                                    kind: kind, flags: flags, protected: protected)
-    if let link { payloads[index] = TerminalRowPayload(text: nil, link: link) }
-    else { payloads.removeValue(forKey: index) }
+    if let link { storage.payloads[index] = TerminalRowPayload(text: nil, link: link) }
+    else { storage.payloads.removeValue(forKey: index) }
   }
 
   mutating func erase(at index: Int, style: TerminalStyle = TerminalStyle()) {
-    slots[index] = TerminalRowSlot(style: style.erased())
-    payloads.removeValue(forKey: index)
+    ensureUniqueForCellEdit(); storage.slots[index] = TerminalRowSlot(style: style.erased())
+    storage.payloads.removeValue(forKey: index)
   }
   mutating func copyCell(from source: TerminalRow, at sourceIndex: Int, to index: Int) {
-    slots[index] = source.slots[sourceIndex]
-    if let payload = source.payloads[sourceIndex] { payloads[index] = payload }
-    else { payloads.removeValue(forKey: index) }
+    ensureUniqueForCellEdit(); storage.slots[index] = source.storage.slots[sourceIndex]
+    if let payload = source.storage.payloads[sourceIndex] { storage.payloads[index] = payload }
+    else { storage.payloads.removeValue(forKey: index) }
   }
-  mutating func setKind(_ kind: UInt8, at index: Int) { slots[index].kind = kind }
-  mutating func setFlags(_ flags: UInt8, at index: Int) { slots[index].flags = flags }
-  mutating func addFlags(_ flags: UInt8, at index: Int) { slots[index].flags |= flags }
+  mutating func setKind(_ kind: UInt8, at index: Int) { ensureUniqueForCellEdit(); storage.slots[index].kind = kind }
+  mutating func setFlags(_ flags: UInt8, at index: Int) { ensureUniqueForCellEdit(); storage.slots[index].flags = flags }
+  mutating func addFlags(_ flags: UInt8, at index: Int) { ensureUniqueForCellEdit(); storage.slots[index].flags |= flags }
   mutating func clearText(at index: Int) {
-    slots[index].scalar = 0
-    slots[index].hasScalar = false
-    if var payload = payloads[index] {
+    ensureUniqueForCellEdit(); storage.slots[index].scalar = 0
+    storage.slots[index].hasScalar = false
+    if var payload = storage.payloads[index] {
       payload.text = nil
-      if payload.link != nil { payloads[index] = payload }
-      else { payloads.removeValue(forKey: index) }
+      if payload.link != nil { storage.payloads[index] = payload }
+      else { storage.payloads.removeValue(forKey: index) }
     }
   }
-  func kind(at index: Int) -> UInt8 { slots[index].kind }
-  func flags(at index: Int) -> UInt8 { slots[index].flags }
-  func style(at index: Int) -> TerminalStyle { slots[index].style }
-  func isProtected(at index: Int) -> Bool { slots[index].protected }
+  func kind(at index: Int) -> UInt8 { storage.slots[index].kind }
+  func flags(at index: Int) -> UInt8 { storage.slots[index].flags }
+  func style(at index: Int) -> TerminalStyle { storage.slots[index].style }
+  func isProtected(at index: Int) -> Bool { storage.slots[index].protected }
   func scalarCount(at index: Int) -> Int {
-    payloads[index]?.text?.unicodeScalars.count ?? (slots[index].hasScalar ? 1 : 0)
+    storage.payloads[index]?.text?.unicodeScalars.count ?? (storage.slots[index].hasScalar ? 1 : 0)
   }
   mutating func appendScalar(_ scalar: Unicode.Scalar, at index: Int) {
     var cell = cell(index)
@@ -163,23 +179,39 @@ struct TerminalRow: Equatable {
     setCell(cell, at: index)
   }
   mutating func truncate(to newCount: Int) {
-    logicalCellCapacity = Self.legacyCapacity(existingCount: slots.count,
-                                               capacity: logicalCellCapacity,
-                                               truncatingTo: newCount)
-    slots = Array(slots.prefix(newCount))
-    payloads = payloads.reduce(into: [:]) { result, entry in
+    let next = Self.legacyCapacity(existingCount: storage.slots.count, capacity: storage.logicalCapacity, truncatingTo: newCount)
+    if !isKnownUniquelyReferenced(&storage) { storage = TerminalRowStorage(slots: storage.slots, payloads: storage.payloads, logicalCapacity: storage.logicalCapacity, detachCapacity: storage.detachCapacity) }
+    storage.logicalCapacity = next; storage.detachCapacity = Self.blankLogicalCapacity(columns: newCount)
+    storage.slots = Array(storage.slots.prefix(newCount))
+    storage.payloads = storage.payloads.reduce(into: [:]) { result, entry in
       if entry.key < newCount { result[entry.key] = entry.value }
     }
   }
   mutating func appendBlanks(_ count: Int) {
     guard count > 0 else { return }
-    logicalCellCapacity = Self.legacyCapacity(existingCount: slots.count,
-                                               capacity: logicalCellCapacity,
-                                               appending: count)
-    slots.append(contentsOf: repeatElement(TerminalRowSlot(), count: count))
+    let next = Self.legacyCapacity(existingCount: storage.slots.count, capacity: storage.logicalCapacity, appending: count)
+    if !isKnownUniquelyReferenced(&storage) { storage = TerminalRowStorage(slots: storage.slots, payloads: storage.payloads, logicalCapacity: storage.logicalCapacity, detachCapacity: storage.detachCapacity) }
+    storage.logicalCapacity = next; storage.detachCapacity = Self.blankLogicalCapacity(columns: storage.slots.count + count)
+    storage.slots.append(contentsOf: repeatElement(TerminalRowSlot(), count: count))
   }
   mutating func copyRange(from source: TerminalRow, _ range: ClosedRange<Int>) {
     for index in range { copyCell(from: source, at: index, to: index) }
+  }
+  mutating func shiftCells(column: Int, right: Int, amount: Int, inserting: Bool) {
+    ensureUniqueForCellEdit()
+    if inserting {
+      for destination in stride(from: right, through: column + amount, by: -1) {
+        storage.slots[destination] = storage.slots[destination - amount]
+        if let payload = storage.payloads[destination - amount] { storage.payloads[destination] = payload }
+        else { storage.payloads.removeValue(forKey: destination) }
+      }
+    } else {
+      for destination in column...(right - amount) {
+        storage.slots[destination] = storage.slots[destination + amount]
+        if let payload = storage.payloads[destination + amount] { storage.payloads[destination] = payload }
+        else { storage.payloads.removeValue(forKey: destination) }
+      }
+    }
   }
 
   // Preserve the published history-byte contract across this physical storage
@@ -189,13 +221,13 @@ struct TerminalRow: Equatable {
   private static let logicalRowCharge: UInt64 = 32
   private static let logicalCellCharge: UInt64 = 64
   var retainedStorageCost: UInt64 {
-    var bytes = Self.logicalRowCharge + UInt64(logicalCellCapacity) * Self.logicalCellCharge
-    for index in slots.indices {
-      if let text = payloads[index]?.text { bytes += UInt64(text.utf8.count) }
-      else if slots[index].hasScalar, let scalar = Unicode.Scalar(slots[index].scalar) {
+    var bytes = Self.logicalRowCharge + UInt64(storage.logicalCapacity) * Self.logicalCellCharge
+    for index in storage.slots.indices {
+      if let text = storage.payloads[index]?.text { bytes += UInt64(text.utf8.count) }
+      else if storage.slots[index].hasScalar, let scalar = Unicode.Scalar(storage.slots[index].scalar) {
         bytes += UInt64(String(scalar).utf8.count)
       }
-      if let link = payloads[index]?.link { bytes += UInt64(link.utf8.count) }
+      if let link = storage.payloads[index]?.link { bytes += UInt64(link.utf8.count) }
     }
     return bytes
   }
@@ -223,12 +255,12 @@ struct TerminalRow: Equatable {
 
   static func == (lhs: TerminalRow, rhs: TerminalRow) -> Bool {
     guard lhs.id == rhs.id, lhs.revision == rhs.revision,
-          lhs.softWrapped == rhs.softWrapped, lhs.slots.count == rhs.slots.count else { return false }
+          lhs.softWrapped == rhs.softWrapped, lhs.storage.slots.count == rhs.storage.slots.count else { return false }
     // Most comparisons preserve representation, so avoid projecting strings.
-    if lhs.slots == rhs.slots && lhs.payloads == rhs.payloads { return true }
+    if lhs.storage.slots == rhs.storage.slots && lhs.storage.payloads == rhs.storage.payloads { return true }
     // String equality is canonically equivalent; a scalar slot and an
     // exceptional multi-scalar payload can therefore be semantically equal.
-    for index in lhs.slots.indices where lhs.cell(index) != rhs.cell(index) { return false }
+    for index in lhs.storage.slots.indices where lhs.cell(index) != rhs.cell(index) { return false }
     return true
   }
 }
@@ -333,19 +365,19 @@ struct TerminalDocument {
   mutating func index(usingAlternate: Bool, reverse: Bool,
                       leftRightMargins: Bool, eraseStyle: TerminalStyle) -> [TerminalRow] {
     if usingAlternate {
-      _ = Self.index(&alternate, columns: columns, reverse: reverse,
+      _ = Self.index(&alternate, columns: columns, blankCellCapacity: blankCellCapacity, reverse: reverse,
                      leftRightMargins: leftRightMargins, eraseStyle: eraseStyle,
                      nextRowID: &nextRowID)
       return []
     }
-    guard let removed = Self.index(&primary, columns: columns, reverse: reverse,
+    guard let removed = Self.index(&primary, columns: columns, blankCellCapacity: blankCellCapacity, reverse: reverse,
                                    leftRightMargins: leftRightMargins, eraseStyle: eraseStyle,
                                    nextRowID: &nextRowID) else { return [] }
     history.append(removed)
     return [removed]
   }
 
-  private static func index(_ screen: inout TerminalScreen, columns: Int,
+  private static func index(_ screen: inout TerminalScreen, columns: Int, blankCellCapacity: Int,
                             reverse: Bool, leftRightMargins: Bool,
                             eraseStyle: TerminalStyle, nextRowID: inout UInt64) -> TerminalRow? {
     let horizontal = leftRightMargins ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
@@ -353,14 +385,14 @@ struct TerminalDocument {
     screen.pendingWrap = false
     if reverse {
       if screen.cursorRow == screen.topMargin && inside {
-        _ = scrollForIndex(&screen, columns: columns, top: screen.topMargin, bottom: screen.bottomMargin,
+        _ = scrollForIndex(&screen, columns: columns, blankCellCapacity: blankCellCapacity, top: screen.topMargin, bottom: screen.bottomMargin,
                            left: horizontal.0, right: horizontal.1, up: false, eraseStyle: eraseStyle,
                            nextRowID: &nextRowID)
       } else {
         screen.cursorRow = max(0, screen.cursorRow - 1)
       }
     } else if screen.cursorRow == screen.bottomMargin && inside {
-      return scrollForIndex(&screen, columns: columns, top: screen.topMargin, bottom: screen.bottomMargin,
+      return scrollForIndex(&screen, columns: columns, blankCellCapacity: blankCellCapacity, top: screen.topMargin, bottom: screen.bottomMargin,
                             left: horizontal.0, right: horizontal.1, up: true, eraseStyle: eraseStyle,
                             nextRowID: &nextRowID)
     } else {
@@ -369,7 +401,7 @@ struct TerminalDocument {
     return nil
   }
 
-  private static func scrollForIndex(_ screen: inout TerminalScreen, columns: Int,
+  private static func scrollForIndex(_ screen: inout TerminalScreen, columns: Int, blankCellCapacity: Int,
                                      top: Int, bottom: Int, left: Int, right: Int, up: Bool,
                                      eraseStyle: TerminalStyle, nextRowID: inout UInt64) -> TerminalRow? {
     guard top >= 0, bottom < screen.rows.count, top <= bottom else { return nil }
@@ -379,8 +411,7 @@ struct TerminalDocument {
       return nil
     }
     let removed = screen.rows.remove(at: up ? top : bottom)
-    var replacement = TerminalRow(columns: columns,
-                                  logicalCellCapacity: screen.rows.first?.retainedCellCapacity ?? TerminalRow.blankLogicalCapacity(columns: columns))
+    var replacement = TerminalRow(columns: columns, logicalCellCapacity: blankCellCapacity)
     replacement.id = nextRowID
     for column in 0..<columns { replacement.erase(at: column, style: eraseStyle) }
     nextRowID &+= 1
@@ -409,12 +440,12 @@ struct TerminalDocument {
                       leftRightMargins: Bool, autoWrap: Bool, insertMode: Bool,
                       attributes: borrowing PrintAttributes) -> PrintBatchEffect where C.Element == Unicode.Scalar {
     if usingAlternate {
-      return Self.printBatch(scalars, in: &alternate, columns: columns,
+      return Self.printBatch(scalars, in: &alternate, columns: columns, blankCellCapacity: blankCellCapacity,
                              leftRightMargins: leftRightMargins, autoWrap: autoWrap,
                              insertMode: insertMode, attributes: attributes, history: &history,
                              retainHistory: false, state: &printState, nextRowID: &nextRowID)
     }
-    return Self.printBatch(scalars, in: &primary, columns: columns,
+    return Self.printBatch(scalars, in: &primary, columns: columns, blankCellCapacity: blankCellCapacity,
                            leftRightMargins: leftRightMargins, autoWrap: autoWrap,
                            insertMode: insertMode, attributes: attributes, history: &history,
                            retainHistory: true, state: &printState, nextRowID: &nextRowID)
@@ -431,7 +462,7 @@ struct TerminalDocument {
   }
 
   private static func printBatch<C: Collection>(_ scalars: C, in screen: inout TerminalScreen,
-                                                columns: Int, leftRightMargins: Bool,
+                                                columns: Int, blankCellCapacity: Int, leftRightMargins: Bool,
                                                 autoWrap: Bool, insertMode: Bool,
                                                 attributes: borrowing PrintAttributes,
                                                 history: inout [TerminalRow], retainHistory: Bool,
@@ -456,7 +487,7 @@ struct TerminalDocument {
           continue
         }
       }
-      Self.print(scalar, category: category, startsCluster: startsCluster, in: &screen, columns: columns,
+      Self.print(scalar, category: category, startsCluster: startsCluster, in: &screen, columns: columns, blankCellCapacity: blankCellCapacity,
                  leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
                  attributes: attributes, history: &appended, replacementRows: &replacements,
                  retainHistory: retainHistory, state: &state, effect: &effect)
@@ -542,7 +573,7 @@ struct TerminalDocument {
   }
 
   private static func print(_ scalar: Unicode.Scalar, category: SwiftUnicode.Category, startsCluster: Bool,
-                            in screen: inout TerminalScreen, columns: Int,
+                            in screen: inout TerminalScreen, columns: Int, blankCellCapacity: Int,
                             leftRightMargins: Bool, autoWrap: Bool, insertMode: Bool,
                             attributes: borrowing PrintAttributes, history: inout [TerminalRow],
                             replacementRows: inout [Int], retainHistory: Bool,
@@ -564,10 +595,7 @@ struct TerminalDocument {
       let count = min(amount, right - column + 1)
       guard count > 0 else { return }
       if column + count <= right {
-        let source = screen.rows[row]
-        for destination in stride(from: right, through: column + count, by: -1) {
-          screen.rows[row].copyCell(from: source, at: destination - count, to: destination)
-        }
+        screen.rows[row].shiftCells(column: column, right: right, amount: count, inserting: true)
       }
       for index in column..<(column + count) { screen.rows[row].erase(at: index, style: eraseStyle) }
       Self.repairWidePairsInPlace(&screen.rows[row], around: column..<(right + 1), eraseStyle: eraseStyle)
@@ -575,8 +603,7 @@ struct TerminalDocument {
     }
     func scrollUpFullWidth() {
       let removed = screen.rows.remove(at: screen.topMargin)
-      var replacement = TerminalRow(columns: columns,
-                                    logicalCellCapacity: screen.rows.first?.retainedCellCapacity ?? TerminalRow.blankLogicalCapacity(columns: columns))
+      var replacement = TerminalRow(columns: columns, logicalCellCapacity: blankCellCapacity)
       for column in 0..<columns { replacement.erase(at: column, style: attributes.style) }
       screen.rows.insert(replacement, at: screen.bottomMargin)
       replacementRows.append(screen.bottomMargin)
@@ -838,16 +865,10 @@ struct TerminalDocument {
     guard screen.rows.indices.contains(row), column <= right, right < columns else { return }
     let amount = min(count, right - column + 1); guard amount > 0 else { return }
     if inserting {
-      if column + amount <= right {
-        let original = screen.rows[row]
-        for destination in stride(from: right, through: column + amount, by: -1) { screen.rows[row].copyCell(from: original, at: destination - amount, to: destination) }
-      }
+      if column + amount <= right { screen.rows[row].shiftCells(column: column, right: right, amount: amount, inserting: true) }
       for index in column..<(column + amount) { screen.rows[row].erase(at: index, style: eraseStyle) }
     } else {
-      if column <= right - amount {
-        let original = screen.rows[row]
-        for destination in column...(right - amount) { screen.rows[row].copyCell(from: original, at: destination + amount, to: destination) }
-      }
+      if column <= right - amount { screen.rows[row].shiftCells(column: column, right: right, amount: amount, inserting: false) }
       for index in (right - amount + 1)...right { screen.rows[row].erase(at: index, style: eraseStyle) }
     }
     repairWidePairs(&screen.rows[row], eraseStyle: eraseStyle); screen.rows[row].revision &+= 1
