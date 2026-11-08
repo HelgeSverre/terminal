@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "app": "/Users/helge/code/terminal-swift-experiment/target/frozen-8eb9d03-wmo.app",
+  "source_name": "boatflow-after-deploy.sql",
+  "window_motion_requested": true,
+  "source_bytes": 154044690,
+  "source_identity": [
+    16777231,
+    722707877,
+    154044690,
+    1792301185,
+    957651592
+  ],
+  "executable_sha256": "f6910e2ef8d6dab507c622d6dd6496ff7aaf78e3d35270cdc37cfb5329b895c7",
+  "runner_sha256": "b0fb9b8a932bd9490df89314175d919fe2a0170bf6baa26bd2f215f08223e858",
+  "scope": "Full local file through /bin/cat, primary history and scheduled live resize probes; no file contents recorded.",
+  "pid": 53027,
+  "exit_status": 0,
+  "natural_exit": true,
+  "cleanup_survivors": []
+}

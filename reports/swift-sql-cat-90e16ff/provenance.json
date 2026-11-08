@@ -1,0 +1,20 @@
+{
+  "passed": false,
+  "app": "/Users/helge/code/terminal-swift-experiment/target/frozen-90e16ff-wmo.app",
+  "source_name": "reflow-latest-9.sql",
+  "source_bytes": 8162501113,
+  "source_identity": [
+    16777231,
+    732076605,
+    8162501113,
+    1792592227,
+    931268800
+  ],
+  "executable_sha256": "77bc7e629aa99b873a2ce8f197e054ca63ed15e308abb65c154fc3cfc7dfa8b6",
+  "runner_sha256": "8d5ae0774394c86715df5f7afe82f84cdd6c2c2451e70d8e6114e947e3bf5b19",
+  "scope": "Full local file through /bin/cat, primary history and scheduled live resize probes; no file contents recorded.",
+  "pid": 4534,
+  "exit_status": 0,
+  "failure": "RuntimeError: Cat stress checks failed",
+  "cleanup_survivors": []
+}
