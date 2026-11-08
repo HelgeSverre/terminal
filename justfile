@@ -56,22 +56,30 @@ close-smoke: build
       end
     end
 
-# Build the Rust core, native host, Metal shaders and signed development bundle
+# Build the incremental development bundle.
 [group('build')]
-@build: icons
+@build: icons (_assemble-bundle "development")
+
+# Build the whole-module-optimized bundle used for installation and distribution.
+[group('build')]
+@release-build: icons (_assemble-bundle "release")
+
+[private]
+@_assemble-bundle configuration:
     #!/usr/bin/env bash
     set -euo pipefail
     ROOT_DIR="$TERMINAL_PROJECT_ROOT"
     BUILD_DIR="$ROOT_DIR/target/native"
     APP_BUNDLE="$ROOT_DIR/dist/Terminal.app"
+    case "$1" in development) CONFIGURATION=development; OUTPUT_DIRECTORY=swift-incremental ;; release) CONFIGURATION=release; OUTPUT_DIRECTORY=swift-release ;; *) echo "Unknown build configuration: $1" >&2; exit 2 ;; esac
     mkdir -p "$BUILD_DIR" "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
     xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 native/Launcher.c -o "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
     xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
     xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
     xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swift tools/SwiftIncrementalBuild.swift
-    cp "$ROOT_DIR/target/swift-incremental/Terminal" "$APP_BUNDLE/Contents/MacOS/Terminal"
+    xcrun swift tools/SwiftIncrementalBuild.swift --configuration "$CONFIGURATION"
+    cp "$ROOT_DIR/target/$OUTPUT_DIRECTORY/Terminal" "$APP_BUNDLE/Contents/MacOS/Terminal"
     cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
     cp native/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
     cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
@@ -100,9 +108,9 @@ close-smoke: build
 @dev *args: build
     open -n "$TERMINAL_PROJECT_ROOT/dist/Terminal.app" --args "$@"
 
-# Build and install a copy in ~/Applications/Helge Terminal.app
+# Build and install a whole-module-optimized copy in ~/Applications/Helge Terminal.app
 [group('build')]
-install: build
+install: release-build
     xcrun swift tools/Distribution.swift install
 
 # Remove only this app's installed bundle; preserve settings and project output
@@ -370,12 +378,12 @@ verify: build
 
 # Build a Developer ID signed application, ZIP and PKG installer
 [group('release')]
-package: build
+package: release-build
     xcrun swift tools/Distribution.swift package
 
 # Sign, notarize, staple and validate both the application and PKG installer
 [group('release')]
-release: build
+release: release-build
     xcrun swift tools/Distribution.swift release
 
 # Verify local Developer ID identities and notarization credentials

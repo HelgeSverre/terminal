@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 // A deliberately small build seam for measuring Swift's actual per-source
@@ -5,11 +6,24 @@ import Foundation
 // Metal and signing are intentionally outside this timing because they do not
 // exercise the Swift dependency graph.
 
-enum IncrementalBuildError: Error { case command([String], Int32) }
+enum IncrementalBuildError: Error { case command([String], Int32), inputsChanged }
+enum BuildConfiguration: String { case development, release }
+
+func requestedConfiguration(_ arguments: [String]) -> BuildConfiguration {
+  guard let index = arguments.firstIndex(of: "--configuration") else { return .development }
+  guard arguments.indices.contains(index + 1), let configuration = BuildConfiguration(rawValue: arguments[index + 1]) else {
+    fputs("Use --configuration development or --configuration release\n", stderr)
+    exit(2)
+  }
+  return configuration
+}
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-let build = root.appendingPathComponent("target/swift-incremental", isDirectory: true)
 let arguments = Array(CommandLine.arguments.dropFirst())
+let configuration = requestedConfiguration(arguments)
+let build = root.appendingPathComponent(
+  configuration == .development ? "target/swift-incremental" : "target/swift-release",
+  isDirectory: true)
 let clean = arguments.contains("--clean")
 struct SourceGraph: Decodable {
   let app: [String]
@@ -74,6 +88,49 @@ func run(_ arguments: [String]) throws {
   guard task.terminationStatus == 0 else { throw IncrementalBuildError.command(arguments, task.terminationStatus) }
 }
 
+func capture(_ arguments: [String]) throws -> String {
+  let task = Process()
+  task.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+  task.arguments = arguments
+  let output = Pipe()
+  task.standardOutput = output
+  task.standardError = FileHandle.standardError
+  try task.run()
+  task.waitUntilExit()
+  guard task.terminationStatus == 0 else { throw IncrementalBuildError.command(arguments, task.terminationStatus) }
+  return String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+}
+
+func sha256(_ data: Data) -> String {
+  SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+}
+
+func sourcesHash(_ sources: [String]) throws -> String {
+  var digest = SHA256()
+  for source in sources.sorted() {
+    let relative = source.hasPrefix(root.path + "/") ? String(source.dropFirst(root.path.count + 1)) : source
+    digest.update(data: Data("\(relative)\u{0}".utf8))
+    digest.update(data: try Data(contentsOf: URL(fileURLWithPath: source)))
+  }
+  return digest.finalize().map { String(format: "%02x", $0) }.joined()
+}
+
+struct ReleaseProvenance: Encodable {
+  let configuration: String
+  let sourceGraphSHA256: String
+  let appSourcesSHA256: String
+  let bridgeSHA256: String
+  let spawnSourceSHA256: String
+  let compiler: String
+  let sdkPath: String
+  let target: String
+  let module: String
+  let flags: [String]
+  let executableSHA256: String
+  let executableBytes: UInt64
+  let compileMilliseconds: Double
+}
+
 func milliseconds<T>(_ body: () throws -> T) rethrows -> (T, Double) {
   let start = DispatchTime.now().uptimeNanoseconds
   let result = try body()
@@ -91,6 +148,64 @@ func pathName(_ source: String) -> String {
   let relative = source.hasPrefix(root.path + "/") ? String(source.dropFirst(root.path.count + 1)) : source
   let safe = relative.map { $0.isLetter || $0.isNumber ? $0 : "_" }
   return "\(String(safe))-\(fnv1a([Data(source.utf8)]))"
+}
+
+if configuration == .release {
+  do {
+    let fm = FileManager.default
+    if clean, fm.fileExists(atPath: build.path) { try fm.removeItem(at: build) }
+    try fm.createDirectory(at: build, withIntermediateDirectories: true)
+    let provenanceURL = build.appendingPathComponent("provenance.json")
+    if fm.fileExists(atPath: provenanceURL.path) { try fm.removeItem(at: provenanceURL) }
+
+    // Distribution artifacts trade edit/rebuild speed for the optimizer's
+    // complete view of the same app graph used by development.
+    let graphURL = root.appendingPathComponent("tools/swift-sources.json")
+    let spawnSource = root.appendingPathComponent("native/Spawn.c")
+    let spawn = build.appendingPathComponent("Spawn.o").path
+    let executable = build.appendingPathComponent("Terminal").path
+    let bridge = root.appendingPathComponent("native/Bridge.h").path
+    let releaseFlags = [
+      "-swift-version", "5", "-O", "-whole-module-optimization", "-target", "arm64-apple-macosx15.0",
+      "-module-name", "TerminalIncremental", "-import-objc-header", bridge,
+      "-framework", "AppKit", "-framework", "QuartzCore", "-framework", "Metal", "-framework", "CoreText", "-framework", "ImageIO",
+    ]
+    let graphHash = sha256(try Data(contentsOf: graphURL))
+    let appSourcesHash = try sourcesHash(sources)
+    let bridgeHash = sha256(try Data(contentsOf: URL(fileURLWithPath: bridge)))
+    let spawnSourceHash = sha256(try Data(contentsOf: spawnSource))
+    let (_, compileTime) = try milliseconds {
+      try run(["clang", "-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=15.0", "-c", spawnSource.path, "-o", spawn])
+      try run(["swiftc"] + releaseFlags + sources + [spawn, "-o", executable])
+    }
+    guard graphHash == sha256(try Data(contentsOf: graphURL)),
+      appSourcesHash == (try sourcesHash(sources)),
+      bridgeHash == sha256(try Data(contentsOf: URL(fileURLWithPath: bridge))),
+      spawnSourceHash == sha256(try Data(contentsOf: spawnSource))
+    else { throw IncrementalBuildError.inputsChanged }
+    let executableURL = URL(fileURLWithPath: executable)
+    let attributes = try fm.attributesOfItem(atPath: executable)
+    let provenance = ReleaseProvenance(
+      configuration: "release-wmo",
+      sourceGraphSHA256: graphHash,
+      appSourcesSHA256: appSourcesHash,
+      bridgeSHA256: bridgeHash,
+      spawnSourceSHA256: spawnSourceHash,
+      compiler: try capture(["swiftc", "-version"]),
+      sdkPath: try capture(["--sdk", "macosx", "--show-sdk-path"]),
+      target: "arm64-apple-macosx15.0",
+      module: "TerminalIncremental",
+      flags: releaseFlags,
+      executableSHA256: sha256(try Data(contentsOf: executableURL)),
+      executableBytes: (attributes[.size] as? NSNumber)?.uint64Value ?? 0,
+      compileMilliseconds: compileTime)
+    try JSONEncoder().encode(provenance).write(to: provenanceURL, options: .atomic)
+    print(String(format: "Swift release WMO compile %.2f ms; executable %@", compileTime, executable))
+    exit(0)
+  } catch {
+    fputs("Swift release build failed: \(error)\n", stderr)
+    exit(1)
+  }
 }
 
 do {
