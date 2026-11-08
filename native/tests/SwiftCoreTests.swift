@@ -390,6 +390,27 @@ import Foundation
     let expectedReplies = replies(whole)
     precondition(replies(bytewise) == expectedReplies && replies(irregular) == expectedReplies)
   }
+  static func carriageReturnEquivalence() {
+    let text = "\u{1b}[?69h\u{1b}[3;6s\u{1b}[4GQ\rR\r\nS" +
+      "\u{1b}[3;1He\u{301}\rZ\u{1b}(0q\u{1b}(B\rT"
+    let payload = Data(text.utf8)
+    let whole = terminal_create(8, 3)!, bytewise = terminal_create(8, 3)!, irregular = terminal_create(8, 3)!
+    defer { terminal_destroy(whole); terminal_destroy(bytewise); terminal_destroy(irregular) }
+    feed(whole, bytes: payload, partitions: [payload.count])
+    feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
+    feed(irregular, bytes: payload, partitions: [1, 4, 2, 7, 3, 11, 5, 19])
+    let expected = stableSnapshot(whole)
+    precondition(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
+    let rows = snapshot(whole)["rows"] as! [[String: Any]]
+    let first = rows[0]["cells"] as! [[String: Any]]
+    let second = rows[1]["cells"] as! [[String: Any]]
+    precondition(first[2]["text"] as? String == "R")
+    precondition(second[2]["text"] as? String == "S")
+    let third = rows[2]["cells"] as! [[String: Any]]
+    precondition(third[0]["text"] as? String == "Z")
+    precondition(third[1]["text"] as? String == "─")
+    precondition(third[2]["text"] as? String == "T")
+  }
   static func main() {
     nativeModifierWire()
     asciiByteAdmission()
@@ -397,6 +418,7 @@ import Foundation
     indexHistoryUsesMutatedPrimaryForViewportClamp()
     csiASCIIParsing()
     csiScratchReuseEquivalence()
+    carriageReturnEquivalence()
     guard let core = terminal_create(8, 3) else { fatalError("create") }
     defer { terminal_destroy(core) }
     feed(core, "one\ntwo")

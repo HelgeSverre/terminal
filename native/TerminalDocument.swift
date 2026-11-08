@@ -403,6 +403,23 @@ struct TerminalDocument {
     printState.reset()
   }
 
+  // CR selects and mutates its screen here so Core need not materialize a
+  // whole screen value merely to update the cursor.
+  mutating func carriageReturn(usingAlternate: Bool, leftRightMargins: Bool) {
+    resetPrintCluster()
+    if usingAlternate {
+      Self.carriageReturn(&alternate, leftRightMargins: leftRightMargins)
+    } else {
+      Self.carriageReturn(&primary, leftRightMargins: leftRightMargins)
+    }
+  }
+
+  private static func carriageReturn(_ screen: inout TerminalScreen, leftRightMargins: Bool) {
+    let left = leftRightMargins ? screen.leftMargin : 0
+    screen.cursorColumn = screen.cursorColumn >= left ? left : 0
+    screen.pendingWrap = false
+  }
+
   // LF/IND/RI select and mutate their screen here so callers do not need to
   // materialize a whole screen value merely to alter its cursor or rows.
   // The returned row is the only one eligible for primary history retention.

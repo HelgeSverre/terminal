@@ -60,6 +60,27 @@ import Foundation
     precondition(historyDocument.alternate.rows[0].cells[0].text == "Z")
   }
 
+  static func carriageReturnMutatesSelectedScreen() {
+    var document = TerminalDocument(columns: 5, rows: 2)
+    document.primary.leftMargin = 2; document.primary.rightMargin = 3
+    document.primary.cursorColumn = 4; document.primary.pendingWrap = true
+    let retainedPrimary = document.primary
+    document.carriageReturn(usingAlternate: false, leftRightMargins: true)
+    precondition(document.primary.cursorColumn == 2 && !document.primary.pendingWrap)
+    precondition(retainedPrimary.cursorColumn == 4 && retainedPrimary.pendingWrap)
+
+    document.alternate.leftMargin = 1; document.alternate.rightMargin = 3
+    document.alternate.cursorColumn = 0; document.alternate.pendingWrap = true
+    let retainedAlternate = document.alternate
+    document.carriageReturn(usingAlternate: true, leftRightMargins: true)
+    precondition(document.alternate.cursorColumn == 0 && !document.alternate.pendingWrap)
+    precondition(retainedAlternate.cursorColumn == 0 && retainedAlternate.pendingWrap)
+
+    document.primary.cursorColumn = 4; document.primary.pendingWrap = true
+    document.carriageReturn(usingAlternate: false, leftRightMargins: false)
+    precondition(document.primary.cursorColumn == 0 && !document.primary.pendingWrap)
+  }
+
   static func rangeLocalWidePairRepairPreservesSnapshots() {
     let wideStyle = TerminalStyle(foreground: 0x0102_0304, background: 0x0506_0708, flags: 3)
     let wideLead = TerminalCell(text: "猫", kind: 2, style: wideStyle,
@@ -660,6 +681,7 @@ import Foundation
   static func main() {
     let old = retainedSnapshot()
     populatedSnapshotsRemainImmutable()
+    carriageReturnMutatesSelectedScreen()
     rangeLocalWidePairRepairPreservesSnapshots()
     printedReplacementKeepsRichPairBoundaries()
     documentOwnsIndexTransactions()

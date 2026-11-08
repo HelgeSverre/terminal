@@ -407,7 +407,7 @@ private final class SwiftTerminalCore {
     changed(history: !reverse && !usingAlternate)
   }
   private func lineFeed() { resetClusterBoundary(); index(reverse: false) }
-  private func carriageReturn() { resetClusterBoundary(); var s = screen; let left = horizontalMargins.left; s.cursorColumn = s.cursorColumn >= left ? left : 0; s.pendingWrap = false; screen = s; changed() }
+  private func carriageReturn() { document.carriageReturn(usingAlternate: usingAlternate, leftRightMargins: leftRightMargins); changed() }
   private func backspace() { resetClusterBoundary(); var s = screen; let left = horizontalMargins.left; s.cursorColumn = max(s.cursorColumn >= left ? left : 0, s.cursorColumn - 1); s.pendingWrap = false; screen = s; changed() }
   private func tab(_ reverse: Bool = false, count: Int = 1) {
     resetClusterBoundary()
