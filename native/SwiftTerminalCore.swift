@@ -45,7 +45,7 @@ private final class SwiftTerminalCore {
   private var historyLimit = 10_000
   private var viewOffset = 0
   private var topMargin = 0
-  private var bottomMargin: Int { rowCount - 1 }
+  private var bottomMargin = 23
   private var parser = SwiftParserState.ground
   private var utf8 = SwiftUnicode.UTF8Decoder()
   private var sequence = ""
@@ -76,6 +76,7 @@ private final class SwiftTerminalCore {
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
     self.rowCount = max(1, min(4096, rows))
+    bottomMargin = self.rowCount - 1
     document = TerminalDocument(columns: self.columns, rows: self.rowCount)
   }
 
@@ -207,6 +208,7 @@ private final class SwiftTerminalCore {
     case "P": deleteCharacters(n)
     case "L": insertLines(n)
     case "M": deleteLines(n)
+    case "r": setVerticalMargins(params); changedActiveScreen = true
     case "b": repeatRemaining = min(1_000_000, max(0, params.first ?? 1))
     case "m": applySGR(params)
     case "s": saveCursor()
@@ -243,6 +245,13 @@ private final class SwiftTerminalCore {
   }
   private func insertLines(_ count: Int) { scrollLines(count, up: false) }
   private func deleteLines(_ count: Int) { scrollLines(count, up: true) }
+  private func setVerticalMargins(_ params: [Int]) {
+    let top = max(0, (params.first ?? 1) - 1)
+    let bottom = min(rowCount - 1, (params.dropFirst().first ?? rowCount) - 1)
+    guard top < bottom else { return }
+    topMargin = top; bottomMargin = bottom
+    var s = screen; s.cursorRow = top; s.cursorColumn = 0; s.pendingWrap = false; screen = s
+  }
   private func scrollLines(_ count: Int, up: Bool) {
     var s = screen; guard s.cursorRow >= topMargin else { return }; let amount = min(count, bottomMargin - s.cursorRow + 1); guard amount > 0 else { return }
     if up { for row in s.cursorRow...(bottomMargin - amount) { s.rows[row] = s.rows[row + amount] }; for row in (bottomMargin - amount + 1)...bottomMargin { s.rows[row] = document.blankRow() } }
