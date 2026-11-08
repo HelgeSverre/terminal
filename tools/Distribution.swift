@@ -8,7 +8,13 @@ import CryptoKit
 struct Distribution {
   enum Failure: Error, CustomStringConvertible {
     case message(String)
-    var description: String { switch self { case .message(let text): return text } }
+    case command(String, Int32)
+    var description: String {
+      switch self {
+      case .message(let text): return text
+      case .command(let name, let status): return "\(name) failed (\(status))."
+      }
+    }
   }
   struct Configuration: Decodable {
     var notaryProfile: String?
@@ -19,6 +25,21 @@ struct Distribution {
   let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
   let files = FileManager.default
   func run(_ arguments: [String]) throws -> Data {
+    // EX_NOHOST can mean a ticket-service propagation delay even after the
+    // matching notarization was accepted (observed for the 0.1.1 installer).
+    // Retry only ticket attachment; invalid/revoked tickets remain fatal.
+    let attachingTicket = arguments.starts(with: ["xcrun", "stapler", "staple"])
+    for attempt in 0..<4 {
+      do { return try executeCommand(arguments) }
+      catch Failure.command(_, let status) where attachingTicket && status == EX_NOHOST && attempt < 3 {
+        let delay = 1 << attempt
+        print("Ticket service unavailable; retrying stapling in \(delay)s…")
+        Thread.sleep(forTimeInterval: Double(delay))
+      }
+    }
+    preconditionFailure("The final command attempt always returns or throws")
+  }
+  private func executeCommand(_ arguments: [String]) throws -> Data {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
     process.arguments = arguments
@@ -29,7 +50,7 @@ struct Distribution {
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     process.waitUntilExit()
     guard process.terminationStatus == 0 else {
-      throw Failure.message("\(arguments.first ?? "Command") failed (\(process.terminationStatus)).")
+      throw Failure.command(arguments.first ?? "Command", process.terminationStatus)
     }
     return data
   }
@@ -220,10 +241,16 @@ struct Distribution {
   }
 }
 
-do {
-  setbuf(stdout, nil)
-  try Distribution().execute(CommandLine.arguments.dropFirst().first ?? "status")
-} catch {
-  fputs("Distribution failed: \(error)\n", stderr)
-  exit(1)
+#if !DISTRIBUTION_TESTING
+@main struct DistributionCommand {
+  static func main() {
+    do {
+      setbuf(stdout, nil)
+      try Distribution().execute(CommandLine.arguments.dropFirst().first ?? "status")
+    } catch {
+      fputs("Distribution failed: \(error)\n", stderr)
+      exit(1)
+    }
+  }
 }
+#endif

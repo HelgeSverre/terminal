@@ -108,12 +108,12 @@ close-smoke: build
 # Build and install a copy in ~/Applications/Helge Terminal.app
 [group('build')]
 install: build
-    xcrun swift tools/Distribution.swift install
+    just _distribution install
 
 # Remove only this app's installed bundle; preserve settings and project output
 [group('build')]
 uninstall:
-    xcrun swift tools/Distribution.swift uninstall
+    just _distribution uninstall
 
 # Build and replace the installed copy, keeping the previous copy if build fails
 [group('build')]
@@ -139,6 +139,8 @@ lint:
 [group('check')]
 @test: lint build
     ruby tools/native_smoke_test.rb
+    xcrun swiftc -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/DistributionTests.swift -o target/native/distribution-tests
+    target/native/distribution-tests
     mkdir -p target/native/automation-dictionary
     xcrun sdp -fs -o target/native/automation-dictionary native/Terminal.sdef
     ruby tools/terminfo_smoke.rb
@@ -272,17 +274,23 @@ verify: build
 # Build a Developer ID signed application, ZIP and PKG installer
 [group('release')]
 package: build
-    xcrun swift tools/Distribution.swift package
+    just _distribution package
 
 # Sign, notarize, staple and validate both the application and PKG installer
 [group('release')]
 release: build
-    xcrun swift tools/Distribution.swift release
+    just _distribution release
 
 # Verify local Developer ID identities and notarization credentials
 [group('release')]
 release-status:
-    xcrun swift tools/Distribution.swift status
+    just _distribution status
+
+[private]
+@_distribution operation:
+    mkdir -p target/native
+    xcrun swiftc -parse-as-library tools/Distribution.swift -o target/native/distribute
+    target/native/distribute "$1"
 
 [private]
 @_native-smoke mode:

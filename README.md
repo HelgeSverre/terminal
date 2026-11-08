@@ -76,6 +76,8 @@ detected when each has one valid Developer ID certificate; the same local file
 can specify `applicationIdentity` and `installerIdentity` when needed.
 Credentials and private keys are kept outside this repository. The PKG installs
 to Applications; `just install` uses your personal Applications folder.
+Ticket attachment retries a transient service response up to three times after
+the first attempt. Invalid or revoked tickets still fail immediately.
 
 Shortcuts: ⌘N window, ⌘T tab, ⌘D split right, ⇧⌘D split below, ⌘W close pane,
 ⌘C copy selection, ⌘V paste, ⌘A select visible output, ⌘F literal history search,
