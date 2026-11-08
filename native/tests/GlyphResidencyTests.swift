@@ -100,6 +100,44 @@ final class RendererMetrics {
       let value = Int(rendered[index * 4])
       precondition(abs(value - expected) <= 1, "R8 shader coverage \(index): \(value)")
     }
-    print("PASS glyph residency: tiny-budget reclaim, pins, stale generation, exactly-once release, R8/RGBA fixtures")
+    func renderColor(background: Double, tintAlpha: Float) -> [UInt8] {
+      let oneDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm_srgb,
+        width: 1, height: 1, mipmapped: false)
+      oneDescriptor.storageMode = .shared; oneDescriptor.usage = [.renderTarget, .shaderRead]
+      guard let output = device.makeTexture(descriptor: oneDescriptor),
+        let colorCommand = queue.makeCommandBuffer()
+      else { fatalError("color output") }
+      let colorPass = MTLRenderPassDescriptor()
+      colorPass.colorAttachments[0].texture = output
+      colorPass.colorAttachments[0].loadAction = .clear; colorPass.colorAttachments[0].storeAction = .store
+      colorPass.colorAttachments[0].clearColor = MTLClearColorMake(background, background, background, 1)
+      guard let colorEncoder = colorCommand.makeRenderCommandEncoder(descriptor: colorPass) else {
+        fatalError("color encoder")
+      }
+      let quad = ShaderQuad(rect: SIMD4(0, 0, 1, 1), uv: SIMD4(0, 0, 1, 1),
+        color: SIMD4(1, 1, 1, tintAlpha), material: SIMD4(1, 0, 0, 0))
+      var oneExtent = SIMD2<Float>(1, 1)
+      colorEncoder.setRenderPipelineState(pipeline)
+      colorEncoder.setVertexBytes([quad], length: MemoryLayout<ShaderQuad>.stride, index: 0)
+      colorEncoder.setVertexBytes(&oneExtent, length: MemoryLayout<SIMD2<Float>>.stride, index: 1)
+      colorEncoder.setFragmentTexture(color, index: 0)
+      colorEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: 1)
+      colorEncoder.endEncoding(); colorCommand.commit(); colorCommand.waitUntilCompleted()
+      var bytes = [UInt8](repeating: 0, count: 4)
+      output.getBytes(&bytes, bytesPerRow: 4, from: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0)
+      return bytes
+    }
+    func expect(_ actual: [UInt8], _ expectedBGRA: [Int], _ name: String) {
+      for index in 0..<4 {
+        precondition(abs(Int(actual[index]) - expectedBGRA[index]) <= 1,
+          "\(name) channel \(index): \(actual) != \(expectedBGRA)")
+      }
+    }
+    // `rgba` is premultiplied *linear* color. These cases catch both treating
+    // it as coverage and accidental double sRGB conversion.
+    expect(renderColor(background: 0, tintAlpha: 1), [71, 99, 137, 255], "RGBA dark")
+    expect(renderColor(background: 1, tintAlpha: 1), [197, 207, 225, 255], "RGBA light")
+    expect(renderColor(background: 0, tintAlpha: 0.5), [50, 71, 99, 255], "RGBA tint alpha")
+    print("PASS glyph residency: tiny-budget reclaim, pins, stale generation, exactly-once release, production R8/RGBA shader fixtures")
   }
 }
