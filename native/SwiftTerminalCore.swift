@@ -338,6 +338,7 @@ private final class SwiftTerminalCore {
   private func carriageReturn() { resetClusterBoundary(); var s = screen; let left = horizontalMargins.left; s.cursorColumn = s.cursorColumn >= left ? left : 0; s.pendingWrap = false; screen = s; changed() }
   private func backspace() { resetClusterBoundary(); var s = screen; let left = horizontalMargins.left; s.cursorColumn = max(s.cursorColumn >= left ? left : 0, s.cursorColumn - 1); s.pendingWrap = false; screen = s; changed() }
   private func tab(_ reverse: Bool = false, count: Int = 1) {
+    resetClusterBoundary()
     var s = screen; let margins = horizontalMargins
     let left = s.cursorColumn >= margins.left ? margins.left : 0
     let right = writeBounds(s.cursorColumn).right
@@ -357,9 +358,10 @@ private final class SwiftTerminalCore {
   private func reverseIndex() { var s = screen; s.pendingWrap = false; index(&s, reverse: true, allowHistory: false); screen = s; changed() }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
-  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); historyByteCount = 0; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; cappedCluster = false; cappedClusterJoinsNextPictograph = false; changed(history: true) }
+  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); historyByteCount = 0; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
   private func parameters(_ raw: String) -> [Int] { raw.split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 } }
   private func handleCSI(_ raw: String, final: Character) {
+    if !["m", "n", "c", "u"].contains(final) { resetClusterBoundary() }
     // VT parameters are bounded unsigned values. Treat an overflowing field
     // as an invalid command rather than silently converting it to zero and
     // performing a cursor motion with the default count.
@@ -544,6 +546,7 @@ private final class SwiftTerminalCore {
       case 25: cursorVisible = enabled
       case 47, 1047, 1049:
         if usingAlternate != enabled {
+          resetClusterBoundary()
           usingAlternate = enabled
           if enabled && (mode == 1047 || mode == 1049) { alternate = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns) }
           changedActiveScreen = true
@@ -625,6 +628,7 @@ private final class SwiftTerminalCore {
   func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool {
     guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows), nextColumns <= 1_048_576 / nextRows else { return false }
     if nextColumns == columns && nextRows == rowCount { return true }
+    resetClusterBoundary()
     if !usingAlternate && primary.promptRedraw {
       var promptScreen = primary
       _ = document.clearPromptSuffix(&promptScreen, eraseStyle: eraseStyle())

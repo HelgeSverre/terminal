@@ -142,6 +142,7 @@ lint:
     just terminal-prompt-clear-oracle
     just terminal-scheduler-oracle
     just terminal-semantic-regression
+    just terminal-boundary-regression
     just swift-unicode18-corpus
     just swift-input-encoder
     xcrun clang -Wall -Wextra -Werror -I native -c native/tests/pty.c -o target/native/swift-pty-tests.o
