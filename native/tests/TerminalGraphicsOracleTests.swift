@@ -118,6 +118,10 @@ import Foundation
         precondition(rgba(core, original) == Data([1, 2, 3, 4]))
         feed(core, command("a=T,f=32,s=1,v=1,o=z,i=2,C=1", [120, 1, 99, 100, 98, 102, 1, 0, 0, 24, 0, 12]))
         precondition(images(core).first { $0["image"] as? Int == 2 }!["generation"] as? Int == original["generation"] as? Int)
+        _ = replies(core)
+        feed(core, command("a=t,f=32,s=1,v=1,o=z,i=11", Array(repeating: 0, count: 4096)))
+        precondition(replies(core).contains("EINVAL"))
+        precondition(images(core).allSatisfy { $0["image"] as? Int != 11 })
       }}),
       ("height-identity", { withTerminal { core in
         var document = TerminalDocument(columns: 8, rows: 3)
@@ -151,6 +155,13 @@ import Foundation
         let image = images(core)[0]
         precondition(image["row"] as? Int == 1 && image["col"] as? Int == 5 && rgba(core, image)?.count == 8_000)
         precondition(replies(core) == "\u{1b}_Gi=99;OK\u{1b}\\")
+        let rgbaBytes = Data(repeating: 42, count: 12)
+        let rgbaEncoded = rgbaBytes.base64EncodedString()
+        feed(core, "\u{1b}_Ga=T,f=32,s=3,v=1,i=100,C=1,m=1;\(rgbaEncoded.prefix(8))\u{1b}\\")
+        precondition(images(core).count == 1)
+        feed(core, "\u{1b}_Gm=0;\(rgbaEncoded.dropFirst(8))\u{1b}\\")
+        let rgbaImage = images(core).first { $0["image"] as? Int == 100 }!
+        precondition(rgba(core, rgbaImage) == rgbaBytes)
       }}),
       ("malformed-atomic", { withTerminal { core in
         feed(core, command("a=T,f=24,s=1,v=1,i=1,C=1", [1, 2, 3])); let original = images(core)[0]
@@ -185,6 +196,7 @@ import Foundation
         let image = images(core).first!; let cursor = snapshot(core)!["cursor"] as! [String: Any]
         precondition(cursor["row"] as? Int == 0 && cursor["col"] as? Int == 0)
         precondition(rgba(core, image) == Data([255, 0, 0, 255, 0, 255, 0, 255]))
+        precondition(replies(core).contains("i=1,p=7;OK"))
         feed(core, command("a=p,i=1,C=1,c=3"))
         precondition(images(core).count == 2)
         feed(core, command("a=p,i=1,x=1,y=0,w=0,h=0,C=1"))

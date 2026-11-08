@@ -57,12 +57,35 @@ if arguments.contains("--verify") {
       fputs("Duplicate source in \(name)\n", stderr); exit(2)
     }
     for value in values {
+      let directory = root.appendingPathComponent("native").resolvingSymlinksInPath()
+      let source = directory.appendingPathComponent(value).standardizedFileURL.resolvingSymlinksInPath()
+      guard value.hasSuffix(".swift"), source.path.hasPrefix(directory.path + "/") else {
+        fputs("Invalid \(name) source path: \(value)\n", stderr); exit(2)
+      }
       let path = root.appendingPathComponent("native/\(value)").path
       guard FileManager.default.fileExists(atPath: path) else {
         fputs("Missing \(name) source: \(path)\n", stderr); exit(2)
       }
       count += 1
     }
+  }
+  let native = root.appendingPathComponent("native", isDirectory: true)
+  let nativeFiles = (FileManager.default.enumerator(at: native,
+    includingPropertiesForKeys: [.isRegularFileKey])?.allObjects as? [URL] ?? [])
+    .filter { $0.pathExtension == "swift" }
+    .map { String($0.path.dropFirst(native.path.count + 1)) }
+  let appFiles = Set(nativeFiles.filter { !$0.hasPrefix("tests/") })
+  let testFiles = Set(nativeFiles.filter { $0.hasPrefix("tests/") })
+  let declaredApp = Set(graph.app)
+  let declaredTests = Set((graph.tests ?? [:]).values.flatMap { $0 }.filter { $0.hasPrefix("tests/") })
+  guard appFiles == declaredApp else {
+    fputs("App source graph mismatch; unlisted: \(appFiles.subtracting(declaredApp).sorted()), stale: \(declaredApp.subtracting(appFiles).sorted())\n", stderr); exit(2)
+  }
+  guard testFiles == declaredTests else {
+    fputs("Test source graph mismatch; unlisted: \(testFiles.subtracting(declaredTests).sorted()), stale: \(declaredTests.subtracting(testFiles).sorted())\n", stderr); exit(2)
+  }
+  guard Set(graph.emulation ?? []).isSubset(of: declaredApp) else {
+    fputs("Emulation sources must belong to the app graph\n", stderr); exit(2)
   }
   // Bundle assembly stays in justfile, but verify every non-Swift input that
   // its recipe compiles or copies so a source-only cache cannot hide a broken
@@ -115,6 +138,58 @@ func sourcesHash(_ sources: [String]) throws -> String {
   return digest.finalize().map { String(format: "%02x", $0) }.joined()
 }
 
+// Content is authoritative. Modification time only detects edits hidden from
+// Swift's timestamp-based incremental dependency state.
+struct SourceState: Codable {
+  let path: String
+  let contentHash: String
+  let modificationTime: TimeInterval
+}
+func fileHash(_ url: URL) throws -> String {
+  let handle = try FileHandle(forReadingFrom: url)
+  defer { try? handle.close() }
+  var digest = SHA256()
+  while let data = try handle.read(upToCount: 1 << 20), !data.isEmpty { digest.update(data: data) }
+  return digest.finalize().map { String(format: "%02x", $0) }.joined()
+}
+func sourceStates() throws -> [SourceState] {
+  try sources.sorted().map { path in
+    let attributes = try FileManager.default.attributesOfItem(atPath: path)
+    let date = attributes[.modificationDate] as? Date ?? .distantPast
+    return SourceState(path: path, contentHash: try fileHash(URL(fileURLWithPath: path)),
+      modificationTime: date.timeIntervalSinceReferenceDate)
+  }
+}
+func sourceFingerprint(_ states: [SourceState]) -> String {
+  sha256(Data(states.map { "\($0.path)\u{0}\($0.contentHash)\n" }.joined().utf8))
+}
+struct Toolchain: Codable {
+  let swiftPath: String
+  let swiftVersion: String
+  let swiftSHA256: String
+  let clangPath: String
+  let clangVersion: String
+  let clangSHA256: String
+  let sdkPath: String
+  let sdkVersion: String
+  let sdkBuild: String
+  static func current() throws -> Toolchain {
+    let swift = try capture(["--find", "swiftc"]).trimmingCharacters(in: .whitespacesAndNewlines)
+    let clang = try capture(["--find", "clang"]).trimmingCharacters(in: .whitespacesAndNewlines)
+    return try Toolchain(swiftPath: swift, swiftVersion: capture(["swiftc", "-version"]),
+      swiftSHA256: fileHash(URL(fileURLWithPath: swift)),
+      clangPath: clang, clangVersion: capture(["clang", "--version"]),
+      clangSHA256: fileHash(URL(fileURLWithPath: clang)),
+      sdkPath: capture(["--sdk", "macosx", "--show-sdk-path"]).trimmingCharacters(in: .whitespacesAndNewlines),
+      sdkVersion: capture(["--sdk", "macosx", "--show-sdk-version"]),
+      sdkBuild: capture(["--sdk", "macosx", "--show-sdk-build-version"]))
+  }
+  var fingerprint: String {
+    let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+    return sha256(try! encoder.encode(self))
+  }
+}
+
 struct ReleaseProvenance: Encodable {
   let configuration: String
   let sourceGraphSHA256: String
@@ -122,6 +197,8 @@ struct ReleaseProvenance: Encodable {
   let bridgeSHA256: String
   let spawnSourceSHA256: String
   let compiler: String
+  let toolchain: Toolchain
+  let cFlags: [String]
   let sdkPath: String
   let target: String
   let module: String
@@ -164,10 +241,14 @@ if configuration == .release {
     let spawnSource = root.appendingPathComponent("native/Spawn.c")
     let spawn = build.appendingPathComponent("Spawn.o").path
     let executable = build.appendingPathComponent("Terminal").path
+    // A failed rebuild must not leave the conventional output naming old code.
+    if fm.fileExists(atPath: executable) { try fm.removeItem(atPath: executable) }
     let bridge = root.appendingPathComponent("native/Bridge.h").path
+    let toolchain = try Toolchain.current()
+    let cFlags = ["-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=15.0", "-isysroot", toolchain.sdkPath]
     let releaseFlags = [
       "-swift-version", "5", "-O", "-whole-module-optimization", "-target", "arm64-apple-macosx15.0",
-      "-module-name", "TerminalIncremental", "-import-objc-header", bridge,
+      "-sdk", toolchain.sdkPath, "-module-name", "TerminalIncremental", "-import-objc-header", bridge,
       "-framework", "AppKit", "-framework", "QuartzCore", "-framework", "Metal", "-framework", "CoreText", "-framework", "ImageIO",
     ]
     let graphHash = sha256(try Data(contentsOf: graphURL))
@@ -175,7 +256,7 @@ if configuration == .release {
     let bridgeHash = sha256(try Data(contentsOf: URL(fileURLWithPath: bridge)))
     let spawnSourceHash = sha256(try Data(contentsOf: spawnSource))
     let (_, compileTime) = try milliseconds {
-      try run(["clang", "-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=15.0", "-c", spawnSource.path, "-o", spawn])
+      try run(["clang"] + cFlags + ["-c", spawnSource.path, "-o", spawn])
       try run(["swiftc"] + releaseFlags + sources + [spawn, "-o", executable])
     }
     guard graphHash == sha256(try Data(contentsOf: graphURL)),
@@ -191,8 +272,9 @@ if configuration == .release {
       appSourcesSHA256: appSourcesHash,
       bridgeSHA256: bridgeHash,
       spawnSourceSHA256: spawnSourceHash,
-      compiler: try capture(["swiftc", "-version"]),
-      sdkPath: try capture(["--sdk", "macosx", "--show-sdk-path"]),
+      compiler: toolchain.swiftVersion,
+      toolchain: toolchain, cFlags: cFlags,
+      sdkPath: toolchain.sdkPath,
       target: "arm64-apple-macosx15.0",
       module: "TerminalIncremental",
       flags: releaseFlags,
@@ -203,6 +285,14 @@ if configuration == .release {
     print(String(format: "Swift release WMO compile %.2f ms; executable %@", compileTime, executable))
     exit(0)
   } catch {
+    // WMO may have left a partially linked output; provenance must never name it.
+    for output in ["Terminal", "provenance.json"] {
+      let file = build.appendingPathComponent(output)
+      if FileManager.default.fileExists(atPath: file.path) {
+        do { try FileManager.default.removeItem(at: file) }
+        catch { fputs("Could not invalidate failed release output: \(error)\n", stderr) }
+      }
+    }
     fputs("Swift release build failed: \(error)\n", stderr)
     exit(1)
   }
@@ -210,25 +300,33 @@ if configuration == .release {
 
 do {
   let fm = FileManager.default
-  if clean, fm.fileExists(atPath: build.path) { try fm.removeItem(at: build) }
-  try fm.createDirectory(at: build, withIntermediateDirectories: true)
+  let toolchain = try Toolchain.current()
   let graphURL = root.appendingPathComponent("tools/swift-sources.json")
-  let configuration = fnv1a([
-    try Data(contentsOf: graphURL),
-    try Data(contentsOf: root.appendingPathComponent("native/Bridge.h")),
-    Data("swift-5-O-arm64-apple-macosx15.0-AppKit-QuartzCore-Metal-CoreText-ImageIO".utf8),
-  ])
+  let bridgeURL = root.appendingPathComponent("native/Bridge.h")
+  let spawnSource = root.appendingPathComponent("native/Spawn.c")
+  let objectDirectory = build.appendingPathComponent("objects", isDirectory: true)
+  let mapURL = build.appendingPathComponent("output-file-map.json")
+  let spawn = build.appendingPathComponent("Spawn.o").path
+  let executable = build.appendingPathComponent("Terminal").path
+  let cFlags = ["-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=15.0", "-isysroot", toolchain.sdkPath]
+  let linkFlags = ["-target", "arm64-apple-macosx15.0", "-sdk", toolchain.sdkPath,
+    "-framework", "AppKit", "-framework", "QuartzCore", "-framework", "Metal",
+    "-framework", "CoreText", "-framework", "ImageIO"]
+  let compileFlags = ["-incremental", "-c", "-swift-version", "5", "-O",
+    "-target", "arm64-apple-macosx15.0", "-sdk", toolchain.sdkPath,
+    "-module-name", "TerminalIncremental", "-import-objc-header", bridgeURL.path,
+    "-output-file-map", mapURL.path]
+  let graphHash = try fileHash(graphURL)
+  let bridgeHash = try fileHash(bridgeURL)
+  let spawnHash = try fileHash(spawnSource)
+  let configuration = sha256(Data(([toolchain.fingerprint, graphHash, bridgeHash]
+    + cFlags + compileFlags + linkFlags).joined(separator: "\u{0}").utf8))
   let configurationURL = build.appendingPathComponent("configuration.fingerprint")
   let priorConfiguration = try? String(contentsOf: configurationURL, encoding: .utf8)
-  if priorConfiguration != configuration, fm.fileExists(atPath: build.path) {
-    try fm.removeItem(at: build)
-    try fm.createDirectory(at: build, withIntermediateDirectories: true)
+  if clean || priorConfiguration != configuration {
+    if fm.fileExists(atPath: build.path) { try fm.removeItem(at: build) }
   }
-  try configuration.write(to: configurationURL, atomically: true, encoding: .utf8)
-  let objectDirectory = build.appendingPathComponent("objects", isDirectory: true)
   try fm.createDirectory(at: objectDirectory, withIntermediateDirectories: true)
-  let spawn = build.appendingPathComponent("Spawn.o").path
-  let mapURL = build.appendingPathComponent("output-file-map.json")
   var map: [String: [String: String]] = [
     "": ["swift-dependencies": build.appendingPathComponent("master.swiftdeps").path]
   ]
@@ -241,43 +339,74 @@ do {
       "diagnostics": objectDirectory.appendingPathComponent("\(stem).dia").path,
     ]
   }
-  try JSONSerialization.data(withJSONObject: map, options: [.sortedKeys]).write(to: mapURL)
-  let common = [
-    "swiftc", "-incremental", "-c", "-swift-version", "5", "-O", "-target", "arm64-apple-macosx15.0",
-    "-module-name", "TerminalIncremental", "-import-objc-header", root.appendingPathComponent("native/Bridge.h").path,
-    "-output-file-map", mapURL.path, "-framework", "AppKit", "-framework", "QuartzCore", "-framework", "Metal",
-    "-framework", "CoreText", "-framework", "ImageIO",
-  ]
-  let stampURL = build.appendingPathComponent("source.stamp")
-  let stamp = try sources.map { source in
-    let attributes = try fm.attributesOfItem(atPath: source)
-    return "\(source)\t\(attributes[.size] ?? 0)\t\(attributes[.modificationDate] as? Date ?? .distantPast)"
-  }.joined(separator: "\n")
-  let executable = build.appendingPathComponent("Terminal").path
-  if !clean, priorConfiguration == configuration, (try? String(contentsOf: stampURL, encoding: .utf8)) == stamp,
-    fm.isExecutableFile(atPath: executable)
-  {
-    print("Swift incremental no-op; cached executable \(executable)")
-    exit(0)
+  try JSONSerialization.data(withJSONObject: map, options: [.sortedKeys]).write(to: mapURL, options: .atomic)
+  let states = try sourceStates()
+  let sourceStamp = sourceFingerprint(states)
+  let stateURL = build.appendingPathComponent("source-state.json")
+  let stampURL = build.appendingPathComponent("source.fingerprint")
+  let priorStates = try? JSONDecoder().decode([SourceState].self, from: Data(contentsOf: stateURL))
+  let hiddenMutation: Bool = priorStates.map { previous in
+    let oldByPath = Dictionary(uniqueKeysWithValues: previous.map { ($0.path, $0) })
+    return states.contains { state in
+      guard let old = oldByPath[state.path] else { return false }
+      return old.contentHash != state.contentHash && old.modificationTime == state.modificationTime
+    }
+  } ?? true
+  if hiddenMutation {
+    // A same-timestamp content edit must not let the compiler reuse stale .o
+    // files. Invalidate dependency state as well, including Swift's priors.
+    for stale in [objectDirectory, build.appendingPathComponent("master.priors"),
+                  build.appendingPathComponent("master.swiftdeps")]
+      where fm.fileExists(atPath: stale.path) { try fm.removeItem(at: stale) }
+    try fm.createDirectory(at: objectDirectory, withIntermediateDirectories: true)
+  }
+  let objects = sources.map { objectDirectory.appendingPathComponent("\(pathName($0)).o").path }
+  let missingOutputs = sources.contains { source in
+    ["object", "swift-dependencies"].contains { !fm.fileExists(atPath: map[source]![$0]!) }
+  }
+  let needsCompile = hiddenMutation || missingOutputs
+    || (try? String(contentsOf: stampURL, encoding: .utf8)) != sourceStamp
+  let spawnStampURL = build.appendingPathComponent("spawn.fingerprint")
+  let needsSpawn = !fm.fileExists(atPath: spawn)
+    || (try? String(contentsOf: spawnStampURL, encoding: .utf8)) != spawnHash
+  let linkStampURL = build.appendingPathComponent("link.fingerprint")
+  let previousObjectHash = fm.fileExists(atPath: spawn) ? try fileHash(URL(fileURLWithPath: spawn)) : ""
+  let previousObjectLinkStamp = sha256(Data((configuration + "\u{0}" + previousObjectHash).utf8))
+  let needsLink = needsCompile || needsSpawn || !fm.isExecutableFile(atPath: executable)
+    || (try? String(contentsOf: linkStampURL, encoding: .utf8)) != previousObjectLinkStamp
+  if needsLink, fm.fileExists(atPath: executable) {
+    try fm.removeItem(atPath: executable)
   }
   let (_, compileTime) = try milliseconds {
-    if !fm.fileExists(atPath: spawn) || priorConfiguration != configuration {
-      try run(["clang", "-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=15.0", "-c", root.appendingPathComponent("native/Spawn.c").path, "-o", spawn])
-    }
-    try run(common + sources)
+    if needsSpawn { try run(["clang"] + cFlags + ["-c", spawnSource.path, "-o", spawn]) }
+    if needsCompile { try run(["swiftc"] + compileFlags + sources) }
   }
-  let objects = sources.map { source -> String in
-    let stem = pathName(source)
-    return objectDirectory.appendingPathComponent("\(stem).o").path
-  }
+  // The C object's contents also participate: external replacement must relink.
+  let linkStamp = sha256(Data((configuration + "\u{0}" + (try fileHash(URL(fileURLWithPath: spawn)))).utf8))
   let (_, linkTime) = try milliseconds {
-    try run(["swiftc", "-target", "arm64-apple-macosx15.0"] + objects + [spawn,
-      "-framework", "AppKit", "-framework", "QuartzCore", "-framework", "Metal", "-framework", "CoreText",
-      "-framework", "ImageIO", "-o", executable])
+    if needsLink { try run(["swiftc"] + linkFlags + objects + [spawn, "-o", executable]) }
   }
-  try stamp.write(to: stampURL, atomically: true, encoding: .utf8)
-  print(String(format: "Swift incremental compile %.2f ms; link %.2f ms; executable %@", compileTime, linkTime, executable))
+  guard graphHash == (try fileHash(graphURL)), bridgeHash == (try fileHash(bridgeURL)),
+        spawnHash == (try fileHash(spawnSource)), sourceStamp == sourceFingerprint(try sourceStates())
+  else {
+    // Never leave a successful-looking cached executable after a mixed build.
+    if fm.fileExists(atPath: executable) { try fm.removeItem(atPath: executable) }
+    throw IncrementalBuildError.inputsChanged
+  }
+  try configuration.write(to: configurationURL, atomically: true, encoding: .utf8)
+  try sourceStamp.write(to: stampURL, atomically: true, encoding: .utf8)
+  try JSONEncoder().encode(states).write(to: stateURL, options: .atomic)
+  try spawnHash.write(to: spawnStampURL, atomically: true, encoding: .utf8)
+  try linkStamp.write(to: linkStampURL, atomically: true, encoding: .utf8)
+  if !needsCompile && !needsLink { print("Swift incremental no-op; cached executable \(executable)") }
+  else { print(String(format: "Swift incremental compile %.2f ms; link %.2f ms; executable %@", compileTime, linkTime, executable)) }
 } catch {
+  // A failed compiler/linker can overwrite only some objects. None may be
+  // reused with fingerprints from a prior success, even if sources revert.
+  if FileManager.default.fileExists(atPath: build.path) {
+    do { try FileManager.default.removeItem(at: build) }
+    catch { fputs("Could not invalidate failed incremental cache: \(error)\n", stderr) }
+  }
   fputs("Swift incremental build failed: \(error)\n", stderr)
   exit(1)
 }
