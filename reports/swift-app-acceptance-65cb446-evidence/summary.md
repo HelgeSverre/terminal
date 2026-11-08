@@ -11,5 +11,7 @@ ten-run orders. Raw Swift/Rust medians in MiB/s are:
 The Swift executable is 1,998,656 bytes versus Rust 3,744,784; regular bundle
 files total 7,278,796 versus 9,024,636 bytes. This measures alternate-screen
 PTY parser barriers, not render latency. It is source-scoped evidence only:
-prior 88% gate failures remain preserved, full-SQL evidence is separate, and
-final validation remains pending; no replacement or full-spec claim follows.
+prior `88aa5ef` ANSI gate failures at 69.1% and 69.89% remain preserved,
+full-SQL evidence is separate, and final validation remains pending; no
+replacement or full-spec claim follows. The 35.6-second Swift build wall time
+is unmatched provenance, not a Swift/Rust compile-speed ratio.
