@@ -76,6 +76,9 @@ private final class SwiftTerminalCore {
   private var pen = SwiftStyle()
   private var currentLink: String?
   private var replies = Data()
+  private var nextClipboardRequestID: UInt64 = 1
+  private var clipboardRequests: [(UInt64, Data)] = []
+  private var pendingClipboardRequests = Set<UInt64>()
   private var title = ""
   private var applicationCursor = false
   private var applicationKeypad = false
@@ -582,6 +585,16 @@ private final class SwiftTerminalCore {
       guard let command = parts.first else { return }
       if command == "0" || command == "2" { title = parts.dropFirst().joined(separator: ";") }
       else if command == "8" { currentLink = parts.count > 2 ? String(parts.dropFirst(2).joined(separator: ";")) : nil }
+      else if command == "52", parts.count >= 3 {
+        let encoded = parts.dropFirst(2).joined(separator: ";")
+        if encoded != "?", let data = Data(base64Encoded: encoded),
+           String(data: data, encoding: .utf8) != nil, data.count <= 1_048_576 {
+          let requestID = nextClipboardRequestID
+          nextClipboardRequestID &+= 1
+          pendingClipboardRequests.insert(requestID)
+          clipboardRequests.append((requestID, data))
+        }
+      }
       else if command == "133" {
         let marker = parts.dropFirst().first
         var current = screen
@@ -742,6 +755,13 @@ private final class SwiftTerminalCore {
     return nil
   }
   func takeReplies() -> Data { defer { replies.removeAll(keepingCapacity: true) }; return replies }
+  func takeClipboardRequests() -> [(UInt64, Data)] {
+    defer { clipboardRequests.removeAll(keepingCapacity: true) }
+    return clipboardRequests
+  }
+  func completeClipboardRequest(_ requestID: UInt64) -> Bool {
+    pendingClipboardRequests.remove(requestID) != nil
+  }
   func finish() { flushText(final: true) }
   var hasPendingWork: Bool { repeatRemaining > 0 }
   var publicationGated: Bool { syncDeadline != nil }
@@ -848,6 +868,7 @@ private func inputCharacter(_ scalar: UInt32) -> Character? {
   return Character(String(value))
 }
 typealias BytesCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void
+typealias ClipboardCallback = @convention(c) (UnsafeMutableRawPointer?, UInt64, UnsafePointer<UInt8>?, Int) -> Void
 typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int, UnsafePointer<TerminalCellView>?, Int, UnsafePointer<UInt8>?, Int) -> Void
 
 @_cdecl("terminal_abi_version") func swift_terminal_abi_version() -> UInt32 { 1 }
@@ -870,6 +891,13 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
 @_cdecl("terminal_view_follow_tail") func swift_terminal_view_follow_tail(_ pointer: OpaquePointer?) { core(pointer)?.followTail() }
 @_cdecl("terminal_clear_display") func swift_terminal_clear_display(_ pointer: OpaquePointer?) -> UInt32 { core(pointer)?.clearDisplay() ?? 0 }
 @_cdecl("terminal_replies") func swift_terminal_replies(_ pointer: OpaquePointer?, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) { guard let callback, let data = core(pointer)?.takeReplies(), !data.isEmpty else { return }; data.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, data.count) } }
+@_cdecl("terminal_take_clipboard_requests") func swift_terminal_take_clipboard_requests(_ pointer: OpaquePointer?, _ context: UnsafeMutableRawPointer?, _ callback: ClipboardCallback?) {
+  guard let callback else { return }
+  for (requestID, data) in core(pointer)?.takeClipboardRequests() ?? [] {
+    data.withUnsafeBytes { callback(context, requestID, $0.bindMemory(to: UInt8.self).baseAddress, data.count) }
+  }
+}
+@_cdecl("terminal_complete_clipboard_request") func swift_terminal_complete_clipboard_request(_ pointer: OpaquePointer?, _ requestID: UInt64) -> Bool { core(pointer)?.completeClipboardRequest(requestID) ?? false }
 @_cdecl("terminal_input") func swift_terminal_input(_ pointer: OpaquePointer?, _ text: UnsafePointer<CChar>?, _ key: UInt32, _ modifiers: UInt32, _ event: UInt32, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool { guard let value = core(pointer)?.input(text.map { String(cString: $0) } ?? "", key: key, modifiers: modifiers, event: event) else { return false }; if let callback, !value.isEmpty { value.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, value.count) } }; return true }
 @_cdecl("terminal_input_with_metadata") func swift_terminal_input_with_metadata(_ pointer: OpaquePointer?, _ text: UnsafePointer<CChar>?, _ key: UInt32, _ modifiers: UInt32, _ event: UInt32, _ associated: UnsafePointer<CChar>?, _ legacy: UnsafePointer<CChar>?, _ shifted: UInt32, _ baseLayout: UInt32, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool {
   let metadata = SwiftInputEncoder.KeyMetadata(

@@ -26,6 +26,10 @@ void terminal_view_follow_tail(Terminal *);
 uint32_t terminal_clear_display(Terminal *);
 void terminal_string_free(char *);
 void terminal_replies(Terminal *,void *,void (*)(void *,const uint8_t *,size_t));
+/* OSC 52 writes are owner-queue work, independent of snapshots. The request
+ * ID is one-shot and must be completed after the native policy decision. */
+void terminal_take_clipboard_requests(Terminal *,void *,void (*)(void *,uint64_t,const uint8_t *,size_t));
+bool terminal_complete_clipboard_request(Terminal *,uint64_t);
 bool terminal_input(Terminal *,const char *,uint32_t,uint32_t,uint32_t,void *,void (*)(void *,const uint8_t *,size_t));
 /* Extended keyboard adapter for hosts that retain layout and committed-text
  * metadata. Zero shifted/base-layout values mean absent; strings are copied
