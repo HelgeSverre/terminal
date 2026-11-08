@@ -285,9 +285,9 @@ struct TerminalDocument {
         screen.rows[owner.row].cells[owner.column].flags |= 4
         return
       }
-      screen.rows[owner.row].cells[owner.column].text.unicodeScalars.append(scalar)
       state.retainedScalars += 1
-      let combined = screen.rows[owner.row].cells[owner.column].text
+      var combined = cell.text
+      combined.unicodeScalars.append(scalar)
       let nominal = min(2, max(1, SwiftUnicode.cellWidth(of: combined)))
       let oldWidth = cell.kind == 2 ? 2 : 1
       let right = writeBounds(owner.column).right
@@ -299,9 +299,11 @@ struct TerminalDocument {
         let row = screen.cursorRow, column = screen.cursorColumn
         let newRight = writeBounds(column).right
         let occupied = min(nominal, newRight + 1 - column)
-        erase(row, column..<(column + occupied), cell.style.erased())
-        screen.rows[row].cells[column] = TerminalCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1, style: cell.style, link: cell.link, flags: cell.flags | (nominal > occupied ? 1 : 0), protected: cell.protected)
-        if nominal == 2 && occupied == 2 { screen.rows[row].cells[column + 1] = TerminalCell(text: "", kind: 3, style: cell.style, link: cell.link, flags: cell.flags, protected: cell.protected) }
+        let lead = TerminalCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1,
+                                style: cell.style, link: cell.link,
+                                flags: cell.flags | (nominal > occupied ? 1 : 0),
+                                protected: cell.protected)
+        Self.replacePrintedLead(in: &screen.rows[row], at: column, with: lead)
         state.openCluster = (row, column)
         screen.cursorColumn = min(newRight, column + occupied); screen.pendingWrap = column + occupied > newRight && autoWrap
       } else {
@@ -309,9 +311,11 @@ struct TerminalDocument {
         if occupied > oldWidth && insertMode && (horizontal.0...horizontal.1).contains(owner.column) {
           shift(owner.row, owner.column + oldWidth, horizontal.1, occupied - oldWidth, cell.style.erased())
         }
-        erase(owner.row, owner.column..<(owner.column + max(oldWidth, occupied)), cell.style.erased())
-        screen.rows[owner.row].cells[owner.column] = TerminalCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1, style: cell.style, link: cell.link, flags: cell.flags | (nominal > occupied ? 1 : 0), protected: cell.protected)
-        if nominal == 2 && occupied == 2 { screen.rows[owner.row].cells[owner.column + 1] = TerminalCell(text: "", kind: 3, style: cell.style, link: cell.link, flags: cell.flags, protected: cell.protected) }
+        let lead = TerminalCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1,
+                                style: cell.style, link: cell.link,
+                                flags: cell.flags | (nominal > occupied ? 1 : 0),
+                                protected: cell.protected)
+        Self.replacePrintedLead(in: &screen.rows[owner.row], at: owner.column, with: lead)
         screen.cursorRow = owner.row; screen.cursorColumn = min(right, owner.column + occupied); screen.pendingWrap = owner.column + occupied > right && autoWrap
       }
       effect.lastPrinted = combined
@@ -352,17 +356,50 @@ struct TerminalDocument {
     if insertMode, (horizontal.0...horizontal.1).contains(screen.cursorColumn) {
       shift(screen.cursorRow, screen.cursorColumn, horizontal.1, occupied, attributes.style.erased())
     }
-    erase(screen.cursorRow, screen.cursorColumn..<(screen.cursorColumn + occupied), attributes.style.erased())
     let row = screen.cursorRow, column = screen.cursorColumn
     let truncated = width == 2 && occupied < width
-    screen.rows[row].cells[column] = TerminalCell(text: text, kind: width == 2 && occupied == 2 ? 2 : 1, style: attributes.style, link: attributes.link, flags: (attributes.protected ? 2 : 0) | (truncated ? 1 : 0), protected: attributes.protected)
-    if width == 2 && occupied == 2 { screen.rows[row].cells[column + 1] = TerminalCell(text: "", kind: 3, style: attributes.style, link: attributes.link, flags: attributes.protected ? 2 : 0, protected: attributes.protected) }
+    let lead = TerminalCell(text: text, kind: width == 2 && occupied == 2 ? 2 : 1,
+                            style: attributes.style, link: attributes.link,
+                            flags: (attributes.protected ? 2 : 0) | (truncated ? 1 : 0),
+                            protected: attributes.protected)
+    Self.replacePrintedLead(in: &screen.rows[row], at: column, with: lead)
     state.openCluster = (row, column); state.retainedScalars = 1
     effect.lastPrinted = text
     effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link,
                                               protected: attributes.protected)
     screen.cursorColumn = min(right, column + occupied)
     screen.pendingWrap = column + occupied > right && autoWrap
+  }
+
+  // Printing replaces a single physical lead and, when needed, its adjacent
+  // continuation.  Unlike erase/edit operations, the overwritten cells are
+  // not observable mid-transaction, so install the rich lead directly and
+  // clear only pair halves that survive beyond its new physical span.
+  private static func replacePrintedLead(in row: inout TerminalRow, at column: Int,
+                                         with lead: TerminalCell) {
+    guard row.cells.indices.contains(column) else { return }
+    let width = lead.kind == 2 ? 2 : 1
+    guard column + width <= row.cells.count else { return }
+    let end = column + width
+    let eraseStyle = lead.style.erased()
+
+    // A replacement can cut the right half of a pair to its left, and/or the
+    // left half of a pair immediately beyond its span.  These are the only
+    // pre-existing pair cells outside the new lead/continuation ownership.
+    let clearsLeft = column > 0 && row.cells[column].kind == 3 &&
+      row.cells[column - 1].kind == 2
+    let clearsRight = end < row.cells.count && row.cells[end - 1].kind == 2 &&
+      row.cells[end].kind == 3
+    if clearsLeft { row.cells[column - 1] = .erased(eraseStyle) }
+    if clearsRight { row.cells[end] = .erased(eraseStyle) }
+
+    row.cells[column] = lead
+    if width == 2 {
+      row.cells[column + 1] = TerminalCell(text: "", kind: 3, style: lead.style,
+                                             link: lead.link, flags: lead.flags & ~UInt8(1),
+                                             protected: lead.protected)
+    }
+    row.revision &+= 1
   }
 
   func hasValidInvariants(_ screen: TerminalScreen) -> Bool {

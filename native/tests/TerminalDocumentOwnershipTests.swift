@@ -160,6 +160,62 @@ import Foundation
     precondition(clipped.hasValidInvariants(clipped.primary))
   }
 
+  static func printedReplacementKeepsRichPairBoundaries() {
+    let old = TerminalDocument.PrintAttributes(
+      style: TerminalStyle(foreground: 1, background: 0x1111_1111, flags: 1),
+      link: "https://example.test/old", protected: false)
+    let replacement = TerminalDocument.PrintAttributes(
+      style: TerminalStyle(foreground: 2, background: 0x2222_2222, flags: 4),
+      link: "https://example.test/replacement", protected: true)
+    func print(_ document: inout TerminalDocument, _ text: String,
+               _ attributes: TerminalDocument.PrintAttributes) {
+      for scalar in text.unicodeScalars {
+        _ = document.print(scalar, usingAlternate: false, leftRightMargins: false,
+                           autoWrap: true, insertMode: false, attributes: attributes)
+      }
+    }
+
+    // Placing a wide lead on a continuation between two adjacent rich pairs
+    // must clear both surviving outside halves, without touching a retained
+    // snapshot or inheriting either old pair's metadata.
+    var crossing = TerminalDocument(columns: 4, rows: 1)
+    print(&crossing, "猫", old); crossing.resetPrintCluster()
+    print(&crossing, "界", old); crossing.resetPrintCluster()
+    let retained = crossing.primary
+    crossing.primary.cursorColumn = 1; crossing.primary.pendingWrap = false
+    let revision = crossing.primary.rows[0].revision
+    print(&crossing, "犬", replacement)
+    let row = crossing.primary.rows[0]
+    precondition(row.revision == revision + 1)
+    precondition(row.cells[0].kind == 0 && row.cells[0].style == replacement.style.erased())
+    precondition(row.cells[1].text == "犬" && row.cells[1].kind == 2 &&
+                 row.cells[1].style == replacement.style && row.cells[1].link == replacement.link &&
+                 row.cells[1].protected && row.cells[1].flags & 2 != 0)
+    precondition(row.cells[2].kind == 3 && row.cells[2].style == replacement.style &&
+                 row.cells[2].link == replacement.link && row.cells[2].protected && row.cells[2].flags & 2 != 0)
+    precondition(row.cells[3].kind == 0 && row.cells[3].style == replacement.style.erased())
+    precondition(retained.rows[0].cells[0].text == "猫" && retained.rows[0].cells[2].text == "界")
+    precondition(crossing.hasValidInvariants(crossing.primary))
+
+    // Variation selectors exercise both physical widths at the same cursor.
+    // Replacing a VS16-wide lead with VS15 text must clear the obsolete
+    // continuation while retaining the new rich attributes.
+    var variation = TerminalDocument(columns: 2, rows: 1)
+    print(&variation, "©", replacement)
+    print(&variation, "\u{fe0f}", replacement)
+    precondition(variation.primary.rows[0].cells[0].kind == 2 && variation.primary.rows[0].cells[1].kind == 3)
+    let shrinkRevision = variation.primary.rows[0].revision
+    variation.resetPrintCluster(); variation.primary.cursorColumn = 0; variation.primary.pendingWrap = false
+    print(&variation, "©\u{fe0e}", replacement)
+    let shrunk = variation.primary.rows[0]
+    precondition(shrunk.revision == shrinkRevision + 2)
+    precondition(shrunk.cells[0].kind == 1)
+    precondition(shrunk.cells[0].text == "©\u{fe0e}")
+    precondition(shrunk.cells[0].style == replacement.style && shrunk.cells[0].link == replacement.link && shrunk.cells[0].protected)
+    precondition(shrunk.cells[1].kind == 0 && shrunk.cells[1].style == replacement.style.erased())
+    precondition(variation.hasValidInvariants(variation.primary))
+  }
+
   static func documentOwnsSegmentationAndOrphans() {
     var document = TerminalDocument(columns: 6, rows: 1)
     // Prepend must survive through the document-owned segmenter and join the
@@ -287,6 +343,7 @@ import Foundation
     let old = retainedSnapshot()
     populatedSnapshotsRemainImmutable()
     rangeLocalWidePairRepairPreservesSnapshots()
+    printedReplacementKeepsRichPairBoundaries()
     documentOwnsSegmentationAndOrphans()
     batchWriterMatchesScalarTransactions()
     // `document` has been destroyed. Retention is real value/COW retention,
