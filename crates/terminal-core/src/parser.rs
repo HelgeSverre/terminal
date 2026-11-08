@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const MAX_OSC: usize = 65_536;
+const MAX_STRING_RUN_BYTES: usize = 65_536;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Csi {
@@ -94,10 +95,11 @@ impl VtParser {
         {
             return 0;
         }
-        let count = input
+        let span = &input[..input.len().min(MAX_STRING_RUN_BYTES)];
+        let count = span
             .iter()
             .position(|b| *b < 0x20 || *b == 0x7f)
-            .unwrap_or(input.len());
+            .unwrap_or(span.len());
         if count == 0 {
             return 0;
         }
@@ -431,11 +433,38 @@ fn string_limit(kind: StringKind) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_OSC, StringKind, string_limit};
+    use super::{MAX_OSC, MAX_STRING_RUN_BYTES, Operation, StringKind, VtParser, string_limit};
 
     #[test]
     fn osc52_exception_does_not_expand_other_string_kinds() {
         assert_eq!(string_limit(StringKind::Osc), MAX_OSC);
         assert_eq!(string_limit(StringKind::Unsupported), MAX_OSC);
+    }
+
+    #[test]
+    fn osc52_string_runs_are_bounded_when_called_directly() {
+        let mut parser = VtParser::default();
+        let mut operations = Vec::new();
+        parser.advance(b"\x1b]52;c;", |op| operations.push(op));
+
+        let payload = vec![b'A'; MAX_STRING_RUN_BYTES * 2 + 17];
+        let first = parser.advance_string_run(&payload, |op| operations.push(op));
+        let second = parser.advance_string_run(&payload[first..], |op| operations.push(op));
+        let third = parser.advance_string_run(&payload[first + second..], |op| operations.push(op));
+        parser.advance(b"\x07", |op| operations.push(op));
+
+        assert_eq!(first, MAX_STRING_RUN_BYTES);
+        assert_eq!(second, MAX_STRING_RUN_BYTES);
+        assert_eq!(third, 17);
+        assert_eq!(
+            operations,
+            [
+                Operation::Osc52Start,
+                Operation::Osc52Data(vec![b'A'; MAX_STRING_RUN_BYTES]),
+                Operation::Osc52Data(vec![b'A'; MAX_STRING_RUN_BYTES]),
+                Operation::Osc52Data(vec![b'A'; 17]),
+                Operation::Osc52End,
+            ]
+        );
     }
 }
