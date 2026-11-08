@@ -112,6 +112,12 @@ unrelated broad permissions to obtain a benchmark.
 
 ## Frozen Swift–Rust core exploration
 
+The later [Swift printing probe](../reports/swift-printing-315f055/summary.md)
+isolates range-local wide-cell repair at `315f055`: three paired 2 MiB runs
+improve ASCII from 2.15 to 2.64 MiB/s and mixed text from 3.62 to 3.96 MiB/s.
+Both replay streams and canonical final states match. This is a Swift-only
+engine comparison; it does not measure whole-app performance or rerun Rust.
+
 reports/emulator-comparison-ef3b625-b5a9fea/ records a headless C-ABI replay
 of frozen Swift ef3b625 and Rust b5a9fea cores. It fixes geometry at 160×50
 with zero retained history and includes feed, reply draining, parser finish,

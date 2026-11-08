@@ -1,0 +1,461 @@
+{
+  "protocol": 1,
+  "status": "complete",
+  "source_commits": {
+    "baseline": "7fc6fac490a03f0eef2c67e9e2ce811a38f04cc4",
+    "candidate": "315f0551008e54cf2496b96fd0545a788760ab68"
+  },
+  "binaries": {
+    "baseline": {
+      "bytes": 615912,
+      "sha256": "884c87d4525759376d3fd8ea55a859dae9c4030e82d97279d94cbe958f39a2bf"
+    },
+    "candidate": {
+      "bytes": 618344,
+      "sha256": "9c701177b34320156d8acf879a8afa5f3045459ad70836d4bd4aa2469eeb474f"
+    }
+  },
+  "contract": {
+    "requested_bytes": 2097152,
+    "geometry": [
+      160,
+      50
+    ],
+    "history_rows": 0,
+    "max_feed_span": 65536,
+    "warmup_per_implementation": 1,
+    "alternating_pairs": 3,
+    "samples_per_turn": 1,
+    "labels": {
+      "baseline": "Swift 7fc6fac -O",
+      "candidate": "Swift 315f055 -O"
+    }
+  },
+  "warmups": [
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 994248000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "2e22ad231c66626d",
+      "rusage_max_rss_bytes": 31211520,
+      "phase": "warmup",
+      "pair": null,
+      "implementation": "baseline",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/warmup-ascii-baseline.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/warmup-ascii-baseline.json",
+      "snapshot_sha256": "1f0ed188360046607ab518c68fde25d8c9439cc0ad2efaf4017136c10539bfe0"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 780594000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "a29e4a9ddd195bdb",
+      "rusage_max_rss_bytes": 31113216,
+      "phase": "warmup",
+      "pair": null,
+      "implementation": "candidate",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/warmup-ascii-candidate.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/warmup-ascii-candidate.json",
+      "snapshot_sha256": "fb4eef6c5abe0239e279ee2c5af970915490c3d781d6e0e763d3c9474d5799e5"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 566452000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "44fde41e420c1981",
+      "rusage_max_rss_bytes": 30539776,
+      "phase": "warmup",
+      "pair": null,
+      "implementation": "baseline",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/warmup-mixed-baseline.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/warmup-mixed-baseline.json",
+      "snapshot_sha256": "8b1d9e118f13c57ea298defb4dc0ab210a50500bfa2c621b0d9a8898876b7d81"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 498224000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "6cd3ab8bed93dd1b",
+      "rusage_max_rss_bytes": 31014912,
+      "phase": "warmup",
+      "pair": null,
+      "implementation": "candidate",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/warmup-mixed-candidate.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/warmup-mixed-candidate.json",
+      "snapshot_sha256": "e8cdc08ab9e5b98d5dfe65fb2be5ca8e73c6a3077c061b209ae104b9f251cf40"
+    }
+  ],
+  "samples": [
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 934695000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "0aebfb4d93ef7929",
+      "rusage_max_rss_bytes": 30294016,
+      "phase": "sample",
+      "pair": 1,
+      "implementation": "baseline",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-ascii-pair1-baseline.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-ascii-pair1-baseline.json",
+      "snapshot_sha256": "de1e2b72e962d4d6a91efca6557fc4c7f738da91abee29321347211a76cfdff7"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 758726000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "57719638af1cc8bd",
+      "rusage_max_rss_bytes": 30326784,
+      "phase": "sample",
+      "pair": 1,
+      "implementation": "candidate",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-ascii-pair1-candidate.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-ascii-pair1-candidate.json",
+      "snapshot_sha256": "08431c2bd37d87152a1faf23e6a7e0e0a702ea5bdef8a0d948780acb7e055812"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 926924000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "7278b2cea2324845",
+      "rusage_max_rss_bytes": 30261248,
+      "phase": "sample",
+      "pair": 2,
+      "implementation": "baseline",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-ascii-pair2-baseline.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-ascii-pair2-baseline.json",
+      "snapshot_sha256": "2c1abf30dffd623b50ca9dac488fe2041041a7fd3aa96842ed73a92932a5aa8c"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 763430000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "4231defad1381a11",
+      "rusage_max_rss_bytes": 30310400,
+      "phase": "sample",
+      "pair": 2,
+      "implementation": "candidate",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-ascii-pair2-candidate.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-ascii-pair2-candidate.json",
+      "snapshot_sha256": "c7a70c9b8fb9fcf71d136c97c3fc8e276d29fa398f105fb077b1468602a881c8"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 929856000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "a87d0a2c2fa67477",
+      "rusage_max_rss_bytes": 30474240,
+      "phase": "sample",
+      "pair": 3,
+      "implementation": "baseline",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-ascii-pair3-baseline.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-ascii-pair3-baseline.json",
+      "snapshot_sha256": "5d58f245826d08b20f4e34ef9183502e8cef7063d0e411703196159182edffd5"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 755568000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "05ea2288921d9feb",
+      "rusage_max_rss_bytes": 30375936,
+      "phase": "sample",
+      "pair": 3,
+      "implementation": "candidate",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-ascii-pair3-candidate.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-ascii-pair3-candidate.json",
+      "snapshot_sha256": "a613ab7d6901f9ef7b07b52d9a8712beee82e9c2c19df83f9928cdedd050fc51"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 554951000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "174483e2498578fd",
+      "rusage_max_rss_bytes": 29900800,
+      "phase": "sample",
+      "pair": 1,
+      "implementation": "baseline",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-mixed-pair1-baseline.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-mixed-pair1-baseline.json",
+      "snapshot_sha256": "b325b23e6eb4f2945e131c206bc4ccf1bbd65b1c958f6e09e1bc9132b6540680"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 507133000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "4874d0d3d861336d",
+      "rusage_max_rss_bytes": 30736384,
+      "phase": "sample",
+      "pair": 1,
+      "implementation": "candidate",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-mixed-pair1-candidate.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-mixed-pair1-candidate.json",
+      "snapshot_sha256": "20051cf865ea09760a53b3a769c755aefbf0104b55f6adb3682f75c3dc6c64d4"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 549210000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "f431d6ae9030ace5",
+      "rusage_max_rss_bytes": 30638080,
+      "phase": "sample",
+      "pair": 2,
+      "implementation": "baseline",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-mixed-pair2-baseline.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-mixed-pair2-baseline.json",
+      "snapshot_sha256": "abb7ff836f00305ed6f2fc342d55b6302b645cd284104f421bc652c0ff526158"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 505386000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "cda8145d56b77547",
+      "rusage_max_rss_bytes": 30425088,
+      "phase": "sample",
+      "pair": 2,
+      "implementation": "candidate",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-mixed-pair2-candidate.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-mixed-pair2-candidate.json",
+      "snapshot_sha256": "2ee630e5e3513fcb73a793397bca4930ab243d308c71240e05ee367343929bdf"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 552709000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "7199d40cd1240ff9",
+      "rusage_max_rss_bytes": 29736960,
+      "phase": "sample",
+      "pair": 3,
+      "implementation": "baseline",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-mixed-pair3-baseline.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-mixed-pair3-baseline.json",
+      "snapshot_sha256": "eb52bb3e14571a5a7f11250e6bb8c40ec6f38a1ffe67ad0f5e06170a917c36c0"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 495142000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "7df820f5d113fa6d",
+      "rusage_max_rss_bytes": 30539776,
+      "phase": "sample",
+      "pair": 3,
+      "implementation": "candidate",
+      "log_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/logs/sample-mixed-pair3-candidate.log",
+      "snapshot_path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/range-local-315f055/snapshots/sample-mixed-pair3-candidate.json",
+      "snapshot_sha256": "184a9e4da43c430aa9428f17bb10c79934729113202caa3351ef02e0ac338361"
+    }
+  ],
+  "replay_gate": {
+    "passed": true,
+    "observed_stream_values": {
+      "ascii": {
+        "baseline": {
+          "payload": [
+            {
+              "payload_bytes": 2097232,
+              "payload_fnv1a64": "98086dfeac17f2a3"
+            }
+          ],
+          "reply": [
+            {
+              "reply_bytes": 204599,
+              "reply_fnv1a64": "4b90ac2d1f1d701f"
+            }
+          ]
+        },
+        "candidate": {
+          "payload": [
+            {
+              "payload_bytes": 2097232,
+              "payload_fnv1a64": "98086dfeac17f2a3"
+            }
+          ],
+          "reply": [
+            {
+              "reply_bytes": 204599,
+              "reply_fnv1a64": "4b90ac2d1f1d701f"
+            }
+          ]
+        }
+      },
+      "mixed": {
+        "baseline": {
+          "payload": [
+            {
+              "payload_bytes": 2097183,
+              "payload_fnv1a64": "4099fd8d5d41bf79"
+            }
+          ],
+          "reply": [
+            {
+              "reply_bytes": 162879,
+              "reply_fnv1a64": "413d5fd6f3264428"
+            }
+          ]
+        },
+        "candidate": {
+          "payload": [
+            {
+              "payload_bytes": 2097183,
+              "payload_fnv1a64": "4099fd8d5d41bf79"
+            }
+          ],
+          "reply": [
+            {
+              "reply_bytes": 162879,
+              "reply_fnv1a64": "413d5fd6f3264428"
+            }
+          ]
+        }
+      }
+    },
+    "failures": []
+  },
+  "snapshot_gate": {
+    "passed": true,
+    "mismatches": [],
+    "canonicalizer_sha256": "8122ef7fdaa701417e1ef568c80309307b5f65c3a9eb842c7bb6e71400654a5a"
+  }
+}
