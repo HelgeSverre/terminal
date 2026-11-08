@@ -149,7 +149,7 @@ struct TerminalDocument {
       let lower = max(0, range.lowerBound), upper = min(columns, range.upperBound)
       guard screen.rows.indices.contains(row), lower < upper else { return }
       for column in lower..<upper { screen.rows[row].cells[column] = .erased(eraseStyle) }
-      Self.repairWidePairsInPlace(&screen.rows[row], eraseStyle: eraseStyle)
+      Self.repairWidePairsInPlace(&screen.rows[row], around: lower..<upper, eraseStyle: eraseStyle)
       screen.rows[row].revision &+= 1
     }
     func shift(_ row: Int, _ column: Int, _ right: Int, _ amount: Int, _ eraseStyle: TerminalStyle) {
@@ -162,7 +162,7 @@ struct TerminalDocument {
         }
       }
       for index in column..<(column + count) { screen.rows[row].cells[index] = .erased(eraseStyle) }
-      Self.repairWidePairsInPlace(&screen.rows[row], eraseStyle: eraseStyle)
+      Self.repairWidePairsInPlace(&screen.rows[row], around: column..<(right + 1), eraseStyle: eraseStyle)
       screen.rows[row].revision &+= 1
     }
     func scrollUpFullWidth() {
@@ -381,8 +381,21 @@ struct TerminalDocument {
     Self.repairWidePairsInPlace(&row, eraseStyle: eraseStyle)
   }
   private static func repairWidePairsInPlace(_ row: inout TerminalRow, eraseStyle: TerminalStyle) {
+    repairWidePairsInPlace(&row, around: row.cells.indices, eraseStyle: eraseStyle)
+  }
+  // A cell mutation can only orphan a wide pair at the mutation's two edges:
+  // cells wholly inside an overwritten span are erased, while an untouched
+  // interior pair remains adjacent. Keep the full-row entry point above for
+  // operations that replace arbitrary row regions, but scalar printing repairs
+  // only the changed span and its crossing neighbours.
+  private static func repairWidePairsInPlace(_ row: inout TerminalRow, around changed: Range<Int>, eraseStyle: TerminalStyle) {
     guard !row.cells.isEmpty else { return }
-    for index in row.cells.indices {
+    let lower = max(0, changed.lowerBound)
+    let upper = min(row.cells.count, changed.upperBound)
+    guard lower < upper else { return }
+    let first = max(0, lower - 1)
+    let last = min(row.cells.count - 1, upper)
+    for index in first...last {
       if row.cells[index].kind == 2 && (index + 1 >= row.cells.count || row.cells[index + 1].kind != 3) { row.cells[index] = .erased(eraseStyle) }
       if row.cells[index].kind == 3 && (index == 0 || row.cells[index - 1].kind != 2) { row.cells[index] = .erased(eraseStyle) }
     }
