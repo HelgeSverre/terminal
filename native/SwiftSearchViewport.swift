@@ -329,7 +329,7 @@ struct SwiftSearchTask {
   }
 
   private static func lowercase(_ scalar: Unicode.Scalar) -> [Unicode.Scalar] {
-    Array(String(scalar).lowercased().unicodeScalars)
+    UnicodeLowercase.lowercase(scalar)
   }
   private func searchIndex(of id: UInt64, hint: Int, source: SwiftSearchSource) -> Int? {
     if source.rowIDAt(hint) == id { return hint }

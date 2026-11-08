@@ -39,6 +39,13 @@ import Foundation
       spans: [SwiftSearchResolvedSpan(row: 1, span: SwiftSearchSpan(
         proof: SwiftSearchProof(joined.rows[1]), start: 4, end: 4))]))
 
+    // Unicode 17 mappings are pinned rather than delegated to Foundation,
+    // whose macOS 15 tables do not yet include these scalars.
+    let unicode17 = SwiftSearchDocument(stamp: stamp, rows: [row(4, "\u{A7CE}\u{16EA0}")])
+    var unicode17Task = try SwiftSearchTask(query: "\u{A7CF}\u{16EBB}", source: unicode17.source)
+    run(&unicode17Task, unicode17)
+    precondition(unicode17Task.found)
+
     // A cross-row match has to retain adjacency, not merely prove each row by
     // ID somewhere in the document. An inserted physical row breaks it.
     let across = SwiftSearchDocument(stamp: stamp, rows: [row(10, "A"), row(11, "B")])
