@@ -8,9 +8,12 @@
   "successful_session_run": {
     "command": "just _session-test",
     "run_id": "9DFFC7B9-BF5C-49E4-B584-5950032CAB0E",
+    "started_at": "2026-11-08T21:55:42Z",
+    "finished_at": "2026-11-08T21:55:43Z",
     "exit_status": 0,
     "passed": true,
     "failures": [],
+    "cancel_to_reap_seconds": 0.012473940849304199,
     "checks": {
       "all_owned_children_reaped": true,
       "cancel_close_under_three_seconds": true,
@@ -42,7 +45,16 @@
       "expected": 7,
       "reported": 7,
       "all_children_reaped": true,
-      "unreaped_pids": []
+      "unreaped_pids": [],
+      "states": [
+        {"session": 0, "child_pid": 27095, "child_reaped_reported": true, "child_reaped": true},
+        {"session": 1, "child_pid": 27107, "child_reaped_reported": true, "child_reaped": true},
+        {"session": 2, "child_pid": 27109, "child_reaped_reported": true, "child_reaped": true},
+        {"session": 3, "child_pid": 27126, "child_reaped_reported": true, "child_reaped": true},
+        {"session": 4, "child_pid": 27117, "child_reaped_reported": true, "child_reaped": true},
+        {"session": 5, "child_pid": 27097, "child_reaped_reported": true, "child_reaped": true},
+        {"session": 6, "child_pid": 27099, "child_reaped_reported": true, "child_reaped": true}
+      ]
     }
   },
   "initial_ci_failure": {
@@ -55,6 +67,17 @@
       "tracked_pre_run_sha256": "e9a5500e3ddd4ad859fbaedf8edc3c0584af823ece799c6e2da9e7a86ebefabb",
       "fresh": true
     },
+    "cancel_to_reap_seconds": 0.046183943748474121,
+    "statuses": [
+      "Process exited (status 0); draining output",
+      "Session finished",
+      "Paste limit is 1 MiB",
+      "Input busy",
+      "Input busy",
+      "Input busy",
+      "Paste cancelled",
+      "Process exited (status 1); draining output"
+    ],
     "checks": {
       "accepted_input_during_rep": true,
       "cancel_close_under_three_seconds": true,
