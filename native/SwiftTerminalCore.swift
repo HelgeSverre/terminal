@@ -110,6 +110,8 @@ private final class SwiftTerminalCore {
   // part of the discarded cluster, rather than making it a new grid glyph.
   private var cappedCluster = false
   private var cappedClusterJoinsNextPictograph = false
+  private var segmenter = SwiftUnicode.Segmenter()
+  private var clusterOwner: (row: Int, column: Int)?
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
@@ -147,6 +149,7 @@ private final class SwiftTerminalCore {
     // maximal invalid prefix now so that the control byte is still parsed.
     for scalar in utf8.finish() { put(String(scalar)) }
   }
+  private func resetClusterBoundary() { segmenter = SwiftUnicode.Segmenter(); clusterOwner = nil; cappedCluster = false; cappedClusterJoinsNextPictograph = false }
   private func tick(_ now: UInt64) {
     clock = now
     if let deadline = syncDeadline, now >= deadline {
@@ -248,6 +251,19 @@ private final class SwiftTerminalCore {
   }
   private func put(_ text: String) {
     var s = screen
+    guard let scalar = text.unicodeScalars.first else { return }
+    let startsCluster = segmenter.push(scalar)
+    if !startsCluster, let owner = clusterOwner, owner.row == s.cursorRow,
+       s.rows[owner.row].cells.indices.contains(owner.column) {
+      let cell = s.rows[owner.row].cells[owner.column]
+      if cell.text.unicodeScalars.count + text.unicodeScalars.count > 64 {
+        s.rows[owner.row].cells[owner.column].flags |= 4
+      } else {
+        s.rows[owner.row].cells[owner.column].text.append(text)
+      }
+      screen = s; changed(); return
+    }
+    clusterOwner = nil
     let measuredWidth = SwiftUnicode.cellWidth(of: text)
     if measuredWidth == 0 {
       if text.unicodeScalars.allSatisfy({ scalar in
@@ -273,34 +289,8 @@ private final class SwiftTerminalCore {
       screen = s; changed(); return
     }
     let width = min(2, max(1, measuredWidth))
-    // A ZWJ emoji continuation (and a paired regional indicator) extends the
-    // already placed cluster without consuming a second cell span. The rich
-    // cell retains the complete grapheme while its original width stays put.
-    if s.cursorColumn > 0, let scalar = text.unicodeScalars.first {
-      if cappedClusterJoinsNextPictograph && SwiftUnicode.category(of: scalar) == .extendedPictographic {
-        cappedCluster = false
-        cappedClusterJoinsNextPictograph = false
-        return
-      }
-      cappedCluster = false
-      cappedClusterJoinsNextPictograph = false
-      let owner = document.repairedCellOwner(in: s.rows[s.cursorRow], at: s.cursorColumn - 1)
-      let existing = s.rows[s.cursorRow].cells[owner].text.unicodeScalars
-      let beforeZWJ = existing.dropLast().reversed().first { SwiftUnicode.category(of: $0) != .extend }
-      let joinsZWJ = existing.last?.value == 0x200d &&
-        beforeZWJ.map { SwiftUnicode.category(of: $0) == .extendedPictographic } == true &&
-        SwiftUnicode.category(of: scalar) == .extendedPictographic
-      let joinsRI = SwiftUnicode.category(of: scalar) == .regionalIndicator &&
-        existing.count == 1 && existing.first.map { SwiftUnicode.category(of: $0) == .regionalIndicator } == true
-      if joinsZWJ || joinsRI {
-        if existing.count + text.unicodeScalars.count > 64 {
-          s.rows[s.cursorRow].cells[owner].flags |= 4
-        } else {
-          s.rows[s.cursorRow].cells[owner].text.append(text)
-        }
-        screen = s; changed(); return
-      }
-    }
+    cappedCluster = false
+    cappedClusterJoinsNextPictograph = false
     if s.pendingWrap && autoWrap { wrap(&s) }
     let bounds = writeBounds(s.cursorColumn)
     if width == 2 && s.cursorColumn + 2 > bounds.right + 1 && bounds.right > bounds.left && autoWrap {
@@ -314,7 +304,9 @@ private final class SwiftTerminalCore {
     if occupied <= 0 { return }
     document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<(s.cursorColumn + occupied), style: eraseStyle())
     let truncatedWide = width == 2 && occupied < width
+    let placedColumn = s.cursorColumn
     s.rows[s.cursorRow].cells[s.cursorColumn] = SwiftCell(text: text, kind: width == 2 && occupied == 2 ? 2 : 1, style: pen, link: currentLink, flags: (protectedOutput ? 2 : 0) | (truncatedWide ? 1 : 0), protected: protectedOutput)
+    clusterOwner = (s.cursorRow, placedColumn)
     lastPrinted = text
     lastPrintedStyle = pen
     lastPrintedLink = currentLink
@@ -342,9 +334,9 @@ private final class SwiftTerminalCore {
       scroll(&s, top: vertical.0, bottom: vertical.1, count: 1, up: true, allowHistory: allowHistory)
     } else { s.cursorRow = min(rowCount - 1, s.cursorRow + 1) }
   }
-  private func lineFeed() { var s = screen; s.pendingWrap = false; index(&s, reverse: false, allowHistory: true); screen = s; changed(history: !usingAlternate) }
-  private func carriageReturn() { var s = screen; let left = horizontalMargins.left; s.cursorColumn = s.cursorColumn >= left ? left : 0; s.pendingWrap = false; screen = s; changed() }
-  private func backspace() { var s = screen; let left = horizontalMargins.left; s.cursorColumn = max(s.cursorColumn >= left ? left : 0, s.cursorColumn - 1); s.pendingWrap = false; screen = s; changed() }
+  private func lineFeed() { resetClusterBoundary(); var s = screen; s.pendingWrap = false; index(&s, reverse: false, allowHistory: true); screen = s; changed(history: !usingAlternate) }
+  private func carriageReturn() { resetClusterBoundary(); var s = screen; let left = horizontalMargins.left; s.cursorColumn = s.cursorColumn >= left ? left : 0; s.pendingWrap = false; screen = s; changed() }
+  private func backspace() { resetClusterBoundary(); var s = screen; let left = horizontalMargins.left; s.cursorColumn = max(s.cursorColumn >= left ? left : 0, s.cursorColumn - 1); s.pendingWrap = false; screen = s; changed() }
   private func tab(_ reverse: Bool = false, count: Int = 1) {
     var s = screen; let margins = horizontalMargins
     let left = s.cursorColumn >= margins.left ? margins.left : 0
@@ -399,8 +391,8 @@ private final class SwiftTerminalCore {
     case "I": tab(false, count: n); changedActiveScreen = true
     case "Z": tab(true, count: n); changedActiveScreen = true
     case "r": setVerticalMargins(params); changedActiveScreen = true
-    case "S": scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: false)
-    case "T": scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: false, allowHistory: false)
+    case "S": resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: false)
+    case "T": resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: false, allowHistory: false)
     case "b": repeatRemaining = min(1_000_000, max(0, params.first ?? 1)); clearsPending = false
     case "m": applySGR(params, colonSyntax: raw); clearsPending = false
     case "s":

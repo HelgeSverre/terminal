@@ -73,6 +73,7 @@ close-smoke: build
     xcrun swift tools/SwiftIncrementalBuild.swift
     cp "$ROOT_DIR/target/swift-incremental/Terminal" "$APP_BUNDLE/Contents/MacOS/Terminal"
     cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+    cp native/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
     cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
     ditto native/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
     ditto assets/fonts "$APP_BUNDLE/Contents/Resources/Fonts"
@@ -213,6 +214,13 @@ terminal-semantic-regression:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_semantic_regression) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-semantic-regression
     target/native/terminal-semantic-regression
+
+[group('check')]
+terminal-boundary-regression:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_boundary_regression) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-boundary-regression
+    target/native/terminal-boundary-regression
 
 [group('check')]
 swift-unicode18-corpus:

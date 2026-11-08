@@ -28,6 +28,7 @@
     "Automation.swift",
     "Smoke.swift",
     "EditingSmoke.swift",
+    "ResizeSmoke.swift",
     "main.swift"
   ],
   "emulation": [
@@ -118,7 +119,13 @@
     "clipboard_access": [
       "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
       "SwiftInputEncoder.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift", "Preferences.swift",
-      "Transport.swift", "Session.swift", "ClipboardAccess.swift", "tests/ClipboardAccessTests.swift"
+      "Transport.swift", "Session.swift", "ClipboardAccess.swift", "SnapshotBridge.swift",
+      "AccessibilityProjection.swift", "tests/ClipboardAccessTests.swift"
+    ],
+    "terminal_boundary_regression": [
+      "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
+      "SwiftInputEncoder.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift",
+      "tests/TerminalBoundaryRegressionTests.swift"
     ]
   }
 }
