@@ -683,8 +683,15 @@ final class TerminalRendering: @unchecked Sendable {
                     rect: SIMD4(Float(x), Float(y), Float(glyph.width), Float(request.cellHeight)),
                     uv: glyph.uv, color: glyph.kind == .color ? SIMD4(1, 1, 1, 1) : fg), glyph)
               } else {
-                needsReset = true
-                if pass == 1 { RendererMetrics.recordVisibleGlyphDrop() }
+                // Budget exhaustion must not turn terminal text into a blank
+                // cell. This outline uses the already-bound solid texel and
+                // allocates nothing, while preserving the cell span.
+                let span = request.cellWidth * cells
+                rect(x, y, span, 1, fg)
+                rect(x, y + request.cellHeight - 1, span, 1, fg)
+                rect(x, y, 1, request.cellHeight, fg)
+                rect(x + span - 1, y, 1, request.cellHeight, fg)
+                RendererMetrics.recordSubstituteGlyphFallback()
               }
             }
             if cell.style.underline > 0 {
