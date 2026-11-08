@@ -77,7 +77,9 @@ func argument(_ name: String, fallback: String) -> String { args.firstIndex(of: 
 let fixturesPath = argument("--fixtures", fallback: "native/tests/differential-fixtures.json")
 let rustRoot = argument("--rust-root", fallback: ProcessInfo.processInfo.environment["TERMINAL_RUST_ORACLE_ROOT"] ?? "")
 let outputPath = argument("--output", fallback: "reports/swift-port/differential.json")
+let partition = argument("--partition", fallback: "fixture")
 guard !rustRoot.isEmpty else { throw Failure.message("pass --rust-root <frozen Rust worktree> or set TERMINAL_RUST_ORACLE_ROOT") }
+guard ["fixture", "whole", "byte", "random"].contains(partition) else { throw Failure.message("invalid --partition") }
 let fixtures = try JSONDecoder().decode(FixtureFile.self, from: Data(contentsOf: URL(fileURLWithPath: fixturesPath)))
 let runner = """
 import Foundation
@@ -124,18 +126,28 @@ let compile = try process("/usr/bin/xcrun", ["swiftc", "-swift-version", "5", "-
 if !compile.1.isEmpty { fputs(String(decoding: compile.1, as: UTF8.self), stderr) }
 var cases: [[String: Any]] = []
 for fixture in fixtures.fixtures {
-  let fixtureData = try JSONSerialization.data(withJSONObject: ["columns": fixture.columns, "rows": fixture.rows, "chunks_base64": fixture.chunks_base64])
+  let bytes = Data(fixture.chunks_base64.compactMap { Data(base64Encoded: $0) }.joined())
+  let chunks: [Data]
+  if partition == "whole" { chunks = [bytes] }
+  else if partition == "byte" { chunks = bytes.map { Data([$0]) } }
+  else if partition == "random" {
+    var state = UInt64(fixture.name.utf8.reduce(0x9e37_79b9) { ($0 &* 1_099_511_628_211) ^ UInt64($1) })
+    var offset = 0; var parts: [Data] = []
+    while offset < bytes.count { state = state &* 6_364_136_223_846_793_005 &+ 1; let count = min(bytes.count - offset, Int((state >> 32) % 7) + 1); parts.append(bytes.subdata(in: offset..<(offset + count))); offset += count }
+    chunks = parts
+  } else { chunks = fixture.chunks_base64.compactMap { Data(base64Encoded: $0) } }
+  let encodedChunks = chunks.map { $0.base64EncodedString() }
+  let fixtureData = try JSONSerialization.data(withJSONObject: ["columns": fixture.columns, "rows": fixture.rows, "chunks_base64": encodedChunks])
   let fixturePath = temporary.appendingPathComponent("\(fixture.name).json"); try fixtureData.write(to: fixturePath)
   let swift = try process(runnerExecutable.path, [fixturePath.path], cwd: root)
   let swiftValue = try canonical(swift.0) as! [String: Any]
-  let bytes = Data(fixture.chunks_base64.compactMap { Data(base64Encoded: $0) }.joined())
   let rust = try process("/usr/bin/env", ["cargo", "run", "--quiet", "--release", "--locked", "-p", "terminal-tools", "--bin", "terminal-tools", "--", "\(fixture.columns)", "\(fixture.rows)"], stdin: bytes, cwd: rustRoot)
   let rustSnapshot = try canonical(rust.0)
   let swiftSnapshot = swiftValue["snapshot"]!
   let difference = firstDifference(rustSnapshot, swiftSnapshot)
-  cases.append(["name": fixture.name, "equal": difference == nil, "first_difference": difference as Any, "swift": swiftValue, "rust": ["snapshot": rustSnapshot, "stderr": String(decoding: rust.1, as: UTF8.self)]])
+  cases.append(["name": fixture.name, "partition": partition, "chunks": encodedChunks.count, "equal": difference == nil, "first_difference": difference as Any, "swift": swiftValue, "rust": ["snapshot": rustSnapshot, "stderr": String(decoding: rust.1, as: UTF8.self)]])
 }
-let result: [String: Any] = ["rust_root": rustRoot, "fixtures": cases, "passed": cases.allSatisfy { $0["equal"] as? Bool == true }]
+let result: [String: Any] = ["rust_root": rustRoot, "partition": partition, "fixtures": cases, "passed": cases.allSatisfy { $0["equal"] as? Bool == true }]
 let resultData = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
 try FileManager.default.createDirectory(at: URL(fileURLWithPath: outputPath).deletingLastPathComponent(), withIntermediateDirectories: true)
 try resultData.write(to: URL(fileURLWithPath: outputPath))

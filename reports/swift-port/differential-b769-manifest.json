@@ -1,0 +1,21 @@
+{
+  "swift": {
+    "commit": "b76906c50012697f400d86bfab9860609b989519",
+    "source_tree_sha256": "f584b13f15e36a39a3fb0109d5103dfecb16d33c8eea3df9f7f24e7ae67c815d",
+    "app_binary_sha256": "5fa8f4265b6804341a7c173f115e74cb7af7cf9921da87140ca2bd7416ece6a0",
+    "app_binary_note": "Built in the frozen b76906c worktree before target cleanup."
+  },
+  "rust": {
+    "commit": "f4268ee2b6a2ed4bc4942c5b7b3d8341c0e3b119",
+    "source_tree_sha256": "528a7abbbd9eeed90e9e299f1ea2f3b2144b4486059e8f34106a387bd3144994",
+    "terminal_tools_oracle_sha256": "eafe7e3da1def5a85cf80803e50b32630505a6d400b59137b265a0abb3a85940",
+    "oracle_note": "terminal-tools is the exact external Rust binary used for all three transcript replays."
+  },
+  "partitions": ["whole", "byte", "random"],
+  "fixtures": 5,
+  "raw_report_files": [
+    "differential-b769-whole.json",
+    "differential-b769-byte.json",
+    "differential-b769-random.json"
+  ]
+}
