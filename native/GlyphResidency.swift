@@ -96,8 +96,10 @@ final class GlyphResidency: @unchecked Sendable {
     let uploads = uploadQueue
     uploadQueue.removeAll(keepingCapacity: true)
     for upload in uploads {
-      if install(upload.result) { upload.release() }
-      else { uploadQueue.append(upload) }
+      switch install(upload.result) {
+      case .installed, .impossible: upload.release()
+      case .waitingForPins: uploadQueue.append(upload)
+      }
     }
   }
 
@@ -149,15 +151,20 @@ final class GlyphResidency: @unchecked Sendable {
 
   // Called only by beginFrame, after the preceding one-in-flight submission
   // has completed and released its pins.
-  @discardableResult
-  private func install(_ result: GlyphRasterResult) -> Bool {
+  private enum InstallOutcome { case installed, waitingForPins, impossible }
+  private func install(_ result: GlyphRasterResult) -> InstallOutcome {
     let recipe = result.recipe
     let kind: PageKind = result.kind == .mask ? .mask : .color
+    guard recipe.width > 0, recipe.height > 0, recipe.width + 1 < kind.side,
+      recipe.height + 1 < kind.side
+    else { rememberFailure(recipe); return .impossible }
     guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height) else {
-      // Keep the bounded worker staging token/result until a page becomes
-      // reclaimable. Capacity pressure is not a permanent raster failure.
+      guard pages.values.contains(where: { $0.kind == kind && $0.pins > 0 }) else {
+        rememberFailure(recipe)
+        return .impossible
+      }
       capacityWait = true
-      return false
+      return .waitingForPins
     }
     var pixels = result.pixels
     if kind == .mask {
@@ -179,7 +186,7 @@ final class GlyphResidency: @unchecked Sendable {
       kind: kind == .mask ? .mask : .color, allocation: placement.page.id,
       allocationGeneration: placement.page.generation)
     entries[recipe] = Entry(lease: lease, page: placement.page.id, bytes: recipe.width * recipe.height)
-    return true
+    return .installed
   }
 
   func fallbackGlyph(width: Int, height: Int) -> GlyphLease? {
@@ -209,13 +216,14 @@ final class GlyphResidency: @unchecked Sendable {
   func abandonedPreparedFrame() { preparedPins.removeAll(keepingCapacity: true) }
 
   func completedSubmission() {
+    let releasedPins = !submittedPins.isEmpty
     for id in submittedPins {
       guard var page = pages[id] else { continue }
       page.pins = max(0, page.pins - 1)
       pages[id] = page
     }
     submittedPins.removeAll(keepingCapacity: true)
-    if capacityWait {
+    if releasedPins && capacityWait {
       capacityWait = false
       onReady()
     }
