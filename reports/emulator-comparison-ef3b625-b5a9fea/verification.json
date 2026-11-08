@@ -1,0 +1,39 @@
+{
+  "verification": "passed",
+  "sample_count": 60,
+  "canonical_snapshot_gate": "passed",
+  "quantile_method": "linear interpolation at p*(n-1) over 15 sorted samples",
+  "source_identity": {
+    "swift_commit": "ef3b62564abb9f83128cf9bd75aade814e781d58",
+    "swift_executable_sha256": "d206e4d5c59e5b578e2a5db9ffe99e6ed45aa509ab339d576a23ac9b7bbe7a23",
+    "rust_commit": "b5a9fea0607f45a9ea891033ee454d0f1e7e4697",
+    "rust_executable_sha256": "3b6eb607628b9c863cb917a2e0a80a34904692bb5ba8abbabff31fbb8a74b913",
+    "c_harness_sha256": "a67e79ed93813a67ce88452eff2a1a2efa9d1950f68181e90c50f3cb3f81967e",
+    "c_harness_df9cc6e_equals_ef3b625": true,
+    "orchestrator_sha256_from_run": "8c11aa1de9507baad0d8b93283d4c2400d270ea750c1d63412158d17d11a3ef6"
+  },
+  "workloads": {
+    "ascii": {
+      "payload": [33554482, "45cb85c6ea07a4c6"],
+      "replies": [3273599, "ed2b741a6f1f43e7"],
+      "swift": { "elapsed_ns": { "p50": 66615633000, "p95": 68088186000, "p99": 68412280400 }, "median_mib_per_s": 0.4803684397 },
+      "rust": { "elapsed_ns": { "p50": 809451000, "p95": 836272700, "p99": 845254540 }, "median_mib_per_s": 39.5330263150 },
+      "rust_to_swift_median_throughput_ratio": 82.29730150
+    },
+    "mixed": {
+      "payload": [33554516, "13a836c609bb94cb"],
+      "replies": [2606167, "7a941d26c8b86757"],
+      "swift": { "elapsed_ns": { "p50": 25249652000, "p95": 26279106900, "p99": 26315413380 }, "median_mib_per_s": 1.2673473721 },
+      "rust": { "elapsed_ns": { "p50": 1475880000, "p95": 1629383200, "p99": 1714046240 }, "median_mib_per_s": 21.6820338433 },
+      "rust_to_swift_median_throughput_ratio": 17.10820121
+    }
+  },
+  "rss_scope": "Direct child process; includes the 32 MiB replay corpus and runtime allocations; excludes GPU and application-wide memory.",
+  "environment": {
+    "model": "Apple M2 Max (Mac14,6)",
+    "memory": "32 GiB",
+    "os": "macOS 15.6",
+    "power": "Battery, 31%, discharging",
+    "acceptance_condition": "background-loaded exploratory desktop run, not idle-machine acceptance"
+  }
+}

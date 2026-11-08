@@ -1,0 +1,22 @@
+{
+  "implementation": "rust",
+  "source_root": "/Users/helge/code/.terminal-emulator-freeze-rust-b5a9fea",
+  "source_commit": "b5a9fea0607f45a9ea891033ee454d0f1e7e4697",
+  "source_tree_clean": true,
+  "source_tree_fingerprint_sha256": "bd2622350d38e1200419d43c399026b4291e13ea079e964a014971b5f2265fb0",
+  "executable": "/Users/helge/code/terminal/target/emulator-comparison/rust/emulator-comparison",
+  "executable_sha256": "3b6eb607628b9c863cb917a2e0a80a34904692bb5ba8abbabff31fbb8a74b913",
+  "executable_bytes": 2438272,
+  "compiler": "rustc 1.99.0 (b940084d7, LLVM 23.1.1); Apple clang 17.0.0 (clang-1700.6.4.2); full versions in ../logs/compilers.txt",
+  "build_wall_seconds": 5.614658,
+  "build_command": "CARGO_TARGET_DIR=/Users/helge/code/terminal/target/emulator-comparison/rust-cargo-b5a9fea-success cargo build --release --locked -p terminal-core && xcrun clang -Wall -Wextra -Werror -O2 -std=c17 -I /Users/helge/code/.terminal-emulator-freeze-rust-b5a9fea/native /Users/helge/code/.terminal-emulator-freeze-swift-df9cc6e/tools/EmulatorComparison.c /Users/helge/code/terminal/target/emulator-comparison/rust-cargo-b5a9fea-success/release/libterminal_core.a -framework CoreFoundation -framework Security -liconv -o /Users/helge/code/terminal/target/emulator-comparison/rust/emulator-comparison",
+  "build_log": "/Users/helge/code/terminal/target/emulator-comparison/logs/build-rust-b5a9fea.log",
+  "build_status": "success",
+  "harness_source_root": "/Users/helge/code/.terminal-emulator-freeze-swift-ef3b625",
+  "harness_source_commit": "ef3b62564abb9f83128cf9bd75aade814e781d58",
+  "harness_sha256": "a67e79ed93813a67ce88452eff2a1a2efa9d1950f68181e90c50f3cb3f81967e",
+  "bridge_header_sha256": "f227bf7ba386a4090a77ec3778aea9ba1a95620a7eb01406cf5c33dcd3638ffd",
+  "cargo_lock_sha256": "3a70819ab24697715d03a90843c27b197dd40b4ab27fb482b41bb3bbfa337f1b",
+  "known_full_product_gaps": ["search", "streaming OSC 52"],
+  "claim_scope": "Headless 160x50 core only; no GUI, renderer, PTY, retained history, or full-product parity claim."
+}

@@ -1,0 +1,20 @@
+{
+  "implementation": "swift",
+  "source_root": "/Users/helge/code/.terminal-emulator-freeze-swift-ef3b625",
+  "source_commit": "ef3b62564abb9f83128cf9bd75aade814e781d58",
+  "source_tree_clean": true,
+  "source_tree_fingerprint_sha256": "e4db22ca6beb0702b55852e97cd8c1c675aac2ab99f4ee86e810ef88919e2612",
+  "executable": "/Users/helge/code/terminal/target/emulator-comparison/swift/emulator-comparison",
+  "executable_sha256": "d206e4d5c59e5b578e2a5db9ffe99e6ed45aa509ab339d576a23ac9b7bbe7a23",
+  "executable_bytes": 549296,
+  "compiler": "Apple Swift 6.2.4 (swiftlang-6.2.4.1.4 clang-1700.6.4.2); Apple clang 17.0.0 (clang-1700.6.4.2); full versions in ../logs/compilers.txt",
+  "build_wall_seconds": 15.113267,
+  "build_command": "xcrun clang -Wall -Wextra -Werror -O2 -std=c17 -I native -c tools/EmulatorComparison.c -o /Users/helge/code/terminal/target/emulator-comparison/swift/EmulatorComparison.o && xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print emulation) /Users/helge/code/terminal/target/emulator-comparison/swift/EmulatorComparison.o -framework Foundation -framework CoreGraphics -framework ImageIO -o /Users/helge/code/terminal/target/emulator-comparison/swift/emulator-comparison",
+  "build_log": "/Users/helge/code/terminal/target/emulator-comparison/logs/build-swift-ef3b625.log",
+  "build_status": "success",
+  "harness_sha256": "a67e79ed93813a67ce88452eff2a1a2efa9d1950f68181e90c50f3cb3f81967e",
+  "bridge_header_sha256": "e5baa6ffe077d4fa1ceb6f202e91eebd47119172cd1b0102f512ff4a68d86539",
+  "source_graph_sha256": "cfd189be32fd5cd5d93bb70a13d217fa9b23f97ed5a14a4afcdf7189a42b39f7",
+  "known_full_product_gaps": ["search", "streaming OSC 52"],
+  "claim_scope": "Headless 160x50 core only; no GUI, renderer, PTY, retained history, or full-product parity claim."
+}

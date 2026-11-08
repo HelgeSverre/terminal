@@ -1,0 +1,1 @@
+{"protocol":1,"workload":"ascii","columns":160,"rows":50,"history_rows":0,"requested_bytes":33554432,"payload_bytes":33554482,"payload_fnv1a64":"45cb85c6ea07a4c6","elapsed_ns":809451000,"reply_bytes":3273599,"reply_fnv1a64":"ed2b741a6f1f43e7","snapshot_bytes":2145020,"snapshot_fnv1a64":"384faba3c07ab0ed","rusage_max_rss_bytes":43532288}

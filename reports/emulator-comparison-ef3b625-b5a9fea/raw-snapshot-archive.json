@@ -1,0 +1,14 @@
+{
+  "archive_path": "/Users/helge/.codex/artifacts/terminal-emulator-comparison-20261108/raw-snapshots.tar.gz",
+  "archive_sha256": "991d9f62276c8b6abb9e38adc7416e92ad396367342fc628fa470216eb48db51",
+  "archive_bytes": 5374864,
+  "source_directory": "snapshots",
+  "snapshot_count": 64,
+  "path_sha256_mapping": "snapshot-sha256.json",
+  "representative_states": [
+    "representative-snapshots/ascii-pair1-swift-1.json",
+    "representative-snapshots/ascii-pair1-rust-1.json",
+    "representative-snapshots/mixed-pair1-swift-1.json",
+    "representative-snapshots/mixed-pair1-rust-1.json"
+  ]
+}

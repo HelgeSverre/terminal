@@ -1,0 +1,3 @@
+xcrun clang -Wall -Wextra -Werror -O2 -std=c17 -I native -c tools/EmulatorComparison.c -o target/emulator-comparison/swift/EmulatorComparison.o
+xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print emulation) /Users/helge/code/terminal/target/emulator-comparison/swift/EmulatorComparison.o -framework Foundation -framework CoreGraphics -framework ImageIO -o /Users/helge/code/terminal/target/emulator-comparison/swift/emulator-comparison
+Swift source graph verified: 30 app sources; 19 test groups; 174 declared paths; bundle inputs present

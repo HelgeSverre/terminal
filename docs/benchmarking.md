@@ -109,3 +109,20 @@ Launch from an authorized shell when testing Downloads. An ad-hoc development
 bundle opened via Launch Services may await macOS file-privacy authorization;
 time spent blocked opening the file is not terminal processing time. Do not grant
 unrelated broad permissions to obtain a benchmark.
+
+## Frozen Swift–Rust core exploration
+
+reports/emulator-comparison-ef3b625-b5a9fea/ records a headless C-ABI replay
+of frozen Swift ef3b625 and Rust b5a9fea cores. It fixes geometry at 160×50
+with zero retained history and includes feed, reply draining, parser finish,
+invariant validation, and final snapshot serialization/free. All 60 timed
+samples passed the canonical final-snapshot gate; raw-state hashes and four
+representative raw snapshots are retained with the report.
+
+This was an exploratory M2 Max/macOS 15.6/32 GiB battery run while unrelated
+desktop work was active, not an idle-machine acceptance run. It excludes the
+GUI, renderer, PTY, retained history, search, and streaming OSC 52. The reported
+headless backend build-wall values reuse existing SDK/compiler caches, so they
+are neither full-app cold/incremental timings nor a matched compile benchmark.
+Read verification.md in that report before quoting its throughput, size, RSS,
+or build figures; it makes no full-product, language-intrinsic, or parity claim.
