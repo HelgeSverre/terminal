@@ -34,7 +34,7 @@ struct TerminalScreen: Equatable {
 struct TerminalDocument {
   private(set) var columns: Int; private(set) var rowCount: Int
   var history: [TerminalRow] = []; var primary: TerminalScreen; var alternate: TerminalScreen
-  private var nextRowID: UInt64 = 1
+  fileprivate var nextRowID: UInt64 = 1
   init(columns: Int, rows: Int) {
     self.columns = columns; rowCount = rows
     primary = TerminalScreen(rows: [], columns: columns); alternate = TerminalScreen(rows: [], columns: columns)

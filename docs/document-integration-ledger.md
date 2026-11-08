@@ -16,13 +16,13 @@ document must replay before this area can be marked green.
 | `screen_scope_reset_resize_and_margin_mode_disable` | screen-local reset/resize/margin policy | green: `TerminalDocumentOracleTests.screenScopeResetResizeAndMarginDisable` |
 | `every_partition_and_ascii_scalar_paths_agree_with_rectangles` | protocol chunking reaches same document result | green: `TerminalDocumentOracleTests.chunkingAndRegionalTabs` |
 | `carriage_return_backspace_and_tabs_respect_horizontal_region` | editing motions obey active region | green: `TerminalDocumentOracleTests.chunkingAndRegionalTabs` |
-| `output_preserves_content_and_scroll_is_relative_to_current_anchor` | anchored viewport holds document identity | red |
-| `eviction_clamps_once_without_leaving_anchored_mode` | history eviction atomically clamps anchor | red |
-| `alternate_has_no_history_and_retains_primary_view_for_return` | primary/alternate document separation | red |
-| `reflow_maps_leading_boundary_including_soft_wrap_and_wide_atoms` | resize maps wide-wrap anchor | red |
-| `height_growth_clamps_to_legal_top_and_anchor_can_move_back_to_history` | resize remaps legal viewport top | red |
-| `history_clear_and_reset_publish_distinct_identities_and_initial_colors` | reset/clear identity and palette transition | red |
-| `publication_gate_does_not_rebase_anchor_and_invalid_resize_is_atomic` | failed resize leaves document/anchor intact | red |
+| `output_preserves_content_and_scroll_is_relative_to_current_anchor` | anchored viewport holds document identity | green: `TerminalViewportOracleTests.outputPreservesAnchor` |
+| `eviction_clamps_once_without_leaving_anchored_mode` | history eviction atomically clamps anchor | green: `TerminalViewportOracleTests.evictionClampsOnce` |
+| `alternate_has_no_history_and_retains_primary_view_for_return` | primary/alternate document separation | green: `TerminalViewportOracleTests.alternateRetainsPrimaryView` |
+| `reflow_maps_leading_boundary_including_soft_wrap_and_wide_atoms` | resize maps wide-wrap anchor | green: `TerminalViewportOracleTests.richReflowMapsAnchorsAndWideAtoms` |
+| `height_growth_clamps_to_legal_top_and_anchor_can_move_back_to_history` | resize remaps legal viewport top | green: `TerminalViewportOracleTests.heightGrowthAndEpochs` |
+| `history_clear_and_reset_publish_distinct_identities_and_initial_colors` | reset/clear identity and palette transition | green: `TerminalViewportOracleTests.heightGrowthAndEpochs` |
+| `publication_gate_does_not_rebase_anchor_and_invalid_resize_is_atomic` | failed resize leaves document/anchor intact | green: `TerminalViewportOracleTests.publicationGateAndAtomicInvalidResize` |
 | `reflow_roundtrip_text` | rich reflow preserves logical text | red |
 | `interior_edit_preserves_wrap_chain` | edit keeps soft-wrap chain validity | red |
 

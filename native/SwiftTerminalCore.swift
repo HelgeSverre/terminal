@@ -44,12 +44,18 @@ private final class SwiftTerminalCore {
   private var history: [SwiftRow] { get { document.history } set { document.history = newValue } }
   private var historyLimit = 10_000
   private var viewOffset = 0
+  // Nil means follow-tail. A retained row identity keeps a viewport stable as
+  // output appends history and is remapped during document reflow.
+  private var viewAnchor: UInt64?
+  private var viewportClampRevision: UInt64 = 1
+  private var viewportWasClamped = false
   // Modes describe protocol policy. Geometry itself belongs to each document
   // screen, because primary and alternate retain independent margins.
   private var originMode = false
   private var leftRightMargins = false
   private var autoWrap = true
   private var protectedOutput = false
+  private var synchronizedOutput = false
   private var parser = SwiftParserState.ground
   private var utf8 = SwiftUnicode.UTF8Decoder()
   private var sequence = ""
@@ -225,7 +231,7 @@ private final class SwiftTerminalCore {
   private func reverseIndex() { var s = screen; s.pendingWrap = false; index(&s, reverse: true, allowHistory: false); screen = s; changed() }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedOrigin = originMode; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false; screen = s; changed() }
-  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false; changed(history: true) }
+  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false; synchronizedOutput = false; changed(history: true) }
   private func parameters(_ raw: String) -> [Int] { raw.split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 } }
   private func handleCSI(_ raw: String, final: Character) {
     let privateMode = raw.first == "?"
@@ -234,6 +240,7 @@ private final class SwiftTerminalCore {
     let n = max(1, params.first ?? 0)
     var s = screen
     var changedActiveScreen = false
+    var semanticChange = true
     switch final {
     case "A": s.cursorRow = max(originMode ? s.topMargin : 0, s.cursorRow - n)
     case "B": s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, s.cursorRow + n)
@@ -268,14 +275,16 @@ private final class SwiftTerminalCore {
       replies.append(contentsOf: "\u{1b}[?\(params.first ?? 0);\(params.first == 69 ? (leftRightMargins ? 1 : 2) : 0)$y".utf8)
     case "p" where raw.hasSuffix("!"): softReset(); changedActiveScreen = true
     case "q" where raw.hasSuffix("\""): protectedOutput = (params.first ?? 0) == 1
-    case "h", "l": changedActiveScreen = setMode(params, enabled: final == "h", privateMode: privateMode)
+    case "h", "l":
+      if privateMode, params.allSatisfy({ [47, 1047, 1049].contains($0) }), params.allSatisfy({ _ in usingAlternate == (final == "h") }) { semanticChange = false }
+      changedActiveScreen = setMode(params, enabled: final == "h", privateMode: privateMode)
     default: break
     }
     // DEC alternate-screen modes swap the screen object.  Keeping the swap
     // inside mode ownership prevents this generic CSI epilogue from writing a
     // stale primary copy back into the newly active alternate buffer.
     if !changedActiveScreen { s.pendingWrap = false; screen = s }
-    changed()
+    if semanticChange { changed() }
   }
   private func eraseDisplay(_ mode: Int) { var s = screen; switch mode { case 2, 3: s.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }; if mode == 3 && !usingAlternate { history.removeAll(); historyEpoch &+= 1 }; case 1: for row in 0...s.cursorRow { document.erase(&s, row: row, columns: 0..<(row == s.cursorRow ? s.cursorColumn + 1 : columns), style: eraseStyle()) }; default: for row in s.cursorRow..<rowCount { document.erase(&s, row: row, columns: (row == s.cursorRow ? s.cursorColumn : 0)..<columns, style: eraseStyle()) } }; s.pendingWrap = false; screen = s }
   private func eraseLine(_ mode: Int) { var s = screen; let range: Range<Int>; switch mode { case 1: range = 0..<(s.cursorColumn + 1); case 2: range = 0..<columns; default: range = s.cursorColumn..<columns }; document.erase(&s, row: s.cursorRow, columns: range, style: eraseStyle()); s.pendingWrap = false; screen = s }
@@ -310,7 +319,12 @@ private final class SwiftTerminalCore {
       let removed: SwiftRow
       if up { removed = s.rows.remove(at: top); s.rows.insert(document.eraseRow(eraseStyle()), at: bottom) }
       else { removed = s.rows.remove(at: bottom); s.rows.insert(document.eraseRow(eraseStyle()), at: top) }
-      if up && allowHistory && !usingAlternate && top == 0 && bottom == rowCount - 1 { history.append(removed); if history.count > historyLimit { history.removeFirst(history.count - historyLimit) }; historyEpoch &+= 1 }
+      if up && allowHistory && !usingAlternate && top == 0 && bottom == rowCount - 1 {
+        history.append(removed)
+        if viewAnchor != nil { viewOffset += 1 }
+        if history.count > historyLimit { history.removeFirst(history.count - historyLimit); clampViewportAfterEviction() }
+        historyEpoch &+= 1
+      }
     }
   }
   private func setHorizontalMargins(_ params: [Int]) {
@@ -377,7 +391,6 @@ private final class SwiftTerminalCore {
       case 47, 1047, 1049:
         usingAlternate = enabled
         if enabled && (params.contains(1047) || params.contains(1049)) { alternate = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns) }
-        viewOffset = 0
         changedActiveScreen = true
       case 1004: focusReporting = enabled
       case 2004: bracketedPaste = enabled
@@ -386,6 +399,7 @@ private final class SwiftTerminalCore {
         leftRightMargins = enabled
         if !enabled { primary.leftMargin = 0; primary.rightMargin = columns - 1; primary.pendingWrap = false; alternate.leftMargin = 0; alternate.rightMargin = columns - 1; alternate.pendingWrap = false; originMode = false }
         changedActiveScreen = true
+      case 2026: synchronizedOutput = enabled
       default: break
       }
     }
@@ -421,12 +435,51 @@ private final class SwiftTerminalCore {
       screen = moved
     }
   }
-  func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool { guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows), nextColumns <= 1_048_576 / nextRows else { return false }; let resizedPrimary = document.resize(primary, columns: nextColumns, rows: nextRows); let resizedAlternate = document.resize(alternate, columns: nextColumns, rows: nextRows); columns = nextColumns; rowCount = nextRows; primary = resizedPrimary; alternate = resizedAlternate; primary.topMargin = 0; primary.bottomMargin = nextRows - 1; primary.leftMargin = 0; primary.rightMargin = nextColumns - 1; alternate.topMargin = 0; alternate.bottomMargin = nextRows - 1; alternate.leftMargin = 0; alternate.rightMargin = nextColumns - 1; viewOffset = min(viewOffset, history.count); changed(geometry: true); return true }
+  func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool {
+    guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows), nextColumns <= 1_048_576 / nextRows else { return false }
+    if nextColumns == columns && nextRows == rowCount { return true }
+    let oldAlternate = alternate
+    let mapped = document.reflowPrimary(columns: nextColumns, rows: nextRows, anchor: viewAnchor)
+    let resizedAlternate = document.resize(oldAlternate, columns: nextColumns, rows: nextRows)
+    columns = nextColumns; rowCount = nextRows; alternate = resizedAlternate
+    viewAnchor = mapped.anchor ?? viewAnchor
+    resolveViewportAnchor(clamp: true)
+    changed(geometry: true)
+    return true
+  }
   func resize(columns nextColumns: Int, rows nextRows: Int, cellWidth: Int, cellHeight: Int) -> Bool { guard resize(columns: nextColumns, rows: nextRows) else { return false }; cellPixelWidth = max(1, cellWidth); cellPixelHeight = max(1, cellHeight); return true }
-  func scroll(_ amount: Int) { viewOffset = max(0, min(history.count, viewOffset + amount)); changed() }
-  func followTail() { viewOffset = 0; changed() }
-  func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); if history.count > historyLimit { history.removeFirst(history.count - historyLimit); historyEpoch &+= 1 }; viewOffset = min(viewOffset, history.count) }
-  func clearDisplay() -> UInt32 { if usingAlternate { return 0 }; let action: UInt32 = atPrompt ? 1 : 2; if atPrompt { var s = screen; s.rows[s.cursorRow] = SwiftRow(columns: columns); s.cursorColumn = 0; screen = s } else { history.removeAll(); primary = SwiftScreen(columns: columns, rows: rowCount); viewOffset = 0; graphics.clear(alternate: false, removeResources: true) }; changed(history: true); return action }
+  func scroll(_ amount: Int) {
+    guard !usingAlternate, amount != 0 else { return }
+    let current = resolveViewportAnchor(clamp: true)
+    let offset: Int
+    if amount > 0 { offset = min(history.count, current + amount) }
+    else { offset = amount == Int.min ? 0 : max(0, current + amount) }
+    setViewOffset(offset); changed()
+  }
+  func followTail() { guard !usingAlternate else { return }; viewAnchor = nil; viewOffset = 0; viewportWasClamped = false; changed() }
+  private func setViewOffset(_ offset: Int) {
+    let bounded = min(history.count, max(0, offset)); viewOffset = bounded
+    viewAnchor = bounded > 0 ? history[history.count - bounded].id : nil; viewportWasClamped = false
+  }
+  @discardableResult private func resolveViewportAnchor(clamp: Bool) -> Int {
+    guard let anchor = viewAnchor else { viewOffset = 0; return 0 }
+    if let historyIndex = history.firstIndex(where: { $0.id == anchor }) {
+      viewOffset = history.count - historyIndex; return viewOffset
+    }
+    if let primaryIndex = primary.rows.firstIndex(where: { $0.id == anchor }) {
+      viewOffset = 0
+      if primaryIndex > 0 && clamp { viewAnchor = primary.rows[0].id; viewportClampRevision &+= 1 }
+      return 0
+    }
+    if clamp { clampViewportAfterEviction() }
+    return viewOffset
+  }
+  private func clampViewportAfterEviction() {
+    guard viewAnchor != nil else { return }
+    if let row = history.first ?? primary.rows.first { viewAnchor = row.id; viewOffset = history.first == nil ? 0 : history.count; if !viewportWasClamped { viewportClampRevision &+= 1; viewportWasClamped = true } }
+  }
+  func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); if history.count > historyLimit { history.removeFirst(history.count - historyLimit); historyEpoch &+= 1; clampViewportAfterEviction() }; _ = resolveViewportAnchor(clamp: true) }
+  func clearDisplay() -> UInt32 { if usingAlternate { return 0 }; let action: UInt32 = atPrompt ? 1 : 2; if atPrompt { var s = screen; s.rows[s.cursorRow] = SwiftRow(columns: columns); s.cursorColumn = 0; screen = s } else { history.removeAll(); primary = TerminalScreen(rows: (0..<rowCount).map { _ in document.blankRow() }, columns: columns); viewAnchor = nil; viewOffset = 0; graphics.clear(alternate: false, removeResources: true) }; changed(history: true); return action }
   func input(_ text: String, key: UInt32, modifiers: UInt32, event: UInt32) -> Data? {
     let modes = SwiftInputEncoder.Modes(
       applicationCursor: applicationCursor, applicationKeypad: applicationKeypad,
@@ -456,6 +509,7 @@ private final class SwiftTerminalCore {
   func takeReplies() -> Data { defer { replies.removeAll(keepingCapacity: true) }; return replies }
   func finish() { flushText(final: true) }
   var hasPendingWork: Bool { repeatRemaining > 0 }
+  var publicationGated: Bool { synchronizedOutput }
   func historyBytes() -> UInt64 { UInt64(history.reduce(0) { $0 + $1.cells.reduce(0) { $0 + $1.text.utf8.count } }) }
   func imageRGBA(id: UInt32, generation: UInt64) -> Data? { graphics.imageRGBA(id: id, generation: generation) }
   func startSearch(_ task: SwiftCoreSearchToken) -> UInt32 {
@@ -537,7 +591,7 @@ private final class SwiftTerminalCore {
     let cursor = screen
     let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(cell.style.foreground), "background": colorJSON(cell.style.background), "underline_color": colorJSON(cell.style.underline), "underline": Int(cell.style.underlineKind), "bold": cell.style.flags & 1 != 0, "faint": cell.style.flags & 2 != 0, "italic": cell.style.flags & 4 != 0, "inverse": cell.style.flags & 8 != 0, "conceal": cell.style.flags & 16 != 0, "strike": cell.style.flags & 32 != 0, "overline": cell.style.flags & 64 != 0, "blink": cell.style.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
     let images = graphics.visible(alternate: usingAlternate).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
-    let data: [String: Any] = ["at_prompt":atPrompt,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":offset == 0,"viewport_clamp_revision":revision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":0],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":false,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
+    let data: [String: Any] = ["at_prompt":atPrompt,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":usingAlternate || viewAnchor == nil,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":0],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":false,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
     return (try? JSONSerialization.data(withJSONObject: data)) ?? Data("{}".utf8)
   }
   private func colorJSON(_ color: UInt32) -> Any { if color >> 24 == 1 { return ["Indexed": Int(color & 255)] }; if color >> 24 == 2 { return ["Rgb": [Int((color >> 16) & 255), Int((color >> 8) & 255), Int(color & 255)]] }; return "Default" }
@@ -561,7 +615,7 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
 @_cdecl("terminal_has_work") func swift_terminal_has_work(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.hasPendingWork ?? false }
 @_cdecl("terminal_set_history_limit") func swift_terminal_set_history_limit(_ pointer: OpaquePointer?, _ limit: UInt32) { core(pointer)?.setHistoryLimit(Int(limit)) }
 @_cdecl("terminal_history_bytes") func swift_terminal_history_bytes(_ pointer: OpaquePointer?) -> UInt64 { core(pointer)?.historyBytes() ?? 0 }
-@_cdecl("terminal_snapshot") func swift_terminal_snapshot(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64) -> UnsafeMutablePointer<CChar>? { guard let value = core(pointer) else { return nil }; return strdup(String(data: value.snapshotJSON(view: true), encoding: .utf8) ?? "{}") }
+@_cdecl("terminal_snapshot") func swift_terminal_snapshot(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64) -> UnsafeMutablePointer<CChar>? { guard let value = core(pointer), !value.publicationGated else { return nil }; return strdup(String(data: value.snapshotJSON(view: true), encoding: .utf8) ?? "{}") }
 @_cdecl("terminal_string_free") func swift_terminal_string_free(_ value: UnsafeMutablePointer<CChar>?) { if let value { free(value) } }
 @_cdecl("terminal_snapshot_binary") func swift_terminal_snapshot_binary(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: SnapshotCallback?) -> Bool { core(pointer)?.publishBinary(view: false, scroll: scroll, context: context, callback: callback) ?? false }
 @_cdecl("terminal_view_snapshot_binary") func swift_terminal_view_snapshot_binary(_ pointer: OpaquePointer?, _ now: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: SnapshotCallback?) -> Bool { core(pointer)?.publishBinary(view: true, scroll: 0, context: context, callback: callback) ?? false }

@@ -8,6 +8,7 @@
     "SwiftSearchViewport.swift",
     "SwiftMargins.swift",
     "TerminalDocument.swift",
+    "DocumentReflow.swift",
     "SwiftTerminalCore.swift",
     "Statistics.swift",
     "Geometry.swift",
@@ -36,16 +37,17 @@
     "SwiftSearchViewport.swift",
     "SwiftMargins.swift",
     "TerminalDocument.swift",
+    "DocumentReflow.swift",
     "SwiftTerminalCore.swift"
   ],
   "tests": {
     "pty": [
-      "TerminalDocument.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
+      "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
       "SwiftInputEncoder.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift"
     ],
     "transport": ["Transport.swift", "tests/TransportTests.swift"],
     "session": [
-      "TerminalDocument.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
+      "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
       "SwiftInputEncoder.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift",
       "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
       "AccessibilityProjection.swift", "tests/SessionTests.swift"
@@ -54,18 +56,19 @@
     "statistics": ["Statistics.swift", "tests/StatisticsTests.swift"],
     "preferences": ["Preferences.swift", "tests/PreferencesTests.swift"],
     "snapshot_bridge": [
-      "TerminalDocument.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
+      "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
       "SwiftInputEncoder.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift",
       "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
       "AccessibilityProjection.swift", "tests/SnapshotBridgeTests.swift"
     ],
     "keymap": [
-      "TerminalDocument.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
+      "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
       "SwiftInputEncoder.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift",
       "Preferences.swift", "KeyMap.swift", "tests/KeyMapTests.swift"
     ],
     "swift_core": [
       "TerminalDocument.swift",
+      "DocumentReflow.swift",
       "SwiftUnicode.swift",
       "SwiftUnicode18Tables.swift",
       "SwiftInputEncoder.swift",
@@ -75,8 +78,14 @@
     ],
     "terminal_document_oracle": [
       "TerminalDocument.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
+      "DocumentReflow.swift",
       "SwiftInputEncoder.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift",
       "tests/TerminalDocumentOracleTests.swift"
+    ],
+    "terminal_viewport_oracle": [
+      "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift",
+      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "SwiftGraphics.swift",
+      "SwiftTerminalCore.swift", "tests/TerminalViewportOracleTests.swift"
     ]
   }
 }
