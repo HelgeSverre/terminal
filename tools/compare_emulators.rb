@@ -200,6 +200,20 @@ def hardware
   }
 end
 
+def background_activity
+  processes = command_optional("/bin/ps", "-axo", "pcpu=,comm=").to_s.lines.filter_map do |line|
+    percent, command = line.strip.split(/\s+/, 2)
+    next unless command && percent.match?(/\A\d+(?:\.\d+)?\z/)
+
+    { "name" => File.basename(command), "cpu_percent" => percent.to_f }
+  end
+  {
+    "observed_at_utc" => Time.now.utc.iso8601,
+    "load_average" => command_optional("/usr/sbin/sysctl", "-n", "vm.loadavg"),
+    "top_processes" => processes.sort_by { |entry| -entry.fetch("cpu_percent") }.first(8)
+  }
+end
+
 def self_test!
   true_snapshot = normalize_snapshot(JSON.generate("input_ready" => true, "rows" => [])).last
   false_snapshot = normalize_snapshot(JSON.generate("input_ready" => false, "rows" => [])).last
@@ -285,6 +299,7 @@ result = {
     "not_measured" => "GUI, renderer, PTY, process creation, corpus construction and result file I/O"
   },
   "hardware" => hardware,
+  "background_at_start" => background_activity,
   "implementations" => implementations,
   "warmups" => [], "samples" => [], "snapshot_gate" => { "passed" => true, "mismatches" => [] }
 }
