@@ -137,6 +137,7 @@ lint:
 # Run the complete Rust and native transport/session/bridge test suite
 [group('check')]
 @test: lint build
+    ruby tools/native_smoke_test.rb
     mkdir -p target/native/automation-dictionary
     xcrun sdp -fs -o target/native/automation-dictionary native/Terminal.sdef
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
@@ -282,31 +283,4 @@ release-status:
 
 [private]
 @_native-smoke mode:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    REPORT="$PWD/reports/native-smoke.json"
-    LIMIT=80
-    if [[ "$1" == idle ]]; then REPORT="$PWD/reports/native-idle.json"; LIMIT=360; fi
-    ARGS=(--self-test "$REPORT")
-    if [[ "$1" == editing ]]; then
-      REPORT="$PWD/reports/editing-smoke.json"
-      ARGS=(--editing-smoke "$REPORT")
-    fi
-    if [[ "$1" == glyph ]]; then
-      REPORT="$PWD/reports/glyph-smoke.json"
-      LIMIT=220
-      ARGS=(--glyph-smoke "$REPORT" --columns 100 --rows 36 --font-size 14)
-    fi
-    if [[ "$1" == idle ]]; then ARGS+=(--idle-test); fi
-    mkdir -p reports
-    rm -f "$REPORT"
-    open -n "$PWD/dist/Terminal.app" --args "${ARGS[@]}"
-    for ((attempt=0; attempt<LIMIT; attempt++)); do
-      if [[ -f "$REPORT" ]] && ! pgrep -f "^$PWD/dist/Terminal.app/Contents/MacOS/Terminal ${ARGS[0]} $REPORT" >/dev/null; then
-        ruby -rjson -e 'r=JSON.parse(File.read(ARGV[0])); abort("Native smoke failed: #{r.fetch("checks", r.fetch("failures", []))}") unless r.fetch("passed"); puts "PASS #{ARGV[1]} smoke and app termination"' "$REPORT" "$1"
-        exit 0
-      fi
-      sleep 0.25
-    done
-    echo "Native smoke timed out; inspect $REPORT and the app process." >&2
-    exit 1
+    ruby tools/native_smoke.rb "$1"
