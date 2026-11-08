@@ -365,18 +365,94 @@ private final class SwiftTerminalCore {
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
   private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); historyByteCount = 0; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
-  private func parameters(_ raw: String) -> [Int] { raw.split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 } }
+  private struct CSIParameterPacket {
+    var values: [Int]
+    // CSI > ... u and CSI = ... u historically parsed their first field
+    // before any generic filtering.  Keep that protocol-specific value
+    // alongside the ordinary flattened fields.
+    var keyboardFlags: UInt32?
+  }
+  // CSI parameter syntax is ASCII. Scan it once rather than repeatedly
+  // traversing Character collections and allocating filtered strings. The
+  // accumulator deliberately preserves the legacy grammar: non-semicolon
+  // syntax bytes are ignored between digits, while each semicolon creates an
+  // empty/defaulted field when needed. Every value consumed by a non-SGR
+  // command is bounded to UInt32, matching the wire protocol.
+  private func parseCSIParameters(_ raw: String, final: Character) -> CSIParameterPacket? {
+    // The streaming CSI parser stores one input byte per scalar. A non-ASCII
+    // scalar cannot be terminal parameter syntax; reject it instead of
+    // silently turning a numeric-looking malformed byte into default zero.
+    var parameters: [Int] = []
+    var rawRun: UInt32 = 0
+    var rawHasDigits = false
+    var filtered: UInt32 = 0
+    var filteredHasDigits = false
+    let bytes = raw.utf8
+    let preservingColonSGR = final == "m" && containsColon(raw)
+    let keyboardPrefix = final == "u" && (bytes.first == 0x3e || bytes.first == 0x3d)
+    let preservesRawSyntax = preservingColonSGR || keyboardPrefix
+    var keyboardValue: UInt32 = 0
+    var keyboardHasDigits = false
+    var keyboardNegative = false
+    var keyboardSawSign = false
+    var keyboardValid = keyboardPrefix
+    var keyboardFinished = !keyboardPrefix
+    for (index, byte) in bytes.enumerated() {
+      guard byte < 0x80 else { return nil }
+      if (0x30...0x39).contains(byte) {
+        let digit = UInt32(byte - 0x30)
+        if rawHasDigits {
+          guard rawRun <= (UInt32.max - digit) / 10 else { return nil }
+          rawRun = rawRun * 10 + digit
+        } else {
+          rawRun = digit
+          rawHasDigits = true
+        }
+        if !preservesRawSyntax {
+          guard filtered <= (UInt32.max - digit) / 10 else { return nil }
+          filtered = filtered * 10 + digit
+          filteredHasDigits = true
+        }
+      } else {
+        rawRun = 0
+        rawHasDigits = false
+        if !preservesRawSyntax, byte == 0x3b {
+          parameters.append(filteredHasDigits ? Int(filtered) : 0)
+          filtered = 0
+          filteredHasDigits = false
+        }
+      }
+      if keyboardPrefix && !keyboardFinished {
+        if index == 0 { continue }
+        if byte == 0x3b {
+          keyboardFinished = true
+        } else if (0x30...0x39).contains(byte), keyboardValid {
+          let digit = UInt32(byte - 0x30)
+          guard keyboardValue <= (UInt32.max - digit) / 10 else { keyboardValid = false; continue }
+          keyboardValue = keyboardValue * 10 + digit
+          keyboardHasDigits = true
+        } else if (byte == 0x2b || byte == 0x2d), !keyboardSawSign && !keyboardHasDigits && keyboardValue == 0, keyboardValid {
+          keyboardNegative = byte == 0x2d
+          keyboardSawSign = true
+        } else {
+          keyboardValid = false
+        }
+      }
+    }
+    if !preservesRawSyntax { parameters.append(filteredHasDigits ? Int(filtered) : 0) }
+    let keyboardFlags: UInt32? = keyboardPrefix
+      ? (keyboardValid && keyboardHasDigits && !keyboardNegative ? keyboardValue : 0)
+      : nil
+    return CSIParameterPacket(values: parameters, keyboardFlags: keyboardFlags)
+  }
+  @inline(__always) private func containsColon(_ raw: String) -> Bool { raw.utf8.contains(0x3a) }
   private func handleCSI(_ raw: String, final: Character) {
     if !["m", "n", "c", "u"].contains(final) { resetClusterBoundary() }
-    // VT parameters are bounded unsigned values. Treat an overflowing field
-    // as an invalid command rather than silently converting it to zero and
-    // performing a cursor motion with the default count.
-    for field in raw.split(whereSeparator: { !$0.isNumber }) where !field.isEmpty {
-      if UInt32(field) == nil { return }
-    }
-    let privateMode = raw.first == "?"
-    let command = privateMode ? String(raw.dropFirst()) : raw
-    let params = parameters(command.filter { $0 == ";" || $0.isNumber })
+    guard let packet = parseCSIParameters(raw, final: final) else { return }
+    let params = packet.values
+    let first = raw.utf8.first
+    let last = raw.utf8.last
+    let privateMode = first == 0x3f
     let n = max(1, params.first ?? 0)
     var s = screen
     var changedActiveScreen = false
@@ -408,17 +484,17 @@ private final class SwiftTerminalCore {
       else { s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedOrigin = originMode }
     case "u":
       clearsPending = false
-      if raw.first == ">" || raw.first == "=" { s.keyboardFlags = UInt32(max(0, parameters(String(raw.dropFirst())).first ?? 0)) & 31 }
-      else if raw.first == "?" { replies.append(contentsOf: "\u{1b}[?\(s.keyboardFlags)u".utf8) }
-      else if raw.first == "<" { s.keyboardFlags = 0 }
+      if first == 0x3e || first == 0x3d { s.keyboardFlags = (packet.keyboardFlags ?? 0) & 31 }
+      else if first == 0x3f { replies.append(contentsOf: "\u{1b}[?\(s.keyboardFlags)u".utf8) }
+      else if first == 0x3c { s.keyboardFlags = 0 }
       else { originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false }
     case "n": clearsPending = false; if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = s.cursorRow + 1 - (originMode ? s.topMargin : 0); let column = s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0); replies.append(contentsOf: "\u{1b}[\(row);\(column)R".utf8) }
     case "c": clearsPending = false; replies.append(contentsOf: "\u{1b}[?62;4c".utf8)
-    case "p" where privateMode && raw.hasSuffix("$"):
+    case "p" where privateMode && last == 0x24:
       clearsPending = false
       replies.append(contentsOf: "\u{1b}[?\(params.first ?? 0);\(params.first == 69 ? (leftRightMargins ? 1 : 2) : 0)$y".utf8)
-    case "p" where raw.hasSuffix("!"): softReset(); changedActiveScreen = true
-    case "q" where raw.hasSuffix("\""): protectedOutput = (params.first ?? 0) == 1; clearsPending = false
+    case "p" where last == 0x21: softReset(); changedActiveScreen = true
+    case "q" where last == 0x22: protectedOutput = (params.first ?? 0) == 1; clearsPending = false
     case "q": cursorShape = UInt8(min(6, max(0, params.first ?? 0))); clearsPending = false
     case "h", "l":
       if privateMode, params.allSatisfy({ [47, 1047, 1049].contains($0) }), params.allSatisfy({ _ in usingAlternate == (final == "h") }) { semanticChange = false }
@@ -487,12 +563,12 @@ private final class SwiftTerminalCore {
     // parser: removing ':' turns `4:3` into 43. Handle each colon group at
     // the SGR boundary, while delegating ordinary semicolon groups to the
     // established parser so mixed sequences retain their ordering.
-    if let raw, raw.contains(":") {
+    if let raw, containsColon(raw) {
       let groups = raw.split(separator: ";", omittingEmptySubsequences: false)
       var group = 0
       while group < groups.count {
         let value = groups[group]
-        guard value.contains(":") else {
+        guard value.utf8.contains(0x3a) else {
           guard let code = Int(value) else { group += 1; continue }
           // Keep extended semicolon colors together; handling them as single
           // values would lose the RGB/index operands beside a colon group.
@@ -501,7 +577,9 @@ private final class SwiftTerminalCore {
           {
             let count = mode == 2 ? 5 : mode == 5 ? 3 : 1
             if group + count <= groups.count {
-              applySGR(parameters(groups[group..<(group + count)].joined(separator: ";")), colonSyntax: nil)
+              if let packet = parseCSIParameters(String(groups[group..<(group + count)].joined(separator: ";")), final: "m") {
+                applySGR(packet.values, colonSyntax: nil)
+              }
               group += count
               continue
             }
@@ -592,8 +670,8 @@ private final class SwiftTerminalCore {
     // ISO 8613-6 colon forms retain empty color-space fields, unlike the
     // semicolon form above. Handle each colon parameter independently so a
     // malformed extended color cannot reinterpret a following command.
-    guard let raw, raw.contains(":") else { return }
-    for parameter in raw.split(separator: ";", omittingEmptySubsequences: false) where parameter.contains(":") {
+    guard let raw, containsColon(raw) else { return }
+    for parameter in raw.split(separator: ";", omittingEmptySubsequences: false) where parameter.utf8.contains(0x3a) {
       let fields = parameter.split(separator: ":", omittingEmptySubsequences: false)
       guard let command = fields.first.flatMap({ Int($0) }), [38, 48, 58].contains(command),
             fields.count >= 5, fields[1] == "2" else { continue }

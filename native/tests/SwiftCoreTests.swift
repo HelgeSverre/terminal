@@ -202,10 +202,75 @@ import Foundation
       precondition((snapshot(core)["viewport_clamp_revision"] as! Int) == after["viewport_clamp_revision"] as! Int, budget)
     }
   }
+  static func csiASCIIParsing() {
+    let core = terminal_create(8, 2)!
+    defer { terminal_destroy(core) }
+    // Empty fields retain default-zero semantics; max UInt32 is valid while
+    // an overflowing contiguous parameter ignores its whole CSI command.
+    feed(core, "\u{1b}[31mR\u{1b}[;mD\u{1b}[4294967295CZ\u{1b}[4294967296DQ")
+    let first = cells(snapshot(core), 0)
+    precondition((first[0]["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 1])
+    precondition((first[1]["style"] as? [String: Any])?["foreground"] as? String == "Default")
+    precondition(first[7]["text"] as? String == "Z")
+    // Overflowing D was ignored, so Q follows the max-valid C movement.
+    precondition(cells(snapshot(core), 1)[0]["text"] as? String == "Q")
+
+    let rendition = terminal_create(8, 2)!
+    defer { terminal_destroy(rendition) }
+    feed(rendition, "\u{1b}[38:2::255:255:255;4:3;48;5;7mX")
+    let style = cells(snapshot(rendition), 0)[0]["style"] as! [String: Any]
+    precondition(style["foreground"] as? [String: [Int]] == ["Rgb": [255, 255, 255]])
+    precondition(style["background"] as? [String: Int] == ["Indexed": 7])
+    precondition(style["underline"] as? Int == 3)
+
+    // Keyboard prefixes and private/intermediate CSI syntax remain byte
+    // syntax, rather than becoming Unicode Character classification work.
+    feed(core, "\u{1b}[>31u")
+    precondition(nativeInput(core, text: "a", key: 200) == Data("\u{1b}[97;1:1;97u".utf8))
+    // Kitty's set-flags command parses its first field before generic CSI
+    // filtering. Colons make that field invalid rather than concatenating it.
+    feed(core, "\u{1b}[>1:1u")
+    precondition(nativeInput(core, text: "a", key: 200) == Data("a".utf8))
+    feed(core, "\u{1b}[>31u")
+    feed(core, "\u{1b}[>429496729:6u")
+    precondition(nativeInput(core, text: "a", key: 200) == Data("a".utf8))
+    feed(core, "\u{1b}[?1049hA\u{1b}[?1049l\u{1b}[1\"q猫\u{1b}[?2J")
+    let afterPrivate = snapshot(core)
+    precondition(afterPrivate["alternate"] as? Bool == false)
+    precondition((afterPrivate["rows"] as! [[String: Any]]).flatMap { $0["cells"] as! [[String: Any]] }
+      .contains { $0["text"] as? String == "猫" })
+
+    // A non-ASCII parameter byte used to be rejected by the UInt32 numeric
+    // validation. It must not become a defaulted cursor-down command.
+    let malformed = terminal_create(4, 2)!
+    defer { terminal_destroy(malformed) }
+    feed(malformed, "X")
+    feed(malformed, bytes: Data([0x1b, 0x5b, 0xb2, 0x42]), partitions: [4])
+    feed(malformed, "Y")
+    precondition(cells(snapshot(malformed), 0)[0]["text"] as? String == "X")
+    precondition(cells(snapshot(malformed), 0)[1]["text"] as? String == "Y")
+    precondition(cells(snapshot(malformed), 1).allSatisfy { ($0["text"] as? String)?.isEmpty == true })
+
+    // Individual digit runs fit UInt32 here, but the old flattened value was
+    // Int.max and could overflow cursor arithmetic. It is one invalid CSI.
+    let concatenated = terminal_create(4, 2)!
+    defer { terminal_destroy(concatenated) }
+    feed(concatenated, "X\u{1b}[922337203:6:854775807CY")
+    precondition(cells(snapshot(concatenated), 0)[0]["text"] as? String == "X")
+    precondition(cells(snapshot(concatenated), 0)[1]["text"] as? String == "Y")
+
+    // `>` only has its raw-first-field rule for keyboard `u`; ordinary CSI
+    // commands continue to use the legacy flattened parameter stream.
+    let prefixedMotion = terminal_create(8, 2)!
+    defer { terminal_destroy(prefixedMotion) }
+    feed(prefixedMotion, "X\u{1b}[>31CY")
+    precondition(cells(snapshot(prefixedMotion), 0)[7]["text"] as? String == "Y")
+  }
   static func main() {
     nativeModifierWire()
     decodedBatchEquivalence()
     indexHistoryUsesMutatedPrimaryForViewportClamp()
+    csiASCIIParsing()
     guard let core = terminal_create(8, 3) else { fatalError("create") }
     defer { terminal_destroy(core) }
     feed(core, "one\ntwo")
