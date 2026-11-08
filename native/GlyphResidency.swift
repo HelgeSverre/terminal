@@ -65,7 +65,6 @@ final class GlyphResidency: @unchecked Sendable {
   private var surfaceDemand: [UUID: Set<GlyphRasterRecipe>] = [:]
   private var activeSurface: UUID?
   private var suppressedForDemand: Set<GlyphRasterRecipe> = []
-  private var admissionMayEvict = false
   private var failed: Set<GlyphRasterRecipe> = []
   private var failedOrder: [GlyphRasterRecipe] = []
   private let failedLimit = 1024
@@ -154,11 +153,9 @@ final class GlyphResidency: @unchecked Sendable {
     guard nextDemand != previousDemand else { return }
     let hadEstablishedDemand = !previousDemand.isEmpty
     visibleDemand = nextDemand
-    // Initial discovery of an oversubscribed scene must settle as
-    // resident+outline. A permit is for a later meaningful scene change
-    // (pane close/font change), and remains live until that async result is
-    // actually installed.
-    admissionMayEvict = hadEstablishedDemand
+    // Initial discovery of an oversubscribed scene settles resident+outline;
+    // later admission consults the visible-demand union directly rather than
+    // a one-install global permit.
     if hadEstablishedDemand && !suppressedForDemand.isEmpty {
       suppressedForDemand.removeAll(keepingCapacity: true)
       onReady()
@@ -170,7 +167,6 @@ final class GlyphResidency: @unchecked Sendable {
     let nextDemand = surfaceDemand.values.reduce(into: Set<GlyphRasterRecipe>()) { $0.formUnion($1) }
     guard nextDemand != visibleDemand else { return }
     visibleDemand = nextDemand
-    admissionMayEvict = true
     if !suppressedForDemand.isEmpty {
       suppressedForDemand.removeAll(keepingCapacity: true)
       onReady()
@@ -205,9 +201,8 @@ final class GlyphResidency: @unchecked Sendable {
     // A staged batch represents one unchanged visible demand. Do not evict a
     // peer admitted earlier in that batch: two individually-fitting glyphs
     // must settle on resident+outline, not alternate eviction every frame.
-    let mayEvict = admissionMayEvict
     guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height,
-      allowEviction: mayEvict) else {
+      allowEviction: true) else {
       guard pages.values.contains(where: { $0.kind == kind && $0.pins > 0 }) else {
         if pages.values.contains(where: { $0.kind == kind }) {
           suppressedForDemand.insert(recipe)
