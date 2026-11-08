@@ -378,7 +378,9 @@ begin
   run_script("tell application id #{app} to show settings", commands: commands, name: 'show settings while focused')
   hide_fixture(app_pid, commands: commands)
 
-  accepted = run_script("tell application id #{app} to send text \"AUTOMATION_TEXT\"", commands: commands, name: 'send text')
+  accepted = run_script(
+    "tell application id #{app} to send text (\"AUTOMATION_TEXT\" & return)",
+    commands: commands, name: 'send text')
   raise "send text returned a different pane: #{accepted.inspect}" unless accepted == pane_id
 
   screen = wait_until do
