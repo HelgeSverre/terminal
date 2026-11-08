@@ -15,6 +15,11 @@ struct GlyphLease {
 }
 
 final class GlyphResidency: @unchecked Sendable {
+  struct LegacyTexture {
+    let heap: MTLHeap
+    let texture: MTLTexture
+    let capacity: Int
+  }
   struct Diagnostics {
     let residentBytes: Int
     let retiredBytes: Int
@@ -193,22 +198,29 @@ final class GlyphResidency: @unchecked Sendable {
                 deniedAllocations: deniedAllocations)
   }
 
-  // Transitional renderer textures still enter through the residency owner.
-  // This closes the common migration bug where a new atlas obeys a process
-  // budget while the old atlas silently remains outside it.
-  func reserveLegacyTexture(_ descriptor: MTLTextureDescriptor) -> Int? {
-    let capacity = Int(device.heapTextureSizeAndAlign(descriptor: descriptor).size)
-    guard capacity > 0,
-          residentBytes + reservations + capacity <= byteBudget else {
+  // The legacy bridge uses the same heap admission path as native pages. The
+  // actual heap capacity is charged before its texture exists.
+  func makeLegacyTexture(_ descriptor: MTLTextureDescriptor) -> LegacyTexture? {
+    let requirement = device.heapTextureSizeAndAlign(descriptor: descriptor)
+    let estimate = Int(requirement.size)
+    guard estimate > 0, residentBytes + reservations + estimate <= byteBudget else {
       deniedAllocations &+= 1
       return nil
     }
-    residentBytes += capacity
-    legacyBridgeBytes += capacity
-    return capacity
+    let heapDescriptor = MTLHeapDescriptor()
+    heapDescriptor.storageMode = descriptor.storageMode
+    heapDescriptor.size = requirement.size
+    guard let heap = device.makeHeap(descriptor: heapDescriptor) else { return nil }
+    let actual = Int(heap.size)
+    guard residentBytes + reservations + actual <= byteBudget,
+      let texture = heap.makeTexture(descriptor: descriptor)
+    else { deniedAllocations &+= 1; return nil }
+    residentBytes += actual
+    legacyBridgeBytes += actual
+    return LegacyTexture(heap: heap, texture: texture, capacity: actual)
   }
 
-  func cancelLegacyReservation(_ bytes: Int) {
+  func releaseLegacyTexture(_ bytes: Int) {
     guard bytes > 0 else { return }
     residentBytes = max(0, residentBytes - bytes)
     legacyBridgeBytes = max(0, legacyBridgeBytes - bytes)
