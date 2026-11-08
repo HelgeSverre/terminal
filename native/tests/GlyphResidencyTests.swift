@@ -31,6 +31,7 @@ final class RendererMetrics {
     precondition(makeResidency().testingRecycleAndGeneration())
     precondition(makeResidency().testingPinnedPageBlocksReclaim())
     precondition(makeResidency().testingLegacyReleaseExactlyOnce())
+    precondition(makeResidency().testingLegacyHeapDropsWithLease())
     let maskDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
       width: 3, height: 1, mipmapped: false)
     maskDescriptor.storageMode = .shared

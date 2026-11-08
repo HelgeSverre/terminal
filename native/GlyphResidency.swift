@@ -402,5 +402,25 @@ final class GlyphResidency: @unchecked Sendable {
     releaseLegacyTexture(allocation.id)
     return charged > released && diagnostics().residentBytes == released
   }
+
+  func testingLegacyHeapDropsWithLease() -> Bool {
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
+      width: 8, height: 8, mipmapped: false)
+    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    weak var weakHeap: MTLHeap?
+    var id: UUID?
+    autoreleasepool {
+      var allocation: LegacyTexture? = makeLegacyTexture(descriptor)
+      weakHeap = allocation?.heap
+      id = allocation?.id
+      allocation = nil
+    }
+    guard let id else { return false }
+    // The residency retains only the scalar charge keyed by id, never a GPU
+    // object. The heap must die before releasing that charge.
+    guard weakHeap == nil else { return false }
+    releaseLegacyTexture(id)
+    return diagnostics().residentBytes == 0
+  }
   #endif
 }
