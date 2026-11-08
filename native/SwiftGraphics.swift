@@ -54,6 +54,7 @@ enum KittyGraphicsError: Error, Equatable {
 final class KittyGraphicsStore {
   static let maximumImageBytes = 16 * 1024 * 1024
   static let maximumStorageBytes = 64 * 1024 * 1024
+  private static let maximumImageDimension = 4096
   private static let maximumImages = 64
   private static let maximumPlacements = 256
   private static let pngCRCTable: [UInt32] = (0..<256).map { value in
@@ -191,14 +192,19 @@ final class KittyGraphicsStore {
     return Int(value)
   }
   private func validateTransport(_ values: [Character: String]) throws {
+    if values["I"] != nil { throw KittyGraphicsError.unsupported }
+    for key: Character in ["U", "P", "Q"] {
+      if try number(values, key, default: 0) != 0 { throw KittyGraphicsError.unsupported }
+    }
     let type = values["t"] ?? "d"
     guard type == "d" else { throw KittyGraphicsError.unsupported }
     if let compression = values["o"], compression != "z" { throw KittyGraphicsError.unsupported }
     let format = try number(values, "f", default: 32)
     guard format == 24 || format == 32 || format == 100 else { throw KittyGraphicsError.unsupported }
+    guard try number(values, "q", default: 0) <= 2 else { throw KittyGraphicsError.invalid }
     if format != 100 {
       let width = try number(values, "s", default: 0), height = try number(values, "v", default: 0)
-      guard width > 0, height > 0, width <= 65_535, height <= 65_535 else { throw KittyGraphicsError.tooLarge }
+      guard width > 0, height > 0, width <= Self.maximumImageDimension, height <= Self.maximumImageDimension else { throw KittyGraphicsError.tooLarge }
       guard width * height * 4 <= Self.maximumImageBytes else { throw KittyGraphicsError.tooLarge }
     }
   }
@@ -289,17 +295,23 @@ final class KittyGraphicsStore {
       for byte in bytes[(offset + 4)..<(end - 4)] { crc = Self.pngCRCTable[Int((crc ^ UInt32(byte)) & 255)] ^ (crc >> 8) }
       let expectedCRC = bytes[(end - 4)..<end].reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
       guard crc ^ UInt32.max == expectedCRC else { throw KittyGraphicsError.invalid }
-      if bytes[(offset + 4)..<(offset + 8)].elementsEqual([116, 82, 78, 83]) {
+      let kind = bytes[(offset + 4)..<(offset + 8)].reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+      if kind == 0x74524e53 { // tRNS
         guard transparency == nil else { throw KittyGraphicsError.invalid }
         transparency = Array(bytes[(offset + 8)..<(end - 4)])
-      } else { decodedInput.append(bytes[offset..<end]) }
+      } else if ![0x69434350, 0x74455874, 0x7a545874, 0x69545874].contains(kind) {
+        // Match the oracle's ignored iCCP/text metadata. In particular, never
+        // ask ImageIO to inflate a profile or compressed text outside the
+        // bounded pixel decoding operation.
+        decodedInput.append(bytes[offset..<end])
+      }
       offset = end
     }
     guard let source = CGImageSourceCreateWithData(decodedInput as CFData, nil),
           let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
           let width = properties[kCGImagePropertyPixelWidth as String] as? Int,
           let height = properties[kCGImagePropertyPixelHeight as String] as? Int else { throw KittyGraphicsError.invalid }
-    guard width > 0, height > 0, width <= 65_535, height <= 65_535,
+    guard width > 0, height > 0, width <= Self.maximumImageDimension, height <= Self.maximumImageDimension,
           width * height * 4 <= Self.maximumImageBytes else { throw KittyGraphicsError.tooLarge }
     guard let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary),
           let color = image.colorSpace, let provider = image.dataProvider?.data else { throw KittyGraphicsError.invalid }

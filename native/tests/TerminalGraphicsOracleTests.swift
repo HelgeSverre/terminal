@@ -44,6 +44,55 @@ import Foundation
   }
   static func main() {
     let cases: [(String, () -> Void)] = [
+      ("ignored-png-metadata", { withTerminal { core in
+        // Two compressed 512 KiB ancillary values are ignored before ImageIO.
+        let encoded = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAACHGlDQ1Bwcm9maWxlAAB4nO3BgQAAAADDIO3h3+AEVQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB8A0xbOEH8vR2gAAACHHpUWHRjb21tZW50AAB4nO3BgQAAAADDIO3h3+AEVQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB8A0xbOEFYkL7mAAAADUlEQVR4nGOoEJFLBgACwAEOotbinwAAAABJRU5ErkJggg=="
+        feed(core, command("a=T,f=100,i=1,C=1", Array(Data(base64Encoded: encoded)!)))
+        precondition(rgba(core, images(core)[0]) == Data([120, 20, 30, 99]))
+      }}),
+      ("axis-limit", { withTerminal { core in
+        let encoded = Data(repeating: 42, count: 4_097 * 4).base64EncodedString()
+        var remaining = encoded[...]
+        var first = true
+        while !remaining.isEmpty {
+          let chunk = remaining.prefix(4096); remaining = remaining.dropFirst(chunk.count)
+          let header = first ? "a=T,f=32,s=4097,v=1,i=1,C=1," : ""
+          feed(core, "\u{1b}_G\(header)m=\(remaining.isEmpty ? 0 : 1);\(chunk)\u{1b}\\")
+          first = false
+        }
+        precondition(images(core).isEmpty && replies(core).contains("E2BIG"))
+        let tooWidePNG = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAEAEAAAABCAYAAACx4wBCAAAAJ0lEQVR4nO3BMQEAAADCoPVPbQ0PoAAAAAAAAAAAAAAAAAAAAIALA0AFAAFdEb2kAAAAAElFTkSuQmCC")!
+        feed(core, command("a=T,f=100,i=2,C=1", Array(tooWidePNG)))
+        precondition(images(core).isEmpty && replies(core).contains("E2BIG"))
+      }}),
+      ("transport-fields", {
+        for field in ["U=1", "P=1", "Q=1", "I=0", "q=3"] { withTerminal { core in
+          feed(core, command("a=T,f=24,s=1,v=1,i=1,C=1", [1, 2, 3])); let original = images(core)[0]
+          _ = replies(core)
+          feed(core, command("a=T,f=24,s=1,v=1,i=1,C=1,\(field)", [4, 5, 6]))
+          precondition(images(core)[0]["generation"] as? Int == original["generation"] as? Int)
+          precondition(replies(core).contains(field == "q=3" ? "EINVAL" : "ENOTSUP"))
+        }}
+      }),
+      ("retired-anchor-cap", { withTerminal { core in
+        feed(core, command("a=T,f=24,s=1,v=1,i=1,p=1,C=1", [1, 2, 3]))
+        for id in 2...256 { feed(core, command("a=p,i=1,p=\(id),C=1")) }
+        precondition(images(core).count == 256)
+        terminal_set_history_limit(core, 0)
+        feed(core, "\r\n\r\n\r\n")
+        precondition(images(core).isEmpty)
+        _ = replies(core)
+        feed(core, command("a=p,i=1,p=257,C=1"))
+        precondition(images(core).count == 1 && replies(core).contains("OK"))
+        feed(core, "\u{1b}[?1049h")
+        for id in 1...255 { feed(core, command("a=p,i=1,p=\(id),C=1")) }
+        precondition(images(core).count == 255)
+        feed(core, String(repeating: "x", count: 40)) // Discard the alternate anchor by ordinary wrapping.
+        precondition(images(core).isEmpty)
+        _ = replies(core)
+        feed(core, command("a=p,i=1,p=258,C=1"))
+        precondition(images(core).count == 1 && replies(core).contains("OK"))
+      }}),
       ("png-zlib", { withTerminal { core in
         let variants: [(String, String, [UInt8])] = [
           ("gray1", "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQAAAAA3bvkkAAAACklEQVR4nGNoAAAAggCBd81ytgAAAABJRU5ErkJggg==", [255, 255, 255, 255]),
