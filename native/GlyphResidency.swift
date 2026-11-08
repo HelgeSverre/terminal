@@ -84,6 +84,7 @@ final class GlyphResidency: @unchecked Sendable {
   private var transientReplacementBytes = 0
   private var legacyBridgeBytes = 0
   private var activeLegacy: [UUID: Int] = [:]
+  private var directResident: [UUID: LegacyTexture] = [:]
   private var deniedAllocations: UInt64 = 0
   private var fallback: GlyphLease?
 
@@ -195,9 +196,10 @@ final class GlyphResidency: @unchecked Sendable {
   private func install(_ result: GlyphRasterResult) -> InstallOutcome {
     let recipe = result.recipe
     let kind: PageKind = result.kind == .mask ? .mask : .color
-    guard recipe.width > 0, recipe.height > 0, recipe.width + 1 < kind.side,
-      recipe.height + 1 < kind.side
-    else { rememberFailure(recipe); return .impossible }
+    guard recipe.width > 0, recipe.height > 0 else { rememberFailure(recipe); return .impossible }
+    if recipe.width + 1 >= kind.side || recipe.height + 1 >= kind.side {
+      return installOversize(result, kind: kind)
+    }
     // A staged batch represents one unchanged visible demand. Do not evict a
     // peer admitted earlier in that batch: two individually-fitting glyphs
     // must settle on resident+outline, not alternate eviction every frame.
@@ -234,6 +236,34 @@ final class GlyphResidency: @unchecked Sendable {
       kind: kind == .mask ? .mask : .color, allocation: placement.page.id,
       allocationGeneration: placement.page.generation)
     entries[recipe] = Entry(lease: lease, page: placement.page.id, bytes: recipe.width * recipe.height)
+    return .installed
+  }
+
+  private func installOversize(_ result: GlyphRasterResult, kind: PageKind) -> InstallOutcome {
+    let recipe = result.recipe
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: kind.format,
+      width: recipe.width, height: recipe.height, mipmapped: false)
+    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    guard let allocation = makeLegacyTexture(descriptor) else {
+      // Keep the normal outline under pressure. This is a real GPU budget
+      // denial, not a synchronous render-owner raster fallback.
+      rememberFailure(recipe)
+      return .impossible
+    }
+    var pixels = result.pixels
+    if kind == .mask { pixels = stride(from: 0, to: pixels.count, by: 4).map { pixels[$0 + 3] } }
+    else { convertPremultipliedSRGBToLinear(&pixels) }
+    let row = recipe.width * (kind == .mask ? 1 : 4)
+    pixels.withUnsafeBytes {
+      allocation.texture.replace(region: MTLRegionMake2D(0, 0, recipe.width, recipe.height),
+        mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: row)
+    }
+    directResident[allocation.id] = allocation
+    directFallbackBytes += allocation.capacity
+    let lease = GlyphLease(uv: SIMD4(0, 0, 1, 1), width: recipe.width,
+      texture: allocation.texture, kind: kind == .mask ? .mask : .color,
+      allocation: nil, allocationGeneration: nil)
+    entries[recipe] = Entry(lease: lease, page: nil, bytes: allocation.capacity)
     return .installed
   }
 
@@ -571,6 +601,18 @@ final class GlyphResidency: @unchecked Sendable {
     _ = resolve(a); _ = resolve(b); finishFrameDemand() // establish A+B
     currentDemand = [b]; finishFrameDemand() // A detached, B eligible
     return b
+  }
+
+  func testingOversizeExactResident() -> Bool {
+    let recipe = GlyphRasterRecipe(text: "W", width: 1024, height: 8, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
+    let pixels = [UInt8](repeating: 255, count: recipe.width * recipe.height * 4)
+    guard install(GlyphRasterResult(recipe: recipe, pixels: pixels, kind: .mask,
+      resolvedFonts: ["Menlo-Regular"], glyphIDs: [1])) == .installed,
+      let lease = resolve(recipe)
+    else { return false }
+    return lease.width == recipe.width && lease.uv == SIMD4(0, 0, 1, 1)
+      && directFallbackBytes > 0
   }
 
   func testingHasResident(_ recipe: GlyphRasterRecipe) -> Bool { entries[recipe] != nil }
