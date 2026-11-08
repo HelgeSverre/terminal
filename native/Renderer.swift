@@ -33,6 +33,10 @@ private struct GlyphKey: Hashable {
   let cells: Int
   let bold: Bool
   let italic: Bool
+  let width: Int
+  let height: Int
+  let pointSize: Int
+  let fontIdentity: String
 }
 private struct Glyph {
   let uv: SIMD4<Float>
@@ -564,7 +568,10 @@ final class TerminalRendering: @unchecked Sendable {
     }
     guard let placement = placement(width, height) else {
       if let glyph = directGlyph(key, width: width, height: height) { return glyph }
-      let replacementKey = GlyphKey(text: "□", cells: 1, bold: false, italic: false)
+      let replacementKey = GlyphKey(
+        text: "□", cells: 1, bold: false, italic: false, width: request.cellWidth,
+        height: request.cellHeight, pointSize: Int(request.fontSize.rounded()),
+        fontIdentity: CTFontCopyPostScriptName(font) as String)
       if replacementGlyph == nil {
         replacementGlyph = directGlyph(
           replacementKey, width: request.cellWidth, height: request.cellHeight, limited: false)
@@ -598,7 +605,8 @@ final class TerminalRendering: @unchecked Sendable {
       boldFont = TerminalFont.core(size: fontSize, bold: true)
       italicFont = TerminalFont.core(size: fontSize, italic: true)
       boldItalicFont = TerminalFont.core(size: fontSize, bold: true, italic: true)
-      resetAtlas()
+      // Glyph keys include metrics and font identity, so a pane changing font
+      // no longer invalidates resident glyphs used by other panes.
     }
     let preparationStart = DispatchTime.now().uptimeNanoseconds
     var quads: [Quad] = []
@@ -684,7 +692,12 @@ final class TerminalRendering: @unchecked Sendable {
                 cell.text.unicodeScalars.first.map { CharacterSet.nonBaseCharacters.contains($0) }
                   == true ? "◌" + cell.text : cell.text
               let key = GlyphKey(
-                text: displayText, cells: cells, bold: cell.style.bold, italic: cell.style.italic)
+                text: displayText, cells: cells, bold: cell.style.bold, italic: cell.style.italic,
+                width: request.cellWidth * cells, height: request.cellHeight,
+                pointSize: Int(request.fontSize.rounded()),
+                fontIdentity: CTFontCopyPostScriptName(
+                  cell.style.bold ? (cell.style.italic ? boldItalicFont : boldFont)
+                    : (cell.style.italic ? italicFont : font)) as String)
               if let glyph = glyph(key, cells: cells, request: request) {
                 let emoji = cell.text.unicodeScalars.contains { (0x1f000...0x1faff).contains($0.value) }
                 appendGlyph(
@@ -730,7 +743,11 @@ final class TerminalRendering: @unchecked Sendable {
     }
     if !request.marked.isEmpty {
       let cells = min(20, max(1, request.marked.count))
-      let key = GlyphKey(text: request.marked, cells: cells, bold: false, italic: false)
+      let key = GlyphKey(
+        text: request.marked, cells: cells, bold: false, italic: false,
+        width: request.cellWidth * cells, height: request.cellHeight,
+        pointSize: Int(request.fontSize.rounded()),
+        fontIdentity: CTFontCopyPostScriptName(font) as String)
       if let g = glyph(key, cells: cells, request: request) {
         let x = request.inset + snap.cursor.col * request.cellWidth
         let y = request.inset + snap.cursor.row * request.cellHeight
