@@ -84,6 +84,7 @@ final class MetalRenderer: @unchecked Sendable {
     let pressureSmoke = CommandLine.arguments.contains("--atlas-pressure-smoke")
     let fallbackBudgetSmoke = CommandLine.arguments.contains("--atlas-fallback-budget-smoke")
     atlasSize = pressureSmoke ? 128 : 2048
+    // Per-renderer ceiling only; a process-wide GPU-memory budget belongs above this renderer.
     atlasPages = pressureSmoke ? 4 : 2
     directGlyphBudget = fallbackBudgetSmoke ? 0 : 8 * 1024 * 1024
     directGlyphLimit = fallbackBudgetSmoke ? 0 : 1024
@@ -109,18 +110,11 @@ final class MetalRenderer: @unchecked Sendable {
     pipeline = try gpu.makeRenderPipelineState(descriptor: descriptor)
     descriptor.fragmentFunction = library.makeFunction(name: "terminal_image_fragment")
     imagePipeline = try gpu.makeRenderPipelineState(descriptor: descriptor)
-    let texture = MTLTextureDescriptor.texture2DDescriptor(
-      pixelFormat: .rgba8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
-    texture.storageMode = .shared
-    texture.usage = .shaderRead
-    for _ in 0..<atlasPages {
-      guard let atlas = gpu.makeTexture(descriptor: texture) else { throw RendererError.noMemory }
-      atlases.append(atlas)
-    }
     font = TerminalFont.core(size: 14)
     boldFont = font
     italicFont = font
     boldItalicFont = font
+    guard appendAtlasPage() != nil else { throw RendererError.noMemory }
     resetAtlas()
   }
   enum RendererError: Error { case noDevice, noShaders, noMemory }
@@ -165,6 +159,26 @@ final class MetalRenderer: @unchecked Sendable {
       }
     }
   }
+  private func appendAtlasPage() -> Int? {
+    guard atlases.count < atlasPages else { return nil }
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+      pixelFormat: .rgba8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
+    descriptor.storageMode = .shared
+    descriptor.usage = .shaderRead
+    guard let atlas = device.makeTexture(descriptor: descriptor) else { return nil }
+    atlases.append(atlas)
+    atlasX.append(4)
+    atlasY.append(0)
+    shelves.append(0)
+    var white: [UInt8] = [255, 255, 255, 255]
+    white.withUnsafeMutableBytes {
+      atlas.replace(
+        region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!,
+        bytesPerRow: 4)
+    }
+    RendererMetrics.recordAtlasPages(atlases.count)
+    return atlases.count - 1
+  }
   private func resetAtlasPage(_ page: Int) {
     glyphs = glyphs.filter { $0.value.atlasPage != page }
     atlasX[page] = 4
@@ -204,8 +218,14 @@ final class MetalRenderer: @unchecked Sendable {
     return result
   }
   private func placement(_ width: Int, _ height: Int) -> (page: Int, x: Int, y: Int)? {
+    guard width > 0, height > 0, width + 1 < atlasSize, height + 1 < atlasSize else {
+      return nil
+    }
     for page in atlases.indices {
       if let point = reserve(width, height, in: page) { return (page, point.x, point.y) }
+    }
+    if let page = appendAtlasPage(), let point = reserve(width, height, in: page) {
+      return (page, point.x, point.y)
     }
     for page in atlases.indices where !frameAtlasPages.contains(page) {
       resetAtlasPage(page)
@@ -332,6 +352,7 @@ final class MetalRenderer: @unchecked Sendable {
     }
     func appendGlyph(_ quad: Quad, _ glyph: Glyph) {
       if let page = glyph.atlasPage {
+        while glyphQuads.count <= page { glyphQuads.append([]) }
         glyphQuads[page].append(quad)
       } else if let texture = glyph.texture {
         directGlyphQuads.append((quad, texture))
@@ -567,11 +588,15 @@ final class MetalRenderer: @unchecked Sendable {
     drawQuads(backgrounds, texture: atlases[0], state: pipeline)
     drawImages { $0 < 0 && $0 >= -1_073_741_824 }
     drawQuads(textQuads, texture: atlases[0], state: pipeline)
-    for page in atlases.indices { drawQuads(textGlyphQuads[page], texture: atlases[page], state: pipeline) }
+    for (page, quads) in textGlyphQuads.enumerated() {
+      drawQuads(quads, texture: atlases[page], state: pipeline)
+    }
     for item in textDirectGlyphQuads { drawQuads([item.quad], texture: item.texture, state: pipeline) }
     drawImages { $0 >= 0 }
     drawQuads(overlayQuads, texture: atlases[0], state: pipeline)
-    for page in atlases.indices { drawQuads(overlayGlyphQuads[page], texture: atlases[page], state: pipeline) }
+    for (page, quads) in overlayGlyphQuads.enumerated() {
+      drawQuads(quads, texture: atlases[page], state: pipeline)
+    }
     for item in overlayDirectGlyphQuads { drawQuads([item.quad], texture: item.texture, state: pipeline) }
     encoder.endEncoding()
     RendererMetrics.recordPresentation(
@@ -606,6 +631,7 @@ final class RendererMetrics: @unchecked Sendable {
   private static var peakGlyphFallbackBytes: UInt64 = 0
   private static var peakGlyphFallbackCount: UInt64 = 0
   private static var droppedQuadBuffers: UInt64 = 0
+  private static var peakAtlasPages: UInt64 = 0
   private static var preparation: [Double] = []
   private static var gpu: [Double] = []
   private static var errors = 0
@@ -689,6 +715,11 @@ final class RendererMetrics: @unchecked Sendable {
     droppedQuadBuffers += UInt64(count)
     lock.unlock()
   }
+  static func recordAtlasPages(_ count: Int) {
+    lock.lock()
+    peakAtlasPages = max(peakAtlasPages, UInt64(count))
+    lock.unlock()
+  }
   static func submissions() -> UInt64 {
     lock.lock()
     defer { lock.unlock() }
@@ -711,6 +742,7 @@ final class RendererMetrics: @unchecked Sendable {
       "peak_glyph_fallback_bytes": peakGlyphFallbackBytes,
       "peak_glyph_fallback_count": peakGlyphFallbackCount,
       "dropped_quad_buffers": droppedQuadBuffers,
+      "peak_atlas_pages": peakAtlasPages,
     ]
   }
 }
