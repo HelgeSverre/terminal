@@ -39,7 +39,15 @@ requires one AX window and exactly one same-PID, layer-zero CG window matching i
 frame within one point on each coordinate/dimension. AX and CG use global top-left
 screen points; neither Retina scaling nor AppKit Y inversion is applied to this
 comparison. The identity records both frames, deltas, tolerance, candidate count
-and matched ID. The exercise revalidates that ID before sending input. Independent
+and matched ID. During exercise, additional owned AX windows are permitted only
+when exactly one AX frame matches that prepared CG window's current frame. The
+CG lookup remains bound to its saved ID, owned PID and layer zero; duplicate matches,
+missing targets or unreadable frames fail. Multiple nonmatching auxiliary frames
+may coincide with each other; only ambiguity at the prepared target is rejected.
+Every selection records owned window
+roles, subroles and frames, without titles or content. This handles the observed
+post-capture AX window count changing from one to two without guessing which is
+the terminal. The exercise revalidates the prepared ID before input. Independent
 cell dimensions come from the pane's AX bounds-for-range.
 Every AXWindows lookup records its raw AX error, returned value type and window
 count in `ax-window-queries.jsonl`, including failures before the first input

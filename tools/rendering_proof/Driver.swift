@@ -22,7 +22,8 @@ func attribute(_ element: AXUIElement, _ name: String) -> Any? {
   return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
 }
 func frame(_ element: AXUIElement) throws -> CGRect {
-  guard let position = attribute(element, kAXPositionAttribute), let size = attribute(element, kAXSizeAttribute) else {
+  guard let position = attribute(element, kAXPositionAttribute), let size = attribute(element, kAXSizeAttribute),
+    CFGetTypeID(position as CFTypeRef) == AXValueGetTypeID(), CFGetTypeID(size as CFTypeRef) == AXValueGetTypeID() else {
     throw Failure.invalid("Missing AX frame")
   }
   var point = CGPoint.zero, extent = CGSize.zero
@@ -40,6 +41,16 @@ func write(_ object: [String: Any], to url: URL) throws {
   try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]).write(to: url, options: .atomic)
 }
 func rectJSON(_ value: CGRect) -> [Double] { [value.minX, value.minY, value.width, value.height] }
+func uniqueAXFrameIndex(_ frames: [CGRect?], target: CGRect) throws -> Int {
+  guard frames.allSatisfy({ $0 != nil }) else { throw Failure.invalid("Cannot correlate an owned AX window with unavailable frame") }
+  let matches = frames.indices.filter { index in
+    let candidate = frames[index]!
+    return candidate.width > 0 && candidate.height > 0 &&
+      zip(rectJSON(candidate), rectJSON(target)).allSatisfy { $0.isFinite && $1.isFinite && abs($0 - $1) <= 1 }
+  }
+  guard matches.count == 1 else { throw Failure.invalid("Expected one AX window matching prepared CG frame; found \(matches.count)") }
+  return matches[0]
+}
 
 struct WindowMatch {
   let info: [String: Any]
@@ -82,6 +93,7 @@ func matchWindow(_ infos: [[String: Any]], pid: pid_t, axFrame: CGRect) throws -
   let pid: pid_t, directory: URL, app: AXUIElement
   let running: NSRunningApplication
   var events: [[String: Any]] = []
+  var preparedWindowID: Int?
   init(pid: pid_t, directory: URL) throws {
     guard AXIsProcessTrusted() else { throw Failure.invalid("Accessibility unavailable; no permission prompt requested") }
     guard let running = NSRunningApplication(processIdentifier: pid),
@@ -105,22 +117,49 @@ func matchWindow(_ infos: [[String: Any]], pid: pid_t, axFrame: CGRect) throws -
     if let windows { observation["window_count"] = windows.count }
     // Keep the raw query result even when failure happens before exercise's first
     // phase, or during prepare. No unrelated window titles/content is recorded.
+    try recordWindowQuery(observation)
+    guard status == .success else { throw WindowQueryFailure(status: status) }
+    guard let windows else { throw Failure.invalid("AXWindows succeeded with unexpected or missing value type") }
+    guard let preparedWindowID else {
+      guard windows.count == 1 else { throw Failure.invalid("Expected exactly one initial owned AX window; AXWindows returned \(windows.count)") }
+      return windows[0]
+    }
+    let infos = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    let targets = infos.filter {
+      ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid &&
+      ($0[kCGWindowLayer as String] as? NSNumber)?.intValue == 0 &&
+      ($0[kCGWindowNumber as String] as? NSNumber)?.intValue == preparedWindowID
+    }
+    guard targets.count == 1, let bounds = targets[0][kCGWindowBounds as String] as? [String: Any],
+      let target = CGRect(dictionaryRepresentation: bounds as CFDictionary) else {
+      throw Failure.invalid("Prepared owned CG window is missing or ambiguous")
+    }
+    let frames = windows.map { try? frame($0) }
+    let metadata: [[String: Any]] = windows.indices.map { index in
+      var item: [String: Any] = ["index": index]
+      item["role"] = attribute(windows[index], kAXRoleAttribute) as? String ?? "unavailable"
+      item["subrole"] = attribute(windows[index], kAXSubroleAttribute) as? String ?? "unavailable"
+      if let frame = frames[index] { item["frame"] = rectJSON(frame) } else { item["frame_unavailable"] = true }
+      return item
+    }
+    try recordWindowQuery(["phase": "ax_prepared_window_selection", "host_time": ProcessInfo.processInfo.systemUptime,
+      "target_pid": pid, "helper_pid": ProcessInfo.processInfo.processIdentifier, "prepared_window": preparedWindowID,
+      "prepared_cg_frame": rectJSON(target), "owned_ax_windows": metadata])
+    let selected = try uniqueAXFrameIndex(frames, target: target)
+    return windows[selected]
+  }
+  func recordWindowQuery(_ observation: [String: Any]) throws {
     var data = try JSONSerialization.data(withJSONObject: observation, options: [.sortedKeys]); data.append(10)
     let path = directory.appendingPathComponent("ax-window-queries.jsonl")
     if !FileManager.default.fileExists(atPath: path.path) { FileManager.default.createFile(atPath: path.path, contents: nil) }
     let file = try FileHandle(forWritingTo: path)
     defer { try? file.close() }
     try file.seekToEnd(); try file.write(contentsOf: data)
-    guard status == .success else { throw WindowQueryFailure(status: status) }
-    guard let windows else { throw Failure.invalid("AXWindows succeeded with unexpected or missing value type") }
-    guard windows.count == 1 else {
-      throw Failure.invalid("Expected exactly one owned AX window; AXWindows returned \(windows.count)")
-    }
-    return windows[0]
   }
   func windowInfo() throws -> WindowMatch {
     let axFrame = try frame(window())
-    let infos = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    var infos = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    if let preparedWindowID { infos = infos.filter { ($0[kCGWindowNumber as String] as? NSNumber)?.intValue == preparedWindowID } }
     return try matchWindow(infos, pid: pid, axFrame: axFrame)
   }
   func pane(_ id: Int) throws -> AXUIElement {
@@ -229,6 +268,11 @@ func matchWindow(_ infos: [[String: Any]], pid: pid_t, axFrame: CGRect) throws -
     defer { try? write(["pid": pid, "events": events], to: directory.appendingPathComponent("input-events.json")) }
     Thread.sleep(forTimeInterval: 0.5)
     let identity = try JSONSerialization.jsonObject(with: Data(contentsOf: directory.appendingPathComponent("identity.json"))) as! [String: Any]
+    guard let savedID = identity["window"] as? Int, identity["pid"] as? Int32 == pid,
+      identity["executable"] as? String == running.executableURL?.path else {
+      throw Failure.invalid("Prepared identity does not match the owned app")
+    }
+    preparedWindowID = savedID
     let match = try initialWindowQuery(query: { try windowInfo() }, retry: { attempt, failure in
       note("initial_ax_transport_retry", ["attempt": attempt, "ax_error": failure.status.rawValue])
       Thread.sleep(forTimeInterval: 0.1)
@@ -287,6 +331,15 @@ func matchWindow(_ infos: [[String: Any]], pid: pid_t, axFrame: CGRect) throws -
       precondition((try? matchWindow([candidate(7, ax.offsetBy(dx: 1.1, dy: 0))], pid: 42, axFrame: ax)) == nil)
       precondition((try? matchWindow([candidate(7, CGRect(x: -2200, y: -500, width: 1800, height: 1400))], pid: 42, axFrame: ax)) == nil)
       print("PASS AX/CG unique window correlation: wrong PID/layer/frame, duplicate, scale and tolerance cases; no GUI/input executed")
+      let auxiliary = ax.offsetBy(dx: 100, dy: 100)
+      let selectedAX = try uniqueAXFrameIndex([auxiliary, ax], target: ax)
+      precondition(selectedAX == 1)
+      let repeatedAuxiliary = try uniqueAXFrameIndex([auxiliary, auxiliary, ax], target: ax)
+      precondition(repeatedAuxiliary == 2)
+      precondition((try? uniqueAXFrameIndex([ax, ax], target: ax)) == nil)
+      precondition((try? uniqueAXFrameIndex([auxiliary], target: ax)) == nil)
+      precondition((try? uniqueAXFrameIndex([nil, ax], target: ax)) == nil)
+      print("PASS prepared AX window selection: nonmatching auxiliaries accepted; duplicate target/missing/unreadable frames rejected")
       var queries = 0, retries = 0
       let recovered: Int = try initialWindowQuery(query: {
         queries += 1
