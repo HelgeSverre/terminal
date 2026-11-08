@@ -26,6 +26,32 @@ fn semantic(t: &Terminal) -> serde_json::Value {
     serde_json::json!({"main":t.primary.rows.iter().map(|r|RowDump::from(r.as_ref())).collect::<Vec<_>>(),"alt":t.alternate.rows.iter().map(|r|RowDump::from(r.as_ref())).collect::<Vec<_>>(),"history":t.history.iter().map(|r|RowDump::from(r.as_ref())).collect::<Vec<_>>(),"main_cursor":t.primary.cursor,"alt_cursor":t.alternate.cursor,"modes":t.modes,"pen":t.pen,"selected":t.is_alternate,"replies":t.replies,"title":t.title})
 }
 #[test]
+fn dec_special_graphics_complete_mapping_and_chunking() {
+    // DEC VT220 special graphics, using the Unicode mapping documented by
+    // https://teratermproject.github.io/manual/5/en/about/emulations_dec_special.html
+    let source = "_`abcdefghijklmnopqrstuvwxyz{|}~";
+    let expected = "\u{a0}◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·";
+    for designation in ["\x1b(0", "\x1b)0\x0e"] {
+        let input = format!("{designation}{source}\x0f\x1b(B{source}");
+        for split in 0..=input.len() {
+            let mut t = Terminal::new(64, 2).unwrap();
+            feed(&mut t, &input.as_bytes()[..split]);
+            feed(&mut t, &input.as_bytes()[split..]);
+            let row = &t.screen().rows[0];
+            let cells = &row.cells;
+            let mapped: String = cells[..32].iter().map(|c| row.text(*c)).collect();
+            let ascii: String = cells[32..64].iter().map(|c| row.text(*c)).collect();
+            assert_eq!(
+                mapped, expected,
+                "designation {designation:?}, split {split}"
+            );
+            assert_eq!(ascii, source);
+            assert!(cells.iter().all(|c| c.kind == CellKind::Lead1));
+            assert!(t.check_invariants());
+        }
+    }
+}
+#[test]
 fn deferred_wrap() {
     for (bytes, expected, row, col, pending) in [
         ("abcd", vec!["abcd", ""], 0, 3, true),
