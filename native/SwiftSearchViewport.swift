@@ -68,6 +68,17 @@ struct SwiftSearchDocument {
       stamp: stamp, rowCount: rows.count,
       rowAt: { rows.indices.contains($0) ? rows[$0] : nil },
       rowIDAt: { rows.indices.contains($0) ? rows[$0].id : nil },
+      proofAt: { index in
+        guard rows.indices.contains(index) else { return nil }
+        let row = rows[index]
+        let successor = row.softWrapsToNext && rows.indices.contains(index + 1) ? rows[index + 1].id : nil
+        return SwiftSearchProof(row, softNextID: successor)
+      },
+      softNextIDAt: { index in
+        guard rows.indices.contains(index), rows[index].softWrapsToNext,
+              rows.indices.contains(index + 1) else { return nil }
+        return rows[index + 1].id
+      },
       retainedBytesAt: { rows.indices.contains($0) ? rows[$0].retainedBytes : nil })
   }
 }
@@ -80,6 +91,13 @@ struct SwiftSearchSource {
   let rowCount: Int
   let rowAt: (Int) -> SwiftSearchRow?
   let rowIDAt: (Int) -> UInt64?
+  /// Cheap structural proof lookup. Publication and acceptance use this
+  /// rather than projecting rich cells for every retained search span.
+  let proofAt: (Int) -> SwiftSearchProof?
+  /// Physical successor identity for an active soft wrap. This is part of a
+  /// search proof: a row that keeps its text but is relinked must not retain a
+  /// cross-row match.
+  let softNextIDAt: (Int) -> UInt64?
   /// Budget admission runs before a row's rich cell projection is built.
   let retainedBytesAt: (Int) -> Int?
 }
@@ -97,7 +115,9 @@ enum SwiftSearchStatus: Equatable {
 enum SwiftSearchAdmissionError: Error, Equatable { case query }
 
 enum SwiftSearchAcceptance: Equatable {
-  case found([SwiftSearchHighlight])
+  /// `anchor` is the first physical source row, including zero-width newline
+  /// spans that intentionally have no drawable highlight.
+  case found(anchor: Int, spans: [SwiftSearchResolvedSpan])
   case missing
   case working
   case needsPage
@@ -106,25 +126,34 @@ enum SwiftSearchAcceptance: Equatable {
   case cancelled
 }
 
-private struct SwiftSearchProof: Equatable {
+struct SwiftSearchProof: Equatable {
   let id: UInt64
   let revision: UInt64
-  let softWrapsToNext: Bool
-  init(_ row: SwiftSearchRow) {
-    id = row.id
-    revision = row.revision
-    softWrapsToNext = row.softWrapsToNext
+  let softNextID: UInt64?
+  init(id: UInt64, revision: UInt64, softNextID: UInt64?) {
+    self.id = id
+    self.revision = revision
+    self.softNextID = softNextID
+  }
+  init(_ row: SwiftSearchRow, softNextID: UInt64? = nil) {
+    self.init(id: row.id, revision: row.revision, softNextID: softNextID)
   }
 }
 
-private struct SwiftSearchSpan: Equatable {
+struct SwiftSearchSpan: Equatable {
   let proof: SwiftSearchProof
   var start: Int
   var end: Int
 }
 
+struct SwiftSearchResolvedSpan: Equatable {
+  let row: Int
+  let span: SwiftSearchSpan
+}
+
 private struct SwiftSearchPage {
   let row: SwiftSearchRow
+  let softNextID: UInt64?
   var column: Int
   let end: Int
   let hardBreak: Bool
@@ -206,14 +235,19 @@ struct SwiftSearchTask {
       return status
     }
     let hasNext = nextID != nil
-    let soft = hasNext && row.softWrapsToNext
+    // The task's scan boundary and the row's structural proof are distinct.
+    // Output appended after creation may turn the captured final row into a
+    // soft predecessor; retain that identity for acceptance but never chase it.
+    let actualSoftNext = source.softNextIDAt(index)
+    let soft = hasNext && actualSoftNext == nextID
     let end: Int
     if soft {
       end = row.cells.count
     } else {
       end = (row.cells.lastIndex { $0.endsHardRow }.map { $0 + 1 }) ?? 0
     }
-    page = SwiftSearchPage(row: row, column: 0, end: end, hardBreak: hasNext && !soft)
+    page = SwiftSearchPage(row: row, softNextID: actualSoftNext,
+                           column: 0, end: end, hardBreak: hasNext && !soft)
     self.next = nextID
     hint = index + 1
     status = .working
@@ -231,7 +265,7 @@ struct SwiftSearchTask {
       let cell = page.row.cells[column]
       page.column += 1
       let span = SwiftSearchSpan(
-        proof: SwiftSearchProof(page.row), start: column, end: column + cell.columnWidth)
+        proof: SwiftSearchProof(page.row, softNextID: page.softNextID), start: column, end: column + cell.columnWidth)
       if cell.kind == .empty {
         push(Unicode.Scalar(0x20)!, span: span, matchEnd: &matchEnd)
       } else if cell.kind == .lead1 || cell.kind == .lead2 {
@@ -240,7 +274,7 @@ struct SwiftSearchTask {
     }
     if page.column == page.end {
       if page.hardBreak {
-        let point = SwiftSearchSpan(proof: SwiftSearchProof(page.row), start: page.end, end: page.end)
+        let point = SwiftSearchSpan(proof: SwiftSearchProof(page.row, softNextID: page.softNextID), start: page.end, end: page.end)
         push(Unicode.Scalar(0x0a)!, span: point, matchEnd: &matchEnd)
       }
       self.page = nil
@@ -270,6 +304,7 @@ struct SwiftSearchTask {
   /// Owner-only acceptance. It rechecks epochs and per-row proofs, so a stale
   /// worker result can never navigate/highlight unrelated output.
   func accept(in source: SwiftSearchSource) -> SwiftSearchAcceptance {
+    guard source.stamp == stamp else { return .changed }
     switch status {
     case .changed: return .changed
     case .resourceLimit: return .resourceLimit
@@ -278,18 +313,19 @@ struct SwiftSearchTask {
     case .needsPage: return .needsPage
     case .complete: break
     }
-    guard source.stamp == stamp else { return .changed }
     guard let latest else { return .missing }
-    var highlights: [SwiftSearchHighlight] = []
-    for span in latest {
-      guard let index = searchIndex(of: span.proof.id, hint: 0, source: source),
-            let row = source.rowAt(index), SwiftSearchProof(row) == span.proof
+    guard let first = latest.first,
+          let firstIndex = searchIndex(of: first.proof.id, hint: 0, source: source)
+    else { return .changed }
+    var spans: [SwiftSearchResolvedSpan] = []
+    for (offset, span) in latest.enumerated() {
+      let index = firstIndex + offset
+      guard source.rowIDAt(index) == span.proof.id,
+            source.proofAt(index) == span.proof
       else { return .changed }
-      if span.start < span.end {
-        highlights.append(SwiftSearchHighlight(row: index, start: span.start, end: span.end))
-      }
+      spans.append(SwiftSearchResolvedSpan(row: index, span: span))
     }
-    return .found(highlights)
+    return .found(anchor: firstIndex, spans: spans)
   }
 
   private static func lowercase(_ scalar: Unicode.Scalar) -> [Unicode.Scalar] {

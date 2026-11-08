@@ -123,10 +123,13 @@ private final class SwiftTerminalCore {
   private var documentEpoch: UInt64 = 1
   private var historyEpoch: UInt64 = 1
   private var screenEpoch: UInt64 = 1
-  // Accepted matches stay in document identity space. Snapshot publication
-  // resolves them against its selected row IDs, so a non-view snapshot never
-  // paints an old viewport-relative row onto unrelated live output.
-  private var searchHit: [(row: UInt64, start: Int, end: Int)] = []
+  // Accepted matches stay in document identity space. Each keeps the row
+  // revision that was proven at accept time, so a later change to an
+  // unrelated row does not discard a valid decoration while a changed row can
+  // never inherit one. Snapshot publication resolves these proofs against its
+  // selected rows, so a non-view snapshot never paints a viewport-relative
+  // coordinate onto unrelated live output.
+  private var searchHit: (stamp: SwiftSearchStamp, spans: [SwiftSearchResolvedSpan])?
   private let graphics = KittyGraphicsStore()
   private var cellPixelWidth = 8
   private var cellPixelHeight = 16
@@ -172,14 +175,18 @@ private final class SwiftTerminalCore {
   private func changed(history: Bool = false, geometry: Bool = false,
                        document: Bool = true, screen: Bool = true) {
     revision &+= 1
-    // Decorations are proofs over a particular document stamp. A mutation
-    // invalidates them immediately, even before an in-flight task reaches its
-    // owner-side acceptance check.
-    if document || geometry { searchHit.removeAll(keepingCapacity: true) }
+    // Geometry changes alter column coordinates. Ordinary document edits are
+    // instead resolved lazily against each accepted row's revision, retaining
+    // hits through unrelated output exactly as the Rust owner does.
+    if geometry { searchHit = nil }
     if document { documentEpoch &+= 1 }
     if screen { screenEpoch &+= 1 }
     if history { historyEpoch &+= 1 }
     if geometry { geometryEpoch &+= 1 }
+  }
+  private func advanceSearchGeneration() {
+    searchGeneration &+= 1
+    searchHit = nil
   }
   private func finishDecodedText() {
     // Escape/control input interrupts an incomplete UTF-8 sequence. Emit its
@@ -250,7 +257,6 @@ private final class SwiftTerminalCore {
   }
   private func apply(_ effect: TerminalDocument.PrintEffect, mutations: Int = 1) {
     guard mutations > 0 else { return }
-    searchHit.removeAll(keepingCapacity: true)
     applyAppendedHistory(effect.appendedHistory)
     if let printed = effect.lastPrinted {
       lastPrinted = printed
@@ -444,7 +450,7 @@ private final class SwiftTerminalCore {
   private func reverseIndex() { index(reverse: true) }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
-  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); searchGeneration &+= 1; usingAlternate = false; history.removeAll(); historyByteCount = 0; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
+  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); advanceSearchGeneration(); usingAlternate = false; history.removeAll(); historyByteCount = 0; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
   private struct CSIParameterPacket {
     var values: [Int]
     // CSI > ... u and CSI = ... u historically parsed their first field
@@ -589,7 +595,7 @@ private final class SwiftTerminalCore {
     if !changedActiveScreen { if clearsPending { s.pendingWrap = false }; screen = s }
     if semanticChange { changed() }
   }
-  private func eraseDisplay(_ mode: Int, selective: Bool = false) { var s = screen; switch mode { case 2, 3: if selective { for row in 0..<rowCount { document.erase(&s, row: row, columns: 0..<columns, style: eraseStyle(), selective: true) } } else { s.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) } }; if mode == 3 && !usingAlternate { history.removeAll(); historyByteCount = 0; historyEpoch &+= 1 }; case 1: for row in 0...s.cursorRow { document.erase(&s, row: row, columns: 0..<(row == s.cursorRow ? s.cursorColumn + 1 : columns), style: eraseStyle(), selective: selective) }; default: for row in s.cursorRow..<rowCount { document.erase(&s, row: row, columns: (row == s.cursorRow ? s.cursorColumn : 0)..<columns, style: eraseStyle(), selective: selective) } }; s.pendingWrap = false; screen = s }
+  private func eraseDisplay(_ mode: Int, selective: Bool = false) { var s = screen; switch mode { case 2, 3: if selective { for row in 0..<rowCount { document.erase(&s, row: row, columns: 0..<columns, style: eraseStyle(), selective: true) } } else { s.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) } }; if mode == 3 && !usingAlternate { history.removeAll(); historyByteCount = 0; advanceSearchGeneration(); historyEpoch &+= 1 }; case 1: for row in 0...s.cursorRow { document.erase(&s, row: row, columns: 0..<(row == s.cursorRow ? s.cursorColumn + 1 : columns), style: eraseStyle(), selective: selective) }; default: for row in s.cursorRow..<rowCount { document.erase(&s, row: row, columns: (row == s.cursorRow ? s.cursorColumn : 0)..<columns, style: eraseStyle(), selective: selective) } }; s.pendingWrap = false; screen = s }
   private func eraseLine(_ mode: Int) { var s = screen; let range: Range<Int>; switch mode { case 1: range = 0..<(s.cursorColumn + 1); case 2: range = 0..<columns; default: range = s.cursorColumn..<columns }; document.erase(&s, row: s.cursorRow, columns: range, style: eraseStyle()); s.pendingWrap = false; screen = s }
   private func insertCharacters(_ count: Int) {
     var s = screen; let margins = horizontalMargins
@@ -779,6 +785,7 @@ private final class SwiftTerminalCore {
       case 47, 1047, 1049:
         if usingAlternate != enabled {
           resetClusterBoundary()
+          advanceSearchGeneration()
           usingAlternate = enabled
           if enabled && (mode == 1047 || mode == 1049) { alternate = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns) }
           changedActiveScreen = true
@@ -948,6 +955,7 @@ private final class SwiftTerminalCore {
     }
     primary = current
     graphics.clear(alternate: false, removeResources: true)
+    advanceSearchGeneration()
     syncDeadline = nil
     changed(history: true, document: false)
     return action.rawValue
@@ -1029,6 +1037,20 @@ private final class SwiftTerminalCore {
         SwiftSearchCell(cell.text, searchKind(cell.kind), hasBackground: cell.style.background != 0)
       }, softWrapsToNext: row.softWrapped)
   }
+  /// Resolves a captured search coordinate without materializing rich search
+  /// cells. The source closures all route through this one ownership boundary.
+  private func capturedSearchRow(_ index: Int, alternateMode: Bool, historyCount: Int) -> SwiftRow? {
+    guard usingAlternate == alternateMode else { return nil }
+    if alternateMode { return alternate.rows.indices.contains(index) ? alternate.rows[index] : nil }
+    if index < historyCount { return history.indices.contains(index) ? history[index] : nil }
+    let primaryIndex = index - historyCount
+    return primary.rows.indices.contains(primaryIndex) ? primary.rows[primaryIndex] : nil
+  }
+  private func capturedSearchSoftNextID(_ index: Int, alternateMode: Bool, historyCount: Int) -> UInt64? {
+    guard let row = capturedSearchRow(index, alternateMode: alternateMode, historyCount: historyCount),
+          row.softWrapped else { return nil }
+    return capturedSearchRow(index + 1, alternateMode: alternateMode, historyCount: historyCount)?.id
+  }
   private func searchSource() -> SwiftSearchSource {
     let alternateMode = usingAlternate
     let historyCount = history.count
@@ -1044,43 +1066,28 @@ private final class SwiftTerminalCore {
     return SwiftSearchSource(
       stamp: stamp, rowCount: rowCount,
       rowAt: { [unowned self] index in
-        guard self.usingAlternate == alternateMode else { return nil }
-        if alternateMode {
-          guard self.alternate.rows.indices.contains(index) else { return nil }
-          return self.searchProjection(self.alternate.rows[index])
-        }
-        if index < historyCount {
-          guard self.history.indices.contains(index) else { return nil }
-          return self.searchProjection(self.history[index])
-        }
-        let primaryIndex = index - historyCount
-        guard self.primary.rows.indices.contains(primaryIndex) else { return nil }
-        return self.searchProjection(self.primary.rows[primaryIndex])
+        guard let row = self.capturedSearchRow(index, alternateMode: alternateMode, historyCount: historyCount) else { return nil }
+        return self.searchProjection(row)
       },
       rowIDAt: { [unowned self] index in
-        guard self.usingAlternate == alternateMode else { return nil }
-        if alternateMode { return self.alternate.rows.indices.contains(index) ? self.alternate.rows[index].id : nil }
-        if index < historyCount { return self.history.indices.contains(index) ? self.history[index].id : nil }
-        let primaryIndex = index - historyCount
-        return self.primary.rows.indices.contains(primaryIndex) ? self.primary.rows[primaryIndex].id : nil
+        self.capturedSearchRow(index, alternateMode: alternateMode, historyCount: historyCount)?.id
+      },
+      proofAt: { [unowned self] index in
+        guard let row = self.capturedSearchRow(index, alternateMode: alternateMode, historyCount: historyCount) else { return nil }
+        return SwiftSearchProof(id: row.id, revision: row.revision,
+                                softNextID: self.capturedSearchSoftNextID(index, alternateMode: alternateMode, historyCount: historyCount))
+      },
+      softNextIDAt: { [unowned self] index in
+        self.capturedSearchSoftNextID(index, alternateMode: alternateMode, historyCount: historyCount)
       },
       retainedBytesAt: { [unowned self] index in
-        guard self.usingAlternate == alternateMode else { return nil }
-        let row: SwiftRow?
-        if alternateMode {
-          row = self.alternate.rows.indices.contains(index) ? self.alternate.rows[index] : nil
-        } else if index < historyCount {
-          row = self.history.indices.contains(index) ? self.history[index] : nil
-        } else {
-          let primaryIndex = index - historyCount
-          row = self.primary.rows.indices.contains(primaryIndex) ? self.primary.rows[primaryIndex] : nil
-        }
+        let row = self.capturedSearchRow(index, alternateMode: alternateMode, historyCount: historyCount)
         guard let row else { return nil }
         return row.retainedStorageCost > UInt64(Int.max) ? Int.max : Int(row.retainedStorageCost)
       })
   }
   func createSearch(_ query: String) -> SwiftCoreSearchToken? {
-    searchHit.removeAll(keepingCapacity: true)
+    searchHit = nil
     return try? SwiftCoreSearchToken(SwiftSearchTask(query: query, source: searchSource()))
   }
   private func searchStatus(_ status: SwiftSearchStatus) -> UInt32 {
@@ -1109,13 +1116,9 @@ private final class SwiftTerminalCore {
   func acceptSearch(_ token: SwiftCoreSearchToken) -> UInt32 {
     let source = searchSource()
     switch token.task.accept(in: source) {
-    case .found(let absolute):
-      guard let first = absolute.map(\ .row).min() else { return 2 }
+    case .found(let first, let spans):
       if !usingAlternate { setViewOffset(history.count - first) }
-      searchHit = absolute.compactMap { highlight in
-        guard highlight.start < highlight.end, let row = source.rowIDAt(highlight.row) else { return nil }
-        return (row, highlight.start, highlight.end)
-      }
+      searchHit = (source.stamp, spans)
       return 5
     case .missing: return 2
     case .working: return 0
@@ -1138,11 +1141,28 @@ private final class SwiftTerminalCore {
     return (Array(all[max(0, end - rowCount)..<end]), min(requested, history.count))
   }
   private func visibleSearchHighlights(in rows: [SwiftRow]) -> [[String: Int]] {
-    guard !searchHit.isEmpty else { return [] }
-    var byRow: [UInt64: [(Int, Int)]] = [:]
-    for hit in searchHit { byRow[hit.row, default: []].append((hit.start, hit.end)) }
+    guard let hit = searchHit else { return [] }
+    let source = searchSource()
+    guard source.stamp == hit.stamp,
+          let first = hit.spans.first,
+          let start = (0..<source.rowCount).first(where: { source.rowIDAt($0) == first.span.proof.id })
+    else { return [] }
+    for (offset, resolved) in hit.spans.enumerated() {
+      let index = start + offset
+      guard source.rowIDAt(index) == resolved.span.proof.id,
+            source.proofAt(index) == resolved.span.proof
+      else { return [] }
+    }
+    var byRow: [UInt64: [(UInt64, Int, Int)]] = [:]
+    for resolved in hit.spans where resolved.span.start < resolved.span.end {
+      let span = resolved.span
+      byRow[span.proof.id, default: []].append((span.proof.revision, span.start, span.end))
+    }
     return rows.enumerated().flatMap { index, row in
-      (byRow[row.id] ?? []).map { ["row": index, "start": $0.0, "end": $0.1] }
+      (byRow[row.id] ?? []).compactMap { hit in
+        guard hit.0 == row.revision else { return nil }
+        return ["row": index, "start": hit.1, "end": hit.2]
+      }
     }
   }
   func publishBinary(view: Bool, scroll: Int, now: UInt64, context: UnsafeMutableRawPointer?, callback: SnapshotCallback?) -> Bool {
