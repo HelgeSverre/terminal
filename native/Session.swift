@@ -37,12 +37,17 @@ final class ClipboardWriteRequest {
   let data: Data
   private let live: () -> Bool
   private let completion: (Bool, @escaping @MainActor (Bool) -> Void) -> Void
+  private var resolved = false
   init(sessionID: UUID, data: Data, live: @escaping () -> Bool,
        completion: @escaping (Bool, @escaping @MainActor (Bool) -> Void) -> Void) {
     self.sessionID = sessionID; self.data = data; self.live = live; self.completion = completion
   }
   var isLive: Bool { live() }
-  func resolve(_ allowed: Bool, _ result: @escaping @MainActor (Bool) -> Void) { completion(allowed, result) }
+  func resolve(_ allowed: Bool, _ result: @escaping @MainActor (Bool) -> Void) {
+    guard !resolved else { return }
+    resolved = true
+    completion(allowed, result)
+  }
 }
 
 /// Immutable physical-key facts that survive queueing until the SwiftCore
@@ -131,6 +136,8 @@ final class Session: @unchecked Sendable {
   private var closed = false
   private var readSuspended = false
   private var writeSuspended = false
+  private var clipboardClosedNotified = false
+  private var clipboardCloseDelivered = false
   private var reader: DispatchSourceRead?
   private var writer: DispatchSourceWrite?
   private var statusReader: DispatchSourceRead?
@@ -156,7 +163,6 @@ final class Session: @unchecked Sendable {
   @MainActor var siblingLaunch: LaunchSpec { .shell.inheritingDirectory(deliveredDirectory) }
   private lazy var historySearch = HistorySearch(session: self)
   private let clipboardSessionID = UUID()
-  private var pendingClipboardIDs = Set<UInt64>()
   var onSnapshot: (@MainActor (TerminalSnapshot) -> Void)?
   var onStatus: (@MainActor (String) -> Void)?
   var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
@@ -285,8 +291,27 @@ final class Session: @unchecked Sendable {
     admittedBytes -= cost
     admission.unlock()
   }
+  private func stopAcceptingInput() {
+    admission.lock(); accepting = false; admission.unlock()
+  }
+  private func notifyClipboardClosed() {
+    guard !clipboardClosedNotified else { return }
+    clipboardClosedNotified = true
+    deliverClipboardCloseIfPossible()
+  }
+  private func deliverClipboardCloseIfPossible() {
+    guard clipboardClosedNotified, !clipboardCloseDelivered, let handler = onClipboardClosed else { return }
+    clipboardCloseDelivered = true
+    let id = clipboardSessionID
+    DispatchQueue.main.async { handler(id) }
+  }
+  private var acceptingClipboardRequests: Bool {
+    admission.lock(); defer { admission.unlock() }
+    return accepting
+  }
   private func start() {
     guard terminal_abi_version() == 1, let handle = terminal_create(80, 24) else {
+      stopAcceptingInput()
       report("Core initialization failed")
       return
     }
@@ -295,6 +320,7 @@ final class Session: @unchecked Sendable {
     guard !spec.arguments.isEmpty, spec.arguments.count <= 256,
       spec.arguments.reduce(0, { $0 + $1.utf8.count }) <= 1_048_576
     else {
+      stopAcceptingInput()
       report("Invalid launch arguments")
       return
     }
@@ -304,6 +330,7 @@ final class Session: @unchecked Sendable {
       terminal_spawn_args(spec.launcher, spec.executable, spec.cwd, 80, 24, $0.baseAddress)
     }
     guard child.error == 0 else {
+      stopAcceptingInput()
       report("Launch failed: \(String(cString:strerror(child.error)))")
       return
     }
@@ -453,7 +480,7 @@ final class Session: @unchecked Sendable {
         terminal_view_follow_tail(core)
       }
     case .clipboardDecision(let requestID, let allowed, let completion):
-      let accepted = !closed && pendingClipboardIDs.remove(requestID) != nil && terminal_complete_clipboard_request(core, requestID)
+      let accepted = acceptingClipboardRequests && terminal_complete_clipboard_request(core, requestID)
       DispatchQueue.main.async { completion(accepted && allowed) }
     case .raw(let bytes, let cost), .shortcut(let bytes, let cost):
       guard writeBytes + bytes.count <= 3 * 1024 * 1024 else { return }
@@ -574,6 +601,8 @@ final class Session: @unchecked Sendable {
     reap()
   }
   private func endWrite() {
+    stopAcceptingInput()
+    notifyClipboardClosed()
     writeEnded = true
     if writeSuspended {
       writer?.resume()
@@ -602,19 +631,30 @@ final class Session: @unchecked Sendable {
   private static let collectClipboard: ClipboardCallback = { context, requestID, bytes, count in
     guard let context, let bytes, count >= 0 else { return }
     let owner = Unmanaged<Session>.fromOpaque(context).takeUnretainedValue()
-    guard !owner.closed else { return }
-    owner.pendingClipboardIDs.insert(requestID)
     let request = ClipboardWriteRequest(
       sessionID: owner.clipboardSessionID, data: Data(bytes: bytes, count: count),
-      live: { [weak owner] in owner?.closed == false },
+      live: { [weak owner] in owner?.acceptingClipboardRequests == true },
       completion: { [weak owner] allowed, completion in
         guard let owner else { DispatchQueue.main.async { completion(false) }; return }
-        owner.queue.async { owner.enqueue(.clipboardDecision(requestID, allowed, completion)) }
+        owner.queue.async {
+          guard !owner.closed else { DispatchQueue.main.async { completion(false) }; return }
+          owner.enqueue(.clipboardDecision(requestID, allowed, completion))
+        }
       })
-    DispatchQueue.main.async { [weak owner] in owner?.onClipboardWrite?(request) }
+    DispatchQueue.main.async { [weak owner, request] in
+      guard let owner, owner.acceptingClipboardRequests else { request.resolve(false) { _ in }; return }
+      if let handler = owner.onClipboardWrite { handler(request) }
+      else { request.resolve(false) { _ in } }
+    }
   }
   private func drainClipboardWrites() { terminal_take_clipboard_requests(core, Unmanaged.passUnretained(self).toOpaque(), Self.collectClipboard) }
-  func setClipboardClosedHandler(_ handler: @escaping @MainActor (UUID) -> Void) { onClipboardClosed = handler }
+  func setClipboardClosedHandler(_ handler: @escaping @MainActor (UUID) -> Void) {
+    queue.async { [weak self] in
+      guard let self else { return }
+      onClipboardClosed = handler
+      deliverClipboardCloseIfPossible()
+    }
+  }
   private func flush() {
     guard !closed, !writeEnded else { return }
     var turn = 0
@@ -878,19 +918,17 @@ final class Session: @unchecked Sendable {
     }
   }
   func close() {
-    admission.lock()
-    accepting = false
-    admission.unlock()
+    stopAcceptingInput()
     queue.async { [self] in
       guard !closed else { return }
+      notifyClipboardClosed()
       closed = true
-      let clipboardID = clipboardSessionID
-      DispatchQueue.main.async { [onClipboardClosed] in onClipboardClosed?(clipboardID) }
       historySearch.cancel()
       for index in head..<events.count {
         switch events[index] {
         case .input(_, _, _, _, let cost), .keyInput(_, let cost), .raw(_, let cost), .shortcut(_, let cost): release(cost)
         case .find(_, let completion): DispatchQueue.main.async { completion(.cancelled) }
+        case .clipboardDecision(_, _, let completion): DispatchQueue.main.async { completion(false) }
         default: break
         }
       }

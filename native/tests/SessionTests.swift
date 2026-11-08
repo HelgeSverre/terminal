@@ -21,6 +21,7 @@ import Foundation
         "search_latest_query_completed", "search_owner_probe_under_100ms", "search_close_cancelled",
         "closed_focus_and_key_releases_are_quiet",
         "closed_text_input_is_reported", "committed_text_round_trip", "all_owned_children_reaped",
+        "finished_pty_refuses_text", "finished_pty_retains_search",
       ].map { ($0, false) })
     checks["split_inherits_cwd"] = false
     checks["split_children_reaped"] = false
@@ -170,6 +171,20 @@ import Foundation
     }
     checks["committed_text_round_trip"] = committedEchoed
     committed.close()
+    let finished = own(Session(launch: spec("printf FINISHED_PTY_READY")))
+    var finishedRead = false
+    let finishedDeadline = Date().addingTimeInterval(3)
+    while !finishedRead && Date() < finishedDeadline {
+      finished.statistics { stats in finishedRead = stats["read_ended"] as? Bool == true }
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["finished_pty_refuses_text"] = finishedRead && !finished.input("unexpected input")
+    finished.find("FINISHED_PTY_READY") { checks["finished_pty_retains_search"] = $0 == .found }
+    let finishedSearchDeadline = Date().addingTimeInterval(3)
+    while checks["finished_pty_retains_search"] != true && Date() < finishedSearchDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    finished.close()
     // These events pass through the real owner FIFO and typed snapshot bridge.
     // Focus reports and a paired release must not make history jump to the tail.
     let view = own(Session(launch: spec(
