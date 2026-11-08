@@ -18,7 +18,7 @@ import Foundation
         "search_found_and_highlighted", "search_replacement_cancelled",
         "search_latest_query_completed", "search_owner_probe_under_100ms", "search_close_cancelled",
         "closed_focus_and_key_releases_are_quiet",
-        "closed_text_input_is_reported",
+        "closed_text_input_is_reported", "committed_text_round_trip",
       ].map { ($0, false) })
     var statuses: [String] = []
     // The first partial REP snapshot arrives before its suffix sets bracketed paste.
@@ -45,6 +45,21 @@ import Foundation
     while !done && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
     checks["rep_completed"] = done
     ordered.close()
+    // Automation and IME commits use key=0: the C ABI must forward the full
+    // committed string rather than silently reducing it to its first scalar.
+    let committed = Session(launch: spec("stty raw -echo; exec /bin/cat"))
+    var committedEchoed = false
+    committed.onSnapshot = { snapshot in
+      let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
+      committedEchoed = committedEchoed || text.contains("AUTOMATION_TEXT")
+    }
+    precondition(committed.input("AUTOMATION_TEXT\n"))
+    let committedDeadline = Date().addingTimeInterval(5)
+    while !committedEchoed && Date() < committedDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["committed_text_round_trip"] = committedEchoed
+    committed.close()
     // These events pass through the real owner FIFO and typed snapshot bridge.
     // Focus reports and a paired release must not make history jump to the tail.
     let view = Session(launch: spec(

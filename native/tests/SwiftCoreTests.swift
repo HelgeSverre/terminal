@@ -61,6 +61,7 @@ import Foundation
     precondition(cells(value, 0)[0]["text"] as? String == "o")
 
     // The C-facing input and reply callbacks are the Session's only wire path.
+    precondition(input(core, text: "AUTOMATION_TEXT\n", key: 0) == Data("AUTOMATION_TEXT\n".utf8))
     precondition(input(core, key: 10) == Data("\u{1b}[A".utf8))
     precondition(input(core, text: "x\n\u{1b}y", key: 1) == Data("x\ry".utf8))
     feed(core, "\u{1b}[?2004h")

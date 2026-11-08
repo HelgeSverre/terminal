@@ -814,6 +814,10 @@ private final class SwiftTerminalCore {
     let modes = SwiftInputEncoder.Modes(
       applicationCursor: applicationCursor, applicationKeypad: applicationKeypad,
       bracketedPaste: bracketedPaste, focusReporting: focusReporting, kittyFlags: screen.keyboardFlags)
+    // The C ABI's key=0 path represents committed text, not a physical key.
+    // It must retain every scalar (automation, IME commits, and multi-scalar
+    // insertText: calls), matching the Rust FFI's text.as_bytes() path.
+    if key == 0 { return Data(text.utf8) }
     if key == 1 { return SwiftInputEncoder.paste(text, modes: modes) }
     if key == 2 { return SwiftInputEncoder.focus(event == 1, modes: modes) }
     let modifier = SwiftInputEncoder.Modifiers(
