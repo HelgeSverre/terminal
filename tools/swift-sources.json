@@ -17,6 +17,8 @@
     "Statistics.swift",
     "Geometry.swift",
     "Font.swift",
+    "GlyphRasterWorker.swift",
+    "GlyphResidency.swift",
     "FontCatalog.swift",
     "Preferences.swift",
     "Transport.swift",
@@ -67,6 +69,8 @@
     ],
     "geometry": ["Geometry.swift", "tests/GeometryTests.swift"],
     "statistics": ["Statistics.swift", "tests/StatisticsTests.swift"],
+    "glyph_raster_worker": ["Font.swift", "GlyphRasterWorker.swift", "tests/GlyphRasterWorkerTests.swift"],
+    "glyph_residency": ["Font.swift", "GlyphRasterWorker.swift", "GlyphResidency.swift", "tests/GlyphResidencyScenarioTests.swift", "tests/GlyphResidencyTests.swift"],
     "preferences": ["Preferences.swift", "tests/PreferencesTests.swift"],
     "snapshot_bridge": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",

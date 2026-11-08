@@ -27,34 +27,144 @@ private struct Quad {
   var rect: SIMD4<Float>
   var uv: SIMD4<Float>
   var color: SIMD4<Float>
+  // x == 0 denotes R8 coverage, x == 1 denotes premultiplied linear RGBA.
+  var material: SIMD4<Float> = SIMD4(1, 0, 0, 0)
 }
+// Transitional drawing record. Residency owns admission and texture lifetime;
+// frame assembly retains only this resolved lease shape.
 private struct GlyphKey: Hashable {
   let text: String
   let cells: Int
   let bold: Bool
   let italic: Bool
+  let width: Int
+  let height: Int
+  let pointSize: Int
+  let fontIdentity: String
 }
 private struct Glyph {
   let uv: SIMD4<Float>
   let width: Int
   let atlasPage: Int?
   let texture: MTLTexture?
+  let kind: GlyphLease.Kind
+  let heap: MTLHeap?
+  let legacyID: UUID?
+}
+private struct SurfaceImageKey: Hashable {
+  let surface: UUID
+  let image: ImageKey
 }
 
-final class MetalRenderer: @unchecked Sendable {
-  let layer: CAMetalLayer
+// The application owns rendering, rather than every terminal pane owning a
+// command queue and glyph cache. A pane receives only an opaque surface lease.
+// Rendering state, GPU submissions, and (eventually) glyph residency therefore
+// have one place to enforce lifetime and process-wide resource rules.
+final class TerminalRendering: @unchecked Sendable {
+  final class SurfaceLease: @unchecked Sendable {
+    fileprivate let id = UUID()
+    private let completionLock = NSLock()
+    private var completedSnapshotRevision: UInt64 = 0
+    fileprivate func recordCompletedRevision(_ revision: UInt64) {
+      completionLock.lock()
+      completedSnapshotRevision = max(completedSnapshotRevision, revision)
+      completionLock.unlock()
+    }
+    fileprivate func completedRevision() -> UInt64 {
+      completionLock.lock()
+      defer { completionLock.unlock() }
+      return completedSnapshotRevision
+    }
+  }
+  struct SurfaceStatus {
+    let attached: Bool
+    let completedSnapshotRevision: UInt64
+    let lastTargetTimestamp: CFTimeInterval
+    let lastPresentationTargetTimestamp: CFTimeInterval
+  }
+  private struct SurfaceState {
+    let lease: SurfaceLease
+    let layer: CAMetalLayer
+    let displayLink: SurfaceDisplayLink
+    var latest: RenderRequest?
+    var lastRendered: RenderRequest?
+    var generation: UInt64 = 0
+    var awaitingDrawable = false
+    var pendingDrawable: CAMetalDrawable?
+    var rendering = false
+    var targetTimestamp: CFTimeInterval = 0
+    var targetPresentationTimestamp: CFTimeInterval = 0
+  }
+  private struct Submission {
+    let request: RenderRequest
+    let drawable: CAMetalDrawable
+    let surface: SurfaceLease
+    let generation: UInt64
+  }
+  // CAMetalDisplayLink supplies a drawable in its update callback, avoiding a
+  // blocking nextDrawable call. This object lives on the main run loop; it
+  // never encodes Metal work itself.
+  private final class SurfaceDisplayLink: NSObject, CAMetalDisplayLinkDelegate {
+    private weak var rendering: TerminalRendering?
+    private let lease: SurfaceLease
+    private let link: CAMetalDisplayLink
+    private var invalidated = false
+    init(rendering: TerminalRendering, lease: SurfaceLease, layer: CAMetalLayer) {
+      self.rendering = rendering
+      self.lease = lease
+      link = CAMetalDisplayLink(metalLayer: layer)
+      super.init()
+      link.delegate = self
+      link.add(to: .main, forMode: .common)
+      link.isPaused = true
+    }
+    func requestFrame() {
+      let resume = { [weak self] in
+        guard let self, !self.invalidated else { return }
+        self.link.isPaused = false
+      }
+      if Thread.isMainThread { resume() }
+      else { DispatchQueue.main.async(execute: resume) }
+    }
+    func invalidate() {
+      let stop = { [self] in
+        guard !invalidated else { return }
+        self.invalidated = true
+        self.link.isPaused = true
+        self.link.invalidate()
+      }
+      if Thread.isMainThread { stop() }
+      else { DispatchQueue.main.async(execute: stop) }
+    }
+    func metalDisplayLink(_ link: CAMetalDisplayLink, needsUpdate update: CAMetalDisplayLink.Update) {
+      guard link === self.link, !invalidated else { return }
+      // Demand-paused: each accepted update hands one drawable to the owner.
+      // A newer request can re-arm the link after this callback returns.
+      link.isPaused = true
+      rendering?.received(
+        drawable: update.drawable, target: update.targetTimestamp,
+        presentationTarget: update.targetPresentationTimestamp, surface: lease)
+    }
+  }
   private let device: MTLDevice
   private let commands: MTLCommandQueue
   private let pipeline: MTLRenderPipelineState
   private let imagePipeline: MTLRenderPipelineState
-  private var imageTextures: [ImageKey: MTLTexture] = [:]
-  private let queue = DispatchQueue(label: "no.helgesverre.terminal.render", qos: .userInteractive)
-  private let lock = NSLock()
-  private let completionLock = NSLock()
-  private var latest: RenderRequest?
-  private var scheduled = false
-  private let inFlight = DispatchSemaphore(value: 2)
+  private var imageTextures: [SurfaceImageKey: MTLTexture] = [:]
+  // All Metal encoding and all shared residency mutation happen here. A
+  // demand-paused CAMetalDisplayLink provides already-available drawables.
+  private let executor = DispatchQueue(label: "no.helgesverre.terminal.render", qos: .userInteractive)
+  private let surfacesLock = NSLock()
+  private var surfaces: [UUID: SurfaceState] = [:]
+  // Ready drawables are admitted FIFO. A nonresponsive/off-display surface has
+  // no queue entry and therefore cannot gate a healthy surface.
+  private var readySurfaces: [UUID] = []
+  private var readySet: Set<UUID> = []
+  private var drainScheduled = false
+  private var gpuBusy = false
+  private let glyphResidency: GlyphResidency
   private var atlases: [MTLTexture] = []
+  private var atlasHeaps: [MTLHeap] = []
   private var glyphs: [GlyphKey: Glyph] = [:]
   private var atlasX: [Int] = []
   private var atlasY: [Int] = []
@@ -75,28 +185,18 @@ final class MetalRenderer: @unchecked Sendable {
   private var italicFont: CTFont
   private var boldItalicFont: CTFont
   private var submissions: UInt64 = 0
-  private var completedSnapshotRevision: UInt64 = 0
-  init(layer: CAMetalLayer) throws {
+  init() throws {
     guard let gpu = MTLCreateSystemDefaultDevice(), let commands = gpu.makeCommandQueue() else {
       throw RendererError.noDevice
     }
-    self.layer = layer
     device = gpu
     self.commands = commands
     let pressureSmoke = CommandLine.arguments.contains("--atlas-pressure-smoke")
     let fallbackBudgetSmoke = CommandLine.arguments.contains("--atlas-fallback-budget-smoke")
     atlasSize = pressureSmoke ? 128 : 2048
-    // Per-renderer ceiling only; a process-wide GPU-memory budget belongs above this renderer.
     atlasPages = pressureSmoke ? 4 : 2
     directGlyphBudget = fallbackBudgetSmoke ? 0 : 8 * 1024 * 1024
     directGlyphLimit = fallbackBudgetSmoke ? 0 : 1024
-    layer.device = gpu
-    layer.pixelFormat = .bgra8Unorm_srgb
-    layer.framebufferOnly = true
-    layer.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
-    layer.isOpaque = true
-    layer.maximumDrawableCount = 3
-    layer.allowsNextDrawableTimeout = true
     guard let libraryURL = Bundle.main.url(forResource: "Terminal", withExtension: "metallib")
     else { throw RendererError.noShaders }
     let library = try gpu.makeLibrary(URL: libraryURL)
@@ -112,49 +212,243 @@ final class MetalRenderer: @unchecked Sendable {
     pipeline = try gpu.makeRenderPipelineState(descriptor: descriptor)
     descriptor.fragmentFunction = library.makeFunction(name: "terminal_image_fragment")
     imagePipeline = try gpu.makeRenderPipelineState(descriptor: descriptor)
+    glyphResidency = GlyphResidency(device: gpu, owner: executor) {}
     font = TerminalFont.core(size: 14)
     boldFont = font
     italicFont = font
     boldItalicFont = font
     guard appendAtlasPage() != nil else { throw RendererError.noMemory }
     resetAtlas()
+    glyphResidency.setOnReady { [weak self] in self?.redisplayAfterGlyphReady() }
   }
   enum RendererError: Error { case noDevice, noShaders, noMemory }
-  func completedRevision() -> UInt64 {
-    completionLock.lock()
-    defer { completionLock.unlock() }
-    return completedSnapshotRevision
+  func attach(_ layer: CAMetalLayer) -> SurfaceLease {
+    precondition(Thread.isMainThread)
+    layer.device = device
+    layer.pixelFormat = .bgra8Unorm_srgb
+    layer.framebufferOnly = true
+    layer.colorspace = CGColorSpace(name: CGColorSpace.sRGB)
+    layer.isOpaque = true
+    layer.maximumDrawableCount = 3
+    layer.allowsNextDrawableTimeout = true
+    let lease = SurfaceLease()
+    let displayLink = SurfaceDisplayLink(rendering: self, lease: lease, layer: layer)
+    surfacesLock.lock()
+    surfaces[lease.id] = SurfaceState(lease: lease, layer: layer, displayLink: displayLink)
+    surfacesLock.unlock()
+    return lease
   }
-  private func recordCompletedRevision(_ revision: UInt64) {
-    completionLock.lock()
-    completedSnapshotRevision = max(completedSnapshotRevision, revision)
-    completionLock.unlock()
+  func detach(_ lease: SurfaceLease) {
+    precondition(Thread.isMainThread)
+    surfacesLock.lock()
+    let surface = surfaces.removeValue(forKey: lease.id)
+    readySet.remove(lease.id)
+    readySurfaces.removeAll { $0 == lease.id }
+    surfacesLock.unlock()
+    surface?.displayLink.invalidate()
+    executor.async { [weak self] in
+      self?.imageTextures = self?.imageTextures.filter { $0.key.surface != lease.id } ?? [:]
+      self?.glyphResidency.detachSurface(lease.id)
+    }
   }
-  func request(_ value: RenderRequest) {
-    lock.lock()
-    latest = value
-    if scheduled {
-      lock.unlock()
+  func surfaceStatus(_ lease: SurfaceLease?, layer: CAMetalLayer?) -> SurfaceStatus {
+    guard let layer, let lease else {
+      return SurfaceStatus(
+        attached: false, completedSnapshotRevision: 0, lastTargetTimestamp: 0,
+        lastPresentationTargetTimestamp: 0)
+    }
+    surfacesLock.lock()
+    defer { surfacesLock.unlock() }
+    let surface = surfaces[lease.id]
+    let attached = surface?.layer === layer
+    return SurfaceStatus(
+      attached: attached, completedSnapshotRevision: attached ? lease.completedRevision() : 0,
+      lastTargetTimestamp: attached ? surface?.targetTimestamp ?? 0 : 0,
+      lastPresentationTargetTimestamp: attached ? surface?.targetPresentationTimestamp ?? 0 : 0)
+  }
+  func request(_ lease: SurfaceLease, latest value: RenderRequest) {
+    var displayLinks: [SurfaceDisplayLink] = []
+    surfacesLock.lock()
+    if var surface = surfaces[lease.id] {
+      surface.latest = value
+      surface.generation &+= 1
+      surfaces[lease.id] = surface
+      if surface.pendingDrawable != nil { enqueueReadyLocked(lease.id) }
+      displayLinks = armEligibleSurfacesLocked()
+    }
+    surfacesLock.unlock()
+    displayLinks.forEach { $0.requestFrame() }
+    scheduleDrain()
+  }
+  private func beginDisplayLinkLocked(_ surface: SurfaceState) -> SurfaceDisplayLink? {
+    guard !surface.awaitingDrawable, surface.pendingDrawable == nil, !surface.rendering,
+      surface.latest != nil
+    else {
+      return nil
+    }
+    var updated = surface
+    updated.awaitingDrawable = true
+    surfaces[surface.lease.id] = updated
+    return surface.displayLink
+  }
+  private func armEligibleSurfacesLocked() -> [SurfaceDisplayLink] {
+    Array(surfaces.values).compactMap { beginDisplayLinkLocked($0) }
+  }
+  private func enqueueReadyLocked(_ id: UUID) {
+    guard readySet.insert(id).inserted else { return }
+    readySurfaces.append(id)
+  }
+  private func nextSubmissionLocked() -> Submission? {
+    guard !gpuBusy else { return nil }
+    while !readySurfaces.isEmpty {
+      let id = readySurfaces.removeFirst()
+      readySet.remove(id)
+      guard var surface = surfaces[id], !surface.rendering,
+        let request = surface.latest, let drawable = surface.pendingDrawable
+      else { continue }
+      surface.pendingDrawable = nil
+      surface.rendering = true
+      surface.lastRendered = request
+      let generation = surface.generation
+      surfaces[id] = surface
+      gpuBusy = true
+      return Submission(request: request, drawable: drawable, surface: surface.lease, generation: generation)
+    }
+    return nil
+  }
+  private func submit(_ submission: Submission?) {
+    guard let submission else { return }
+    if !draw(
+      submission.request, drawable: submission.drawable, surface: submission.surface,
+      generation: submission.generation)
+    {
+      finishedWithoutSubmission(surface: submission.surface, generation: submission.generation)
+    }
+  }
+  private func drainReady() {
+    var displayLinks: [SurfaceDisplayLink] = []
+    surfacesLock.lock()
+    drainScheduled = false
+    displayLinks = armEligibleSurfacesLocked()
+    let submission = nextSubmissionLocked()
+    surfacesLock.unlock()
+    displayLinks.forEach { $0.requestFrame() }
+    submit(submission)
+  }
+  private func scheduleDrain() {
+    surfacesLock.lock()
+    guard !drainScheduled else {
+      surfacesLock.unlock()
       return
     }
-    scheduled = true
-    lock.unlock()
-    queue.async { [self] in drain() }
+    drainScheduled = true
+    surfacesLock.unlock()
+    executor.async { [weak self] in self?.drainReady() }
   }
-  private func drain() {
-    lock.lock()
-    let value = latest
-    latest = nil
-    lock.unlock()
-    if let value { draw(value) }
-    lock.lock()
-    if latest != nil {
-      lock.unlock()
-      queue.async { [self] in drain() }
-    } else {
-      scheduled = false
-      lock.unlock()
+  // Raster completion has no surface-local ownership.  It wakes the same
+  // fair scheduler that accepts display-link drawables; a newer snapshot will
+  // therefore present the resident glyph without a worker-side UI call.
+  private func redisplayAfterGlyphReady() {
+    var displayLinks: [SurfaceDisplayLink] = []
+    surfacesLock.lock()
+    for id in surfaces.keys {
+      guard var surface = surfaces[id],
+        let previous = surface.lastRendered
+      else { continue }
+      // A result can arrive while this surface's fallback frame is in flight.
+      // Bump the demand generation even when latest is already nonnil, so that
+      // completion cannot clear the replacement request as if it were old.
+      if surface.latest == nil { surface.latest = previous }
+      surface.generation &+= 1
+      surfaces[id] = surface
     }
+    displayLinks = armEligibleSurfacesLocked()
+    surfacesLock.unlock()
+    displayLinks.forEach { $0.requestFrame() }
+    scheduleDrain()
+  }
+  // The display-link callback can arrive on the main run loop. Keep it tiny:
+  // ownership validation and Metal encoding remain serialized on executor.
+  fileprivate func received(
+    drawable: CAMetalDrawable, target: CFTimeInterval, presentationTarget: CFTimeInterval,
+    surface lease: SurfaceLease
+  ) {
+    executor.async { [weak self, lease] in
+      self?.accept(
+        drawable: drawable, target: target, presentationTarget: presentationTarget, surface: lease)
+    }
+  }
+  private func accept(
+    drawable: CAMetalDrawable, target: CFTimeInterval, presentationTarget: CFTimeInterval,
+    surface lease: SurfaceLease
+  ) {
+    var displayLinks: [SurfaceDisplayLink] = []
+    var submission: Submission?
+    surfacesLock.lock()
+    guard var surface = surfaces[lease.id] else {
+      surfacesLock.unlock()
+      return
+    }
+    // Pausing a display link does not cancel a callback already enqueued by
+    // Core Animation. Only the callback matching our outstanding demand may
+    // retain a drawable; all late/duplicate updates are released immediately.
+    guard surface.awaitingDrawable, !surface.rendering, surface.pendingDrawable == nil,
+      surface.latest != nil
+    else {
+      surfacesLock.unlock()
+      return
+    }
+    surface.awaitingDrawable = false
+    surface.targetTimestamp = target
+    surface.targetPresentationTimestamp = presentationTarget
+    // Keep at most one supplied drawable for a surface. It may wait behind a
+    // different GPU submission, but no off-display surface can block another.
+    surface.pendingDrawable = drawable
+    enqueueReadyLocked(lease.id)
+    surfaces[lease.id] = surface
+    displayLinks = armEligibleSurfacesLocked()
+    submission = nextSubmissionLocked()
+    surfacesLock.unlock()
+    displayLinks.forEach { $0.requestFrame() }
+    submit(submission)
+  }
+  private func finishedWithoutSubmission(surface lease: SurfaceLease, generation: UInt64) {
+    surfacesLock.lock()
+    if var surface = surfaces[lease.id] {
+      surface.rendering = false
+      surfaces[lease.id] = surface
+    }
+    gpuBusy = false
+    let displayLinks = armEligibleSurfacesLocked()
+    let submission = nextSubmissionLocked()
+    surfacesLock.unlock()
+    displayLinks.forEach { $0.requestFrame() }
+    submit(submission)
+  }
+  private func completed(
+    surface lease: SurfaceLease, generation: UInt64, revision: UInt64, command: MTLCommandBuffer
+  ) {
+    RendererMetrics.completed(
+      gpuMs: (command.gpuEndTime - command.gpuStartTime) * 1000, error: command.error != nil)
+    surfacesLock.lock()
+    if var surface = surfaces[lease.id] {
+      surface.rendering = false
+      if command.error == nil {
+        lease.recordCompletedRevision(revision)
+        if surface.generation == generation {
+          surface.latest = nil
+          // Defensive release if a duplicate callback raced an older build.
+          surface.pendingDrawable = nil
+        }
+      }
+      surfaces[lease.id] = surface
+    }
+    gpuBusy = false
+    let displayLinks = armEligibleSurfacesLocked()
+    let submission = nextSubmissionLocked()
+    surfacesLock.unlock()
+    displayLinks.forEach { $0.requestFrame() }
+    submit(submission)
   }
   private func resetAtlas() {
     glyphs.removeAll(keepingCapacity: true)
@@ -163,39 +457,26 @@ final class MetalRenderer: @unchecked Sendable {
     shelves = Array(repeating: 0, count: atlases.count)
     replacementGlyph = nil
     var white: [UInt8] = [255, 255, 255, 255]
-    for atlas in atlases {
-      white.withUnsafeMutableBytes {
-        atlas.replace(
-          region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!,
-          bytesPerRow: 4)
-      }
-    }
+    for atlas in atlases { white.withUnsafeMutableBytes {
+      atlas.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: 4)
+    }}
   }
   private func appendAtlasPage() -> Int? {
     guard atlases.count < atlasPages else { return nil }
-    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-      pixelFormat: .rgba8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
-    descriptor.storageMode = .shared
-    descriptor.usage = .shaderRead
-    guard let atlas = device.makeTexture(descriptor: descriptor) else { return nil }
-    atlases.append(atlas)
-    atlasX.append(4)
-    atlasY.append(0)
-    shelves.append(0)
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
+    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    guard let allocation = glyphResidency.makeLegacyTexture(descriptor) else { return nil }
+    let atlas = allocation.texture
+    atlases.append(atlas); atlasX.append(4); atlasY.append(0); shelves.append(0)
+    atlasHeaps.append(allocation.heap)
     var white: [UInt8] = [255, 255, 255, 255]
-    white.withUnsafeMutableBytes {
-      atlas.replace(
-        region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!,
-        bytesPerRow: 4)
-    }
+    white.withUnsafeMutableBytes { atlas.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: 4) }
     RendererMetrics.recordAtlasPages(atlases.count)
     return atlases.count - 1
   }
   private func resetAtlasPage(_ page: Int) {
     glyphs = glyphs.filter { $0.value.atlasPage != page }
-    atlasX[page] = 4
-    atlasY[page] = 0
-    shelves[page] = 0
+    atlasX[page] = 4; atlasY[page] = 0; shelves[page] = 0
     var white: [UInt8] = [255, 255, 255, 255]
     white.withUnsafeMutableBytes {
       atlases[page].replace(
@@ -204,42 +485,22 @@ final class MetalRenderer: @unchecked Sendable {
     }
   }
   private func reserve(_ width: Int, _ height: Int, in page: Int) -> (x: Int, y: Int)? {
-    guard width > 0, height > 0, width + 1 < atlasSize, height + 1 < atlasSize else {
-      return nil
-    }
-    if atlasX[page] + width + 1 > atlasSize {
-      atlasX[page] = 0
-      atlasY[page] += shelves[page] + 1
-      shelves[page] = 0
-    }
+    guard width > 0, height > 0, width + 1 < atlasSize, height + 1 < atlasSize else { return nil }
+    if atlasX[page] + width + 1 > atlasSize { atlasX[page] = 0; atlasY[page] += shelves[page] + 1; shelves[page] = 0 }
     guard atlasY[page] + height + 1 < atlasSize else { return nil }
-    let result = (x: atlasX[page], y: atlasY[page])
-    atlasX[page] += width + 1
-    shelves[page] = max(shelves[page], height)
+    let result = (x: atlasX[page], y: atlasY[page]); atlasX[page] += width + 1; shelves[page] = max(shelves[page], height)
     return result
   }
   private func placement(_ width: Int, _ height: Int) -> (page: Int, x: Int, y: Int)? {
-    guard width > 0, height > 0, width + 1 < atlasSize, height + 1 < atlasSize else {
-      return nil
-    }
-    for page in atlases.indices {
-      if let point = reserve(width, height, in: page) { return (page, point.x, point.y) }
-    }
-    if let page = appendAtlasPage(), let point = reserve(width, height, in: page) {
-      return (page, point.x, point.y)
-    }
-    for page in atlases.indices where !frameAtlasPages.contains(page) {
-      resetAtlasPage(page)
-      if let point = reserve(width, height, in: page) { return (page, point.x, point.y) }
-    }
+    guard width > 0, height > 0, width + 1 < atlasSize, height + 1 < atlasSize else { return nil }
+    for page in atlases.indices { if let point = reserve(width, height, in: page) { return (page, point.x, point.y) } }
+    if let page = appendAtlasPage(), let point = reserve(width, height, in: page) { return (page, point.x, point.y) }
+    for page in atlases.indices where !frameAtlasPages.contains(page) { resetAtlasPage(page); if let point = reserve(width, height, in: page) { return (page, point.x, point.y) } }
     return nil
   }
   private func glyphPixels(_ key: GlyphKey, width: Int, height: Int) -> [UInt8] {
-    let selected =
-      key.bold ? (key.italic ? boldItalicFont : boldFont) : (key.italic ? italicFont : font)
+    let selected = key.bold ? (key.italic ? boldItalicFont : boldFont) : (key.italic ? italicFont : font)
     var pixels = TerminalFont.rasterize(key.text, font: selected, width: width, height: height).pixels
-    // Convert premultiplied sRGB raster output to premultiplied linear RGBA.
-    // White mask glyphs retain coverage; emoji keep their source colors.
     for pixel in stride(from: 0, to: pixels.count, by: 4) {
       let alpha = Float(pixels[pixel + 3]) / 255
       if alpha > 0 {
@@ -256,78 +517,64 @@ final class MetalRenderer: @unchecked Sendable {
     }
     return pixels
   }
-  private func directGlyph(_ key: GlyphKey, width: Int, height: Int, limited: Bool = true) -> Glyph? {
-    guard !limited || (!directGlyphExhausted && directGlyphCount < directGlyphLimit) else {
-      return nil
+  private func glyphKind(_ pixels: [UInt8]) -> GlyphLease.Kind {
+    for offset in stride(from: 0, to: pixels.count, by: 4) {
+      let alpha = pixels[offset + 3]
+      guard alpha > 0 else { continue }
+      if pixels[offset] != alpha || pixels[offset + 1] != alpha || pixels[offset + 2] != alpha {
+        return .color
+      }
     }
-    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-      pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
-    descriptor.storageMode = .shared
-    descriptor.usage = .shaderRead
-    guard let texture = device.makeTexture(descriptor: descriptor) else {
+    return .mask
+  }
+  private func directGlyph(_ key: GlyphKey, width: Int, height: Int, limited: Bool = true) -> Glyph? {
+    guard !limited || (!directGlyphExhausted && directGlyphCount < directGlyphLimit) else { return nil }
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    guard let allocation = glyphResidency.makeLegacyTexture(descriptor) else {
       if limited { directGlyphExhausted = true }
       return nil
     }
+    let texture = allocation.texture
     let allocatedBytes = Int(texture.allocatedSize)
     guard !limited || directGlyphBytes + allocatedBytes <= directGlyphBudget else {
+      glyphResidency.releaseLegacyTexture(allocation.id)
       directGlyphExhausted = true
       return nil
     }
     let pixels = glyphPixels(key, width: width, height: height)
-    pixels.withUnsafeBytes {
-      texture.replace(
-        region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
-        withBytes: $0.baseAddress!, bytesPerRow: width * 4)
-    }
-    if limited {
-      directGlyphBytes += allocatedBytes
-      directGlyphCount += 1
-      RendererMetrics.recordExactGlyphFallback()
-    }
-    return Glyph(uv: SIMD4(0, 0, 1, 1), width: width, atlasPage: nil, texture: texture)
+    let kind = glyphKind(pixels)
+    pixels.withUnsafeBytes { texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width * 4) }
+    if limited { directGlyphBytes += allocatedBytes; directGlyphCount += 1; RendererMetrics.recordExactGlyphFallback() }
+    return Glyph(uv: SIMD4(0, 0, 1, 1), width: width, atlasPage: nil, texture: texture, kind: kind,
+                 heap: allocation.heap, legacyID: allocation.id)
   }
   private func glyph(_ key: GlyphKey, cells: Int, request: RenderRequest) -> Glyph? {
-    if let value = glyphs[key] {
-      if let page = value.atlasPage { frameAtlasPages.insert(page) }
-      return value
+    let recipe = GlyphRasterRecipe(text: key.text, width: request.cellWidth * cells,
+      height: request.cellHeight, pointSize: key.pointSize, bold: key.bold, italic: key.italic,
+      fontIdentity: key.fontIdentity, backingScale: 1)
+    if let resident = glyphResidency.resolve(recipe) {
+      return Glyph(uv: resident.uv, width: resident.width, atlasPage: nil, texture: resident.texture, kind: resident.kind,
+                   heap: nil, legacyID: nil)
     }
-    let width = request.cellWidth * cells
-    let height = request.cellHeight
-    if width + 1 >= atlasSize || height + 1 >= atlasSize {
-      RendererMetrics.recordOversizedGlyphFallback()
-    }
-    guard let placement = placement(width, height) else {
-      if let glyph = directGlyph(key, width: width, height: height) { return glyph }
-      let replacementKey = GlyphKey(text: "□", cells: 1, bold: false, italic: false)
-      if replacementGlyph == nil {
-        replacementGlyph = directGlyph(
-          replacementKey, width: request.cellWidth, height: request.cellHeight, limited: false)
-      }
-      if replacementGlyph != nil { RendererMetrics.recordSubstituteGlyphFallback() }
-      return replacementGlyph
-    }
-    let pixels = glyphPixels(key, width: width, height: height)
-    pixels.withUnsafeBytes {
-      atlases[placement.page].replace(
-        region: MTLRegionMake2D(placement.x, placement.y, width, height), mipmapLevel: 0,
-        withBytes: $0.baseAddress!, bytesPerRow: width * 4)
-    }
-    let value = Glyph(
-      uv: SIMD4(
-        Float(placement.x) / Float(atlasSize), Float(placement.y) / Float(atlasSize),
-        Float(width) / Float(atlasSize), Float(height) / Float(atlasSize)),
-      width: width, atlasPage: placement.page, texture: nil)
-    frameAtlasPages.insert(placement.page)
-    glyphs[key] = value
-    return value
+    // Raster misses never synchronously call CoreText/CoreGraphics on the
+    // render owner. The caller draws the exact-span outline until the bounded
+    // worker result reaches residency, including oversize/pressure cases.
+    return nil
   }
-  private func draw(_ request: RenderRequest) {
-    guard request.width > 0, request.height > 0 else { return }
-    inFlight.wait()
-    // Atlas writes cannot race sampling in an older command buffer. At most two
-    // frames are in flight, but glyph uploads currently drain both before mutation.
-    inFlight.wait()
-    inFlight.signal()
+  private func draw(
+    _ request: RenderRequest, drawable: CAMetalDrawable, surface: SurfaceLease, generation: UInt64
+  ) -> Bool {
+    guard request.width > 0, request.height > 0 else { return false }
+    glyphResidency.beginFrame(surface: surface.id)
+    var residencySubmitted = false
+    var frameLegacyIDs: Set<UUID> = []
+    defer {
+      if !residencySubmitted {
+        glyphResidency.abandonedPreparedFrame()
+        frameLegacyIDs.forEach { glyphResidency.releaseLegacyTexture($0) }
+      }
+    }
     if metrics != SIMD2(request.cellWidth, request.cellHeight) || fontSize != request.fontSize {
       metrics = SIMD2(request.cellWidth, request.cellHeight)
       fontSize = request.fontSize
@@ -335,13 +582,14 @@ final class MetalRenderer: @unchecked Sendable {
       boldFont = TerminalFont.core(size: fontSize, bold: true)
       italicFont = TerminalFont.core(size: fontSize, italic: true)
       boldItalicFont = TerminalFont.core(size: fontSize, bold: true, italic: true)
-      resetAtlas()
+      // Glyph keys include metrics and font identity, so a pane changing font
+      // no longer invalidates resident glyphs used by other panes.
     }
     let preparationStart = DispatchTime.now().uptimeNanoseconds
     var quads: [Quad] = []
     var backgrounds: [Quad] = []
     var glyphQuads = Array(repeating: [Quad](), count: atlases.count)
-    var directGlyphQuads: [(quad: Quad, texture: MTLTexture)] = []
+    var directGlyphQuads: [(quad: Quad, texture: MTLTexture, heap: MTLHeap?, legacyID: UUID?)] = []
     let snap = request.snapshot
     let searchRows = Dictionary(snap.search.map { ($0.row, $0) }, uniquingKeysWith: { first, _ in first })
     let palette = CellPalette(snapshot: snap)
@@ -352,11 +600,14 @@ final class MetalRenderer: @unchecked Sendable {
         Quad(rect: SIMD4(Float(x), Float(y), Float(w), Float(h)), uv: whiteUV, color: color))
     }
     func appendGlyph(_ quad: Quad, _ glyph: Glyph) {
+      var quad = quad
+      quad.material = SIMD4(glyph.kind == .mask ? 0 : 1, 0, 0, 0)
       if let page = glyph.atlasPage {
         while glyphQuads.count <= page { glyphQuads.append([]) }
         glyphQuads[page].append(quad)
       } else if let texture = glyph.texture {
-        directGlyphQuads.append((quad, texture))
+        directGlyphQuads.append((quad, texture, glyph.heap, glyph.legacyID))
+        if let id = glyph.legacyID { frameLegacyIDs.insert(id) }
       }
     }
     var needsReset = false
@@ -419,16 +670,27 @@ final class MetalRenderer: @unchecked Sendable {
                 cell.text.unicodeScalars.first.map { CharacterSet.nonBaseCharacters.contains($0) }
                   == true ? "◌" + cell.text : cell.text
               let key = GlyphKey(
-                text: displayText, cells: cells, bold: cell.style.bold, italic: cell.style.italic)
+                text: displayText, cells: cells, bold: cell.style.bold, italic: cell.style.italic,
+                width: request.cellWidth * cells, height: request.cellHeight,
+                pointSize: Int(request.fontSize.rounded()),
+                fontIdentity: CTFontCopyPostScriptName(
+                  cell.style.bold ? (cell.style.italic ? boldItalicFont : boldFont)
+                    : (cell.style.italic ? italicFont : font)) as String)
               if let glyph = glyph(key, cells: cells, request: request) {
-                let emoji = cell.text.unicodeScalars.contains { (0x1f000...0x1faff).contains($0.value) }
                 appendGlyph(
                   Quad(
                     rect: SIMD4(Float(x), Float(y), Float(glyph.width), Float(request.cellHeight)),
-                    uv: glyph.uv, color: emoji ? SIMD4(1, 1, 1, 1) : fg), glyph)
+                    uv: glyph.uv, color: glyph.kind == .color ? SIMD4(1, 1, 1, 1) : fg), glyph)
               } else {
-                needsReset = true
-                if pass == 1 { RendererMetrics.recordVisibleGlyphDrop() }
+                // Budget exhaustion must not turn terminal text into a blank
+                // cell. This outline uses the already-bound solid texel and
+                // allocates nothing, while preserving the cell span.
+                let span = request.cellWidth * cells
+                rect(x, y, span, 1, fg)
+                rect(x, y + request.cellHeight - 1, span, 1, fg)
+                rect(x, y, 1, request.cellHeight, fg)
+                rect(x + span - 1, y, 1, request.cellHeight, fg)
+                RendererMetrics.recordSubstituteGlyphFallback()
               }
             }
             if cell.style.underline > 0 {
@@ -465,7 +727,11 @@ final class MetalRenderer: @unchecked Sendable {
     }
     if !request.marked.isEmpty {
       let cells = min(20, max(1, request.marked.count))
-      let key = GlyphKey(text: request.marked, cells: cells, bold: false, italic: false)
+      let key = GlyphKey(
+        text: request.marked, cells: cells, bold: false, italic: false,
+        width: request.cellWidth * cells, height: request.cellHeight,
+        pointSize: Int(request.fontSize.rounded()),
+        fontIdentity: CTFontCopyPostScriptName(font) as String)
       if let g = glyph(key, cells: cells, request: request) {
         let x = request.inset + snap.cursor.col * request.cellWidth
         let y = request.inset + snap.cursor.row * request.cellHeight
@@ -480,7 +746,15 @@ final class MetalRenderer: @unchecked Sendable {
           x, y + request.cellHeight - 2, cells * request.cellWidth, 1,
           TerminalTheme.linear(TerminalTheme.accent))
       } else {
-        RendererMetrics.recordVisibleGlyphDrop()
+        let x = request.inset + snap.cursor.col * request.cellWidth
+        let y = request.inset + snap.cursor.row * request.cellHeight
+        let span = cells * request.cellWidth
+        let tint = TerminalTheme.linear(TerminalTheme.text)
+        rect(x, y, span, 1, tint)
+        rect(x, y + request.cellHeight - 1, span, 1, tint)
+        rect(x, y, 1, request.cellHeight, tint)
+        rect(x + span - 1, y, 1, request.cellHeight, tint)
+        RendererMetrics.recordSubstituteGlyphFallback()
       }
     }
     let overlayQuads = quads
@@ -488,8 +762,12 @@ final class MetalRenderer: @unchecked Sendable {
     let overlayDirectGlyphQuads = directGlyphQuads
     RendererMetrics.recordGlyphFallbackFrame(bytes: directGlyphBytes, count: directGlyphCount)
     let imageKeys = Set(snap.images.map { $0.key })
-    imageTextures = imageTextures.filter { imageKeys.contains($0.key) }
-    for placement in snap.images where imageTextures[placement.key] == nil {
+    imageTextures = imageTextures.filter {
+      $0.key.surface != surface.id || imageKeys.contains($0.key.image)
+    }
+    for placement in snap.images where imageTextures[
+      SurfaceImageKey(surface: surface.id, image: placement.key)
+    ] == nil {
       guard let pixels = snap.imagePixels[placement.key],
         pixels.data.count == placement.width * placement.height * 4
       else { continue }
@@ -504,14 +782,11 @@ final class MetalRenderer: @unchecked Sendable {
             region: MTLRegionMake2D(0, 0, placement.width, placement.height), mipmapLevel: 0,
             withBytes: $0.baseAddress!, bytesPerRow: placement.width * 4)
         }
-        imageTextures[placement.key] = texture
+        imageTextures[SurfaceImageKey(surface: surface.id, image: placement.key)] = texture
       }
     }
     let preparationMs = Double(DispatchTime.now().uptimeNanoseconds - preparationStart) / 1_000_000
-    guard let drawable = layer.nextDrawable(), let command = commands.makeCommandBuffer() else {
-      inFlight.signal()
-      return
-    }
+    guard let command = commands.makeCommandBuffer() else { return false }
     let drawableWidth = drawable.texture.width
     let drawableHeight = drawable.texture.height
     let matchesRequest = RendererMetrics.recordDrawable(
@@ -522,8 +797,7 @@ final class MetalRenderer: @unchecked Sendable {
     // This does not synchronize layer geometry with drawable presentation.
     guard matchesRequest else {
       RendererMetrics.recordStaleFrameDrop()
-      inFlight.signal()
-      return
+      return false
     }
     command.label = "Terminal frame \(submissions) revision \(snap.revision)"
     let descriptor = MTLRenderPassDescriptor()
@@ -534,8 +808,7 @@ final class MetalRenderer: @unchecked Sendable {
       red: Double(baseBackground.x), green: Double(baseBackground.y),
       blue: Double(baseBackground.z), alpha: 1)
     guard let encoder = command.makeRenderCommandEncoder(descriptor: descriptor) else {
-      inFlight.signal()
-      return
+      return false
     }
     encoder.setRenderPipelineState(pipeline)
     var extent = SIMD2<Float>(Float(drawableWidth), Float(drawableHeight))
@@ -561,7 +834,9 @@ final class MetalRenderer: @unchecked Sendable {
       encoder.setScissorRect(
         MTLScissorRect(x: request.inset, y: request.inset, width: clipWidth, height: clipHeight))
       for p in snap.images where accepts(p.z) {
-        guard let texture = imageTextures[p.key] else { continue }
+        guard let texture = imageTextures[SurfaceImageKey(surface: surface.id, image: p.key)] else {
+          continue
+        }
         let sourceW = Float(p.source[2])
         let sourceH = Float(p.source[3])
         let boxW = p.natural ? sourceW : Float(p.columns * request.cellWidth - p.offset[0])
@@ -601,20 +876,23 @@ final class MetalRenderer: @unchecked Sendable {
       requestWidth: request.width, requestHeight: request.height,
       drawableWidth: drawableWidth, drawableHeight: drawableHeight)
     command.present(drawable)
-    let semaphore = inFlight
-    let retainedFallbackTextures =
-      textDirectGlyphQuads.map(\.texture) + overlayDirectGlyphQuads.map(\.texture)
+    let retiredFallbackIDs = frameLegacyIDs
     let completedRevision = snap.revision
-    command.addCompletedHandler { [self, retainedFallbackTextures] command in
-      RendererMetrics.completed(
-        gpuMs: (command.gpuEndTime - command.gpuStartTime) * 1000, error: command.error != nil)
-      if command.error == nil { recordCompletedRevision(completedRevision) }
-      _ = retainedFallbackTextures
-      semaphore.signal()
+    glyphResidency.finishFrameDemand()
+    glyphResidency.submitted()
+    residencySubmitted = true
+    command.addCompletedHandler { [weak self, retiredFallbackIDs, surface] command in
+      self?.executor.async {
+        retiredFallbackIDs.forEach { self?.glyphResidency.releaseLegacyTexture($0) }
+        self?.glyphResidency.completedSubmission()
+        self?.completed(
+          surface: surface, generation: generation, revision: completedRevision, command: command)
+      }
     }
     command.commit()
     submissions += 1
     RendererMetrics.record(preparationMs: preparationMs)
+    return true
   }
 }
 

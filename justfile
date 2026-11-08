@@ -174,6 +174,7 @@ lint:
     target/native/geometry-tests
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print statistics) -o target/native/statistics-tests
     target/native/statistics-tests
+    just glyph-rendering-tests
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print preferences) -o target/native/preferences-tests
     target/native/preferences-tests
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print snapshot_bridge) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/snapshot-bridge-tests
@@ -198,6 +199,16 @@ window-stress-motion-test:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print window_stress_motion) -framework AppKit -framework Foundation -framework CoreGraphics -o target/native/window-stress-motion-tests
     target/native/window-stress-motion-tests
+
+# Headless residency/worker checks; run after build for the production Metal library.
+[group('check')]
+glyph-rendering-tests:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print glyph_raster_worker) -framework AppKit -framework CoreText -o target/native/glyph-raster-worker-tests
+    target/native/glyph-raster-worker-tests
+    xcrun swiftc -D GLYPH_RESIDENCY_TESTING $(xcrun swift tools/SwiftIncrementalBuild.swift --print glyph_residency) -framework AppKit -framework CoreText -framework Metal -o target/native/glyph-residency-tests
+    target/native/glyph-residency-tests
 
 [group('check')]
 terminal-prompt-clear-oracle:

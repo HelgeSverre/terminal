@@ -125,6 +125,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       return
     }
     pane.session.close()
+    pane.detachRenderingSurface()
     panes.removeAll { $0 === pane }
     pane.removeFromSuperview()
     if split.arrangedSubviews.count == 1, let survivor = split.arrangedSubviews.first,
@@ -150,7 +151,10 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   func windowDidResignKey(_ notification: Notification) { panes.forEach { $0.updateFocus() } }
   func windowDidDeminiaturize(_ notification: Notification) { panes.forEach { $0.refresh() } }
   func windowWillClose(_ notification: Notification) {
-    panes.forEach { $0.session.close() }
+    panes.forEach {
+      $0.session.close()
+      $0.detachRenderingSurface()
+    }
     (NSApp.delegate as? AppDelegate)?.remove(self)
   }
   func windowDidBecomeKey(_ notification: Notification) {
@@ -163,12 +167,25 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
 }
 final class AppDelegate: NSObject, NSApplicationDelegate {
   var windows: [TerminalWindow] = []
+  let rendering: TerminalRendering?
+  let renderingError: String?
   let clipboardAccess = ClipboardAccess()
   private var preferencesWindow: TerminalSettingsWindow?
   private weak var lastFocusedPane: TerminalCanvasView?
   private var terminationRequested = false
+  override init() {
+    do {
+      rendering = try TerminalRendering()
+      renderingError = nil
+    } catch {
+      rendering = nil
+      renderingError = String(describing: error)
+    }
+    super.init()
+  }
   var acceptsAutomation: Bool { !terminationRequested }
   func applicationDidFinishLaunching(_ notification: Notification) {
+    if let renderingError { NSLog("Metal initialization failed: %@", renderingError) }
     NSApp.setActivationPolicy(.regular)
     menu()
     if CommandLine.arguments.contains("--resize-smoke") {
