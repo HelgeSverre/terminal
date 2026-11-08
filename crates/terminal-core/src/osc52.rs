@@ -59,6 +59,7 @@ impl Decoder {
             State::Data | State::Finished if self.carry_len == 0 && self.accept => {
                 Outcome::Write(self.output)
             }
+            State::Undecided if self.accept => Outcome::Write(Vec::new()),
             _ => Outcome::Reject,
         }
     }
@@ -91,12 +92,20 @@ impl Decoder {
             return;
         };
         let (bytes, length) = if c == b'=' && d == b'=' {
+            if b & 0x0f != 0 {
+                self.state = State::Reject;
+                return;
+            }
             ([(a << 2) | (b >> 4), 0, 0], 1)
         } else if d == b'=' {
             let Some(c) = base64_value(c) else {
                 self.state = State::Reject;
                 return;
             };
+            if c & 0x03 != 0 {
+                self.state = State::Reject;
+                return;
+            }
             ([(a << 2) | (b >> 4), (b << 4) | (c >> 2), 0], 2)
         } else {
             let (Some(c), Some(d)) = (base64_value(c), base64_value(d)) else {

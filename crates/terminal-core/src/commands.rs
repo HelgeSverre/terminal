@@ -728,6 +728,12 @@ impl Terminal {
                     }
                 }
             }
+            "52" if value
+                .split_once(';')
+                .is_some_and(|(_, payload)| payload == "?") =>
+            {
+                self.reply(b"\x1b]52;c;\x1b\\".to_vec())
+            }
             "52" => {}
             _ => {}
         }

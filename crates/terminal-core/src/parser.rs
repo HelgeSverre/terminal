@@ -2,9 +2,6 @@
 use serde::{Deserialize, Serialize};
 
 pub const MAX_OSC: usize = 65_536;
-// OSC 52 carries base64 text. Its 1 MiB decoded limit needs at most this many
-// RFC 4648 bytes plus a small command/selection prefix. All other OSC strings
-// retain the smaller parser-level cap.
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Csi {
@@ -109,7 +106,7 @@ impl VtParser {
                 sink(Operation::Osc52Data(input[..count].to_vec()));
             }
         } else if !*discard {
-            let limit = string_limit(*kind, bytes, input);
+            let limit = string_limit(*kind);
             if bytes.len() + count > limit {
                 bytes.clear();
                 *discard = true;
@@ -394,7 +391,7 @@ impl VtParser {
                                 escape,
                             };
                         }
-                        let limit = string_limit(kind, &bytes, &[byte]);
+                        let limit = string_limit(kind);
                         if bytes.len() == limit {
                             bytes.clear();
                             discard = true;
@@ -422,14 +419,13 @@ impl VtParser {
     }
 }
 
-fn string_limit(kind: StringKind, bytes: &[u8], next: &[u8]) -> usize {
+fn string_limit(kind: StringKind) -> usize {
     if kind == StringKind::Apc {
         return 8192;
     }
     if kind != StringKind::Osc {
         return MAX_OSC;
     }
-    let _ = (bytes, next);
     MAX_OSC
 }
 
@@ -439,8 +435,7 @@ mod tests {
 
     #[test]
     fn osc52_exception_does_not_expand_other_string_kinds() {
-        let prefix = b"52;c;";
-        assert_eq!(string_limit(StringKind::Osc, &[], prefix), MAX_OSC);
-        assert_eq!(string_limit(StringKind::Unsupported, &[], prefix), MAX_OSC);
+        assert_eq!(string_limit(StringKind::Osc), MAX_OSC);
+        assert_eq!(string_limit(StringKind::Unsupported), MAX_OSC);
     }
 }

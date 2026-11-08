@@ -51,6 +51,25 @@ fn osc52_denies_reads_and_rejects_malformed_or_oversized_writes() {
 }
 
 #[test]
+fn osc52_rejects_noncanonical_padding_and_keeps_empty_writes_and_denials() {
+    for malformed in ["\x1b]52;c;YR==\x1b\\", "\x1b]52;c;YWF=\x1b\\"] {
+        let mut terminal = Terminal::new(80, 24).unwrap();
+        feed(&mut terminal, malformed.as_bytes());
+        assert!(
+            terminal.take_clipboard_requests().is_empty(),
+            "{malformed:?}"
+        );
+    }
+    let mut terminal = Terminal::new(80, 24).unwrap();
+    feed(&mut terminal, b"\x1b]52;c;\x1b\\");
+    let writes = terminal.take_clipboard_requests();
+    assert_eq!(writes.len(), 1);
+    assert!(writes[0].data.is_empty());
+    feed(&mut terminal, b"\x1b]52;p;?\x1b\\");
+    assert_eq!(terminal.take_replies(), [b"\x1b]52;c;\x1b\\".to_vec()]);
+}
+
+#[test]
 fn osc52_bounds_outstanding_requests_under_output_flood() {
     let mut terminal = Terminal::new(80, 24).unwrap();
     for _ in 0..MAX_OUTSTANDING_OSC52_REQUESTS + 8 {
