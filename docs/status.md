@@ -28,6 +28,14 @@ Implemented and locally exercised:
 - PTY launcher/status handshake, native readiness, ordered owner input/replies,
   partial writes, exit drain/reap, close escalation, write pressure limits.
 - Metal glyph atlas/instanced quads, demand-only rendering, Retina metrics.
+  Atlas pages grow lazily. Pressure uses bounded direct glyph textures, then a
+  visible replacement after the exact-glyph budget is exhausted; oversized
+  glyphs bypass atlas allocation. Per-renderer limits are implemented, while a
+  process-wide GPU budget remains work.
+- Explicitly redrawable OSC 133 prompts retain their row/column/pending-wrap
+  boundary. Width reflow clears only the marked prompt suffix before the shell
+  redraws, preserving earlier output; unmarked prompts and inactive primary
+  contents remain intact. Command–K rebases the prompt boundary.
 - AppKit text-input callbacks, selection/copy, paste, mouse/focus, local history,
   basic literal search, windows/tabs/nested splits and font size controls.
 - Minimal pane-only content with Obel Mono; geometric block and common box glyphs.
@@ -73,7 +81,8 @@ Implemented and locally exercised:
 
 Current automated evidence:
 
-- `just test`: 42 core semantic/property-style fixtures, 9 margin fixtures,
+- `just test`: 52 core semantic/property-style fixtures, 6 display-clear fixtures,
+  9 margin fixtures,
   3 keypad fixtures, 7 viewport fixtures, 7 search fixtures, 13 graphics fixtures,
   and the full official Unicode 18 break suite; strict Clippy;
   native build; ten real PTY scenarios including bash/fish/Neovim/tmux/fzf output
@@ -88,9 +97,20 @@ Current automated evidence:
   sequence, all detected markers in 536 captured candidate frames stayed 60×60;
   the scaling control distorted 61 of 536 frames. The report records scope and
   provenance in `docs/rendering-second-review.md`; this is separate from shell
-  prompt-redraw correctness.
+  prompt-redraw correctness. Astra's follow-up identified detector and live
+  mouse-tracking coverage gaps; the remaining visual report is still open.
+- `reports/atlas-budget-smoke.json`: a zero exact-fallback budget exercises visible
+  replacement glyphs without omitted glyph quads or Metal command errors. The
+  test waits for the target pane revision's GPU completion; it does not capture
+  compositor pixels. Replacement counts include repeated uses across frames.
 - `reports/core-benchmark.json`: actual five-run release headless throughput and
   one 10k-row resize measurement, including parser finish and final snapshot.
+- `reports/core-benchmark-prune.json`: three alternating baseline/candidate pairs
+  of five samples, with immutable binary/source identity. Deferred row-resource
+  maintenance and scalar width lookup improved median ASCII replay from 115.52
+  to 125.74 MiB/s and mixed replay from 14.13 to 16.47 MiB/s. These measurements
+  cover the recorded candidate, before subsequent buffer-reuse and sharing
+  corrections; they do not establish the throughput of the combined main build.
 - `reports/metal-shell.png`: observed local native shell window.
 - `reports/dmscene-kitty-hakkuh.json`: real native player, 640×400 Kitty image,
   controls, resize, successful child exit and no Metal command errors.
@@ -118,10 +138,12 @@ Current automated evidence:
 
 Required work remaining before the requested completion gate:
 
-- Resolve prompt fragments under rapid nested Starship/ZLE resize. A controlled
-  actual-Starship-init fixture reproduces them here; Ghostty and Kitty controls
-  retain one prompt/right-prompt/edit buffer. The original cause remains under
-  investigation; no speculative shell-geometry workaround is shipped.
+- Broaden rapid nested-resize validation. The marked prompt-boundary fix passes
+  focused prefix/wrap/eviction/alternate-screen regressions and the controlled
+  Starship/ZLE fixture. The latter uses a fixture-owned WINCH redraw hook; broader
+  natural shell redraw behavior and live mouse resize still need coverage.
+  Continue investigating the remaining visual stretch report with stronger
+  per-pane compositor assertions, independently of prompt reflow.
 - Resolve the host's Downloads authorization stall for Launch Services launches:
   a read/discard probe blocks in `open` without a visible permission alert, despite
   a valid ad-hoc signature and Downloads usage description. Direct launch from
@@ -140,7 +162,7 @@ Required work remaining before the requested completion gate:
   memory budgets and broader queue-race tests. Transactional paste cancellation
   with bracket closure is implemented and tested at every partial-write offset.
 - Retained row snapshot ABI/revision reuse, row/run shaping caches, asynchronous raster service,
-  ligatures, complete geometric glyph coverage, atlas pressure fallbacks, GPU recovery testing.
+  ligatures, complete geometric glyph coverage, global GPU budgets and GPU recovery testing.
 - Additional accessibility history fetching/style attributes and real VoiceOver
   validation, real CJK input methods and dead keys/layout/Option-policy testing,
   composition routing during focus/resize.
