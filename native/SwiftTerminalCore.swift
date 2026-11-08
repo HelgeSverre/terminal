@@ -108,7 +108,6 @@ private final class SwiftTerminalCore {
   private var repeatRemaining = 0
   private var charsetSpecial = [false, false]
   private var charsetSlot = 0
-  private var segmenter = SwiftUnicode.Segmenter()
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
@@ -156,7 +155,7 @@ private final class SwiftTerminalCore {
       put(charsetSpecial[charsetSlot] ? decSpecialGraphics(second) : second)
     }
   }
-  private func resetClusterBoundary() { segmenter = SwiftUnicode.Segmenter(); document.resetPrintCluster() }
+  private func resetClusterBoundary() { document.resetPrintCluster() }
   private func tick(_ now: UInt64) {
     clock = now
     if let deadline = syncDeadline, now >= deadline {
@@ -287,15 +286,10 @@ private final class SwiftTerminalCore {
     }
   }
   private func put(_ scalar: Unicode.Scalar) {
-    switch SwiftUnicode.category(of: scalar) {
-    case .control, .cr, .lf: return
-    default: break
-    }
-    let effect = document.print(
-      scalar, startsCluster: segmenter.push(scalar), usingAlternate: usingAlternate,
+    guard let effect = document.print(
+      scalar, usingAlternate: usingAlternate,
       leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
-      attributes: TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput))
-    if effect.resetSegmenter { resetClusterBoundary(); return }
+      attributes: TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)) else { return }
     if !effect.appendedHistory.isEmpty {
       for row in effect.appendedHistory { historyByteCount &+= rowStorageBytes(row) }
       if viewAnchor != nil { viewOffset += effect.appendedHistory.count }

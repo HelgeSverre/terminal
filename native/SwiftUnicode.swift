@@ -24,7 +24,10 @@ enum SwiftUnicode {
     private var linkerTail = false
 
     mutating func push(_ scalar: Unicode.Scalar) -> Bool {
-      let current = SwiftUnicode.category(of: scalar)
+      push(scalar, category: SwiftUnicode.category(of: scalar))
+    }
+
+    mutating func push(_ scalar: Unicode.Scalar, category current: Category) -> Bool {
       let boundary: Bool
       switch (previous, current) {
       case (nil, _): boundary = true

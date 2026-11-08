@@ -58,14 +58,13 @@ struct TerminalDocument {
     var appendedHistory: [TerminalRow]
     var lastPrinted: String?
     var repeatAttributes: PrintAttributes?
-    var resetSegmenter = false
   }
   private(set) var columns: Int; private(set) var rowCount: Int
   var history: [TerminalRow] = []; var primary: TerminalScreen; var alternate: TerminalScreen
   fileprivate var nextRowID: UInt64 = 1
-  // Placement state belongs beside the cells it identifies.  The parser owns
-  // grapheme-boundary detection; this owner only remembers the open cell and
-  // its retained scalar budget while applying that decision.
+  // Print/segmentation state belongs beside the cells it identifies. This
+  // keeps the scalar transaction self-contained across cursor/edit resets.
+  private var segmenter = SwiftUnicode.Segmenter()
   private var openCluster: (row: Int, column: Int)?
   private var retainedClusterScalars = 0
   private var cappedCluster = false
@@ -85,29 +84,43 @@ struct TerminalDocument {
   mutating func setSize(columns: Int, rows: Int) { self.columns = columns; rowCount = rows }
 
   mutating func resetPrintCluster() {
+    segmenter = SwiftUnicode.Segmenter()
     openCluster = nil; retainedClusterScalars = 0; cappedCluster = false
   }
 
   // This is the document's scalar-print transaction. It is intentionally a
   // terminal operation rather than a generic mutable-grid callback: callers
-  // provide parser/mode facts, while this module owns cells, continuation
-  // repair, cursor/wrap, history rows, identities and cluster retention.
-  mutating func print(_ scalar: Unicode.Scalar, startsCluster: Bool,
+  // provide parser/mode facts, while this module owns segmentation, cells,
+  // continuation repair, cursor/wrap, history rows, identities and retention.
+  mutating func print(_ scalar: Unicode.Scalar,
                       usingAlternate: Bool, leftRightMargins: Bool,
                       autoWrap: Bool, insertMode: Bool,
-                      attributes: PrintAttributes) -> PrintEffect {
+                      attributes: PrintAttributes) -> PrintEffect? {
+    let category = SwiftUnicode.category(of: scalar)
+    switch category {
+    case .control, .cr, .lf: return nil
+    default: break
+    }
+    let startsCluster = segmenter.push(scalar, category: category)
+    // An ignorable cannot start a printable cluster. Keep an existing owner
+    // only through the normal continuation path; otherwise reset all retained
+    // print state without publishing an epoch-changing effect.
+    if startsCluster && SwiftUnicode.isDefaultIgnorable(scalar) {
+      resetPrintCluster()
+      return nil
+    }
     var appended: [TerminalRow] = []
     var replacements: [Int] = []
     var effect = PrintEffect(appendedHistory: [], lastPrinted: nil, repeatAttributes: nil)
     if usingAlternate {
-      Self.print(scalar, startsCluster: startsCluster, in: &alternate, columns: columns,
+      Self.print(scalar, category: category, startsCluster: startsCluster, in: &alternate, columns: columns,
                  leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
                  attributes: attributes, history: &appended, replacementRows: &replacements,
                  retainHistory: false, openCluster: &openCluster,
                  retainedScalars: &retainedClusterScalars, capped: &cappedCluster, effect: &effect)
       Self.assignRowIDs(&alternate, at: replacements, nextRowID: &nextRowID)
     } else {
-      Self.print(scalar, startsCluster: startsCluster, in: &primary, columns: columns,
+      Self.print(scalar, category: category, startsCluster: startsCluster, in: &primary, columns: columns,
                  leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
                  attributes: attributes, history: &appended, replacementRows: &replacements,
                  retainHistory: true, openCluster: &openCluster,
@@ -129,7 +142,7 @@ struct TerminalDocument {
     }
   }
 
-  private static func print(_ scalar: Unicode.Scalar, startsCluster: Bool,
+  private static func print(_ scalar: Unicode.Scalar, category: SwiftUnicode.Category, startsCluster: Bool,
                             in screen: inout TerminalScreen, columns: Int,
                             leftRightMargins: Bool, autoWrap: Bool, insertMode: Bool,
                             attributes: PrintAttributes, history: inout [TerminalRow],
@@ -137,10 +150,6 @@ struct TerminalDocument {
                             openCluster: inout (row: Int, column: Int)?,
                             retainedScalars: inout Int, capped: inout Bool,
                             effect: inout PrintEffect) {
-    switch SwiftUnicode.category(of: scalar) {
-    case .control, .cr, .lf: return
-    default: break
-    }
     let horizontal = leftRightMargins ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
     func writeBounds(_ column: Int) -> (left: Int, right: Int) {
       return column <= horizontal.1 ? (horizontal.0, horizontal.1) : (0, columns - 1)
@@ -236,9 +245,11 @@ struct TerminalDocument {
     }
     openCluster = nil; retainedScalars = 0
     let text = String(scalar)
-    let measuredWidth = SwiftUnicode.cellWidth(of: text)
+    let measuredWidth = scalar.value < 0x80 && category == .other ? 1 : SwiftUnicode.cellWidth(of: text)
     if measuredWidth == 0 {
-      if SwiftUnicode.isDefaultIgnorable(scalar) { effect.resetSegmenter = true; return }
+      if SwiftUnicode.isDefaultIgnorable(scalar) {
+        return
+      }
       if !startsCluster, screen.cursorColumn > 0 {
         var attachment = screen.pendingWrap ? screen.cursorColumn : screen.cursorColumn - 1
         if !screen.pendingWrap, screen.rows[screen.cursorRow].cells[attachment].kind == 0, screen.cursorColumn < columns { attachment = screen.cursorColumn }

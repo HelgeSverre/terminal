@@ -8,15 +8,15 @@ import Foundation
   static let styled = TerminalDocument.PrintAttributes(
     style: TerminalStyle(foreground: 0x0201_0203, background: 0x0204_0506, flags: 1),
     link: "https://example.test/owned", protected: true)
-  static func place(_ scalar: Unicode.Scalar, starts: Bool, alternate: Bool = false, into document: inout TerminalDocument) {
-    _ = document.print(scalar, startsCluster: starts, usingAlternate: alternate,
+  static func place(_ scalar: Unicode.Scalar, alternate: Bool = false, into document: inout TerminalDocument) {
+    _ = document.print(scalar, usingAlternate: alternate,
                        leftRightMargins: false, autoWrap: true, insertMode: false,
                        attributes: styled)
   }
   static func retainedSnapshot() -> TerminalScreen {
     var document = TerminalDocument(columns: 4, rows: 2)
     let old = document.primary
-    _ = document.print("A".unicodeScalars.first!, startsCluster: true,
+    _ = document.print("A".unicodeScalars.first!,
                        usingAlternate: false, leftRightMargins: false,
                        autoWrap: true, insertMode: false,
                        attributes: TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false))
@@ -27,9 +27,9 @@ import Foundation
 
   static func populatedSnapshotsRemainImmutable() {
     var document = TerminalDocument(columns: 2, rows: 2)
-    place("a".unicodeScalars.first!, starts: true, into: &document)
+    place("a".unicodeScalars.first!, into: &document)
     let beforeCombining = document.primary
-    place("\u{301}".unicodeScalars.first!, starts: false, into: &document)
+    place("\u{301}".unicodeScalars.first!, into: &document)
     precondition(document.primary.rows[0].cells[0].text == "a\u{301}")
     precondition(beforeCombining.rows[0].cells[0].text == "a")
     precondition(beforeCombining.rows[0].cells[0].style == styled.style && beforeCombining.rows[0].cells[0].link == styled.link && beforeCombining.rows[0].cells[0].protected)
@@ -37,24 +37,25 @@ import Foundation
     // VS16 grows this glyph to two cells at the right edge and therefore
     // wraps; the retained one-cell screen must not be edited in place.
     var widthDocument = TerminalDocument(columns: 2, rows: 2)
-    _ = widthDocument.print("x".unicodeScalars.first!, startsCluster: true, usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: styled)
-    _ = widthDocument.print("\u{00a9}".unicodeScalars.first!, startsCluster: true, usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: styled)
+    _ = widthDocument.print("x".unicodeScalars.first!, usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: styled)
+    _ = widthDocument.print("\u{00a9}".unicodeScalars.first!, usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: styled)
     let beforeVS = widthDocument.primary
-    _ = widthDocument.print("\u{fe0f}".unicodeScalars.first!, startsCluster: false, usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: styled)
+    _ = widthDocument.print("\u{fe0f}".unicodeScalars.first!, usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: styled)
     precondition(SwiftUnicode.cellWidth(of: "©\u{fe0f}") == 2)
     precondition(beforeVS.rows[0].cells[1].text == "©")
     precondition(widthDocument.primary != beforeVS && widthDocument.primary.cursorRow == 1)
 
     var historyDocument = TerminalDocument(columns: 2, rows: 1)
-    place("A".unicodeScalars.first!, starts: true, into: &historyDocument)
-    place("B".unicodeScalars.first!, starts: true, into: &historyDocument)
+    place("A".unicodeScalars.first!, into: &historyDocument)
+    place("B".unicodeScalars.first!, into: &historyDocument)
     let beforeScroll = historyDocument.primary
-    place("C".unicodeScalars.first!, starts: true, into: &historyDocument)
+    place("C".unicodeScalars.first!, into: &historyDocument)
     precondition(historyDocument.history.count == 1 && historyDocument.history[0].cells[0].text == "A")
     precondition(beforeScroll.rows[0].cells[0].text == "A" && beforeScroll.rows[0].cells[1].text == "B")
 
     let beforeAlternate = historyDocument.alternate
-    place("Z".unicodeScalars.first!, starts: true, alternate: true, into: &historyDocument)
+    historyDocument.resetPrintCluster()
+    place("Z".unicodeScalars.first!, alternate: true, into: &historyDocument)
     precondition(beforeAlternate.rows[0].cells[0].text.isEmpty)
     precondition(historyDocument.alternate.rows[0].cells[0].text == "Z")
   }
@@ -67,8 +68,9 @@ import Foundation
                                         link: "https://example.test/wide", flags: 2, protected: true)
     let plain = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
     func overwrite(_ document: inout TerminalDocument, at column: Int, with scalar: Unicode.Scalar) {
+      document.resetPrintCluster()
       document.primary.cursorRow = 0; document.primary.cursorColumn = column
-      _ = document.print(scalar, startsCluster: true, usingAlternate: false,
+      _ = document.print(scalar, usingAlternate: false,
                          leftRightMargins: false, autoWrap: true, insertMode: false,
                          attributes: plain)
     }
@@ -108,10 +110,10 @@ import Foundation
     // A cluster can grow from one to two columns at an edge; replacing the
     // lead shrinks it back to one without leaving a continuation behind.
     var clusterGrowth = TerminalDocument(columns: 2, rows: 1)
-    _ = clusterGrowth.print("©".unicodeScalars.first!, startsCluster: true, usingAlternate: false,
+    _ = clusterGrowth.print("©".unicodeScalars.first!, usingAlternate: false,
                         leftRightMargins: false, autoWrap: true, insertMode: false, attributes: styled)
     let beforeGrowth = clusterGrowth.primary
-    _ = clusterGrowth.print("\u{fe0f}".unicodeScalars.first!, startsCluster: false, usingAlternate: false,
+    _ = clusterGrowth.print("\u{fe0f}".unicodeScalars.first!, usingAlternate: false,
                         leftRightMargins: false, autoWrap: true, insertMode: false, attributes: styled)
     precondition(beforeGrowth.rows[0].cells[0].kind == 1)
     precondition(clusterGrowth.primary.rows[0].cells[0].kind == 2 && clusterGrowth.primary.rows[0].cells[1].kind == 3)
@@ -127,7 +129,8 @@ import Foundation
     inserted.primary.rows[0].cells[4] = wideContinuation
     let beforeInsert = inserted.primary
     inserted.primary.cursorRow = 0; inserted.primary.cursorColumn = 1
-    _ = inserted.print("Z".unicodeScalars.first!, startsCluster: true, usingAlternate: false,
+    inserted.resetPrintCluster()
+    _ = inserted.print("Z".unicodeScalars.first!, usingAlternate: false,
                        leftRightMargins: true, autoWrap: true, insertMode: true, attributes: plain)
     precondition(inserted.primary.rows[0].cells[1].text == "Z")
     precondition(inserted.primary.rows[0].cells[4].kind == 0)
@@ -150,20 +153,55 @@ import Foundation
     precondition(beforeDelete.rows[0].cells[1] == wideLead && beforeDelete.rows[0].cells[2] == wideContinuation)
 
     var clipped = TerminalDocument(columns: 1, rows: 1)
-    _ = clipped.print("猫".unicodeScalars.first!, startsCluster: true, usingAlternate: false,
+    clipped.resetPrintCluster()
+    _ = clipped.print("猫".unicodeScalars.first!, usingAlternate: false,
                       leftRightMargins: false, autoWrap: true, insertMode: false, attributes: styled)
     precondition(clipped.primary.rows[0].cells[0].kind == 1 && clipped.primary.rows[0].cells[0].flags & 1 != 0)
     precondition(clipped.hasValidInvariants(clipped.primary))
+  }
+
+  static func documentOwnsSegmentationAndOrphans() {
+    var document = TerminalDocument(columns: 6, rows: 1)
+    // Prepend must survive through the document-owned segmenter and join the
+    // following ASCII scalar even though that scalar takes the width-one path.
+    place("\u{0600}".unicodeScalars.first!, into: &document)
+    place("A".unicodeScalars.first!, into: &document)
+    precondition(document.primary.rows[0].cells[0].text == "\u{0600}A")
+
+    document.resetPrintCluster()
+    document.primary.cursorColumn = 2
+    place("A".unicodeScalars.first!, into: &document)
+    // U+0080 is filtered before segmentation and must neither mutate cells
+    // nor split the following combining mark from A.
+    precondition(document.print("\u{0080}".unicodeScalars.first!, usingAlternate: false,
+                                leftRightMargins: false, autoWrap: true, insertMode: false,
+                                attributes: styled) == nil)
+    place("\u{301}".unicodeScalars.first!, into: &document)
+    precondition(document.primary.rows[0].cells[2].text == "A\u{301}")
+
+    // An orphan default-ignorable resets the retained owner; a subsequent
+    // mark cannot silently edit the preceding rich cell.
+    document.resetPrintCluster()
+    document.primary.cursorColumn = 4
+    place("B".unicodeScalars.first!, into: &document)
+    document.resetPrintCluster()
+    precondition(document.print("\u{fe0f}".unicodeScalars.first!, usingAlternate: false,
+                                leftRightMargins: false, autoWrap: true, insertMode: false,
+                                attributes: styled) == nil)
+    place("\u{301}".unicodeScalars.first!, into: &document)
+    precondition(document.primary.rows[0].cells[4].text == "B")
+    precondition(document.hasValidInvariants(document.primary))
   }
 
   static func main() {
     let old = retainedSnapshot()
     populatedSnapshotsRemainImmutable()
     rangeLocalWidePairRepairPreservesSnapshots()
+    documentOwnsSegmentationAndOrphans()
     // `document` has been destroyed. Retention is real value/COW retention,
     // not a borrowed mutable grid whose lifetime happens to extend this call.
     precondition(old.rows[0].cells[0].text.isEmpty)
     precondition(old.rows[0].cells[0].kind == 0)
-    print("PASS TerminalDocument ownership: snapshots, local wide-pair repair, cluster width, margin insert and clipped cells")
+    print("PASS TerminalDocument ownership: snapshots, document segmentation, local wide-pair repair, cluster width, margin insert and clipped cells")
   }
 }
