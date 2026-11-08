@@ -16,6 +16,7 @@ extension TerminalDocument {
     let oldRows = rowCount
     let oldHistoryCount = history.count
     let oldPrimary = primary
+    let oldPromptAnchor = oldPrimary.promptAnchor
     let input = history + primary.rows
     let cursorSource = oldHistoryCount + oldPrimary.cursorRow
     let savedSource = oldHistoryCount + oldPrimary.savedRow
@@ -29,6 +30,7 @@ extension TerminalDocument {
     var row = blankRow()
     var column = 0
     var mappedAnchor: UInt64?
+    var promptMap: PromptAnchor?
     var cursorMap = (row: 0, column: 0, pending: false)
     var savedMap = (row: 0, column: 0, pending: false)
 
@@ -46,6 +48,11 @@ extension TerminalDocument {
       if sourceIndex == oldHistoryCount + oldPrimary.savedRow,
          sourceColumn == oldPrimary.savedColumn {
         savedMap = (output.count, min(column, nextColumns - 1), false)
+      }
+      if let anchor = oldPromptAnchor, input[sourceIndex].id == anchor.row,
+         sourceColumn == anchor.column + (anchor.pendingWrap ? 1 : 0) {
+        promptMap = PromptAnchor(row: row.id, column: min(column, nextColumns - 1),
+                                 pendingWrap: column == nextColumns)
       }
     }
 
@@ -121,6 +128,13 @@ extension TerminalDocument {
     primary.pendingWrap = cursorMap.pending
     primary.savedRow = min(nextRows - 1, max(0, savedMap.row - start))
     primary.savedColumn = min(nextColumns - 1, savedMap.column)
+    primary.atPrompt = oldPrimary.atPrompt
+    primary.promptRedraw = oldPrimary.promptRedraw
+    primary.promptAnchor = promptMap
+    if oldPrimary.promptAnchor != nil && promptMap == nil {
+      primary.atPrompt = false
+      primary.promptRedraw = false
+    }
     return ReflowMapping(anchor: mappedAnchor, cursor: cursorMap, saved: savedMap)
   }
 }

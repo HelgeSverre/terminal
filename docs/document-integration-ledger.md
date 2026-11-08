@@ -25,6 +25,8 @@ document must replay before this area can be marked green.
 | `publication_gate_does_not_rebase_anchor_and_invalid_resize_is_atomic` | failed resize leaves document/anchor intact | green: `TerminalViewportOracleTests.publicationGateAndAtomicInvalidResize` |
 | `reflow_roundtrip_text` | rich reflow preserves logical text | green: `TerminalReflowSemanticTests` |
 | `interior_edit_preserves_wrap_chain` | edit keeps soft-wrap chain validity | red |
+| `osc133_prompt_*` reflow cases (10) | redraw=1 suffix clearing, anchor remapping, prefix/style/link and pending-wrap preservation | green: `TerminalPromptClearOracleTests` through Swift ABI |
+| `display_clear.rs` cases (6) | prompt lifecycle/rebase, unmarked preservation, alternate no-op, modes/epochs and primary-only image cleanup | green: `TerminalPromptClearOracleTests` through Swift ABI |
 
 `SwiftMarginGrid` and `SwiftReflow` are preparatory algorithms only. They may
 not be marked green until the single document representation carries cell text,

@@ -164,6 +164,13 @@ swift-core-test:
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_core) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/swift-core-tests
     target/native/swift-core-tests
 
+[group('check')]
+terminal-prompt-clear-oracle:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_prompt_clear_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-prompt-clear-oracle
+    target/native/terminal-prompt-clear-oracle
+
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
 [group('check')]
 smoke: build (_native-smoke "normal")

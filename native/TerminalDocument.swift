@@ -21,9 +21,17 @@ struct TerminalRow: Equatable {
   init(id: UInt64 = 0, revision: UInt64 = 0, cells: [TerminalCell]) { self.id = id; self.revision = revision; self.cells = cells }
   init(columns: Int) { self.init(cells: Array(repeating: TerminalCell(), count: columns)) }
 }
+struct PromptAnchor: Equatable {
+  var row: UInt64
+  var column: Int
+  var pendingWrap: Bool
+}
 struct TerminalScreen: Equatable {
   var rows: [TerminalRow]; var cursorRow = 0; var cursorColumn = 0; var pendingWrap = false
   var savedRow = 0; var savedColumn = 0; var savedOrigin = false
+  // OSC 133 prompt identity is screen-local and survives resize by row ID.
+  var atPrompt = false; var promptRedraw = false
+  var promptAnchor: PromptAnchor?
   var topMargin: Int; var bottomMargin: Int; var leftMargin: Int; var rightMargin: Int
   init(rows: [TerminalRow], columns: Int) {
     self.rows = rows; topMargin = 0; bottomMargin = max(0, rows.count - 1)
@@ -49,6 +57,31 @@ struct TerminalDocument {
     var row = blankRow(); row.cells = Array(repeating: .erased(style), count: columns); return row
   }
   mutating func setSize(columns: Int, rows: Int) { self.columns = columns; rowCount = rows }
+
+  // The text at a redrawable OSC 133 marker belongs to the shell. Before a
+  // width reflow, retain terminal output before the marker and move the cursor
+  // back to that exact boundary. A deferred-wrap marker starts on the next row.
+  mutating func clearPromptSuffix(_ screen: inout TerminalScreen, eraseStyle: TerminalStyle) -> Bool {
+    guard let anchor = screen.promptAnchor,
+          let rowIndex = screen.rows.firstIndex(where: { $0.id == anchor.row }) else {
+      screen.promptAnchor = nil; screen.promptRedraw = false; screen.atPrompt = false
+      return false
+    }
+    if !anchor.pendingWrap {
+      erase(&screen, row: rowIndex,
+            columns: min(columns, max(0, anchor.column))..<columns,
+            style: eraseStyle)
+    }
+    if rowIndex + 1 < screen.rows.count {
+      for index in (rowIndex + 1)..<screen.rows.count {
+        screen.rows[index] = eraseRow(eraseStyle)
+      }
+    }
+    screen.cursorRow = rowIndex
+    screen.cursorColumn = min(columns - 1, max(0, anchor.column))
+    screen.pendingWrap = anchor.pendingWrap
+    return true
+  }
 
   // This is the rich editing seam. The caller selects a screen; document code
   // owns pair repair and rectangular copying so command handlers do not learn

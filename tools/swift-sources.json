@@ -91,6 +91,11 @@
       "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift",
       "SwiftUnicode.swift", "SwiftInputEncoder.swift", "SwiftGraphics.swift",
       "SwiftTerminalCore.swift", "tests/TerminalReflowSemanticTests.swift"
+    ],
+    "terminal_prompt_clear_oracle": [
+      "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift",
+      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "SwiftGraphics.swift",
+      "SwiftTerminalCore.swift", "tests/TerminalPromptClearOracleTests.swift"
     ]
   }
 }

@@ -63,7 +63,6 @@ private final class SwiftTerminalCore {
   private var currentLink: String?
   private var replies = Data()
   private var title = ""
-  private var atPrompt = false
   private var applicationCursor = false
   private var applicationKeypad = false
   private var kittyKeyboardFlags: UInt32 = 0
@@ -106,8 +105,11 @@ private final class SwiftTerminalCore {
     return column <= margins.right ? margins : (0, columns - 1)
   }
   private func eraseStyle() -> SwiftStyle { pen.erased() }
-  private func changed(history: Bool = false, geometry: Bool = false) {
-    revision &+= 1; documentEpoch &+= 1; screenEpoch &+= 1
+  private func changed(history: Bool = false, geometry: Bool = false,
+                       document: Bool = true, screen: Bool = true) {
+    revision &+= 1
+    if document { documentEpoch &+= 1 }
+    if screen { screenEpoch &+= 1 }
     if history { historyEpoch &+= 1 }
     if geometry { geometryEpoch &+= 1 }
   }
@@ -419,7 +421,23 @@ private final class SwiftTerminalCore {
       guard let command = parts.first else { return }
       if command == "0" || command == "2" { title = parts.dropFirst().joined(separator: ";") }
       else if command == "8" { currentLink = parts.count > 2 ? String(parts.dropFirst(2).joined(separator: ";")) : nil }
-      else if command == "133" { atPrompt = parts.dropFirst().first == "A" }
+      else if command == "133" {
+        let marker = parts.dropFirst().first
+        var current = screen
+        switch marker {
+        case "A", "B":
+          current.atPrompt = true
+          if marker == "A" {
+            current.promptRedraw = parts.dropFirst(2).contains { $0 == "redraw=1" }
+            current.promptAnchor = PromptAnchor(row: current.rows[current.cursorRow].id,
+                                                column: current.cursorColumn,
+                                                pendingWrap: current.pendingWrap)
+          }
+        case "C", "D": current.atPrompt = false; current.promptRedraw = false; current.promptAnchor = nil
+        default: break
+        }
+        screen = current
+      }
       return
     }
     guard parser == .apc else { return }
@@ -438,6 +456,11 @@ private final class SwiftTerminalCore {
   func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool {
     guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows), nextColumns <= 1_048_576 / nextRows else { return false }
     if nextColumns == columns && nextRows == rowCount { return true }
+    if !usingAlternate && primary.promptRedraw {
+      var promptScreen = primary
+      _ = document.clearPromptSuffix(&promptScreen, eraseStyle: eraseStyle())
+      primary = promptScreen
+    }
     let oldAlternate = alternate
     let mapped = document.reflowPrimary(columns: nextColumns, rows: nextRows, anchor: viewAnchor)
     let resizedAlternate = document.resize(oldAlternate, columns: nextColumns, rows: nextRows)
@@ -479,7 +502,30 @@ private final class SwiftTerminalCore {
     if let row = history.first ?? primary.rows.first { viewAnchor = row.id; viewOffset = history.first == nil ? 0 : history.count; if !viewportWasClamped { viewportClampRevision &+= 1; viewportWasClamped = true } }
   }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); if history.count > historyLimit { history.removeFirst(history.count - historyLimit); historyEpoch &+= 1; clampViewportAfterEviction() }; _ = resolveViewportAnchor(clamp: true) }
-  func clearDisplay() -> UInt32 { if usingAlternate { return 0 }; let action: UInt32 = atPrompt ? 1 : 2; if atPrompt { var s = screen; s.rows[s.cursorRow] = SwiftRow(columns: columns); s.cursorColumn = 0; screen = s } else { history.removeAll(); primary = TerminalScreen(rows: (0..<rowCount).map { _ in document.blankRow() }, columns: columns); viewAnchor = nil; viewOffset = 0; graphics.clear(alternate: false, removeResources: true) }; changed(history: true); return action }
+  func clearDisplay() -> UInt32 {
+    guard !usingAlternate else { return 0 }
+    var current = primary
+    let action: UInt32 = current.atPrompt ? 1 : 2
+    history.removeAll()
+    viewAnchor = nil; viewOffset = 0; viewportWasClamped = false
+    if current.atPrompt {
+      let margins = (current.topMargin, current.bottomMargin, current.leftMargin, current.rightMargin)
+      current = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns)
+      current.topMargin = margins.0; current.bottomMargin = margins.1
+      current.leftMargin = margins.2; current.rightMargin = margins.3
+      current.atPrompt = true
+      current.promptRedraw = primary.promptRedraw
+      current.promptAnchor = PromptAnchor(row: current.rows[0].id, column: 0, pendingWrap: false)
+    } else {
+      let retained = Array(current.rows.dropFirst(current.cursorRow))
+      current.rows = retained + (0..<(rowCount - retained.count)).map { _ in document.eraseRow(eraseStyle()) }
+      current.cursorRow = 0
+    }
+    primary = current
+    graphics.clear(alternate: false, removeResources: true)
+    changed(history: true, document: action != 1)
+    return action
+  }
   func input(_ text: String, key: UInt32, modifiers: UInt32, event: UInt32) -> Data? {
     let modes = SwiftInputEncoder.Modes(
       applicationCursor: applicationCursor, applicationKeypad: applicationKeypad,
@@ -591,7 +637,7 @@ private final class SwiftTerminalCore {
     let cursor = screen
     let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(cell.style.foreground), "background": colorJSON(cell.style.background), "underline_color": colorJSON(cell.style.underline), "underline": Int(cell.style.underlineKind), "bold": cell.style.flags & 1 != 0, "faint": cell.style.flags & 2 != 0, "italic": cell.style.flags & 4 != 0, "inverse": cell.style.flags & 8 != 0, "conceal": cell.style.flags & 16 != 0, "strike": cell.style.flags & 32 != 0, "overline": cell.style.flags & 64 != 0, "blink": cell.style.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
     let images = graphics.visible(alternate: usingAlternate).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
-    let data: [String: Any] = ["at_prompt":atPrompt,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":usingAlternate || viewAnchor == nil,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":0],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":false,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
+    let data: [String: Any] = ["at_prompt":cursor.atPrompt,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":usingAlternate || viewAnchor == nil,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":0],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":false,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
     return (try? JSONSerialization.data(withJSONObject: data)) ?? Data("{}".utf8)
   }
   private func colorJSON(_ color: UInt32) -> Any { if color >> 24 == 1 { return ["Indexed": Int(color & 255)] }; if color >> 24 == 2 { return ["Rgb": [Int((color >> 16) & 255), Int((color >> 8) & 255), Int(color & 255)]] }; return "Default" }
