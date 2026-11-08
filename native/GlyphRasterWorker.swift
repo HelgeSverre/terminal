@@ -46,7 +46,8 @@ final class GlyphRasterWorker: @unchecked Sendable {
 
   @discardableResult
   func request(
-    _ recipe: GlyphRasterRecipe, completion: @escaping @Sendable (GlyphRasterResult?) -> Void
+    _ recipe: GlyphRasterRecipe,
+    completion: @escaping @Sendable (GlyphRasterResult?, @escaping @Sendable () -> Void) -> Void
   ) -> Bool {
     let bytes = recipe.width * recipe.height * 4
     guard recipe.width > 0, recipe.height > 0, bytes > 0 else { return false }
@@ -62,8 +63,7 @@ final class GlyphRasterWorker: @unchecked Sendable {
     queue.addOperation { [weak self] in
       autoreleasepool {
         let result = Self.rasterize(recipe)
-        self?.complete(recipe, bytes: bytes)
-        completion(result)
+        completion(result) { [weak self] in self?.complete(recipe, bytes: bytes) }
       }
     }
     return true
@@ -75,14 +75,11 @@ final class GlyphRasterWorker: @unchecked Sendable {
     lock.unlock()
   }
   private static func rasterize(_ recipe: GlyphRasterRecipe) -> GlyphRasterResult? {
-    // The PostScript face is part of the key.  Reconstructing from that
-    // immutable identity avoids accidentally rasterizing a pending request
-    // using a newly-selected pane font.
-    let fallback = TerminalFont.core(
+    // TerminalFont.core rebuilds the immutable configured face *and* its
+    // cascade. The identity remains in the recipe key; reconstructing a bare
+    // PostScript face here would drop the Symbols/fallback cascade.
+    let font = TerminalFont.core(
       size: CGFloat(recipe.pointSize), bold: recipe.bold, italic: recipe.italic)
-    let font = recipe.fontIdentity.isEmpty
-      ? fallback
-      : CTFontCreateWithName(recipe.fontIdentity as CFString, CGFloat(recipe.pointSize), nil)
     let bitmap = TerminalFont.rasterize(recipe.text, font: font, width: recipe.width, height: recipe.height)
     // CoreText's resolved runs are authoritative. Preserve RGBA whenever the
     // result is not plainly white coverage; uncertain data stays color.
@@ -95,16 +92,8 @@ final class GlyphRasterWorker: @unchecked Sendable {
         break
       }
     }
-    let line = CTLineCreateWithAttributedString(NSAttributedString(string: recipe.text, attributes: [
-      .font: font, .ligature: 0,
-    ]))
-    let glyphIDs = (CTLineGetGlyphRuns(line) as! [CTRun]).flatMap { run -> [CGGlyph] in
-      var values = [CGGlyph](repeating: 0, count: CTRunGetGlyphCount(run))
-      CTRunGetGlyphs(run, CFRange(location: 0, length: values.count), &values)
-      return values
-    }
     return GlyphRasterResult(
       recipe: recipe, pixels: bitmap.pixels, kind: mask ? .mask : .color,
-      resolvedFonts: bitmap.fonts, glyphIDs: glyphIDs)
+      resolvedFonts: bitmap.fonts, glyphIDs: bitmap.glyphIDs)
   }
 }

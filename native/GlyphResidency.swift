@@ -58,6 +58,13 @@ final class GlyphResidency: @unchecked Sendable {
   private var pages: [UUID: Page] = [:]
   private var entries: [GlyphRasterRecipe: Entry] = [:]
   private var pending: Set<GlyphRasterRecipe> = []
+  // Results wait until the next safe frame boundary: an async CPU replace
+  // must never overwrite a page sampled by the sole submitted command buffer.
+  private struct QueuedUpload {
+    let result: GlyphRasterResult
+    let release: @Sendable () -> Void
+  }
+  private var uploadQueue: [QueuedUpload] = []
   private var preparedPins: Set<UUID> = []
   private var submittedPins: Set<UUID> = []
   private var retired: [Retired] = []
@@ -80,7 +87,12 @@ final class GlyphResidency: @unchecked Sendable {
     self.onReady = onReady
   }
 
-  func beginFrame() { preparedPins.removeAll(keepingCapacity: true) }
+  func beginFrame() {
+    preparedPins.removeAll(keepingCapacity: true)
+    let uploads = uploadQueue
+    uploadQueue.removeAll(keepingCapacity: true)
+    for upload in uploads { install(upload.result); upload.release() }
+  }
 
   func setOnReady(_ callback: @escaping @Sendable () -> Void) { onReady = callback }
 
@@ -94,11 +106,11 @@ final class GlyphResidency: @unchecked Sendable {
     }
     if pending.insert(recipe).inserted {
       reservations += recipe.width * recipe.height * 4
-      let accepted = worker.request(recipe) { [weak self] result in
-        guard let self else { return }
+      let accepted = worker.request(recipe) { [weak self] result, release in
+        guard let self else { release(); return }
         // Raster completion crosses the actor boundary before touching cache
         // state or Metal. Stale/cancelled results become harmless misses.
-        self.owner.async { [weak self] in self?.accept(recipe, result: result) }
+        self.owner.async { [weak self] in self?.accept(recipe, result: result, release: release) }
       }
       if !accepted {
         pending.remove(recipe)
@@ -109,15 +121,24 @@ final class GlyphResidency: @unchecked Sendable {
   }
 
   // Must run on TerminalRendering's serial executor.
-  private func accept(_ recipe: GlyphRasterRecipe, result: GlyphRasterResult?) {
-    guard pending.remove(recipe) != nil else { return }
+  private func accept(_ recipe: GlyphRasterRecipe, result: GlyphRasterResult?, release: @escaping @Sendable () -> Void) {
+    guard pending.remove(recipe) != nil else { release(); return }
     reservations -= recipe.width * recipe.height * 4
     // A raster failure remains a miss: the visible fallback is retained and a
     // future request may retry instead of caching a blank texture.
     guard let result, !result.pixels.isEmpty, !result.glyphIDs.contains(0) else {
+      release()
       onReady()
       return
     }
+    uploadQueue.append(QueuedUpload(result: result, release: release))
+    onReady()
+  }
+
+  // Called only by beginFrame, after the preceding one-in-flight submission
+  // has completed and released its pins.
+  private func install(_ result: GlyphRasterResult) {
+    let recipe = result.recipe
     let kind: PageKind = result.kind == .mask ? .mask : .color
     guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height) else {
       onReady()
@@ -143,7 +164,6 @@ final class GlyphResidency: @unchecked Sendable {
       kind: kind == .mask ? .mask : .color, allocation: placement.page.id)
     entries[recipe] = Entry(lease: lease, page: placement.page.id, bytes: recipe.width * recipe.height,
                             lastUse: useSerial)
-    onReady()
   }
 
   func fallbackGlyph(width: Int, height: Int) -> GlyphLease? {

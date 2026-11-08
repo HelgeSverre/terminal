@@ -15,17 +15,17 @@ private final class ResultBox: @unchecked Sendable {
       fontIdentity: "Menlo-Regular", backingScale: 1)
     let result = DispatchSemaphore(value: 0)
     let completed = ResultBox()
-    precondition(worker.request(recipe) { value in completed.set(value); result.signal() })
+    precondition(worker.request(recipe) { value, release in completed.set(value); release(); result.signal() })
     // Pending raster work is deduplicated rather than spending staging budget
     // twice for the same immutable recipe.
-    precondition(!worker.request(recipe) { _ in })
+    precondition(!worker.request(recipe) { _, _ in })
     precondition(result.wait(timeout: .now() + 5) == .success)
     precondition(completed.get()?.recipe == recipe)
     precondition(completed.get()?.pixels.count == recipe.width * recipe.height * 4)
     precondition(!(completed.get()?.glyphIDs.isEmpty ?? true))
     precondition(!worker.request(GlyphRasterRecipe(
       text: "", width: 0, height: 32, pointSize: 14, bold: false, italic: false,
-      fontIdentity: "Menlo-Regular", backingScale: 1)) { _ in })
+      fontIdentity: "Menlo-Regular", backingScale: 1)) { _, _ in })
     print("PASS glyph raster worker: dedupe, completion, immutable recipe")
   }
 }

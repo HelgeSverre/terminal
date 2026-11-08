@@ -85,6 +85,7 @@ final class TerminalRendering: @unchecked Sendable {
     let layer: CAMetalLayer
     let displayLink: SurfaceDisplayLink
     var latest: RenderRequest?
+    var lastRendered: RenderRequest?
     var generation: UInt64 = 0
     var awaitingDrawable = false
     var pendingDrawable: CAMetalDrawable?
@@ -303,6 +304,7 @@ final class TerminalRendering: @unchecked Sendable {
       else { continue }
       surface.pendingDrawable = nil
       surface.rendering = true
+      surface.lastRendered = request
       let generation = surface.generation
       surfaces[id] = surface
       gpuBusy = true
@@ -342,7 +344,22 @@ final class TerminalRendering: @unchecked Sendable {
   // Raster completion has no surface-local ownership.  It wakes the same
   // fair scheduler that accepts display-link drawables; a newer snapshot will
   // therefore present the resident glyph without a worker-side UI call.
-  private func redisplayAfterGlyphReady() { scheduleDrain() }
+  private func redisplayAfterGlyphReady() {
+    var displayLinks: [SurfaceDisplayLink] = []
+    surfacesLock.lock()
+    for id in surfaces.keys {
+      guard var surface = surfaces[id], surface.latest == nil,
+        let previous = surface.lastRendered
+      else { continue }
+      surface.latest = previous
+      surface.generation &+= 1
+      surfaces[id] = surface
+    }
+    displayLinks = armEligibleSurfacesLocked()
+    surfacesLock.unlock()
+    displayLinks.forEach { $0.requestFrame() }
+    scheduleDrain()
+  }
   // The display-link callback can arrive on the main run loop. Keep it tiny:
   // ownership validation and Metal encoding remain serialized on executor.
   fileprivate func received(
