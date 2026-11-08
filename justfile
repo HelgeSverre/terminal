@@ -145,6 +145,7 @@ lint:
     just terminal-semantic-regression
     just terminal-boundary-regression
     just swift-unicode18-corpus
+    just unicode-lowercase
     just terminal-width
     just swift-input-encoder
     just osc52-protocol
@@ -260,6 +261,13 @@ terminal-width:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_width) -framework Foundation -o target/native/terminal-width-tests
     target/native/terminal-width-tests
+
+[group('check')]
+unicode-lowercase:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print unicode_lowercase) -framework Foundation -o target/native/unicode-lowercase-tests
+    target/native/unicode-lowercase-tests
 
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
 [group('check')]
