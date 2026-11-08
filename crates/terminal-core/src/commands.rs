@@ -1,3 +1,5 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
+
 use crate::{Terminal, model::*, parser::Csi};
 impl Terminal {
     pub(crate) fn control(&mut self, c: u8) {
@@ -728,8 +730,30 @@ impl Terminal {
                     }
                 }
             }
-            // OSC52 deliberately denied by default. Never touch the host clipboard here.
+            "52" => self.osc52(value),
             _ => {}
+        }
+    }
+    fn osc52(&mut self, value: &str) {
+        let Some((selection, encoded)) = value.split_once(';') else {
+            return;
+        };
+        // macOS has one general clipboard. Only the unambiguous xterm `c`
+        // selection is implemented; primary, secondary and cut buffers are
+        // deliberately not aliased to it.
+        if encoded == "?" {
+            // Reads are denied without consulting the host pasteboard.
+            self.reply(b"\x1b]52;c;\x1b\\".to_vec());
+            return;
+        }
+        if selection != "c" || encoded.len() > crate::MAX_OSC52_BYTES.div_ceil(3) * 4 {
+            return;
+        }
+        let Ok(data) = STANDARD.decode(encoded) else {
+            return;
+        };
+        if data.len() <= crate::MAX_OSC52_BYTES {
+            self.request_clipboard_write(data);
         }
     }
 }

@@ -145,6 +145,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
 }
 final class AppDelegate: NSObject, NSApplicationDelegate {
   var windows: [TerminalWindow] = []
+  let clipboardAccess = ClipboardAccess()
   private var preferencesWindow: TerminalSettingsWindow?
   private weak var lastFocusedPane: TerminalCanvasView?
   private var terminationRequested = false

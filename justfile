@@ -83,7 +83,7 @@ close-smoke: build
     xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
     xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
     xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
-    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Automation.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
+    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/ClipboardAccess.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Automation.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
     cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
     cp native/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
     /usr/bin/tic -x -o "$APP_BUNDLE/Contents/Resources/terminfo" native/Terminal.terminfo
@@ -160,6 +160,8 @@ lint:
     target/native/transport-tests
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SessionTests.swift target/native/Spawn.o target/release/libterminal_core.a -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/session-tests
     target/native/session-tests "$PWD"
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/Transport.swift native/Session.swift native/ClipboardAccess.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/ClipboardAccessTests.swift target/native/Spawn.o target/release/libterminal_core.a -framework AppKit -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/clipboard-access-tests
+    target/native/clipboard-access-tests "$PWD"
     xcrun swiftc native/Geometry.swift native/tests/GeometryTests.swift -o target/native/geometry-tests
     target/native/geometry-tests
     xcrun swiftc native/Statistics.swift native/tests/StatisticsTests.swift -o target/native/statistics-tests

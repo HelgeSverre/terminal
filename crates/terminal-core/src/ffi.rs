@@ -113,6 +113,39 @@ pub unsafe extern "C" fn terminal_replies(
     }
 }
 /// # Safety
+/// Handle is live and exclusive. Callback bytes are borrowed only for the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn terminal_take_clipboard_requests(
+    terminal: *mut Terminal,
+    context: *mut std::ffi::c_void,
+    callback: extern "C" fn(*mut std::ffi::c_void, u64, *const u8, usize),
+) {
+    if terminal.is_null() {
+        return;
+    }
+    // SAFETY: caller guarantees a live exclusive handle.
+    for request in unsafe { &mut *terminal }.take_clipboard_requests() {
+        callback(
+            context,
+            request.id,
+            request.data.as_ptr(),
+            request.data.len(),
+        );
+    }
+}
+/// # Safety
+/// Handle is live and exclusive. Completion IDs are core-owned and one-shot.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn terminal_complete_clipboard_request(
+    terminal: *mut Terminal,
+    request_id: u64,
+    allowed: bool,
+) -> bool {
+    // SAFETY: caller guarantees a live exclusive handle, when non-null.
+    unsafe { terminal.as_mut() }
+        .is_some_and(|terminal| terminal.complete_clipboard_request(request_id, allowed))
+}
+/// # Safety
 /// Handle live and exclusive; text is a valid NUL-terminated UTF-8 C string. Callback borrows bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn terminal_input(

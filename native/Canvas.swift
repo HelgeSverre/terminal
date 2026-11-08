@@ -107,6 +107,16 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       display(value)
     }
     session.onStatus = { [weak self] status in self?.onStatus?(status) }
+    session.onClipboardWrite = { [weak self] request in
+      guard let self, let delegate = NSApp.delegate as? AppDelegate else {
+        request.resolve(false) { _ in }
+        return
+      }
+      delegate.clipboardAccess.request(request, from: self.window)
+    }
+    session.onClipboardClosed = { sessionID in
+      (NSApp.delegate as? AppDelegate)?.clipboardAccess.cancel(sessionID: sessionID)
+    }
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   private func display(_ value: TerminalSnapshot) {

@@ -2,6 +2,10 @@
 use serde::{Deserialize, Serialize};
 
 pub const MAX_OSC: usize = 65_536;
+// OSC 52 carries base64 text. Its 1 MiB decoded limit needs at most this many
+// RFC 4648 bytes plus a small command/selection prefix. All other OSC strings
+// retain the smaller parser-level cap.
+const MAX_OSC52: usize = 1_398_168;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Csi {
@@ -95,11 +99,7 @@ impl VtParser {
             return 0;
         }
         if !*discard {
-            let limit = if *kind == StringKind::Apc {
-                8192
-            } else {
-                MAX_OSC
-            };
+            let limit = string_limit(*kind, bytes, input);
             if bytes.len() + count > limit {
                 bytes.clear();
                 *discard = true;
@@ -350,11 +350,7 @@ impl VtParser {
                         discard = true;
                     }
                     if !discard && byte >= 0x20 && byte != 0x7f {
-                        let limit = if kind == StringKind::Apc {
-                            8192
-                        } else {
-                            MAX_OSC
-                        };
+                        let limit = string_limit(kind, &bytes, &[byte]);
                         if bytes.len() == limit {
                             bytes.clear();
                             discard = true;
@@ -374,5 +370,22 @@ impl VtParser {
                 }
             }
         };
+    }
+}
+
+fn string_limit(kind: StringKind, bytes: &[u8], next: &[u8]) -> usize {
+    if kind == StringKind::Apc {
+        return 8192;
+    }
+    let prefix = b"52;c;";
+    let matched = bytes.len().min(prefix.len());
+    if bytes[..matched] != prefix[..matched] {
+        return MAX_OSC;
+    }
+    let needed = prefix.len() - matched;
+    if next.len() >= needed && next[..needed] == prefix[matched..] {
+        MAX_OSC52
+    } else {
+        MAX_OSC
     }
 }

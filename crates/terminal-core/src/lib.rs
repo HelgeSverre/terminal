@@ -13,7 +13,10 @@ mod unicode;
 mod viewport;
 use model::*;
 use parser::{Operation, VtParser};
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{BTreeSet, VecDeque},
+    sync::Arc,
+};
 use unicode::Segmenter;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -43,6 +46,18 @@ struct RepeatWork {
     flags: u8,
     remaining: usize,
 }
+/// A bounded, write-only OSC 52 request for the native host.
+///
+/// The terminal core owns both the ID and its outstanding lifetime. It never
+/// accesses a platform clipboard itself.
+#[derive(Debug, PartialEq, Eq)]
+pub struct ClipboardWriteRequest {
+    pub id: u64,
+    pub data: Vec<u8>,
+}
+
+pub const MAX_OSC52_BYTES: usize = 1_024 * 1_024;
+pub const MAX_OUTSTANDING_OSC52_REQUESTS: usize = 4;
 #[derive(Debug)]
 pub struct Terminal {
     pub graphics: graphics::AttachmentStore,
@@ -89,6 +104,9 @@ pub struct Terminal {
     pub default_fg: [u8; 3],
     pub default_bg: [u8; 3],
     pub rejected_rep: u64,
+    clipboard_requests: VecDeque<ClipboardWriteRequest>,
+    outstanding_clipboard_requests: BTreeSet<u64>,
+    next_clipboard_request_id: u64,
 }
 impl Terminal {
     pub fn new(cols: usize, rows: usize) -> Result<Self, Error> {
@@ -150,6 +168,9 @@ impl Terminal {
             default_fg: [230, 230, 230],
             default_bg: [10, 10, 11],
             rejected_rep: 0,
+            clipboard_requests: VecDeque::new(),
+            outstanding_clipboard_requests: BTreeSet::new(),
+            next_clipboard_request_id: 1,
         })
     }
     pub fn validate_geometry(cols: usize, rows: usize) -> Result<(), Error> {
@@ -277,6 +298,27 @@ impl Terminal {
     pub fn take_replies(&mut self) -> Vec<Vec<u8>> {
         self.reply_bytes = 0;
         self.replies.drain(..).collect()
+    }
+    /// Transfers queued clipboard writes to the host without using snapshots.
+    pub fn take_clipboard_requests(&mut self) -> Vec<ClipboardWriteRequest> {
+        self.clipboard_requests.drain(..).collect()
+    }
+    /// Completes a host request by its core-owned ID. The decision is a host
+    /// side effect only, so the core emits no success/failure reply.
+    pub fn complete_clipboard_request(&mut self, id: u64, _allowed: bool) -> bool {
+        self.outstanding_clipboard_requests.remove(&id)
+    }
+    pub(crate) fn request_clipboard_write(&mut self, data: Vec<u8>) {
+        if self.outstanding_clipboard_requests.len() >= MAX_OUTSTANDING_OSC52_REQUESTS {
+            return;
+        }
+        let id = self.next_clipboard_request_id;
+        self.next_clipboard_request_id = self.next_clipboard_request_id.wrapping_add(1);
+        if id == 0 || !self.outstanding_clipboard_requests.insert(id) {
+            return;
+        }
+        self.clipboard_requests
+            .push_back(ClipboardWriteRequest { id, data });
     }
     fn reply(&mut self, reply: impl Into<Vec<u8>>) {
         let reply = reply.into();
