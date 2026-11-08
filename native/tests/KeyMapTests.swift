@@ -72,6 +72,16 @@ private final class Capture { var data = Data() }
       context = "keypad legacy keyCode=\(code) expected=\(expected.debugDescription)"
       precondition(encode(UInt16(code), expected) == Data(expected.utf8))
     }
+    let separatorEvent = NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+      windowNumber: 0, context: nil, characters: ",", charactersIgnoringModifiers: ",",
+      isARepeat: false, keyCode: 95)!
+    guard case .encoded(let separator) = NativeKeyMap.route(separatorEvent) else {
+      fail("keypad separator must route to the terminal")
+    }
+    context = "keypad separator logical=\(separator.logical.debugDescription) legacy=\(separator.legacyText.debugDescription)"
+    precondition(separator.key == 317 && separator.text == ",")
+    precondition(separator.logical == "," && separator.legacyText == ",")
     // The keypad's current-layout symbol is protocol metadata; numeric-mode
     // legacy input must use the text AppKit committed for this press instead.
     let committedKeypadComma = Capture()
@@ -116,9 +126,9 @@ private final class Capture { var data = Data() }
       + "mapped(logical=\(mappedPunctuation.logical.debugDescription), "
       + "shifted=\(mappedPunctuation.shifted.debugDescription), base=\(mappedPunctuation.baseLayout.debugDescription), "
       + "mods=\(mappedPunctuation.modifiers))"
-    if let unshifted { precondition(mappedPunctuation.logical == unshifted) }
+    if let unshifted, !unshifted.isEmpty { precondition(mappedPunctuation.logical == unshifted) }
     else { precondition(mappedPunctuation.logical == punctuationFallback) }
-    if let shifted { precondition(mappedPunctuation.shifted == shifted) }
+    if let shifted, !shifted.isEmpty { precondition(mappedPunctuation.shifted == shifted) }
     else { precondition(mappedPunctuation.shifted == punctuationFallback) }
     precondition(mappedPunctuation.baseLayout == "1")
     precondition(mappedPunctuation.modifiers & 1 == 1)
@@ -169,7 +179,7 @@ private final class Capture { var data = Data() }
       + "logical=\(mappedCaps.logical.debugDescription) "
       + "base=\(mappedCaps.baseLayout.debugDescription) "
       + "modifiers=\(mappedCaps.modifiers)"
-    if let capsLogical { precondition(mappedCaps.logical == capsLogical) }
+    if let capsLogical, !capsLogical.isEmpty { precondition(mappedCaps.logical == capsLogical) }
     else { precondition(mappedCaps.logical == capsFallback) }
     precondition(mappedCaps.baseLayout == "'")
     precondition(mappedCaps.modifiers == 64)

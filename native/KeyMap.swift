@@ -126,13 +126,16 @@ enum NativeKeyMap {
     // replaced, while its shifted alternate is a separate value.
     let committed = text ?? event.characters ?? ""
     let unmodified = event.charactersIgnoringModifiers.flatMap { $0.isEmpty ? nil : $0 } ?? committed
-    let logical = event.characters(byApplyingModifiers: []) ?? unmodified
+    // AppKit can return an empty translation for an unmapped keypad code.
+    // Preserve its committed symbol when no translated text is available.
+    let logical = event.characters(byApplyingModifiers: []).flatMap { $0.isEmpty ? nil : $0 } ?? unmodified
     let shifted = modifiers & 1 != 0
-      ? event.characters(byApplyingModifiers: .shift) ?? unmodified : ""
+      ? event.characters(byApplyingModifiers: .shift).flatMap { $0.isEmpty ? nil : $0 } ?? unmodified : ""
     var legacyModifiers: NSEvent.ModifierFlags = []
     if modifiers & 1 != 0 { legacyModifiers.insert(.shift) }
     if modifiers & 64 != 0 { legacyModifiers.insert(.capsLock) }
-    let legacyText = event.characters(byApplyingModifiers: legacyModifiers) ?? unmodified
+    let legacyText = event.characters(byApplyingModifiers: legacyModifiers).flatMap { $0.isEmpty ? nil : $0 }
+      ?? unmodified
     return KeyEvent(
       key: key, logical: logical, text: committed, shifted: shifted,
       baseLayout: baseLayout[event.keyCode] ?? "", legacyText: legacyText, modifiers: modifiers)
