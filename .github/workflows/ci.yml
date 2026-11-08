@@ -14,6 +14,7 @@ on:
           - test
           - session-test
           - glyph-rendering-tests
+          - metal-upload-probe
 
 permissions:
   contents: read

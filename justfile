@@ -231,6 +231,12 @@ window-stress-motion-test:
     xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print window_stress_motion) -framework AppKit -framework Foundation -framework CoreGraphics -o target/native/window-stress-motion-tests
     target/native/window-stress-motion-tests
 
+[group('check')]
+metal-upload-probe:
+    mkdir -p target/native
+    xcrun swiftc -parse-as-library $(xcrun swift tools/SwiftIncrementalBuild.swift --print metal_upload_probe) -framework Metal -o target/native/metal-upload-probe
+    target/native/metal-upload-probe
+
 # Headless residency/worker checks; run after build for the production Metal library.
 [group('check')]
 glyph-rendering-tests: build _glyph-rendering-tests
