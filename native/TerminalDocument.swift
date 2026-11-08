@@ -109,17 +109,17 @@ struct TerminalDocument {
     default: break
     }
     let startsCluster = segmenter.push(scalar, category: category)
-    let screen = usingAlternate ? alternate : primary
-    let hasExtendableOwner = openCluster.map {
-      $0.row == screen.cursorRow && screen.rows.indices.contains($0.row) &&
-        screen.rows[$0.row].cells.indices.contains($0.column)
-    } ?? false
     // An ignorable may continue only a live physical owner. A cursor restore
     // can leave segmentation after B while the owner still names an old row;
     // that is an orphan even when the segmenter reports a continuation.
-    if SwiftUnicode.isDefaultIgnorable(scalar) && (startsCluster || !hasExtendableOwner) {
-      resetPrintCluster()
-      return nil
+    if SwiftUnicode.isDefaultIgnorable(scalar) {
+      let hasExtendableOwner = usingAlternate
+        ? Self.hasExtendablePrintOwner(openCluster, in: alternate)
+        : Self.hasExtendablePrintOwner(openCluster, in: primary)
+      if startsCluster || !hasExtendableOwner {
+        resetPrintCluster()
+        return nil
+      }
     }
     var appended: [TerminalRow] = []
     var replacements: [Int] = []
@@ -142,6 +142,13 @@ struct TerminalDocument {
     }
     effect.appendedHistory = appended
     return effect
+  }
+
+  private static func hasExtendablePrintOwner(_ owner: (row: Int, column: Int)?,
+                                                in screen: borrowing TerminalScreen) -> Bool {
+    guard let owner else { return false }
+    return owner.row == screen.cursorRow && screen.rows.indices.contains(owner.row) &&
+      screen.rows[owner.row].cells.indices.contains(owner.column)
   }
 
   private static func assignRowIDs(_ screen: inout TerminalScreen, at indices: [Int], nextRowID: inout UInt64) {
