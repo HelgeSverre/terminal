@@ -390,6 +390,85 @@ import Foundation
     let expectedReplies = replies(whole)
     precondition(replies(bytewise) == expectedReplies && replies(irregular) == expectedReplies)
   }
+  static func searchABI() {
+    func create(_ core: OpaquePointer, _ query: String) -> OpaquePointer? {
+      let bytes = Array(query.utf8)
+      return bytes.withUnsafeBufferPointer { terminal_search_create(core, $0.baseAddress, $0.count) }
+    }
+    func runTask(_ core: OpaquePointer, _ task: OpaquePointer) -> UInt32 {
+      for _ in 0..<10_000 {
+        switch terminal_search_fill(core, task) {
+        case 0:
+          precondition([UInt32(0), 1, 2].contains(terminal_search_step(task)))
+        case 2: return terminal_search_accept(core, task)
+        case 3, 4: return terminal_search_fill(core, task)
+        default: preconditionFailure("unexpected search status")
+        }
+      }
+      preconditionFailure("search did not finish")
+    }
+    func run(_ core: OpaquePointer, _ query: String) -> UInt32 {
+      guard let task = create(core, query) else { return UInt32.max }
+      defer { terminal_search_destroy(task) }
+      return runTask(core, task)
+    }
+
+    let soft = terminal_create(4, 3)!
+    defer { terminal_destroy(soft) }
+    feed(soft, "abcdEFGH\r\nnext")
+    precondition(run(soft, "dEf") == 5)
+    precondition((snapshot(soft)["search"] as! [[String: Int]]).count == 2)
+    precondition(run(soft, "GHnext") == 2)
+    precondition(run(soft, "GH\nnext") == 5)
+
+    let alternate = terminal_create(8, 2)!
+    defer { terminal_destroy(alternate) }
+    feed(alternate, "needle")
+    feed(alternate, "\u{1b}[?1049hALT")
+    precondition(run(alternate, "needle") == 2)
+    precondition(run(alternate, "alt") == 5)
+
+    // A task captures its final row identity at creation. Later output is not
+    // chased, while a changed matched row is still rejected by row proof.
+    let future = terminal_create(8, 2)!
+    defer { terminal_destroy(future) }
+    feed(future, "first\r\nend")
+    guard let futureTask = create(future, "future") else { preconditionFailure("future task") }
+    defer { terminal_search_destroy(futureTask) }
+    feed(future, "\r\nfuture")
+    precondition(runTask(future, futureTask) == 2)
+
+    guard let stale = create(soft, "abcd") else { preconditionFailure("search create") }
+    defer { terminal_search_destroy(stale) }
+    // Fill lends an immutable old row; overwriting that row before its worker
+    // step must be rejected by proof at owner acceptance, not mis-highlighted.
+    precondition(terminal_search_fill(soft, stale) == 0)
+    feed(soft, "\u{1b}[HX")
+    precondition([UInt32(0), 1, 2].contains(terminal_search_step(stale)))
+    precondition(runTask(soft, stale) == 3)
+
+    // RIS restarts document row IDs; the dedicated generation prevents an ABA
+    // match when a fresh terminal prints identical text into the same grid.
+    let reset = terminal_create(8, 2)!
+    defer { terminal_destroy(reset) }
+    feed(reset, "same")
+    guard let resetTask = create(reset, "same") else { preconditionFailure("reset task") }
+    defer { terminal_search_destroy(resetTask) }
+    precondition(terminal_search_fill(reset, resetTask) == 0)
+    feed(reset, "\u{1b}csame")
+    _ = terminal_search_step(resetTask)
+    precondition(runTask(reset, resetTask) == 3)
+    let tooLong = [UInt8](repeating: 120, count: 4_097)
+    precondition(tooLong.withUnsafeBufferPointer { terminal_search_create(soft, $0.baseAddress, $0.count) } == nil)
+
+    let detached = terminal_create(80, 2)!
+    feed(detached, String(repeating: "x", count: 80))
+    guard let workerOnly = create(detached, "x") else { preconditionFailure("worker task") }
+    precondition(terminal_search_fill(detached, workerOnly) == 0)
+    terminal_destroy(detached)
+    precondition([UInt32(0), 1, 2].contains(terminal_search_step(workerOnly)))
+    terminal_search_destroy(workerOnly)
+  }
   static func main() {
     nativeModifierWire()
     asciiByteAdmission()
@@ -397,6 +476,7 @@ import Foundation
     indexHistoryUsesMutatedPrimaryForViewportClamp()
     csiASCIIParsing()
     csiScratchReuseEquivalence()
+    searchABI()
     guard let core = terminal_create(8, 3) else { fatalError("create") }
     defer { terminal_destroy(core) }
     feed(core, "one\ntwo")
