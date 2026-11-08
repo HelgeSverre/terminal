@@ -45,7 +45,7 @@ import Darwin
       "pane_focus_consistent", "settings_window",
       "preedit_cancelled_on_resize", "preedit_cancelled_on_focus", "cancel_did_not_commit_preedit",
       "search_navigated_and_highlighted",
-      "command_left_begins_line", "command_right_accepts_zsh_suggestion",
+      "command_left_begins_line", "command_right_route_ready", "command_right_accepts_zsh_suggestion",
       "command_k_shortcut_registered",
       "command_k_clears_history_and_redraws_prompt",
       "modifier_keys_preserve_selection",
@@ -271,19 +271,35 @@ import Darwin
         pane.doCommand(by: NSSelectorFromString("insertNewline:"))
       }
     } else if phase == 7 && lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "SUGGEST_READY" }) {
+      measurements["suggestion_prompt_at_prompt"] = snapshot.at_prompt
+      measurements["suggestion_prompt_input_ready"] = snapshot.input_ready == true
+      measurements["suggestion_prompt_bracketed_paste"] = snapshot.modes.bracketed_paste
+      // SUGGEST_READY is printed before zsh necessarily returns to ZLE. Do not
+      // type into that gap, because an autosuggestion cannot be accepted yet.
+      guard snapshot.at_prompt && snapshot.input_ready == true && snapshot.modes.bracketed_paste else {
+        return
+      }
       phase = 8
       controller.panes.first?.insertText(
         "printf 'CMD_SUGGEST", replacementRange: NSRange(location: NSNotFound, length: 0))
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in
-        deliverCommandArrow(left: false)
-        controller.panes.first?.doCommand(by: NSSelectorFromString("insertNewline:"))
-      }
-    } else if phase == 8 && lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "CMD_SUGGEST_OK" }) {
-      checks["command_right_accepts_zsh_suggestion"] = true
+    } else if phase == 8 && suggestionCandidateVisible(in: snapshot) {
+      // The setup command is still visible in scrollback and contains this
+      // marker. Only accept it on the active input row, where zsh renders its
+      // candidate after the entered prefix.
+      measurements["suggestion_candidate_visible"] = true
       phase = 9
-    }
-    if phase == 9 && snapshot.at_prompt && snapshot.modes.bracketed_paste {
+      if let pane = controller.panes.first, commandSuggestionRouteReady(pane) {
+        deliverCommandArrow(left: false)
+        pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+      } else {
+        finish(timedOut: false)
+      }
+    } else if phase == 9 && lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "CMD_SUGGEST_OK" }) {
+      checks["command_right_accepts_zsh_suggestion"] = true
       phase = 10
+    }
+    if phase == 10 && snapshot.at_prompt && snapshot.modes.bracketed_paste {
+      phase = 11
       clearHistoryEpoch = snapshot.history_epoch
       measurements["clear_key_window"] = controller.window?.isKeyWindow == true
       measurements["clear_app_key_window"] = NSApp.keyWindow === controller.window
@@ -292,31 +308,31 @@ import Darwin
       // owns this pane, so exercise the action directly and assert the menu
       // registration separately; the two contracts remain independently testable.
       controller.panes.first?.clearScreen(nil)
-    } else if phase == 10 && snapshot.at_prompt && snapshot.modes.bracketed_paste && snapshot.history_epoch > clearHistoryEpoch
+    } else if phase == 11 && snapshot.at_prompt && snapshot.modes.bracketed_paste && snapshot.history_epoch > clearHistoryEpoch
       && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       checks["command_k_clears_history_and_redraws_prompt"] = snapshot.history_rows == 0
         && !text.contains("CMD_SUGGEST_OK") && !text.contains("SMOKE_SENTINEL")
-      phase = 11
+      phase = 12
       if let pane = controller.panes.first {
         pane.insertText(
           "printf '\\033[=8uKITTY_SELECTION_%s\\n' READY",
           replacementRange: NSRange(location: NSNotFound, length: 0))
         pane.doCommand(by: NSSelectorFromString("insertNewline:"))
       }
-    } else if phase == 11
+    } else if phase == 12
       && lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "KITTY_SELECTION_READY" })
     {
       if let pane = controller.panes.first {
         checks["modifier_keys_preserve_selection"] =
           checks["modifier_keys_preserve_selection"] == true && modifierKeysPreserveSelection(pane)
       }
-      phase = 12
+      phase = 13
       if idle {
         controller.closePane(nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [self] in measureIdle() }
       } else { DispatchQueue.main.async { [self] in finish(timedOut: false) } }
     }
-    if phase == 10 {
+    if phase == 11 {
       measurements["clear_epoch_before"] = clearHistoryEpoch
       measurements["clear_epoch_after"] = snapshot.history_epoch
       measurements["clear_at_prompt"] = snapshot.at_prompt
@@ -367,6 +383,31 @@ import Darwin
       pane.insertText("printf 'CMD_LEFT_OK\\n';", replacementRange: NSRange(location: NSNotFound, length: 0))
       pane.doCommand(by: NSSelectorFromString("insertNewline:"))
     }
+  }
+  private func commandSuggestionRouteReady(_ pane: TerminalCanvasView) -> Bool {
+    guard let window = controller.window else {
+      measurements["command_right_route_ready"] = false
+      measurements["command_right_focus_interference"] = true
+      checks["command_right_route_ready"] = false
+      return false
+    }
+    measurements["command_right_app_active"] = NSApp.isActive
+    measurements["command_right_key_window"] = window.isKeyWindow
+    measurements["command_right_app_key_window"] = NSApp.keyWindow === window
+    measurements["command_right_first_responder"] = window.firstResponder === pane
+    let focused = pane.geometryReport()["focused"] as? Bool == true
+    measurements["command_right_pane_focused"] = focused
+    let ready = NSApp.isActive && window.isKeyWindow && NSApp.keyWindow === window
+      && window.firstResponder === pane && focused
+    measurements["command_right_route_ready"] = ready
+    measurements["command_right_focus_interference"] = !ready
+    checks["command_right_route_ready"] = ready
+    return ready
+  }
+  private func suggestionCandidateVisible(in snapshot: TerminalSnapshot) -> Bool {
+    guard snapshot.rows.indices.contains(snapshot.cursor.row) else { return false }
+    let inputRow = snapshot.rows[snapshot.cursor.row].cells.map(\.text).joined()
+    return inputRow.contains("CMD_SUGGEST_OK")
   }
   private func hasClearScreenShortcut() -> Bool {
     func containsShortcut(in menu: NSMenu) -> Bool {
