@@ -216,6 +216,11 @@ benchmark-core:
 @benchmark-apps rust_app swift_app output="reports/app-comparison":
     ruby tools/compare_terminal_apps.rb "$3" "$1" "$2"
 
+# Compare frozen Swift row behavior with baseline-derived byte-budget thresholds.
+[group('check')]
+@compare-swift-rows baseline candidate output:
+    ruby tools/compare_swift_rows.rb "$1" "$2" "$3"
+
 # Profile one supplied app through the fixed visible PTY workload and owned sample process.
 [group('bench')]
 @profile-app app output workload="all":
