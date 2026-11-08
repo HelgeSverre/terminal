@@ -1,0 +1,30 @@
+{
+  "passed": true,
+  "unknown_selection_rejected": true,
+  "apps": [
+    {
+      "workload": "ascii_short_lines",
+      "pid": 25794,
+      "natural_exit": true,
+      "exit_status": 0
+    },
+    {
+      "workload": "ascii_long_lines",
+      "pid": 25897,
+      "natural_exit": true,
+      "exit_status": 0
+    },
+    {
+      "workload": "ansi_truecolor",
+      "pid": 25997,
+      "natural_exit": true,
+      "exit_status": 0
+    },
+    {
+      "workload": "unicode",
+      "pid": 26141,
+      "natural_exit": true,
+      "exit_status": 0
+    }
+  ]
+}

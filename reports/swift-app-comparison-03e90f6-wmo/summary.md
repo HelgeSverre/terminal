@@ -30,6 +30,37 @@ this summary. The archive also preserves the exact input manifest. The frozen
 bundle is preserved outside the repository with executable hash
 `6f87c90fad680584905efe3fe79aeb4a51cd69365be56883132ce4c8724e1f95`.
 
+## Diagnostic profiles and selected workloads
+
+Two independent owned profiles of the frozen 03e bundle passed. In both, the
+app and sampler exited naturally with no children. Their driver wall and CPU
+fields are diagnostic-only because sampling perturbs the run.
+
+The first, 64 MiB all-workload profile recorded 3,805 owner-queue samples in
+the initial ASCII workload: `feed` had 1,708 inclusive samples, `flush` 1,289,
+and `lineFeed` 913. The 512 MiB Unicode-only profile recorded 3,803 owner-queue
+samples: `feed` had 1,645 inclusive samples, `flush` 1,304, and `lineFeed`
+892 plus 400 branch samples. Parent and child samples are inclusive and must
+not be added together.
+
+Both raw samples show `TerminalCanvasView.display(_:)` entering
+`AccessibilityProjection.init(snapshot:limit:)`, with row snapshot copying,
+`CellStyle` initialization/destruction, and retain/release work below it. That
+is the next measured hotspot; the profiles do not by themselves establish a
+throughput change. `profile-evidence.tar.gz` retains each profile's raw sample,
+launcher logs, driver output, and lifecycle proof without changing the sealed
+comparison archive.
+
+[profile/profile.json](profile/profile.json) and
+[profile-unicode/profile.json](profile-unicode/profile.json) record each
+contract, app and driver hashes, raw-sample hash, and clean lifecycle.
+
+The selected-workload fixture separately exercised every named workload with
+exact JSON selection and a natural app exit; an unknown selection was rejected.
+Its [verification](../selected-workload-verification/verification.json), four
+small reports, and [source/driver provenance](../selected-workload-verification/provenance.json)
+are correctness checks, not results comparable to the 2 MiB pilot.
+
 This is a short local pilot under ordinary desktop activity. It measures source
 output/backpressure and ordered parser barriers, not display latency, search,
 or retained-history throughput.

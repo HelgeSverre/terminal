@@ -1,0 +1,19 @@
+{
+  "source_commit": "edbaf7ae0f2a03eb1a9af628a156b18c3c7b6bd4",
+  "driver_version": "0.3.0",
+  "driver_source_sha256": "8b2e74d6a02e3b7301d563e67687d7d84aaf7bddf0adf96a17760715b3ac8ce9",
+  "profile_runner_sha256": "9e4d83c1bb5344620aea77baf7c6b9b422e2914c8ee0662bfd9ba73a28609394",
+  "frozen_app_executable_sha256": "6f87c90fad680584905efe3fe79aeb4a51cd69365be56883132ce4c8724e1f95",
+  "checks": {
+    "strict_c_build": true,
+    "cpu_clock_regression": true,
+    "profile_runner_cleanup_tests": {
+      "runs": 2,
+      "assertions": 17,
+      "passed": true
+    },
+    "four_named_selections": true,
+    "unknown_selection_rejected": true
+  },
+  "scope": "Selected-workload fixtures verify selection and process lifecycle. Their 64 KiB, one-sample reports are not throughput comparisons."
+}
