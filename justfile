@@ -87,6 +87,7 @@ close-smoke: build
     cp "$ROOT_DIR/target/$OUTPUT_DIRECTORY/Terminal" "$APP_BUNDLE/Contents/MacOS/Terminal"
     cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
     cp native/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
+    /usr/bin/tic -x -o "$APP_BUNDLE/Contents/Resources/terminfo" native/Terminal.terminfo
     cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
     ditto native/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
     ditto assets/fonts "$APP_BUNDLE/Contents/Resources/Fonts"
@@ -431,6 +432,8 @@ logs:
 [group('check')]
 verify: build
     plutil -lint dist/Terminal.app/Contents/Info.plist
+    /usr/bin/infocmp -x -A dist/Terminal.app/Contents/Resources/terminfo helge-terminal >/dev/null
+    TERMINFO="$PWD/dist/Terminal.app/Contents/Resources/terminfo" /usr/bin/tput -T helge-terminal colors | grep -qx 256
     codesign --verify --strict --deep dist/Terminal.app
 
 # Build a Developer ID signed application, ZIP and PKG installer
