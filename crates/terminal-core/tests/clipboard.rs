@@ -21,8 +21,8 @@ fn osc52_is_bounded_write_only_and_correlated() {
     let requests = terminal.take_clipboard_requests();
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].data, b"private fixture");
-    assert!(terminal.complete_clipboard_request(requests[0].id, true));
-    assert!(!terminal.complete_clipboard_request(requests[0].id, false));
+    assert!(terminal.complete_clipboard_request(requests[0].id));
+    assert!(!terminal.complete_clipboard_request(requests[0].id));
     assert!(terminal.take_replies().is_empty());
 }
 
@@ -53,6 +53,6 @@ fn osc52_bounds_outstanding_requests_under_output_flood() {
     let requests = terminal.take_clipboard_requests();
     assert_eq!(requests.len(), MAX_OUTSTANDING_OSC52_REQUESTS);
     for request in requests {
-        assert!(terminal.complete_clipboard_request(request.id, false));
+        assert!(terminal.complete_clipboard_request(request.id));
     }
 }

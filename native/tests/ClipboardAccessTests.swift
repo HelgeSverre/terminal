@@ -7,7 +7,7 @@ import Foundation
   var completions: [Bool] = []
   func request(data: Data = Data("fixture".utf8)) -> ClipboardWriteRequest {
     ClipboardWriteRequest(
-      requestID: UInt64(completions.count + 1), sessionID: sessionID, data: data,
+      sessionID: sessionID, data: data,
       live: { [weak self] in self?.live == true },
       complete: { [weak self] allowed, completion in
         self?.completions.append(allowed)
@@ -120,7 +120,8 @@ import Foundation
       completion(.allow)
       return nil
     }
-    let writer = Session(launch: spec("printf '\\033]52;c;cHR5IGZpeHR1cmU=\\007WRITE_READY'; sleep 1"))
+    let writer = Session(launch: spec(
+      "stty raw -echo; printf '\\033]52;c;cHR5IGZpeHR1cmU=\\007WRITE_READY'; exec /bin/cat >/dev/null"))
     writer.onClipboardWrite = { request in orderedAccess.request(request, from: nil) }
     let writeDeadline = Date().addingTimeInterval(3)
     while orderedPasteboard.data(forType: .string) != Data("pty fixture".utf8) && Date() < writeDeadline {
@@ -139,9 +140,16 @@ import Foundation
       closedDecision = completion
       return nil
     }
-    let closed = Session(launch: spec("printf '\\033]52;c;Y2xvc2VkIGZpeHR1cmU=\\007'"))
+    // Keep the child alive until the request has reached the permission owner.
+    // EOF can otherwise win the race and correctly suppress the request before
+    // this test has installed an outstanding decision to cancel.
+    let closed = Session(launch: spec(
+      #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; print "\e]52;c;Y2xvc2VkIGZpeHR1cmU=\a"; STDIN.read(1)'"#))
     var eofCancelled = false
-    closed.onClipboardWrite = { request in closedAccess.request(request, from: nil) }
+    closed.onClipboardWrite = { [weak closed] request in
+      closedAccess.request(request, from: nil)
+      closed?.rawInput(Data([0x78]))
+    }
     closed.setClipboardClosedHandler { sessionID in
       eofCancelled = true
       closedAccess.cancel(sessionID: sessionID)
@@ -182,6 +190,19 @@ import Foundation
     }
     reader.close()
     precondition(readDenied && !queryRequestedHostClipboard)
+    let sessions = [writer, closed, interleaved, reader]
+    sessions.forEach { $0.close() }
+    var unreaped = Set(sessions.indices)
+    let reapDeadline = Date().addingTimeInterval(3)
+    while !unreaped.isEmpty && Date() < reapDeadline {
+      for index in unreaped {
+        sessions[index].statistics { values in
+          if values["child_reaped"] as? Bool == true { unreaped.remove(index) }
+        }
+      }
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    precondition(unreaped.isEmpty, "all disposable clipboard PTY children must be reaped")
     print("PASS clipboard: private pasteboard allow/deny/stale/closed/bounds and real PTY OSC 52 read denial")
   }
 }

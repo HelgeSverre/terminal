@@ -29,7 +29,7 @@ void terminal_replies(Terminal *,void *,void (*)(void *,const uint8_t *,size_t))
 /* Clipboard writes are independent of coalesced snapshots. Bytes are borrowed
  * for the callback. Completion is correlated and is a one-shot. */
 void terminal_take_clipboard_requests(Terminal *,void *,void (*)(void *,uint64_t,const uint8_t *,size_t));
-bool terminal_complete_clipboard_request(Terminal *,uint64_t,bool);
+bool terminal_complete_clipboard_request(Terminal *,uint64_t);
 bool terminal_input(Terminal *,const char *,uint32_t,uint32_t,uint32_t,void *,void (*)(void *,const uint8_t *,size_t));
 typedef struct SearchTask TerminalSearch;
 /* Exclusive task ownership migrates owner -> worker -> owner. No terminal

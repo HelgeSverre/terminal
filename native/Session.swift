@@ -150,18 +150,16 @@ struct LaunchSpec {
   }
 }
 final class ClipboardWriteRequest {
-  let requestID: UInt64
   let sessionID: UUID
   let data: Data
   private let complete: (Bool, @escaping @MainActor (Bool) -> Void) -> Void
   private let live: () -> Bool
   private var resolved = false
   init(
-    requestID: UInt64, sessionID: UUID, data: Data,
+    sessionID: UUID, data: Data,
     live: @escaping () -> Bool,
     complete: @escaping (Bool, @escaping @MainActor (Bool) -> Void) -> Void
   ) {
-    self.requestID = requestID
     self.sessionID = sessionID
     self.data = data
     self.live = live
@@ -238,7 +236,7 @@ final class Session: @unchecked Sendable {
   var onStatus: (@MainActor (String) -> Void)?
   var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
   private var onClipboardClosed: (@MainActor (UUID) -> Void)?
-  let clipboardSessionID = UUID()
+  private let clipboardSessionID = UUID()
   init(launch: LaunchSpec? = nil) {
     launchSpec = launch
     queue.async { [self] in start() }
@@ -561,7 +559,7 @@ final class Session: @unchecked Sendable {
       let delay = Double(DispatchTime.now().uptimeNanoseconds - accepted) / 1_000_000
       DispatchQueue.main.async { completion(delay) }
     case .clipboardDecision(let requestID, let allowed, let completion):
-      let accepted = acceptingClipboardRequests && terminal_complete_clipboard_request(core, requestID, allowed)
+      let accepted = acceptingClipboardRequests && terminal_complete_clipboard_request(core, requestID)
       DispatchQueue.main.async { completion(accepted && allowed) }
     case .eof:
       parserEnded = true
@@ -673,7 +671,7 @@ final class Session: @unchecked Sendable {
       let owner = Unmanaged<Session>.fromOpaque(context).takeUnretainedValue()
       let data = Data(bytes: bytes, count: count)
       let request = ClipboardWriteRequest(
-        requestID: requestID, sessionID: owner.clipboardSessionID, data: data,
+        sessionID: owner.clipboardSessionID, data: data,
         live: { [weak owner] in owner?.acceptingClipboardRequests == true },
         complete: { [weak owner] allowed, completion in
           guard let owner else {

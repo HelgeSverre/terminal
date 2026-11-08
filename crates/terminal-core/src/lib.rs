@@ -303,9 +303,9 @@ impl Terminal {
     pub fn take_clipboard_requests(&mut self) -> Vec<ClipboardWriteRequest> {
         self.clipboard_requests.drain(..).collect()
     }
-    /// Completes a host request by its core-owned ID. The decision is a host
-    /// side effect only, so the core emits no success/failure reply.
-    pub fn complete_clipboard_request(&mut self, id: u64, _allowed: bool) -> bool {
+    /// Completes a host request by its core-owned ID. Permission policy and
+    /// clipboard side effects belong to the host; the core emits no reply.
+    pub fn complete_clipboard_request(&mut self, id: u64) -> bool {
         self.outstanding_clipboard_requests.remove(&id)
     }
     pub(crate) fn request_clipboard_write(&mut self, data: Vec<u8>) {

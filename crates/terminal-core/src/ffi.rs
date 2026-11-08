@@ -139,11 +139,10 @@ pub unsafe extern "C" fn terminal_take_clipboard_requests(
 pub unsafe extern "C" fn terminal_complete_clipboard_request(
     terminal: *mut Terminal,
     request_id: u64,
-    allowed: bool,
 ) -> bool {
     // SAFETY: caller guarantees a live exclusive handle, when non-null.
     unsafe { terminal.as_mut() }
-        .is_some_and(|terminal| terminal.complete_clipboard_request(request_id, allowed))
+        .is_some_and(|terminal| terminal.complete_clipboard_request(request_id))
 }
 /// # Safety
 /// Handle live and exclusive; text is a valid NUL-terminated UTF-8 C string. Callback borrows bytes.
