@@ -317,9 +317,11 @@ struct PromptAnchor: Equatable {
 }
 struct TerminalHistory: RandomAccessCollection, Equatable {
   private struct Entry: Equatable { let row: TerminalRow; let chargedBytes: UInt64 }
+  private static let maximumRetiredRowBytes: UInt64 = 256 * 1024
   private var entries: [Entry?] = []
   private var head = 0
-  // One genuinely evicted row may supply the next document replacement.
+  // One genuinely evicted row of at most 256 KiB charged storage may supply
+  // the next document replacement. Large text/link payloads are not cached.
   // It is outside the retained history/accounting contract, holds no queue
   // alias after transfer, and still obeys row COW when a snapshot retains it.
   private var retiredRow: TerminalRow?
@@ -345,7 +347,8 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
       total &-= entries[head + remove]!.chargedBytes; remove += 1
     }
     if remove > 0 {
-      retiredRow = entries[head + remove - 1]!.row
+      let last = entries[head + remove - 1]!
+      retiredRow = last.chargedBytes <= Self.maximumRetiredRowBytes ? last.row : nil
       for index in head..<(head + remove) { entries[index] = nil }; head += remove; byteCount = total
       if head == entries.count { entries.removeAll(); head = 0 }
       else if head >= count && head >= 256 { entries.removeFirst(head); head = 0 }

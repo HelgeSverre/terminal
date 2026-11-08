@@ -672,6 +672,27 @@ import Foundation
       precondition(steady.trimHistory(rowLimit: 0, byteLimit: 0) == 1)
     }
     precondition(owners.count == 2)
+
+    // Row count alone is not a memory bound: distinct OSC 8 links can make
+    // even a narrow row expensive. Its cached history charge must reject it
+    // without keeping the row or scanning its cells again during eviction.
+    var oversized = TerminalHistory()
+    func appendLinkedRow(to history: inout TerminalHistory) -> WeakStorage {
+      var row = TerminalRow(columns: 64)
+      for column in 0..<64 {
+        let suffix = String(column)
+        let link = String(repeating: "x", count: 8192 - suffix.utf8.count) + suffix
+        row.setCell(TerminalCell(text: "x", kind: 1, link: link), at: column)
+      }
+      precondition(row.retainedStorageCost > 256 * 1024)
+      let reference = WeakStorage(storage(row))
+      history.append(row)
+      return reference
+    }
+    let oversizedStorage = appendLinkedRow(to: &oversized)
+    precondition(oversizedStorage.value != nil)
+    precondition(oversized.trim(rows: 0, bytes: 0) == 1 && oversized.byteCount == 0)
+    precondition(oversizedStorage.value == nil)
   }
 
   static func historyOwnerChargesAndTrimsOnce() {
