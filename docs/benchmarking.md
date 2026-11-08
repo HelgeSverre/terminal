@@ -70,6 +70,12 @@ the report then records `resource_usage_available: false` and null resource valu
 No CPU/memory comparison should be made from missing counters.
 Footprints are sampled at run ends and during
 idle; they are **not peak memory**. A three-second idle pilot is also included.
+Driver 0.2.0 converts CPU counters from Mach ticks with `mach_timebase_info`.
+Earlier schema-1 reports treated ticks as nanoseconds, understating CPU time
+and idle CPU percentage by about 41.7× on this Mac. Do not quote those older
+CPU fields; their throughput, RTT and footprint measurements are unaffected.
+The conversion follows [XNU's task accounting](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/kern/task.c#L6391)
+and is checked against the independent process CPU clock in `just test`.
 Protocol RTT is a hundred DSR queries after the workloads. It is not keyboard
 latency or input-to-photon latency. A DSR reply can precede GPU presentation.
 
@@ -139,3 +145,34 @@ Earlier evidence is retained in the [range-local printing probe](../reports/swif
 and `reports/emulator-comparison-ef3b625-b5a9fea/`. Each has its own source,
 corpus and measurement contract; use its accompanying limitations when quoting
 numbers instead of combining separate runs into a single speedup claim.
+
+## Swift replacement target
+
+Swift must reach at least **90% of Rust's median throughput on each** shared
+app workload: short ASCII, long ASCII, ANSI truecolor and Unicode. Do not
+average the workloads together to hide a failing case. Correctness, snapshot
+ownership and clean process shutdown must pass alongside performance.
+
+Run a quick app-level diagnostic from the main worktree with:
+
+```sh
+just benchmark-apps /absolute/path/to/Rust.app /absolute/path/to/Swift.app reports/new-comparison
+```
+
+The runner compiles one shared driver and launches owned app instances
+sequentially. It checks their grid, corpus, sample counts and report ownership,
+then requires natural app exit and reaped children. Exceptions and interrupts
+clean up only owned processes. `comparison.json` records the 90% performance
+gate separately from successful measurement. The default 2 MiB × three-sample
+run is a diagnostic pilot.
+
+Before accepting a replacement, use 16 MiB × ten samples per workload and
+repeat independent trials with alternating app order, fixed visibility and
+the same hardware/power conditions. Preserve every result, source/binary
+hashes and background activity; an isolated short passing pilot is insufficient.
+The shared replay/semantic gates must also remain green. Full-app throughput
+and headless engine measurements stay separate.
+
+The [snapshot optimization report](../reports/swift-app-comparison-ca252d0/summary.md)
+records a measured 3.7–3.9× app improvement after removing the full-grid JSON
+round trip. Its four Swift/Rust ratios remain below the replacement target.

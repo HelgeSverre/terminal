@@ -1,0 +1,40 @@
+{
+  "swift_before_source": "fb900611cebb97efabfb6dc205827e44d28fe2b5",
+  "swift_after_source": "ca252d03d7ca269c92c6f45fe45ba228d434805d",
+  "rust_app_source_at_build": "05f1ba2f3b6d706806b5275e2a40641aaf25f27f",
+  "scope": "Short sequential visible-app PTY pilots; no promotion or 90 percent acceptance claim",
+  "verification": {
+    "full_swift_suite_before_snapshot_change": true,
+    "focused_snapshot_core_semantic_boundary_after_change": true,
+    "native_smoke_after_change": true
+  },
+  "measurements": {
+    "swift-app-comparison-fb90061": {
+      "driver_sha256": "0a739a18d3928ef0fef20041e7c91c52ba05cb9f129b9ce1bf7c7c47fd779cfb",
+      "executables": {
+        "rust": "c88793ef2a309a973ad26536b0f3f450b2134e15ce1469a831ef9af2034c5808",
+        "swift": "a4509303feb5433d6c9f414a22cedfd087447cf304b23e191149ea36040ae461"
+      },
+      "all_processes_exited": true
+    },
+    "swift-app-comparison-ca252d0": {
+      "driver_sha256": "0a739a18d3928ef0fef20041e7c91c52ba05cb9f129b9ce1bf7c7c47fd779cfb",
+      "executables": {
+        "rust": "c88793ef2a309a973ad26536b0f3f450b2134e15ce1469a831ef9af2034c5808",
+        "swift": "a73a92b9043d856317a381244447ae57ec4afbf5836b6d5b5db599ec3ea80066"
+      },
+      "all_processes_exited": true
+    }
+  },
+  "source_checkpoint_tag": "swift-experiment-20261108-ca252d0",
+  "environment_recorded_after_pilots": {
+    "observed_at_utc": "2026-11-08T12:56:06Z",
+    "hardware": [
+      "Mac14,6",
+      "Apple M2 Max",
+      "34359738368"
+    ],
+    "os": "ProductName:\t\tmacOS\nProductVersion:\t\t15.6\nBuildVersion:\t\t24G84\n"
+  },
+  "frozen_bundle_archive": "/Users/helge/.codex/artifacts/terminal-swift-app-comparison-20261108"
+}
