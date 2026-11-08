@@ -2,6 +2,21 @@ import AppKit
 import ApplicationServices
 
 enum Failure: Error { case invalid(String) }
+struct WindowQueryFailure: Error, CustomStringConvertible {
+  let status: AXError
+  var description: String { "AXWindows query failed with AXError \(status.rawValue) (\(status))" }
+}
+func initialWindowQuery<T>(query: () throws -> T, retry: (Int, WindowQueryFailure) -> Void) throws -> T {
+  // Retry only AX's cannotComplete messaging failure for the new exercise
+  // client's initial query; window ambiguity/absence is not a transport error.
+  for attempt in 1...3 {
+    do { return try query() }
+    catch let failure as WindowQueryFailure where failure.status == .cannotComplete && attempt < 3 {
+      retry(attempt, failure)
+    }
+  }
+  throw Failure.invalid("Unreachable initial window query state")
+}
 func attribute(_ element: AXUIElement, _ name: String) -> Any? {
   var value: CFTypeRef?
   return AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success ? value : nil
@@ -78,8 +93,28 @@ func matchWindow(_ infos: [[String: Any]], pid: pid_t, axFrame: CGRect) throws -
     AXUIElementSetMessagingTimeout(app, 2)
   }
   func window() throws -> AXUIElement {
-    guard let windows = attribute(app, kAXWindowsAttribute) as? [AXUIElement], windows.count == 1 else {
-      throw Failure.invalid("Expected exactly one owned window")
+    var value: CFTypeRef?
+    let started = ProcessInfo.processInfo.systemUptime
+    let status = AXUIElementCopyAttributeValue(app, kAXWindowsAttribute as CFString, &value)
+    let windows = value as? [AXUIElement]
+    var observation: [String: Any] = ["phase": "ax_windows_query", "host_time": ProcessInfo.processInfo.systemUptime,
+      "target_pid": pid, "helper_pid": ProcessInfo.processInfo.processIdentifier,
+      "ax_error": status.rawValue, "query_seconds": ProcessInfo.processInfo.systemUptime - started,
+      "app_terminated": running.isTerminated]
+    if let value { observation["value_type_id"] = CFGetTypeID(value) }
+    if let windows { observation["window_count"] = windows.count }
+    // Keep the raw query result even when failure happens before exercise's first
+    // phase, or during prepare. No unrelated window titles/content is recorded.
+    var data = try JSONSerialization.data(withJSONObject: observation, options: [.sortedKeys]); data.append(10)
+    let path = directory.appendingPathComponent("ax-window-queries.jsonl")
+    if !FileManager.default.fileExists(atPath: path.path) { FileManager.default.createFile(atPath: path.path, contents: nil) }
+    let file = try FileHandle(forWritingTo: path)
+    defer { try? file.close() }
+    try file.seekToEnd(); try file.write(contentsOf: data)
+    guard status == .success else { throw WindowQueryFailure(status: status) }
+    guard let windows else { throw Failure.invalid("AXWindows succeeded with unexpected or missing value type") }
+    guard windows.count == 1 else {
+      throw Failure.invalid("Expected exactly one owned AX window; AXWindows returned \(windows.count)")
     }
     return windows[0]
   }
@@ -194,7 +229,10 @@ func matchWindow(_ infos: [[String: Any]], pid: pid_t, axFrame: CGRect) throws -
     defer { try? write(["pid": pid, "events": events], to: directory.appendingPathComponent("input-events.json")) }
     Thread.sleep(forTimeInterval: 0.5)
     let identity = try JSONSerialization.jsonObject(with: Data(contentsOf: directory.appendingPathComponent("identity.json"))) as! [String: Any]
-    let match = try windowInfo()
+    let match = try initialWindowQuery(query: { try windowInfo() }, retry: { attempt, failure in
+      note("initial_ax_transport_retry", ["attempt": attempt, "ax_error": failure.status.rawValue])
+      Thread.sleep(forTimeInterval: 0.1)
+    })
     guard (match.info[kCGWindowNumber as String] as? NSNumber) == (identity["window"] as? NSNumber) else {
       throw Failure.invalid("AX window no longer matches the prepared capture window")
     }
@@ -249,6 +287,25 @@ func matchWindow(_ infos: [[String: Any]], pid: pid_t, axFrame: CGRect) throws -
       precondition((try? matchWindow([candidate(7, ax.offsetBy(dx: 1.1, dy: 0))], pid: 42, axFrame: ax)) == nil)
       precondition((try? matchWindow([candidate(7, CGRect(x: -2200, y: -500, width: 1800, height: 1400))], pid: 42, axFrame: ax)) == nil)
       print("PASS AX/CG unique window correlation: wrong PID/layer/frame, duplicate, scale and tolerance cases; no GUI/input executed")
+      var queries = 0, retries = 0
+      let recovered: Int = try initialWindowQuery(query: {
+        queries += 1
+        if queries < 3 { throw WindowQueryFailure(status: .cannotComplete) }
+        return 7
+      }, retry: { _, _ in retries += 1 })
+      precondition(recovered == 7 && queries == 3 && retries == 2)
+      queries = 0
+      let exhausted: Int? = try? initialWindowQuery(query: {
+        queries += 1; throw WindowQueryFailure(status: .cannotComplete)
+      }, retry: { _, _ in })
+      precondition(exhausted == nil && queries == 3)
+      let permanentFailures: [Error] = [WindowQueryFailure(status: .apiDisabled), Failure.invalid("zero or multiple windows"), Failure.invalid("identity mismatch")]
+      for failure in permanentFailures {
+        queries = 0; retries = 0
+        let rejected: Int? = try? initialWindowQuery(query: { queries += 1; throw failure }, retry: { _, _ in retries += 1 })
+        precondition(rejected == nil && queries == 1 && retries == 0)
+      }
+      print("PASS initial AX transport retry: cannotComplete bounded to3; permission, absent/ambiguous and identity errors fail immediately")
       return
     }
     guard CommandLine.arguments.count == 4, let pid = Int32(CommandLine.arguments[2]), pid > 0 else {

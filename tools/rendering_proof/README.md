@@ -41,6 +41,12 @@ screen points; neither Retina scaling nor AppKit Y inversion is applied to this
 comparison. The identity records both frames, deltas, tolerance, candidate count
 and matched ID. The exercise revalidates that ID before sending input. Independent
 cell dimensions come from the pane's AX bounds-for-range.
+Every AXWindows lookup records its raw AX error, returned value type and window
+count in `ax-window-queries.jsonl`, including failures before the first input
+phase. The new exercise client's initial query retries only `AXError.cannotComplete`
+(at most three attempts, two-second AX timeout per attempt, 100ms between attempts).
+Missing/ambiguous windows, permission errors and AX/CG identity/frame mismatches
+fail immediately. A retry never selects a different prepared window ID.
 `Capture` verifies both window ID and owning PID before
 creating a desktop-independent ScreenCaptureKit window filter. Audio, microphone,
 cursor and child-window capture are disabled. All sample statuses, raw PTS,

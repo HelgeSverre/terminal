@@ -172,7 +172,7 @@ rescue Exception => error
   raise
 ensure
   report[:cleanup] = processes.reverse.map { |process| { pid: process.pid, survivors: process.cleanup } }
-  report[:sha256] = %w[frames.jsonl capture.mp4 summary.json input-events.json identity.json].filter_map do |name|
+  report[:sha256] = %w[frames.jsonl capture.mp4 summary.json input-events.json identity.json ax-window-queries.jsonl].filter_map do |name|
     path = File.join(options[:output], name)
     [name, Digest::SHA256.file(path).hexdigest] if File.file?(path)
   end.to_h
