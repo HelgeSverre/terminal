@@ -6,8 +6,10 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   private let container = NSView()
   private var root: NSView?
   private var initialLaunch: LaunchSpec?
+  private let diagnosticSplitLaunch: LaunchSpec?
   init(launch: LaunchSpec? = nil) {
     initialLaunch = launch
+    diagnosticSplitLaunch = CommandLine.arguments.contains("--resize-smoke") ? launch : nil
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 1000, height: 680),
       styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
@@ -32,7 +34,8 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   private func makePane() -> TerminalCanvasView {
-    let pane = TerminalCanvasView(frame: .zero, session: Session(launch: initialLaunch))
+    let pane = TerminalCanvasView(
+      frame: .zero, session: Session(launch: initialLaunch ?? diagnosticSplitLaunch))
     initialLaunch = nil
     pane.onStatus = { [weak self, weak pane] text in
       NSLog("Session: %@", text)
@@ -153,7 +156,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
     menu()
-    if CommandLine.arguments.contains("--glyph-smoke") {
+    if CommandLine.arguments.contains("--resize-smoke") {
+      let fixtureDirectory = Bundle.main.bundleURL
+        .appendingPathComponent("Contents/Resources/ShellIntegration/ResizeSmokeZsh").path
+      setenv("ZDOTDIR", fixtureDirectory, 1)
+      let shell = LaunchSpec.shell
+      let launch = LaunchSpec(
+        executable: "/bin/zsh", arguments: ["/bin/zsh", "-i"], cwd: shell.cwd, launcher: shell.launcher)
+      let window = TerminalWindow(launch: launch)
+      windows.append(window)
+      window.showWindow(nil)
+      window.window?.makeKeyAndOrderFront(nil)
+    } else if CommandLine.arguments.contains("--glyph-smoke") {
       let shell = LaunchSpec.shell
       let launch = LaunchSpec(executable: "/bin/sh", arguments: ["/bin/sh", "-c",
         "stty raw -echo; printf 'GLYPH_READY'; exec /bin/cat"], cwd: shell.cwd, launcher: shell.launcher)
@@ -209,6 +223,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let bytes = UInt64(CommandLine.arguments[index + 2])
     {
       CatSmokeTest.start(window: window, path: CommandLine.arguments[index + 1], bytes: bytes)
+    }
+    if let index = CommandLine.arguments.firstIndex(of: "--resize-smoke"),
+      CommandLine.arguments.count > index + 1, let window = windows.first
+    {
+      ResizeSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
     }
   }
   @objc func newWindow(_ sender: Any?) {

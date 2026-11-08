@@ -83,7 +83,7 @@ close-smoke: build
     xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
     xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
     xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
-    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/ClipboardAccess.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Automation.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
+    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/ClipboardAccess.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Automation.swift native/Smoke.swift native/EditingSmoke.swift native/ResizeSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
     cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
     cp native/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
     /usr/bin/tic -x -o "$APP_BUNDLE/Contents/Resources/terminfo" native/Terminal.terminfo
@@ -180,6 +180,30 @@ smoke: build (_native-smoke "normal")
 # Reproduce native cd/autosuggestion/Backspace editing against the actual ZLE buffer
 [group('check')]
 editing-smoke: build (_native-smoke "editing")
+
+# Use bundled Starship and a private ZDOTDIR to stress nested terminal resizes.
+# The runner waits for the disposable app and all of its PTY descendants to exit.
+[group('check')]
+resize-smoke: build
+    #!/usr/bin/env ruby
+    require 'json'
+    require File.join(Dir.pwd, 'tools/native_smoke')
+    report_path = File.join(Dir.pwd, 'reports', 'resize-smoke.json')
+    File.delete(report_path) if File.exist?(report_path)
+    app = File.join(Dir.pwd, 'dist/Terminal.app/Contents/MacOS/Terminal')
+    process = NativeSmokeProcess.new([app, '--resize-smoke', report_path, out: File::NULL, err: File::NULL])
+    begin
+      status = process.wait(90)
+      raise 'Resize smoke timed out' unless status
+      raise "Resize smoke exited with #{status}" unless status.success?
+      raise "Resize smoke left children: #{process.live_pids.join(', ')}" unless process.live_pids.empty?
+      report = JSON.parse(File.read(report_path))
+      abort "Resize smoke failed: #{report}" unless report.fetch('passed')
+      puts JSON.pretty_generate(report)
+    ensure
+      remaining = process.cleanup
+      raise "Resize smoke processes survived cleanup: #{remaining.join(', ')}" unless remaining.empty?
+    end
 
 # Measure a visible pane at idle for 60 seconds, then quit the test instance
 [group('check')]

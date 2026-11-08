@@ -1,0 +1,71 @@
+{
+  "fixture_contract": {
+    "shell": "zsh with actual starship init zsh",
+    "isolation": "private ZDOTDIR, synthetic Starship configuration, no user rc or history",
+    "redraw_control": "fixture-owned TRAPWINCH invokes zle reset-prompt",
+    "scope_note": "This is a controlled Starship redraw regression fixture. It does not characterize unmodified user Zsh/Starship WINCH behavior.",
+    "output_policy": "count-only prompt and cursor metrics; no shell transcript is retained",
+    "cursor_assertion": "The unique ASCII buffer is found at cell precision across soft-wrapped rows. The cursor must be at its trailing insertion boundary with the matching pending-wrap state."
+  },
+  "source": {
+    "terminal_core": "c66584d904e416928fa434880295546a72688c30",
+    "fixture": "8f769cde4a0526175f880f0e1b8166f7798c4e66",
+    "binary_sha256": "217f53908e278b3fcdca1f507088073acf9deec9f5fb3e0c24512588067e8e00"
+  },
+  "result": {
+    "passed": true,
+    "completed_without_timeout": true,
+    "fixture_ready": true,
+    "pane_count": 5,
+    "layout": "nested-splits",
+    "resize_events": 360,
+    "phases": [
+      {
+        "name": "baseline",
+        "prompt_markers": 1,
+        "right_prompt_markers": 1,
+        "buffer_preserved": true,
+        "cursor_on_buffer_row": true,
+        "cursor_immediately_after_buffer": true
+      },
+      {
+        "name": "rapid",
+        "events": 240,
+        "cadence": "geometry-gated-next-main-loop",
+        "prompt_markers": 1,
+        "right_prompt_markers": 0,
+        "buffer_preserved": true,
+        "cursor_on_buffer_row": true,
+        "cursor_immediately_after_buffer": true,
+        "target_columns": 17,
+        "target_rows": 36,
+        "passed": true
+      },
+      {
+        "name": "reference",
+        "events": 120,
+        "cadence": "geometry-gated-minimum-76ms",
+        "prompt_markers": 1,
+        "right_prompt_markers": 0,
+        "buffer_preserved": true,
+        "cursor_on_buffer_row": true,
+        "cursor_immediately_after_buffer": true,
+        "target_columns": 17,
+        "target_rows": 36,
+        "passed": true
+      }
+    ],
+    "final_target": {
+      "prompt_markers": 1,
+      "right_prompt_markers": 0,
+      "buffer_preserved": true,
+      "cursor_on_buffer_row": true,
+      "cursor_immediately_after_buffer": true,
+      "target_columns": 17,
+      "target_rows": 36,
+      "geometry_epoch": 363,
+      "revision": 1197
+    }
+  },
+  "historical_scope": "reports/resize-smoke-red-green.json records the earlier baseline/fixed comparison. Its cursor metric was only cursor_on_buffer_row; this result is the first exact-boundary assertion."
+}

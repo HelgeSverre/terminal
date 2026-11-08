@@ -1,0 +1,7 @@
+add_newline = false
+format = "[RESIZE_PROMPT](blue)$line_break$character"
+right_format = "[RESIZE_RPROMPT](green)"
+
+[character]
+success_symbol = "[❯](purple) "
+error_symbol = "[❯](purple) "

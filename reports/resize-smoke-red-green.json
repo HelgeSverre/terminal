@@ -1,0 +1,52 @@
+{
+  "fixture_contract": {
+    "shell": "zsh with actual starship init zsh",
+    "isolation": "private ZDOTDIR, synthetic Starship configuration, no user rc or history",
+    "redraw_control": "fixture-owned TRAPWINCH invokes zle reset-prompt",
+    "scope_note": "This is a controlled Starship redraw regression fixture. It does not characterize unmodified user Zsh/Starship WINCH behavior.",
+    "output_policy": "count-only prompt and cursor metrics; no shell transcript is retained",
+    "legacy_cursor_metric_scope": "The historical fixed and baseline executions only asserted that the cursor was on a physical row containing the buffer. They did not assert the exact cursor column or pending-wrap boundary."
+  },
+  "fixed": {
+    "terminal_core_source": "c66584d904e416928fa434880295546a72688c30",
+    "fixture_source": "474cbde19f0bd6ecf2f833111634754067af5e6c",
+    "binary_sha256": "12b7959c370623c1a2fb084860e0044919165a074e747a4e1cf24e2f741dcff4",
+    "result": {
+      "passed": true,
+      "rapid_resize_events": 240,
+      "reference_resize_events": 120,
+      "prompt_markers": 1,
+      "buffer_preserved": true,
+      "cursor_on_buffer_row": true
+    }
+  },
+  "baseline": {
+    "terminal_core_source": "20a5d58",
+    "fixture_source": "4485f32",
+    "binary_sha256": "ac95668b9aaa6267dd61901d60b27aed37d1a0673fb7729e85a05a5180d0e7f8",
+    "result": {
+      "passed": false,
+      "completed_without_timeout": false,
+      "fixture_ready": true,
+      "completed_phase_count": 0,
+      "active_phase": "rapid",
+      "awaiting_geometry_commit": false,
+      "awaiting_zle_redraw": true,
+      "rapid_resize_events_committed": 240,
+      "initial_prompt_markers": 1,
+      "initial_right_prompt_markers": 1,
+      "initial_buffer_preserved": true,
+      "initial_cursor_on_buffer_row": true,
+      "final_target": {
+        "prompt_markers": 2,
+        "right_prompt_markers": 0,
+        "buffer_preserved": true,
+        "cursor_on_buffer_row": true,
+        "columns": 17,
+        "rows": 36,
+        "geometry_epoch": 243,
+        "revision": 964
+      }
+    }
+  }
+}
