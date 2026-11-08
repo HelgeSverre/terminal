@@ -115,6 +115,11 @@ private final class SwiftTerminalCore {
   private var cappedClusterJoinsNextPictograph = false
   private var segmenter = SwiftUnicode.Segmenter()
   private var clusterOwner: (row: Int, column: Int)?
+  // The document owns the hot ASCII placement transaction.  Once a
+  // non-ASCII cluster reaches the legacy richer editor, stay there until a
+  // terminal boundary resets grapheme state; this keeps the first ownership
+  // patch mechanically narrow while preserving its established Unicode path.
+  private var asciiPlacementSafe = true
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
@@ -152,7 +157,7 @@ private final class SwiftTerminalCore {
     // maximal invalid prefix now so that the control byte is still parsed.
     for scalar in utf8.finish() { put(String(scalar)) }
   }
-  private func resetClusterBoundary() { segmenter = SwiftUnicode.Segmenter(); clusterOwner = nil; cappedCluster = false; cappedClusterJoinsNextPictograph = false }
+  private func resetClusterBoundary() { segmenter = SwiftUnicode.Segmenter(); clusterOwner = nil; cappedCluster = false; cappedClusterJoinsNextPictograph = false; asciiPlacementSafe = true }
   private func tick(_ now: UInt64) {
     clock = now
     if let deadline = syncDeadline, now >= deadline {
@@ -286,6 +291,40 @@ private final class SwiftTerminalCore {
     }
   }
   private func put(_ text: String) {
+    guard let scalar = text.unicodeScalars.first else { return }
+    if asciiPlacementSafe, scalar.value >= 0x20, scalar.value <= 0x7e,
+       text.unicodeScalars.count == 1 {
+      // Printable ASCII always starts a fresh cluster after another printable
+      // ASCII scalar or an explicit terminal boundary. Keep the segmenter in
+      // lockstep for the eventual richer path without borrowing a screen.
+      guard segmenter.push(scalar) else {
+        asciiPlacementSafe = false
+        putComplex(text)
+        return
+      }
+      guard let placement = document.placeASCII(text, usingAlternate: usingAlternate,
+                                                 leftRightMargins: leftRightMargins,
+                                                 autoWrap: autoWrap, insertMode: insertMode,
+                                                 style: pen, link: currentLink,
+                                                 protected: protectedOutput) else { return }
+      clusterOwner = placement.owner
+      if !placement.appendedHistory.isEmpty {
+        for row in placement.appendedHistory { historyByteCount &+= rowStorageBytes(row) }
+        if viewAnchor != nil { viewOffset += placement.appendedHistory.count }
+        enforceHistoryLimits()
+        historyEpoch &+= 1
+      }
+      lastPrinted = text
+      lastPrintedStyle = pen
+      lastPrintedLink = currentLink
+      lastPrintedFlags = protectedOutput ? 2 : 0
+      changed()
+      return
+    }
+    asciiPlacementSafe = false
+    putComplex(text)
+  }
+  private func putComplex(_ text: String) {
     var s = screen
     guard let scalar = text.unicodeScalars.first else { return }
     switch SwiftUnicode.category(of: scalar) {

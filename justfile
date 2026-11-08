@@ -136,6 +136,7 @@ lint:
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     just swift-core-test
+    just terminal-document-ownership
     just terminal-document-oracle
     just terminal-viewport-oracle
     just terminal-reflow-semantics
@@ -196,6 +197,13 @@ terminal-document-oracle:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_document_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-document-oracle-tests
     target/native/terminal-document-oracle-tests
+
+[group('check')]
+terminal-document-ownership:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_document_ownership) -framework Foundation -o target/native/terminal-document-ownership-tests
+    target/native/terminal-document-ownership-tests
 
 [group('check')]
 terminal-viewport-oracle:
