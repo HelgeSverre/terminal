@@ -422,5 +422,33 @@ final class GlyphResidency: @unchecked Sendable {
     releaseLegacyTexture(id)
     return diagnostics().residentBytes == 0
   }
+
+  func testingOversizeWorkingSetStabilizes() -> Bool {
+    guard let first = createPage(.mask), var page = pages[first.id] else { return false }
+    let charged = diagnostics().residentBytes
+    let startGeneration = page.generation
+    // Simulate a working set repeatedly exceeding a one-page budget. Every
+    // cycle must recycle the one charged page, never add another heap.
+    for _ in 0..<32 {
+      page.x = page.kind.side - 1; page.y = page.kind.side - 1
+      pages[page.id] = page
+      guard let next = reserve(kind: .mask, width: 8, height: 8), next.page.id == page.id else {
+        return false
+      }
+      page = next.page
+    }
+    return pages.count == 1 && page.generation == startGeneration + 32
+      && diagnostics().residentBytes == charged
+  }
+
+  func testingNegativeCacheIsBoundedAndRecipeScoped() -> Bool {
+    for index in 0...failedLimit {
+      rememberFailure(GlyphRasterRecipe(text: "bad\(index)", width: 8, height: 8,
+        pointSize: 12, bold: false, italic: false, fontIdentity: "bad", backingScale: 1))
+    }
+    let changedFont = GlyphRasterRecipe(text: "bad0", width: 8, height: 8,
+      pointSize: 12, bold: false, italic: false, fontIdentity: "new-font", backingScale: 1)
+    return failed.count == failedLimit && !failed.contains(changedFont)
+  }
   #endif
 }

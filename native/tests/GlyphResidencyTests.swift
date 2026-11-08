@@ -32,6 +32,8 @@ final class RendererMetrics {
     precondition(makeResidency().testingPinnedPageBlocksReclaim())
     precondition(makeResidency().testingLegacyReleaseExactlyOnce())
     precondition(makeResidency().testingLegacyHeapDropsWithLease())
+    precondition(makeResidency().testingOversizeWorkingSetStabilizes())
+    precondition(makeResidency().testingNegativeCacheIsBoundedAndRecipeScoped())
     let maskDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
       width: 3, height: 1, mipmapped: false)
     maskDescriptor.storageMode = .shared
@@ -139,6 +141,6 @@ final class RendererMetrics {
     expect(renderColor(background: 0, tintAlpha: 1), [71, 99, 137, 255], "RGBA dark")
     expect(renderColor(background: 1, tintAlpha: 1), [197, 207, 225, 255], "RGBA light")
     expect(renderColor(background: 0, tintAlpha: 0.5), [50, 71, 99, 255], "RGBA tint alpha")
-    print("PASS glyph residency: tiny-budget reclaim, pins, stale generation, exactly-once release, production R8/RGBA shader fixtures")
+    print("PASS glyph residency: tiny-budget churn, pins, stale generation, bounded negatives, exactly-once release, production R8/RGBA shader fixtures")
   }
 }
