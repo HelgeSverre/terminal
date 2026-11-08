@@ -347,6 +347,20 @@ impl Row {
         }
     }
     fn prune(&mut self) {
+        // Each live cell can reference at most one entry from each map. Stale
+        // entries are therefore bounded by a row width until a map grows past
+        // that limit; defer its O(columns × entries) sweep until then.
+        let maximum_live = self.cells.len();
+        if self.texts.len() <= maximum_live
+            && self.styles.len() <= maximum_live
+            && self.links.len() <= maximum_live
+        {
+            return;
+        }
+        self.compact_resources();
+    }
+    /// Remove resources no visible cell refers to before a row becomes retained history.
+    pub(crate) fn compact_resources(&mut self) {
         self.texts
             .retain(|id, _| self.cells.iter().any(|c| c.text == (*id | 0x8000_0000)));
         self.styles
@@ -377,12 +391,12 @@ impl Row {
             + self
                 .texts
                 .values()
-                .map(|s| s.capacity() + 48)
+                .map(|text| text.capacity() + 48)
                 .sum::<usize>()
             + self
                 .links
                 .values()
-                .map(|s| s.capacity() + 48)
+                .map(|link| link.capacity() + 48)
                 .sum::<usize>()
             + self.styles.len() * (std::mem::size_of::<Style>() + 48)
     }
@@ -498,6 +512,61 @@ pub struct CellDump {
 pub struct RowDump {
     pub cells: Vec<CellDump>,
     pub soft_wrapped: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prunes_stale_row_resources_after_width_bounded_deferral() {
+        let mut row = Row::new(1, 2, &Style::default());
+        for index in 0..2 {
+            let text = format!("{index}\u{301}");
+            let link = format!("https://example.test/{index}");
+            let style = Style {
+                underline: index as u8 + 1,
+                ..Style::default()
+            };
+            row.write(
+                0,
+                &text,
+                CellWidth {
+                    occupied: 1,
+                    nominal: 1,
+                },
+                &style,
+                Some(&link),
+                0,
+            );
+        }
+        let accounted = row.accounted_bytes();
+        row.compact_resources();
+        assert!(accounted > row.accounted_bytes());
+        for index in 2..4 {
+            let text = format!("{index}\u{301}");
+            let link = format!("https://example.test/{index}");
+            let style = Style {
+                underline: index as u8 + 1,
+                ..Style::default()
+            };
+            row.write(
+                0,
+                &text,
+                CellWidth {
+                    occupied: 1,
+                    nominal: 1,
+                },
+                &style,
+                Some(&link),
+                0,
+            );
+        }
+        assert_eq!(row.texts.len(), 1);
+        assert_eq!(row.styles.len(), 1);
+        assert_eq!(row.links.len(), 1);
+        assert_eq!(row.text(row.cells[0]), "3\u{301}");
+    }
 }
 impl From<&Row> for RowDump {
     fn from(row: &Row) -> Self {

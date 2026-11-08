@@ -212,6 +212,9 @@ impl Terminal {
             start = cursor_map.0 + 1 - height;
         }
         self.history = output.drain(..start.min(output.len())).collect();
+        for row in &mut self.history {
+            Arc::make_mut(row).compact_resources();
+        }
         output.truncate(height);
         while output.len() < height {
             output.push_back(self.blank());

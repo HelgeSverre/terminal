@@ -15,7 +15,7 @@ use model::*;
 use parser::{Operation, VtParser};
 use std::{collections::VecDeque, sync::Arc};
 use unicode::Segmenter;
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -451,7 +451,7 @@ impl Terminal {
         {
             return;
         }
-        let width = text.width().clamp(1, 2);
+        let width = ch.width().unwrap_or(0).clamp(1, 2);
         let style = self.pen.clone();
         let link = self.link.clone();
         self.place(
@@ -589,8 +589,11 @@ impl Terminal {
                 && !self.is_alternate
                 && top == 0
                 && bottom == self.height - 1
-                && let Some(row) = removed
+                && let Some(mut row) = removed
             {
+                if self.history_limit > 0 && self.history_byte_limit > 0 {
+                    Arc::make_mut(&mut row).compact_resources();
+                }
                 self.history_bytes += row.accounted_bytes();
                 self.history.push_back(row);
             }
@@ -842,5 +845,26 @@ fn dec_line(c: char) -> char {
         '}' => '£',
         '~' => '·',
         _ => c,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scalar_width_fast_path_matches_clamped_str_width_for_all_scalars() {
+        for scalar in 0..=char::MAX as u32 {
+            let Some(ch) = char::from_u32(scalar) else {
+                continue;
+            };
+            let mut bytes = [0; 4];
+            let text = ch.encode_utf8(&mut bytes);
+            assert_eq!(
+                ch.width().unwrap_or(0).clamp(1, 2),
+                text.width().clamp(1, 2),
+                "U+{scalar:04X}"
+            );
+        }
     }
 }

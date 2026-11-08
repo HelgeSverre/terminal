@@ -1,0 +1,83 @@
+{
+  "baseline_commit": "c66584d904e416928fa434880295546a72688c30",
+  "candidate": "defer row resource pruning; use UnicodeWidthChar for single scalars",
+  "conditions": {
+    "os": "macOS 15.6 (24G84)",
+    "rustc": "1.99.0 (b940084d7 2026-09-28)",
+    "logical_cpus": 12,
+    "load_averages_at_start": [3.77, 5.79, 10.61],
+    "note": "Quiet coordinated interval: no task-owned compiler or GUI process. System/user load was not quiesced; runs alternate baseline/candidate and report all raw samples."
+  },
+  "fixture": {
+    "scale_factor": 20,
+    "geometry": [160, 50],
+    "history_rows": 0,
+    "chunk_bytes": 65536,
+    "preserved_work": ["feed", "take_replies", "finish", "snapshot", "check_invariants"],
+    "ascii": {
+      "bytes": 22800000,
+      "sha256": "64b2addd9ac6fecb17f64afbfe89d6dd26aae63e3716b884b0bd7c5f31db4e15"
+    },
+    "mixed": {
+      "bytes": 10000000,
+      "sha256": "8eb56edab7f61ef9f0b971f9a5864dd247122eb7a3ffe8b48757a4dbcc5e06ca"
+    }
+  },
+  "profile": {
+    "tool": "macOS sample",
+    "hot_paths": [
+      "Terminal::print/place through Row::write/prune and BTreeMap::retain",
+      "unicode_width lookup from single-scalar print"
+    ]
+  },
+  "retention": {
+    "history_rows": 0,
+    "note": "The benchmark does not reduce retained history work. Production rows compact resources before history retention or reflow history accounting; accounted bytes continue to count all allocated row resources."
+  },
+  "alternated_runs": [
+    {
+      "baseline": {
+        "ascii_mib_per_s": [111.207558, 115.090295, 113.068475, 114.143394, 115.586773],
+        "mixed_mib_per_s": [13.984361, 13.874686, 13.888044, 13.994223, 13.913868],
+        "rss_bytes": 109397056
+      },
+      "candidate": {
+        "ascii_mib_per_s": [123.191776, 123.715453, 123.06958, 122.881879, 122.802502],
+        "mixed_mib_per_s": [16.136576, 16.137504, 16.157246, 16.244759, 15.968726],
+        "rss_bytes": 109560832
+      }
+    },
+    {
+      "baseline": {
+        "ascii_mib_per_s": [116.031284, 113.716251, 110.400618, 114.394307, 114.894929],
+        "mixed_mib_per_s": [13.861306, 13.932745, 13.994774, 14.053521, 13.17677],
+        "rss_bytes": 108430400
+      },
+      "candidate": {
+        "ascii_mib_per_s": [124.007381, 124.233487, 122.592024, 122.3835, 122.895683],
+        "mixed_mib_per_s": [16.09646, 16.128222, 15.938714, 16.014364, 16.295341],
+        "rss_bytes": 108119296
+      }
+    },
+    {
+      "baseline": {
+        "ascii_mib_per_s": [116.229217, 114.393255, 115.768344, 115.216354, 87.189162],
+        "mixed_mib_per_s": [14.159782, 14.130067, 14.216366, 12.850097, 14.020957],
+        "rss_bytes": 109134912
+      },
+      "candidate": {
+        "ascii_mib_per_s": [120.202492, 121.290901, 119.966479, 121.734496, 118.238741],
+        "mixed_mib_per_s": [15.332455, 15.255071, 15.252344, 15.09896, 15.1048],
+        "rss_bytes": 109184192
+      }
+    }
+  ],
+  "summary": {
+    "ascii_median_mib_per_s": {"baseline": 114.394307, "candidate": 122.802502, "change_percent": 7.35},
+    "mixed_median_mib_per_s": {"baseline": 13.984361, "candidate": 16.014364, "change_percent": 14.52},
+    "rss_range_bytes": {"baseline": [108430400, 109397056], "candidate": [108119296, 109560832]},
+    "targets_mib_per_s": {"ascii": 250, "mixed": 75},
+    "targets_met": false,
+    "measurement_status": "prototype only: recorded before the final retention-accounting correction; remeasurement is required before presenting this patch's final performance."
+  }
+}

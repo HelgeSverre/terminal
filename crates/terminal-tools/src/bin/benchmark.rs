@@ -1,5 +1,14 @@
 use std::{hint::black_box, time::Instant};
 use terminal_core::Terminal;
+
+fn scale_factor() -> usize {
+    std::env::var("TERMINAL_BENCHMARK_SCALE")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .filter(|&value| (1..=100).contains(&value))
+        .unwrap_or(1)
+}
+
 fn replay(bytes: &[u8], history: usize) -> f64 {
     let mut t = Terminal::new(160, 50).unwrap();
     t.history_limit = history;
@@ -17,8 +26,10 @@ fn replay(bytes: &[u8], history: usize) -> f64 {
     bytes.len() as f64 / (1024.0 * 1024.0) / start.elapsed().as_secs_f64()
 }
 fn main() {
-    let ascii = "The quick brown fox jumps over the lazy dog. 0123456789\r\n".repeat(20_000);
-    let unicode = "猫 日本語 👩🏽‍💻 🇳🇴 e\u{301} emoji\r\n".repeat(10_000);
+    let scale = scale_factor();
+    let ascii =
+        "The quick brown fox jumps over the lazy dog. 0123456789\r\n".repeat(20_000 * scale);
+    let unicode = "猫 日本語 👩🏽‍💻 🇳🇴 e\u{301} emoji\r\n".repeat(10_000 * scale);
     let mut ascii_mib = Vec::new();
     let mut mixed_mib = Vec::new();
     for _ in 0..5 {
@@ -36,6 +47,6 @@ fn main() {
     let reflow_ms = start.elapsed().as_secs_f64() * 1000.0;
     println!(
         "{}",
-        serde_json::json!({"profile":"release","cols":160,"rows":50,"ascii_mib_per_s":ascii_mib,"mixed_mib_per_s":mixed_mib,"reflow_10000_rows_ms":reflow_ms,"unicode":"18.0.0","note":"headless full semantic replay including finish and snapshot; local machine; no GPU timing"})
+        serde_json::json!({"profile":"release","scale":scale,"ascii_bytes":ascii.len(),"mixed_bytes":unicode.len(),"chunk_bytes":65_536,"history_rows":0,"cols":160,"rows":50,"ascii_mib_per_s":ascii_mib,"mixed_mib_per_s":mixed_mib,"reflow_10000_rows_ms":reflow_ms,"unicode":"18.0.0","note":"headless full semantic replay including finish and snapshot; local machine; no GPU timing"})
     );
 }
