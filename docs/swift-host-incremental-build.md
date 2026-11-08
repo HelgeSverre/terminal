@@ -18,8 +18,10 @@ flags and linker flags. Swift 6.2's incremental dependency state itself is
 timestamp based, so when this driver detects changed Swift content with an
 unchanged source timestamp it discards that state and performs a safe host
 rebuild. A bridge-content change is configuration invalidation and likewise
-starts fresh. Resources (Metal, plist, fonts, dictionary, terminfo) remain the
-bundle recipe's concern and do not invalidate Swift objects.
+starts fresh. Missing source-comparison metadata also discards incremental
+state; failed cache invalidation stops the build. Resources (Metal, plist, fonts,
+dictionary, terminfo) remain the bundle recipe's concern and do not invalidate
+Swift objects.
 
 Use `xcrun swift tools/SwiftIncrementalBuild.swift --clean` to remove only the
 host cache. `just build` validates the shared source graph and preserves the

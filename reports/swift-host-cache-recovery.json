@@ -1,0 +1,33 @@
+{
+  "checks": [
+    {
+      "run": 1,
+      "passed": true,
+      "exit_status": 0,
+      "output": "Swift host incremental compile + link\n"
+    },
+    {
+      "run": 2,
+      "passed": true,
+      "exit_status": 0,
+      "output": "Swift host no-op\n"
+    }
+  ],
+  "passed": true,
+  "missing_metadata_and_stamp": {
+    "passed": true,
+    "object_before": {
+      "mtime": 1794113997.4680707,
+      "sha256": "45bbb043a6390789d62080f7d9f502855f9b984228309b4087fd0fbc0699469b"
+    },
+    "object_after": {
+      "mtime": 1794114084.9940398,
+      "sha256": "45bbb043a6390789d62080f7d9f502855f9b984228309b4087fd0fbc0699469b"
+    },
+    "subsequent_noop": true
+  },
+  "source_parent_commit": "7928c1e498d0a5c479ce8f67895055b1ea12941d",
+  "driver_sha256": "6b4d8f04e7e132394bcf5263c7300750685987a9d2a000f0c4b375eee85514c4",
+  "source_graph_sha256": "98f5c36565f91d0b831a0a1305bdc83bb68873449c28b37437d07dd9eec93dec",
+  "scope": "Cache metadata loss recovery and subsequent no-op; not a compilation speed benchmark."
+}

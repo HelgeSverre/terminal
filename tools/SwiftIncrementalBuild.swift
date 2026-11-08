@@ -221,11 +221,18 @@ do {
   }
   let priorSourceStamp = try? String(contentsOf: sourceStampURL, encoding: .utf8)
   let priorSourceStates = try? JSONDecoder().decode([SourceState].self, from: Data(contentsOf: sourceStateURL))
-  if let priorSourceStates, preservedTimestampMutation(previous: priorSourceStates, current: currentSourceStates) {
+  let missingSourceStates = priorSourceStates == nil
+  let preservedMutation = priorSourceStates.map {
+    preservedTimestampMutation(previous: $0, current: currentSourceStates)
+  } ?? false
+  if missingSourceStates || preservedMutation {
     // Swift 6.2's incremental dependency state is timestamp based. Remove it
-    // rather than trusting it after a content mutation with a preserved mtime.
-    try? fm.removeItem(at: objects)
-    try? fm.removeItem(at: cache.appendingPathComponent("master.priors"))
+    // if source timestamps conceal changes or the comparison state was lost.
+    // An invalidation failure must fail the build rather than reuse stale code.
+    for stale in [objects, cache.appendingPathComponent("master.priors")]
+      where fm.fileExists(atPath: stale.path) {
+      try fm.removeItem(at: stale)
+    }
     try fm.createDirectory(at: objects, withIntermediateDirectories: true)
   }
   let missingOutputs = expectedOutputs.contains { !fm.fileExists(atPath: $0.path) }
