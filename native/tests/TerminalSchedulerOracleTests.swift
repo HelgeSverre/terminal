@@ -66,8 +66,24 @@ import Foundation
     precondition(input(terminal, key: 10) == Data("\u{1b}[1;1:1A".utf8))
   }
 
+  static func replyPressurePreservesUnconsumedInput() {
+    let terminal = terminal_create(8, 2)!; defer { terminal_destroy(terminal) }
+    let requests = Data((String(repeating: "\u{1b}[5n", count: 10_000) + "Z").utf8)
+    let accepted = feed(terminal, requests)
+    precondition(accepted == 32_768)
+    let suffix = Data(requests.dropFirst(accepted))
+    precondition(feed(terminal, suffix) == 0)
+    precondition(!text(snapshot(terminal)!).contains("Z"))
+    let first = replies(terminal)
+    precondition(first == Data(String(repeating: "\u{1b}[0n", count: 8192).utf8))
+    precondition(feed(terminal, suffix) == suffix.count)
+    precondition(replies(terminal) == Data(String(repeating: "\u{1b}[0n", count: 1808).utf8))
+    precondition(text(snapshot(terminal)!).contains("Z") && terminal_validate(terminal))
+  }
+
   static func main() {
-    resumableREPDoesNotOvertakeSuffix(); synchronizedOutputUsesABIClockDeadline(); keyboardFlagsAreScreenLocal()
-    print("PASS Terminal scheduler oracle: resumable REP, FIFO suffix, sync deadline, screen-local keyboard, invariants")
+    if CommandLine.arguments.contains("--reply-pressure") { replyPressurePreservesUnconsumedInput(); return }
+    resumableREPDoesNotOvertakeSuffix(); synchronizedOutputUsesABIClockDeadline(); keyboardFlagsAreScreenLocal(); replyPressurePreservesUnconsumedInput()
+    print("PASS Terminal scheduler oracle: resumable REP, FIFO suffix, reply pressure, sync deadline, screen-local keyboard, invariants")
   }
 }

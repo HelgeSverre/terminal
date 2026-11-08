@@ -304,6 +304,9 @@ private final class SwiftTerminalCore {
     let limit = min(count, 65_536)
     var offset = 0
     while offset < limit {
+      // Finish the command that produced a reply, then stop before admitting
+      // another byte. The owner drains replies before replaying this suffix.
+      if replies.count >= 32_768 { flushDecodedScalars(); return offset }
       let byte = bytes[offset]
       switch parser {
       case .ground:
