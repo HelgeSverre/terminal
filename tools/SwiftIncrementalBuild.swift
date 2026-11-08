@@ -5,6 +5,11 @@ import Foundation
 // input, so a Rust-only edit must never invalidate Swift's frontend cache.
 enum BuildError: Error { case command([String], Int32), missing(String) }
 struct SourceGraph: Decodable { let app: [String]; let tests: [String: [String]] }
+struct SourceState: Codable {
+  let path: String
+  let contentHash: String
+  let modificationTime: TimeInterval
+}
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let arguments = Array(CommandLine.arguments.dropFirst())
@@ -71,15 +76,25 @@ func fingerprint(files: [URL], extra: [String] = []) throws -> String {
   return sha256(parts)
 }
 
-func metadataFingerprint(files: [URL]) throws -> String {
+func sourceStates(files: [URL]) throws -> [SourceState] {
   let fm = FileManager.default
-  let values = try files.sorted(by: { $0.path < $1.path }).map { file -> Data in
+  return try files.sorted(by: { $0.path < $1.path }).map { file in
     let attributes = try fm.attributesOfItem(atPath: file.path)
-    let size = attributes[.size] as? NSNumber ?? 0
     let date = attributes[.modificationDate] as? Date ?? .distantPast
-    return Data("\(file.path)\u{0}\(size)\u{0}\(date.timeIntervalSinceReferenceDate)\n".utf8)
+    return SourceState(path: file.path, contentHash: try fileHash(file), modificationTime: date.timeIntervalSinceReferenceDate)
   }
-  return sha256(values)
+}
+
+func sourceFingerprint(_ states: [SourceState]) -> String {
+  sha256(states.map { Data("\($0.path)\u{0}\($0.contentHash)\n".utf8) })
+}
+
+func preservedTimestampMutation(previous: [SourceState], current: [SourceState]) -> Bool {
+  let oldByPath = Dictionary(uniqueKeysWithValues: previous.map { ($0.path, $0) })
+  return current.contains { state in
+    guard let old = oldByPath[state.path] else { return false }
+    return old.contentHash != state.contentHash && old.modificationTime == state.modificationTime
+  }
 }
 
 func isContained(_ file: String, under directory: URL) -> Bool {
@@ -188,10 +203,10 @@ do {
   let outputMapURL = cache.appendingPathComponent("output-file-map.json")
   try JSONSerialization.data(withJSONObject: outputMap, options: [.sortedKeys]).write(to: outputMapURL)
 
-  let sourceStamp = try fingerprint(files: sources)
+  let currentSourceStates = try sourceStates(files: sources)
+  let sourceStamp = sourceFingerprint(currentSourceStates)
   let sourceStampURL = cache.appendingPathComponent("source.fingerprint")
-  let sourceMetadata = try metadataFingerprint(files: sources)
-  let sourceMetadataURL = cache.appendingPathComponent("source.metadata")
+  let sourceStateURL = cache.appendingPathComponent("source-state.json")
   let archive = root.appendingPathComponent("target/release/libterminal_core.a")
   let spawn = root.appendingPathComponent("target/native/Spawn.o")
   guard fm.fileExists(atPath: archive.path), fm.fileExists(atPath: spawn.path) else {
@@ -205,8 +220,8 @@ do {
     return [objects.appendingPathComponent("\(name).o"), objects.appendingPathComponent("\(name).swiftdeps")]
   }
   let priorSourceStamp = try? String(contentsOf: sourceStampURL, encoding: .utf8)
-  let preservedTimestampMutation = priorSourceStamp != nil && priorSourceStamp != sourceStamp && (try? String(contentsOf: sourceMetadataURL, encoding: .utf8)) == sourceMetadata
-  if preservedTimestampMutation {
+  let priorSourceStates = try? JSONDecoder().decode([SourceState].self, from: Data(contentsOf: sourceStateURL))
+  if let priorSourceStates, preservedTimestampMutation(previous: priorSourceStates, current: currentSourceStates) {
     // Swift 6.2's incremental dependency state is timestamp based. Remove it
     // rather than trusting it after a content mutation with a preserved mtime.
     try? fm.removeItem(at: objects)
@@ -220,7 +235,7 @@ do {
   if needsCompile {
     _ = try run(["swiftc"] + compileFlags + ["-output-file-map", outputMapURL.path] + sources.map(\.path))
     try sourceStamp.write(to: sourceStampURL, atomically: true, encoding: .utf8)
-    try sourceMetadata.write(to: sourceMetadataURL, atomically: true, encoding: .utf8)
+    try JSONEncoder().encode(currentSourceStates).write(to: sourceStateURL)
   }
   if needsLink {
     let outputObjects = sources.map { objects.appendingPathComponent("\(objectName($0.path)).o").path }
