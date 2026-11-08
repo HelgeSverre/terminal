@@ -657,6 +657,8 @@ import Darwin
   var samples = 0
   var updates = 0
   var exitStatus = ""
+  var latestViewport: [String: Any] = [:]
+  var anchoredSnapshotCount = 0
   var finishing = false
   var latest: [String: Any] = [:]
   init(window: TerminalWindow, path: String, bytes: UInt64) {
@@ -682,7 +684,18 @@ import Darwin
   }
   func run() {
     guard let pane = controller.panes.first else { return }
-    pane.onObservedSnapshot = { [weak self] _ in self?.updates += 1 }
+    pane.onObservedSnapshot = { [weak self] snapshot in
+      guard let self else { return }
+      updates += 1
+      if !snapshot.following_tail { anchoredSnapshotCount += 1 }
+      latestViewport = [
+        "columns": snapshot.cols, "rows": snapshot.rows.count,
+        "following_tail": snapshot.following_tail, "scroll_offset": snapshot.scroll_offset,
+        "history_rows": snapshot.history_rows, "alternate": snapshot.alternate,
+        "geometry_epoch": snapshot.geometry_epoch,
+        "clamp_revision": snapshot.viewport_clamp_revision,
+      ]
+    }
     let oldStatus = pane.onStatus
     pane.onStatus = { [weak self] value in
       oldStatus?(value)
@@ -754,6 +767,7 @@ import Darwin
       "peak_physical_footprint_bytes": peakFootprint,
       "current_physical_footprint_bytes": footprint(), "samples": samples,
       "snapshot_updates": updates, "main_queue_delay": TimingDistribution.report(uiDelay),
+      "viewport": latestViewport, "anchored_snapshots": anchoredSnapshotCount,
       "semantic_queue_probe_delay": TimingDistribution.report(ownerDelay),
       "exit_status": exitStatus,
       "renderer": RendererMetrics.report(),
