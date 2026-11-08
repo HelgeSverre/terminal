@@ -63,6 +63,7 @@ final class GlyphResidency: @unchecked Sendable {
   private var visibleDemand: Set<GlyphRasterRecipe> = []
   private var currentDemand: Set<GlyphRasterRecipe> = []
   private var suppressedForDemand: Set<GlyphRasterRecipe> = []
+  private var admissionMayEvict = false
   private var failed: Set<GlyphRasterRecipe> = []
   private var failedOrder: [GlyphRasterRecipe] = []
   private let failedLimit = 1024
@@ -105,6 +106,7 @@ final class GlyphResidency: @unchecked Sendable {
       case .waitingForPins: uploadQueue.append(upload)
       }
     }
+    admissionMayEvict = false
   }
 
   func setOnReady(_ callback: @escaping @Sendable () -> Void) { onReady = callback }
@@ -144,6 +146,7 @@ final class GlyphResidency: @unchecked Sendable {
   func finishFrameDemand() {
     guard currentDemand != visibleDemand else { return }
     visibleDemand = currentDemand
+    admissionMayEvict = true
     if !suppressedForDemand.isEmpty {
       suppressedForDemand.removeAll(keepingCapacity: true)
       onReady()
@@ -179,7 +182,7 @@ final class GlyphResidency: @unchecked Sendable {
     // peer admitted earlier in that batch: two individually-fitting glyphs
     // must settle on resident+outline, not alternate eviction every frame.
     guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height,
-      allowEviction: false) else {
+      allowEviction: admissionMayEvict) else {
       guard pages.values.contains(where: { $0.kind == kind && $0.pins > 0 }) else {
         if pages.values.contains(where: { $0.kind == kind }) {
           suppressedForDemand.insert(recipe)
