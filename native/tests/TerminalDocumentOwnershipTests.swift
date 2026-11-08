@@ -79,8 +79,8 @@ import Foundation
     // retained screen must retain the original rich pair unchanged.
     for (column, text, expectedLead, expectedContinuation) in [(0, "A", 1, 0), (1, "B", 0, 1)] {
       var document = TerminalDocument(columns: 6, rows: 1)
-      document.primary.rows[0].cells[0] = wideLead
-      document.primary.rows[0].cells[1] = wideContinuation
+      document.primary.rows[0].setCell(wideLead, at: 0)
+      document.primary.rows[0].setCell(wideContinuation, at: 1)
       let before = document.primary
       overwrite(&document, at: column, with: text.unicodeScalars.first!)
       precondition(document.primary.rows[0].cells[0].kind == expectedLead)
@@ -93,15 +93,15 @@ import Foundation
     // An adjacent pair is outside the repaired edge and keeps its rich
     // metadata when the preceding continuation is overwritten.
     var adjacent = TerminalDocument(columns: 6, rows: 1)
-    adjacent.primary.rows[0].cells[0] = wideLead
-    adjacent.primary.rows[0].cells[1] = wideContinuation
+    adjacent.primary.rows[0].setCell(wideLead, at: 0)
+    adjacent.primary.rows[0].setCell(wideContinuation, at: 1)
     let secondStyle = TerminalStyle(foreground: 9, background: 10, flags: 4)
     let secondLead = TerminalCell(text: "界", kind: 2, style: secondStyle,
                                   link: "https://example.test/second", flags: 1, protected: false)
     let secondContinuation = TerminalCell(text: "", kind: 3, style: secondStyle,
                                           link: "https://example.test/second", flags: 1, protected: false)
-    adjacent.primary.rows[0].cells[2] = secondLead
-    adjacent.primary.rows[0].cells[3] = secondContinuation
+    adjacent.primary.rows[0].setCell(secondLead, at: 2)
+    adjacent.primary.rows[0].setCell(secondContinuation, at: 3)
     overwrite(&adjacent, at: 1, with: "X".unicodeScalars.first!)
     precondition(adjacent.primary.rows[0].cells[0].kind == 0)
     precondition(adjacent.primary.rows[0].cells[2] == secondLead && adjacent.primary.rows[0].cells[3] == secondContinuation)
@@ -125,8 +125,8 @@ import Foundation
     // changed span's crossing neighbour, rather than scanning the whole row.
     var inserted = TerminalDocument(columns: 6, rows: 1)
     inserted.primary.leftMargin = 1; inserted.primary.rightMargin = 4
-    inserted.primary.rows[0].cells[3] = wideLead
-    inserted.primary.rows[0].cells[4] = wideContinuation
+    inserted.primary.rows[0].setCell(wideLead, at: 3)
+    inserted.primary.rows[0].setCell(wideContinuation, at: 4)
     let beforeInsert = inserted.primary
     inserted.primary.cursorRow = 0; inserted.primary.cursorColumn = 1
     inserted.resetPrintCluster()
@@ -141,8 +141,8 @@ import Foundation
     // resulting screen must remain valid when a deleted lead pulls a lone
     // continuation across a horizontal edit boundary.
     var deleted = TerminalDocument(columns: 6, rows: 1)
-    deleted.primary.rows[0].cells[1] = wideLead
-    deleted.primary.rows[0].cells[2] = wideContinuation
+    deleted.primary.rows[0].setCell(wideLead, at: 1)
+    deleted.primary.rows[0].setCell(wideContinuation, at: 2)
     let beforeDelete = deleted.primary
     var editedScreen = deleted.primary
     deleted.shift(&editedScreen, row: 0, column: 1, right: 4, count: 1,
@@ -477,6 +477,106 @@ import Foundation
     precondition(history.history[0].cells[0].text == "A" && history.history[0].cells[1].text == "B")
   }
 
+  static func sparsePayloadsBoundStorageAndKeepLogicalBudget() {
+    var row = TerminalRow(columns: 3)
+    // Scalar text has no retained String payload; only the exceptional link
+    // does. The logical charge remains the pre-slot row/cell contract.
+    row.setScalar("A".unicodeScalars.first!, at: 0, kind: 1, style: TerminalStyle(),
+                  link: nil, flags: 0, protected: false)
+    precondition(row.payloadCount == 0)
+    precondition(row.retainedStorageCost == 32 + 3 * 64 + 1)
+
+    for turn in 0..<128 {
+      let link = "https://example.test/link/\(turn)"
+      row.setScalar("B".unicodeScalars.first!, at: turn % row.count, kind: 1,
+                    style: TerminalStyle(), link: link, flags: 0, protected: false)
+      precondition(row.payloadCount <= row.count)
+    }
+    for column in 0..<row.count { row.erase(at: column) }
+    precondition(row.payloadCount == 0)
+    precondition(row.retainedStorageCost == 32 + 3 * 64)
+
+    row.setCell(TerminalCell(text: "a\u{301}", kind: 1, style: TerminalStyle(),
+                             link: "https://example.test/cluster"), at: 1)
+    precondition(row.payloadCount == 1 && row.cell(1).text == "a\u{301}")
+    row.truncate(to: 1)
+    precondition(row.payloadCount == 0 && row.count == 1)
+  }
+
+  static func logicalCapacityMatchesFormerRichArray() {
+    // Array capacity is part of history admission, not an implementation
+    // detail. Exercise awkward widths plus shrink/regrow against the actual
+    // pre-slot element type so allocator rounding stays byte-for-byte stable.
+    for width in [1, 2, 3, 4, 7, 17, 80] {
+      var rich = Array(repeating: TerminalCell(), count: width)
+      var row = TerminalRow(columns: width)
+      func expected() -> UInt64 { 32 + UInt64(rich.capacity) * 64 }
+      precondition(row.retainedStorageCost == expected())
+
+      let shrunk = max(1, width / 2)
+      rich = Array(rich.prefix(shrunk)); row.truncate(to: shrunk)
+      precondition(row.retainedStorageCost == expected())
+
+      let growth = width + 5
+      rich.append(contentsOf: repeatElement(TerminalCell(), count: growth - shrunk))
+      row.appendBlanks(growth - shrunk)
+      precondition(row.retainedStorageCost == expected())
+
+      row.setCell(TerminalCell(text: "é", kind: 1, style: TerminalStyle(), link: "https://example.test"), at: 0)
+      precondition(row.retainedStorageCost == expected() + 2 + 20)
+    }
+  }
+
+  static func richPayloadMovesAndProjectionsRemainIndependent() {
+    let first = TerminalCell(text: "a\u{301}", kind: 1,
+                             style: TerminalStyle(foreground: 1, background: 2, flags: 3),
+                             link: "https://example.test/first", flags: 2, protected: true)
+    let second = TerminalCell(text: "o\u{308}", kind: 1,
+                              style: TerminalStyle(foreground: 4, background: 5, flags: 6),
+                              link: "https://example.test/second", flags: 4, protected: false)
+    let third = TerminalCell(text: "n\u{303}", kind: 1,
+                             style: TerminalStyle(foreground: 7, background: 8, flags: 9),
+                             link: "https://example.test/third", flags: 6, protected: true)
+    var document = TerminalDocument(columns: 6, rows: 2)
+    document.primary.rows[0].setCell(first, at: 1)
+    document.primary.rows[0].setCell(second, at: 3)
+    document.primary.rows[1].setCell(third, at: 1)
+    let originalRow = document.primary.rows[0]
+    let originalCells = document.primary.rows[0].cells
+
+    var screen = document.primary
+    document.shift(&screen, row: 0, column: 1, right: 5, count: 1,
+                   inserting: true, eraseStyle: TerminalStyle())
+    precondition(screen.rows[0].cell(2) == first && screen.rows[0].cell(4) == second)
+    document.shift(&screen, row: 0, column: 1, right: 5, count: 1,
+                   inserting: false, eraseStyle: TerminalStyle())
+    precondition(screen.rows[0].cell(1) == first && screen.rows[0].cell(3) == second)
+
+    document.scrollRectangle(&screen, top: 0, bottom: 1, left: 0, right: 5,
+                             count: 1, up: true, eraseStyle: TerminalStyle())
+    precondition(screen.rows[0].cell(1) == third && screen.rows[0].payloadCount == 1)
+    precondition(screen.rows[1].payloadCount == 0)
+    document.primary = screen
+    document.primary.cursorRow = 0; document.primary.cursorColumn = 1
+    _ = document.print("X".unicodeScalars.first!, usingAlternate: false,
+                       leftRightMargins: false, autoWrap: true, insertMode: false,
+                       attributes: TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false))
+    precondition(document.primary.rows[0].payloadCount == 0)
+    let shrunk = document.resize(document.primary, columns: 1, rows: 2)
+    precondition(shrunk.rows[0].payloadCount == 0)
+
+    // Both a row value and its read-only Cells view retain their original
+    // slot/payload values after all later edits.
+    precondition(originalRow.cell(1) == first && originalRow.cell(3) == second)
+    precondition(originalCells[1] == first && originalCells[3] == second)
+
+    var composed = TerminalRow(columns: 1)
+    var decomposed = TerminalRow(columns: 1)
+    composed.setCell(TerminalCell(text: "é", kind: 1), at: 0)
+    decomposed.setCell(TerminalCell(text: "e\u{301}", kind: 1), at: 0)
+    precondition(composed == decomposed, "row equality must retain String canonical semantics")
+  }
+
   static func main() {
     let old = retainedSnapshot()
     populatedSnapshotsRemainImmutable()
@@ -486,6 +586,9 @@ import Foundation
     documentOwnsSegmentationAndOrphans()
     batchWriterMatchesScalarTransactions()
     asciiSpanMatchesScalarTransactions()
+    sparsePayloadsBoundStorageAndKeepLogicalBudget()
+    logicalCapacityMatchesFormerRichArray()
+    richPayloadMovesAndProjectionsRemainIndependent()
     // `document` has been destroyed. Retention is real value/COW retention,
     // not a borrowed mutable grid whose lifetime happens to extend this call.
     precondition(old.rows[0].cells[0].text.isEmpty)

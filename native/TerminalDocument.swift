@@ -1,7 +1,8 @@
 import Foundation
 
-// Canonical rich storage for the emulator. Every editing operation below acts
-// on these cells directly: there is no text-only or generic-grid side model.
+// `TerminalCell` is the public/read projection of a terminal cell.  Rows do
+// not retain one of these for every column: a String (and its ARC traffic) is
+// far too expensive for the overwhelmingly scalar, blank grid.
 struct TerminalStyle: Equatable {
   var foreground: UInt32 = 0; var background: UInt32 = 0; var underline: UInt32 = 0
   var flags: UInt16 = 0; var underlineKind: UInt8 = 0
@@ -16,21 +17,219 @@ struct TerminalCell: Equatable {
     TerminalCell(text: "", kind: 0, style: style.erased())
   }
 }
+
+// The hot row representation.  Keep this deliberately reference-free: text
+// is either the single Unicode scalar here, or an exceptional payload in the
+// row dictionary below. `hasScalar` distinguishes a real U+0000 from empty.
+private struct TerminalRowSlot: Equatable {
+  var scalar: UInt32 = 0
+  var style = TerminalStyle()
+  var hasScalar = false
+  var kind: UInt8 = 0
+  var flags: UInt8 = 0
+  var protected = false
+}
+
+private struct TerminalRowPayload: Equatable {
+  var text: String?
+  var link: String?
+}
+
+// Matches the old TerminalCell ABI stride without retaining a String, link,
+// or style. It is used only to reproduce Array's old capacity rounding for
+// the public history-byte budget; it is never row storage.
+private struct TerminalLegacyCapacityCell {
+  var a: UInt64 = 0; var b: UInt64 = 0; var c: UInt64 = 0; var d: UInt64 = 0
+  var e: UInt64 = 0; var f: UInt64 = 0; var g: UInt64 = 0; var h: UInt64 = 0
+}
+
 struct TerminalRow: Equatable {
-  var id: UInt64; var revision: UInt64; var cells: [TerminalCell]; var softWrapped = false
-  init(id: UInt64 = 0, revision: UInt64 = 0, cells: [TerminalCell]) { self.id = id; self.revision = revision; self.cells = cells }
-  init(columns: Int) { self.init(cells: Array(repeating: TerminalCell(), count: columns)) }
-  // History charges fixed row/cell storage and referenced UTF-8 payloads.
-  // Shared links and inline strings are charged per retained cell; this is
-  // an ownership budget, rather than a measurement of allocator/RSS overhead.
+  var id: UInt64; var revision: UInt64; var softWrapped = false
+  private var slots: [TerminalRowSlot]
+  // `slots.capacity` is deliberately not the history contract: Swift rounds
+  // Array capacity by element stride. Preserve the former 64-byte rich-cell
+  // capacity independently without retaining a parallel rich-cell grid.
+  private var logicalCellCapacity: Int
+  // Sparse by construction: entries are removed on overwrite/erase and never
+  // outnumber physical columns. Values are copied with their row snapshots.
+  private var payloads: [Int: TerminalRowPayload] = [:]
+
+  init(id: UInt64 = 0, revision: UInt64 = 0, cells: [TerminalCell]) {
+    self.id = id; self.revision = revision
+    self.slots = []
+    // Keep the old array-capacity budget observable to history admission when
+    // a caller supplies a deliberately over-reserved rich fixture.
+    self.slots.reserveCapacity(cells.capacity)
+    self.slots.append(contentsOf: repeatElement(TerminalRowSlot(), count: cells.count))
+    self.logicalCellCapacity = cells.capacity
+    for (index, cell) in cells.enumerated() { setCell(cell, at: index) }
+  }
+  init(columns: Int, logicalCellCapacity: Int? = nil) {
+    id = 0; revision = 0
+    slots = Array(repeating: TerminalRowSlot(), count: columns)
+    self.logicalCellCapacity = logicalCellCapacity ?? Self.blankLogicalCapacity(columns: columns)
+  }
+
+  // Read-only rich projection for publication, search, and compatibility at
+  // the Core boundary. It retains value/COW snapshots of the two stores and
+  // constructs a cell only for the requested subscript; editing must use the
+  // narrow operations below and never retain this projection across mutation.
+  struct Cells: RandomAccessCollection {
+    typealias Index = Int
+    typealias Element = TerminalCell
+    private let slots: [TerminalRowSlot]
+    private let payloads: [Int: TerminalRowPayload]
+    fileprivate init(slots: [TerminalRowSlot], payloads: [Int: TerminalRowPayload]) {
+      self.slots = slots; self.payloads = payloads
+    }
+    var startIndex: Int { slots.startIndex }
+    var endIndex: Int { slots.endIndex }
+    subscript(position: Int) -> TerminalCell {
+      TerminalRow.project(slots[position], payloads[position])
+    }
+  }
+  var cells: Cells { Cells(slots: slots, payloads: payloads) }
+  var count: Int { slots.count }
+  var payloadCount: Int { payloads.count }
+  var retainedCellCapacity: Int { logicalCellCapacity }
+
+  func cell(_ index: Int) -> TerminalCell {
+    Self.project(slots[index], payloads[index])
+  }
+  private static func project(_ slot: TerminalRowSlot, _ payload: TerminalRowPayload?) -> TerminalCell {
+    let text: String
+    if let payloadText = payload?.text { text = payloadText }
+    else if slot.hasScalar, let scalar = Unicode.Scalar(slot.scalar) { text = String(scalar) }
+    else { text = "" }
+    return TerminalCell(text: text, kind: slot.kind, style: slot.style,
+                        link: payload?.link, flags: slot.flags, protected: slot.protected)
+  }
+
+  mutating func setCell(_ cell: TerminalCell, at index: Int) {
+    var slot = TerminalRowSlot(scalar: 0, style: cell.style, hasScalar: false,
+                               kind: cell.kind, flags: cell.flags, protected: cell.protected)
+    var payload = TerminalRowPayload(text: nil, link: cell.link)
+    let scalars = cell.text.unicodeScalars
+    if scalars.count == 1, let scalar = scalars.first {
+      slot.scalar = scalar.value
+      slot.hasScalar = true
+    } else if !cell.text.isEmpty {
+      payload.text = cell.text
+    }
+    slots[index] = slot
+    if payload.text != nil || payload.link != nil { payloads[index] = payload }
+    else { payloads.removeValue(forKey: index) }
+  }
+
+  mutating func setScalar(_ scalar: Unicode.Scalar, at index: Int, kind: UInt8,
+                          style: TerminalStyle, link: String?, flags: UInt8, protected: Bool) {
+    slots[index] = TerminalRowSlot(scalar: scalar.value, style: style, hasScalar: true,
+                                   kind: kind, flags: flags, protected: protected)
+    if let link { payloads[index] = TerminalRowPayload(text: nil, link: link) }
+    else { payloads.removeValue(forKey: index) }
+  }
+
+  mutating func erase(at index: Int, style: TerminalStyle = TerminalStyle()) {
+    slots[index] = TerminalRowSlot(style: style.erased())
+    payloads.removeValue(forKey: index)
+  }
+  mutating func copyCell(from source: TerminalRow, at sourceIndex: Int, to index: Int) {
+    slots[index] = source.slots[sourceIndex]
+    if let payload = source.payloads[sourceIndex] { payloads[index] = payload }
+    else { payloads.removeValue(forKey: index) }
+  }
+  mutating func setKind(_ kind: UInt8, at index: Int) { slots[index].kind = kind }
+  mutating func setFlags(_ flags: UInt8, at index: Int) { slots[index].flags = flags }
+  mutating func addFlags(_ flags: UInt8, at index: Int) { slots[index].flags |= flags }
+  mutating func clearText(at index: Int) {
+    slots[index].scalar = 0
+    slots[index].hasScalar = false
+    if var payload = payloads[index] {
+      payload.text = nil
+      if payload.link != nil { payloads[index] = payload }
+      else { payloads.removeValue(forKey: index) }
+    }
+  }
+  func kind(at index: Int) -> UInt8 { slots[index].kind }
+  func flags(at index: Int) -> UInt8 { slots[index].flags }
+  func style(at index: Int) -> TerminalStyle { slots[index].style }
+  func isProtected(at index: Int) -> Bool { slots[index].protected }
+  func scalarCount(at index: Int) -> Int {
+    payloads[index]?.text?.unicodeScalars.count ?? (slots[index].hasScalar ? 1 : 0)
+  }
+  mutating func appendScalar(_ scalar: Unicode.Scalar, at index: Int) {
+    var cell = cell(index)
+    cell.text.unicodeScalars.append(scalar)
+    setCell(cell, at: index)
+  }
+  mutating func truncate(to newCount: Int) {
+    logicalCellCapacity = Self.legacyCapacity(existingCount: slots.count,
+                                               capacity: logicalCellCapacity,
+                                               truncatingTo: newCount)
+    slots = Array(slots.prefix(newCount))
+    payloads = payloads.reduce(into: [:]) { result, entry in
+      if entry.key < newCount { result[entry.key] = entry.value }
+    }
+  }
+  mutating func appendBlanks(_ count: Int) {
+    guard count > 0 else { return }
+    logicalCellCapacity = Self.legacyCapacity(existingCount: slots.count,
+                                               capacity: logicalCellCapacity,
+                                               appending: count)
+    slots.append(contentsOf: repeatElement(TerminalRowSlot(), count: count))
+  }
+  mutating func copyRange(from source: TerminalRow, _ range: ClosedRange<Int>) {
+    for index in range { copyCell(from: source, at: index, to: index) }
+  }
+
+  // Preserve the published history-byte contract across this physical storage
+  // optimization. These are the old ABI strides (row 32, rich cell 64), not
+  // an allocator or RSS estimate; payload bytes retain their old per-cell
+  // ownership semantics.
+  private static let logicalRowCharge: UInt64 = 32
+  private static let logicalCellCharge: UInt64 = 64
   var retainedStorageCost: UInt64 {
-    var bytes = UInt64(MemoryLayout<Self>.stride)
-      + UInt64(cells.capacity) * UInt64(MemoryLayout<TerminalCell>.stride)
-    for cell in cells {
-      bytes += UInt64(cell.text.utf8.count)
-      if let link = cell.link { bytes += UInt64(link.utf8.count) }
+    var bytes = Self.logicalRowCharge + UInt64(logicalCellCapacity) * Self.logicalCellCharge
+    for index in slots.indices {
+      if let text = payloads[index]?.text { bytes += UInt64(text.utf8.count) }
+      else if slots[index].hasScalar, let scalar = Unicode.Scalar(slots[index].scalar) {
+        bytes += UInt64(String(scalar).utf8.count)
+      }
+      if let link = payloads[index]?.link { bytes += UInt64(link.utf8.count) }
     }
     return bytes
+  }
+
+  // Called once per document geometry (or by a direct test fixture), never by
+  // normal blank-row allocation. That keeps the row hot path reference-free
+  // and avoids a temporary 64-byte-per-column calibration array per scroll.
+  static func blankLogicalCapacity(columns count: Int) -> Int {
+    Array(repeating: TerminalLegacyCapacityCell(), count: count).capacity
+  }
+  private static func legacySeed(count: Int, capacity: Int) -> [TerminalLegacyCapacityCell] {
+    var cells: [TerminalLegacyCapacityCell] = []
+    cells.reserveCapacity(capacity)
+    cells.append(contentsOf: repeatElement(TerminalLegacyCapacityCell(), count: count))
+    return cells
+  }
+  private static func legacyCapacity(existingCount: Int, capacity: Int, truncatingTo count: Int) -> Int {
+    Array(legacySeed(count: existingCount, capacity: capacity).prefix(count)).capacity
+  }
+  private static func legacyCapacity(existingCount: Int, capacity: Int, appending count: Int) -> Int {
+    var cells = legacySeed(count: existingCount, capacity: capacity)
+    cells.append(contentsOf: repeatElement(TerminalLegacyCapacityCell(), count: count))
+    return cells.capacity
+  }
+
+  static func == (lhs: TerminalRow, rhs: TerminalRow) -> Bool {
+    guard lhs.id == rhs.id, lhs.revision == rhs.revision,
+          lhs.softWrapped == rhs.softWrapped, lhs.slots.count == rhs.slots.count else { return false }
+    // Most comparisons preserve representation, so avoid projecting strings.
+    if lhs.slots == rhs.slots && lhs.payloads == rhs.payloads { return true }
+    // String equality is canonically equivalent; a scalar slot and an
+    // exceptional multi-scalar payload can therefore be semantically equal.
+    for index in lhs.slots.indices where lhs.cell(index) != rhs.cell(index) { return false }
+    return true
   }
 }
 struct PromptAnchor: Equatable {
@@ -58,7 +257,10 @@ struct TerminalScreen: Equatable {
     self.rows = rows; topMargin = 0; bottomMargin = max(0, rows.count - 1)
     leftMargin = 0; rightMargin = max(0, columns - 1)
   }
-  init(columns: Int, rows count: Int) { self.init(rows: Array(repeating: TerminalRow(columns: columns), count: count), columns: columns) }
+  init(columns: Int, rows count: Int) {
+    let capacity = TerminalRow.blankLogicalCapacity(columns: columns)
+    self.init(rows: Array(repeating: TerminalRow(columns: columns, logicalCellCapacity: capacity), count: count), columns: columns)
+  }
 }
 struct TerminalDocument {
   struct PrintAttributes {
@@ -94,6 +296,7 @@ struct TerminalDocument {
     }
   }
   private(set) var columns: Int; private(set) var rowCount: Int
+  private var blankCellCapacity: Int
   var history: [TerminalRow] = []; var primary: TerminalScreen; var alternate: TerminalScreen
   fileprivate var nextRowID: UInt64 = 1
   // Print/segmentation state belongs beside the cells it identifies. This
@@ -101,18 +304,24 @@ struct TerminalDocument {
   private var printState = PrintState()
   init(columns: Int, rows: Int) {
     self.columns = columns; rowCount = rows
+    blankCellCapacity = TerminalRow.blankLogicalCapacity(columns: columns)
     primary = TerminalScreen(rows: [], columns: columns); alternate = TerminalScreen(rows: [], columns: columns)
     primary.rows = makeRows(rows); alternate.rows = makeRows(rows)
     primary.bottomMargin = rows - 1; alternate.bottomMargin = rows - 1
   }
   mutating func blankRow() -> TerminalRow {
     defer { nextRowID &+= 1 }
-    return TerminalRow(id: nextRowID, cells: Array(repeating: TerminalCell(), count: columns))
+    var row = TerminalRow(columns: columns, logicalCellCapacity: blankCellCapacity); row.id = nextRowID; return row
   }
   mutating func eraseRow(_ style: TerminalStyle) -> TerminalRow {
-    var row = blankRow(); row.cells = Array(repeating: .erased(style), count: columns); return row
+    var row = blankRow()
+    for column in 0..<columns { row.erase(at: column, style: style) }
+    return row
   }
-  mutating func setSize(columns: Int, rows: Int) { self.columns = columns; rowCount = rows }
+  mutating func setSize(columns: Int, rows: Int) {
+    if self.columns != columns { blankCellCapacity = TerminalRow.blankLogicalCapacity(columns: columns) }
+    self.columns = columns; rowCount = rows
+  }
 
   mutating func resetPrintCluster() {
     printState.reset()
@@ -170,8 +379,10 @@ struct TerminalDocument {
       return nil
     }
     let removed = screen.rows.remove(at: up ? top : bottom)
-    let replacement = TerminalRow(id: nextRowID,
-                                  cells: Array(repeating: .erased(eraseStyle), count: columns))
+    var replacement = TerminalRow(columns: columns,
+                                  logicalCellCapacity: screen.rows.first?.retainedCellCapacity ?? TerminalRow.blankLogicalCapacity(columns: columns))
+    replacement.id = nextRowID
+    for column in 0..<columns { replacement.erase(at: column, style: eraseStyle) }
     nextRowID &+= 1
     screen.rows.insert(replacement, at: up ? bottom : top)
     return up && top == 0 && bottom == screen.rows.count - 1 ? removed : nil
@@ -267,7 +478,7 @@ struct TerminalDocument {
       guard category == .other, scalar.value >= 0x20, scalar.value <= 0x7e,
             startsCluster, !insertMode, !screen.pendingWrap,
             screen.rows.indices.contains(screen.cursorRow),
-            screen.rows[screen.cursorRow].cells.indices.contains(screen.cursorColumn) else { continue }
+            screen.rows[screen.cursorRow].count > screen.cursorColumn else { continue }
       let horizontal = leftRightMargins
         ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
       let bounds = screen.cursorColumn <= horizontal.1 ? horizontal : (0, columns - 1)
@@ -317,7 +528,7 @@ struct TerminalDocument {
                                                 in screen: borrowing TerminalScreen) -> Bool {
     guard let owner else { return false }
     return owner.row == screen.cursorRow && screen.rows.indices.contains(owner.row) &&
-      screen.rows[owner.row].cells.indices.contains(owner.column)
+      screen.rows[owner.row].count > owner.column
   }
 
   private static func assignRowIDs(_ screen: inout TerminalScreen, at indices: [Int], nextRowID: inout UInt64) {
@@ -344,7 +555,7 @@ struct TerminalDocument {
     func erase(_ row: Int, _ range: Range<Int>, _ eraseStyle: TerminalStyle) {
       let lower = max(0, range.lowerBound), upper = min(columns, range.upperBound)
       guard screen.rows.indices.contains(row), lower < upper else { return }
-      for column in lower..<upper { screen.rows[row].cells[column] = .erased(eraseStyle) }
+      for column in lower..<upper { screen.rows[row].erase(at: column, style: eraseStyle) }
       Self.repairWidePairsInPlace(&screen.rows[row], around: lower..<upper, eraseStyle: eraseStyle)
       screen.rows[row].revision &+= 1
     }
@@ -353,17 +564,20 @@ struct TerminalDocument {
       let count = min(amount, right - column + 1)
       guard count > 0 else { return }
       if column + count <= right {
+        let source = screen.rows[row]
         for destination in stride(from: right, through: column + count, by: -1) {
-          screen.rows[row].cells[destination] = screen.rows[row].cells[destination - count]
+          screen.rows[row].copyCell(from: source, at: destination - count, to: destination)
         }
       }
-      for index in column..<(column + count) { screen.rows[row].cells[index] = .erased(eraseStyle) }
+      for index in column..<(column + count) { screen.rows[row].erase(at: index, style: eraseStyle) }
       Self.repairWidePairsInPlace(&screen.rows[row], around: column..<(right + 1), eraseStyle: eraseStyle)
       screen.rows[row].revision &+= 1
     }
     func scrollUpFullWidth() {
       let removed = screen.rows.remove(at: screen.topMargin)
-      let replacement = TerminalRow(id: 0, cells: Array(repeating: .erased(attributes.style), count: columns))
+      var replacement = TerminalRow(columns: columns,
+                                    logicalCellCapacity: screen.rows.first?.retainedCellCapacity ?? TerminalRow.blankLogicalCapacity(columns: columns))
+      for column in 0..<columns { replacement.erase(at: column, style: attributes.style) }
       screen.rows.insert(replacement, at: screen.bottomMargin)
       replacementRows.append(screen.bottomMargin)
       if retainHistory && screen.topMargin == 0 && screen.bottomMargin == screen.rows.count - 1 {
@@ -390,11 +604,11 @@ struct TerminalDocument {
     }
 
     if !startsCluster, let owner = state.openCluster, owner.row == screen.cursorRow,
-       screen.rows[owner.row].cells.indices.contains(owner.column) {
-      let cell = screen.rows[owner.row].cells[owner.column]
+       screen.rows[owner.row].count > owner.column {
+      let cell = screen.rows[owner.row].cell(owner.column)
       if state.capped || state.retainedScalars + 1 > 64 {
         state.capped = true
-        screen.rows[owner.row].cells[owner.column].flags |= 4
+        screen.rows[owner.row].addFlags(4, at: owner.column)
         return
       }
       state.retainedScalars += 1
@@ -405,7 +619,7 @@ struct TerminalDocument {
       let right = writeBounds(owner.column).right
       if nominal > oldWidth && owner.column + nominal > right + 1 && autoWrap {
         erase(owner.row, owner.column..<(owner.column + oldWidth), cell.style.erased())
-        if writeBounds(owner.column).left == 0 && right == columns - 1 { screen.rows[owner.row].cells[owner.column].kind = 4 }
+        if writeBounds(owner.column).left == 0 && right == columns - 1 { screen.rows[owner.row].setKind(4, at: owner.column) }
         screen.cursorRow = owner.row; screen.cursorColumn = owner.column; screen.pendingWrap = true
         wrap()
         let row = screen.cursorRow, column = screen.cursorColumn
@@ -435,19 +649,27 @@ struct TerminalDocument {
       return
     }
     state.openCluster = nil; state.retainedScalars = 0
-    let text = String(scalar)
-    let measuredWidth = scalar.value < 0x80 && category == .other ? 1 : SwiftUnicode.cellWidth(of: text)
+    let measuredWidth: Int
+    let richText: String?
+    if scalar.value < 0x80 && category == .other {
+      measuredWidth = 1
+      richText = nil
+    } else {
+      let text = String(scalar)
+      measuredWidth = SwiftUnicode.cellWidth(of: text)
+      richText = text
+    }
     if measuredWidth == 0 {
       if SwiftUnicode.isDefaultIgnorable(scalar) {
         return
       }
       if !startsCluster, screen.cursorColumn > 0 {
         var attachment = screen.pendingWrap ? screen.cursorColumn : screen.cursorColumn - 1
-        if !screen.pendingWrap, screen.rows[screen.cursorRow].cells[attachment].kind == 0, screen.cursorColumn < columns { attachment = screen.cursorColumn }
+        if !screen.pendingWrap, screen.rows[screen.cursorRow].kind(at: attachment) == 0, screen.cursorColumn < columns { attachment = screen.cursorColumn }
         let owner = Self.repairedCellOwner(in: screen.rows[screen.cursorRow], at: attachment)
-        let count = screen.rows[screen.cursorRow].cells[owner].text.unicodeScalars.count
-        if count + 1 > 64 { screen.rows[screen.cursorRow].cells[owner].flags |= 4 }
-        else { screen.rows[screen.cursorRow].cells[owner].text.unicodeScalars.append(scalar) }
+        let count = screen.rows[screen.cursorRow].scalarCount(at: owner)
+        if count + 1 > 64 { screen.rows[screen.cursorRow].addFlags(4, at: owner) }
+        else { screen.rows[screen.cursorRow].appendScalar(scalar, at: owner) }
       }
       if !startsCluster { return }
     }
@@ -459,7 +681,7 @@ struct TerminalDocument {
     let bounds = writeBounds(screen.cursorColumn)
     if width == 2 && screen.cursorColumn + 2 > bounds.right + 1 && bounds.right > bounds.left && autoWrap {
       erase(screen.cursorRow, screen.cursorColumn..<(screen.cursorColumn + 1), attributes.style.erased())
-      if bounds.left == 0 && bounds.right == columns - 1 { screen.rows[screen.cursorRow].cells[screen.cursorColumn].kind = 4 }
+      if bounds.left == 0 && bounds.right == columns - 1 { screen.rows[screen.cursorRow].setKind(4, at: screen.cursorColumn) }
       wrap()
     }
     let right = writeBounds(screen.cursorColumn).right
@@ -470,13 +692,20 @@ struct TerminalDocument {
     }
     let row = screen.cursorRow, column = screen.cursorColumn
     let truncated = width == 2 && occupied < width
-    let lead = TerminalCell(text: text, kind: width == 2 && occupied == 2 ? 2 : 1,
-                            style: attributes.style, link: attributes.link,
-                            flags: (attributes.protected ? 2 : 0) | (truncated ? 1 : 0),
-                            protected: attributes.protected)
-    Self.replacePrintedLead(in: &screen.rows[row], at: column, with: lead)
+    let kind: UInt8 = width == 2 && occupied == 2 ? 2 : 1
+    let flags: UInt8 = (attributes.protected ? 2 : 0) | (truncated ? 1 : 0)
+    if let richText {
+      Self.replacePrintedLead(in: &screen.rows[row], at: column,
+                              with: TerminalCell(text: richText, kind: kind, style: attributes.style,
+                                                 link: attributes.link, flags: flags,
+                                                 protected: attributes.protected))
+    } else {
+      Self.replacePrintedScalar(in: &screen.rows[row], at: column, scalar: scalar, kind: kind,
+                                style: attributes.style, link: attributes.link, flags: flags,
+                                protected: attributes.protected)
+    }
     state.openCluster = (row, column); state.retainedScalars = 1
-    effect.lastPrinted = text
+    effect.lastPrinted = richText ?? String(scalar)
     effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link,
                                               protected: attributes.protected)
     screen.cursorColumn = min(right, column + occupied)
@@ -489,16 +718,34 @@ struct TerminalDocument {
   // clear only pair halves that survive beyond its new physical span.
   private static func replacePrintedLead(in row: inout TerminalRow, at column: Int,
                                          with lead: TerminalCell) {
-    guard row.cells.indices.contains(column) else { return }
+    guard column >= 0, column < row.count else { return }
     let width = lead.kind == 2 ? 2 : 1
-    guard column + width <= row.cells.count else { return }
+    guard column + width <= row.count else { return }
     guard preparePrintedReplacement(in: &row, at: column, count: width, like: lead) else { return }
 
-    row.cells[column] = lead
+    row.setCell(lead, at: column)
     if width == 2 {
-      row.cells[column + 1] = TerminalCell(text: "", kind: 3, style: lead.style,
-                                             link: lead.link, flags: lead.flags & ~UInt8(1),
-                                             protected: lead.protected)
+      row.setCell(TerminalCell(text: "", kind: 3, style: lead.style,
+                                link: lead.link, flags: lead.flags & ~UInt8(1),
+                                protected: lead.protected), at: column + 1)
+    }
+    row.revision &+= 1
+  }
+
+  private static func replacePrintedScalar(in row: inout TerminalRow, at column: Int,
+                                           scalar: Unicode.Scalar, kind: UInt8, style: TerminalStyle,
+                                           link: String?, flags: UInt8, protected: Bool) {
+    guard column >= 0, column < row.count else { return }
+    let width = kind == 2 ? 2 : 1
+    guard column + width <= row.count else { return }
+    let prototype = TerminalCell(text: "", kind: kind, style: style, link: link,
+                                 flags: flags, protected: protected)
+    guard preparePrintedReplacement(in: &row, at: column, count: width, like: prototype) else { return }
+    row.setScalar(scalar, at: column, kind: kind, style: style, link: link, flags: flags,
+                  protected: protected)
+    if width == 2 {
+      row.setCell(TerminalCell(text: "", kind: 3, style: style, link: link,
+                                flags: flags & ~UInt8(1), protected: protected), at: column + 1)
     }
     row.revision &+= 1
   }
@@ -507,18 +754,16 @@ struct TerminalDocument {
                                                           scalars: C, count: Int,
                                                           attributes: borrowing PrintAttributes)
   where C.Element == Unicode.Scalar {
-    guard count > 0, row.cells.indices.contains(column), column + count <= row.cells.count else { return }
+    guard count > 0, column >= 0, column < row.count, column + count <= row.count else { return }
     let prototype = TerminalCell(text: "", kind: 1, style: attributes.style, link: attributes.link,
                                  flags: attributes.protected ? 2 : 0, protected: attributes.protected)
     guard preparePrintedReplacement(in: &row, at: column, count: count, like: prototype) else { return }
-    row.cells.withUnsafeMutableBufferPointer { cells in
-      var destination = column
-      for scalar in scalars {
-        cells[destination] = TerminalCell(text: String(scalar), kind: 1, style: attributes.style,
-                                          link: attributes.link, flags: attributes.protected ? 2 : 0,
-                                          protected: attributes.protected)
-        destination += 1
-      }
+    var destination = column
+    for scalar in scalars {
+      row.setScalar(scalar, at: destination, kind: 1, style: attributes.style,
+                    link: attributes.link, flags: attributes.protected ? 2 : 0,
+                    protected: attributes.protected)
+      destination += 1
     }
     row.revision &+= UInt64(count)
   }
@@ -528,13 +773,13 @@ struct TerminalDocument {
   // every cell inside that span directly.
   private static func preparePrintedReplacement(in row: inout TerminalRow, at column: Int,
                                                 count: Int, like lead: borrowing TerminalCell) -> Bool {
-    guard count > 0, row.cells.indices.contains(column), column + count <= row.cells.count else { return false }
+    guard count > 0, column >= 0, column < row.count, column + count <= row.count else { return false }
     let end = column + count
     let eraseStyle = lead.style.erased()
-    let clearsLeft = column > 0 && row.cells[column].kind == 3 && row.cells[column - 1].kind == 2
-    let clearsRight = end < row.cells.count && row.cells[end - 1].kind == 2 && row.cells[end].kind == 3
-    if clearsLeft { row.cells[column - 1] = .erased(eraseStyle) }
-    if clearsRight { row.cells[end] = .erased(eraseStyle) }
+    let clearsLeft = column > 0 && row.kind(at: column) == 3 && row.kind(at: column - 1) == 2
+    let clearsRight = end < row.count && row.kind(at: end - 1) == 2 && row.kind(at: end) == 3
+    if clearsLeft { row.erase(at: column - 1, style: eraseStyle) }
+    if clearsRight { row.erase(at: end, style: eraseStyle) }
     return true
   }
 
@@ -546,13 +791,13 @@ struct TerminalDocument {
       return false
     }
     return screen.rows.allSatisfy { row in
-      guard row.cells.count == columns else { return false }
-      for index in row.cells.indices {
-        switch row.cells[index].kind {
+      guard row.count == columns else { return false }
+      for index in 0..<row.count {
+        switch row.kind(at: index) {
         case 2:
-          guard index + 1 < row.cells.count, row.cells[index + 1].kind == 3 else { return false }
+          guard index + 1 < row.count, row.kind(at: index + 1) == 3 else { return false }
         case 3:
-          guard index > 0, row.cells[index - 1].kind == 2 else { return false }
+          guard index > 0, row.kind(at: index - 1) == 2 else { return false }
         default: break
         }
       }
@@ -593,18 +838,24 @@ struct TerminalDocument {
     guard screen.rows.indices.contains(row), column <= right, right < columns else { return }
     let amount = min(count, right - column + 1); guard amount > 0 else { return }
     if inserting {
-      if column + amount <= right { for destination in stride(from: right, through: column + amount, by: -1) { screen.rows[row].cells[destination] = screen.rows[row].cells[destination - amount] } }
-      for index in column..<(column + amount) { screen.rows[row].cells[index] = .erased(eraseStyle) }
+      if column + amount <= right {
+        let original = screen.rows[row]
+        for destination in stride(from: right, through: column + amount, by: -1) { screen.rows[row].copyCell(from: original, at: destination - amount, to: destination) }
+      }
+      for index in column..<(column + amount) { screen.rows[row].erase(at: index, style: eraseStyle) }
     } else {
-      if column <= right - amount { for destination in column...(right - amount) { screen.rows[row].cells[destination] = screen.rows[row].cells[destination + amount] } }
-      for index in (right - amount + 1)...right { screen.rows[row].cells[index] = .erased(eraseStyle) }
+      if column <= right - amount {
+        let original = screen.rows[row]
+        for destination in column...(right - amount) { screen.rows[row].copyCell(from: original, at: destination + amount, to: destination) }
+      }
+      for index in (right - amount + 1)...right { screen.rows[row].erase(at: index, style: eraseStyle) }
     }
     repairWidePairs(&screen.rows[row], eraseStyle: eraseStyle); screen.rows[row].revision &+= 1
   }
   mutating func erase(_ screen: inout TerminalScreen, row: Int, columns range: Range<Int>, style: TerminalStyle, selective: Bool = false) {
     guard screen.rows.indices.contains(row) else { return }
     let lower = max(0, range.lowerBound), upper = min(columns, range.upperBound); guard lower < upper else { return }
-    for column in lower..<upper where !selective || !screen.rows[row].cells[column].protected { screen.rows[row].cells[column] = .erased(style) }
+    for column in lower..<upper where !selective || !screen.rows[row].isProtected(at: column) { screen.rows[row].erase(at: column, style: style) }
     repairWidePairs(&screen.rows[row], eraseStyle: style); screen.rows[row].revision &+= 1
   }
   mutating func scrollRectangle(_ screen: inout TerminalScreen, top: Int, bottom: Int, left: Int, right: Int, count: Int, up: Bool, eraseStyle: TerminalStyle) {
@@ -617,8 +868,8 @@ struct TerminalDocument {
     let originals = screen.rows
     for step in 0...(bottom - top) {
       let destination = up ? top + step : bottom - step; let source = up ? destination + amount : destination - amount
-      if source >= top && source <= bottom { screen.rows[destination].cells.replaceSubrange(left...right, with: originals[source].cells[left...right]) }
-      else { for column in left...right { screen.rows[destination].cells[column] = .erased(eraseStyle) }; screen.rows[destination].softWrapped = false }
+      if source >= top && source <= bottom { screen.rows[destination].copyRange(from: originals[source], left...right) }
+      else { for column in left...right { screen.rows[destination].erase(at: column, style: eraseStyle) }; screen.rows[destination].softWrapped = false }
       repairWidePairsInPlace(&screen.rows[destination], eraseStyle: eraseStyle); screen.rows[destination].revision &+= 1
     }
     if left != 0 || right != columns - 1 { screen.rows[top].softWrapped = false }
@@ -627,21 +878,21 @@ struct TerminalDocument {
     var result = TerminalScreen(rows: [], columns: nextColumns); setSize(columns: nextColumns, rows: nextRows); result.rows = makeRows(nextRows)
     let start = max(0, screen.rows.count - nextRows)
     for (destination, source) in screen.rows.suffix(nextRows).enumerated() {
-      var row = source; row.cells = Array(source.cells.prefix(nextColumns))
-      if row.cells.count < nextColumns { row.cells.append(contentsOf: repeatElement(TerminalCell(), count: nextColumns - row.cells.count)) }
+      var row = source; row.truncate(to: min(source.count, nextColumns))
+      if row.count < nextColumns { row.appendBlanks(nextColumns - row.count) }
       repairWidePairs(&row, eraseStyle: TerminalStyle()); result.rows[destination] = row
     }
     result.cursorRow = min(nextRows - 1, max(0, screen.cursorRow - start)); result.cursorColumn = min(nextColumns - 1, screen.cursorColumn); result.pendingWrap = false
     return result
   }
   func repairedCellOwner(in row: TerminalRow, at column: Int) -> Int { Self.repairedCellOwner(in: row, at: column) }
-  private static func repairedCellOwner(in row: TerminalRow, at column: Int) -> Int { row.cells.indices.contains(column) && row.cells[column].kind == 3 && column > 0 ? column - 1 : column }
+  private static func repairedCellOwner(in row: TerminalRow, at column: Int) -> Int { column >= 0 && column < row.count && row.kind(at: column) == 3 && column > 0 ? column - 1 : column }
   private mutating func makeRows(_ count: Int) -> [TerminalRow] { (0..<count).map { _ in blankRow() } }
   private func repairWidePairs(_ row: inout TerminalRow, eraseStyle: TerminalStyle) {
     Self.repairWidePairsInPlace(&row, eraseStyle: eraseStyle)
   }
   private static func repairWidePairsInPlace(_ row: inout TerminalRow, eraseStyle: TerminalStyle) {
-    repairWidePairsInPlace(&row, around: row.cells.indices, eraseStyle: eraseStyle)
+    repairWidePairsInPlace(&row, around: 0..<row.count, eraseStyle: eraseStyle)
   }
   // A cell mutation can only orphan a wide pair at the mutation's two edges:
   // cells wholly inside an overwritten span are erased, while an untouched
@@ -649,15 +900,15 @@ struct TerminalDocument {
   // operations that replace arbitrary row regions, but scalar printing repairs
   // only the changed span and its crossing neighbours.
   private static func repairWidePairsInPlace(_ row: inout TerminalRow, around changed: Range<Int>, eraseStyle: TerminalStyle) {
-    guard !row.cells.isEmpty else { return }
+    guard row.count > 0 else { return }
     let lower = max(0, changed.lowerBound)
-    let upper = min(row.cells.count, changed.upperBound)
+    let upper = min(row.count, changed.upperBound)
     guard lower < upper else { return }
     let first = max(0, lower - 1)
-    let last = min(row.cells.count - 1, upper)
+    let last = min(row.count - 1, upper)
     for index in first...last {
-      if row.cells[index].kind == 2 && (index + 1 >= row.cells.count || row.cells[index + 1].kind != 3) { row.cells[index] = .erased(eraseStyle) }
-      if row.cells[index].kind == 3 && (index == 0 || row.cells[index - 1].kind != 2) { row.cells[index] = .erased(eraseStyle) }
+      if row.kind(at: index) == 2 && (index + 1 >= row.count || row.kind(at: index + 1) != 3) { row.erase(at: index, style: eraseStyle) }
+      if row.kind(at: index) == 3 && (index == 0 || row.kind(at: index - 1) != 2) { row.erase(at: index, style: eraseStyle) }
     }
   }
 }

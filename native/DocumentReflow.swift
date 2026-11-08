@@ -1,7 +1,7 @@
 import Foundation
 
-// Internal implementation partition of TerminalDocument. It retains rich cell
-// payloads while rebuilding physical rows, and returns only the small mapping
+// Internal implementation partition of TerminalDocument. It moves row slots
+// and their sparse payloads together while rebuilding physical rows, and returns only the small mapping
 // needed by the emulator to retain cursor and viewport identity.
 extension TerminalDocument {
   struct ReflowMapping {
@@ -80,27 +80,30 @@ extension TerminalDocument {
         }
         map(sourceIndex, sourceColumn)
         guard sourceColumn < end else { break }
-        let sourceCell = source.cells[sourceColumn]
-        if sourceCell.kind == 3 || sourceCell.kind == 4 { sourceColumn += 1; continue }
-        let nominal = (sourceCell.kind == 2 || sourceCell.flags & 1 != 0) ? 2 : 1
+        let sourceKind = source.kind(at: sourceColumn)
+        let sourceFlags = source.flags(at: sourceColumn)
+        if sourceKind == 3 || sourceKind == 4 { sourceColumn += 1; continue }
+        let nominal = (sourceKind == 2 || sourceFlags & 1 != 0) ? 2 : 1
         let width = min(nominal, nextColumns)
         if column + width > nextColumns {
-          if column < nextColumns { row.cells[column].kind = 4 }
+          if column < nextColumns { row.setKind(4, at: column) }
           finish(true)
           if source.id == anchor, mappedAnchor == nil { mappedAnchor = row.id }
         }
-        if sourceCell.kind == 0 {
-          row.cells[column] = .erased(sourceCell.style)
+        if sourceKind == 0 {
+          row.erase(at: column, style: source.style(at: sourceColumn))
         } else {
-          var copied = sourceCell
-          copied.kind = width == 2 ? 2 : 1
-          if width < nominal { copied.flags |= 1 }
-          else { copied.flags &= ~UInt8(1) }
-          row.cells[column] = copied
+          row.copyCell(from: source, at: sourceColumn, to: column)
+          row.setKind(width == 2 ? 2 : 1, at: column)
+          row.setFlags(width < nominal ? sourceFlags | 1 : sourceFlags & ~UInt8(1), at: column)
           if width == 2 {
-            var continuation = source.cells.indices.contains(sourceColumn + 1) ? source.cells[sourceColumn + 1] : TerminalCell()
-            continuation.text = ""; continuation.kind = 3
-            row.cells[column + 1] = continuation
+            if source.count > sourceColumn + 1 {
+              row.copyCell(from: source, at: sourceColumn + 1, to: column + 1)
+              row.clearText(at: column + 1)
+              row.setKind(3, at: column + 1)
+            } else {
+              row.setCell(TerminalCell(text: "", kind: 3), at: column + 1)
+            }
           }
         }
         column += width

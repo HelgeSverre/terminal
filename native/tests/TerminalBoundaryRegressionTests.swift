@@ -160,6 +160,29 @@ import Foundation
     try expect((try snapshot(linked))["history_rows"] as? Int == 0, "history budget omitted hyperlink content")
     try expect(terminal_history_bytes(linked) == 0, "evicted hyperlink remained charged")
   }
+  static func historyByteThresholds() throws {
+    // Non-round widths exercise the old rich-array capacity rounding. Exact
+    // admission must retain one row at the charge, and evict at charge - 1.
+    for width: UInt32 in [3, 7, 17] {
+      let measured = terminal_create(width, 1)!
+      defer { terminal_destroy(measured) }
+      try feed(measured, "A\r\nB")
+      let charge = terminal_history_bytes(measured)
+      try expect(charge > 0 && (try snapshot(measured))["history_rows"] as? Int == 1,
+                 "history threshold fixture width \(width)")
+      for delta: Int64 in [-1, 0, 1] {
+        let terminal = terminal_create(width, 1)!
+        defer { terminal_destroy(terminal) }
+        terminal_set_history_byte_limit(terminal, UInt64(Int64(charge) + delta))
+        try feed(terminal, "A\r\nB")
+        let retained = delta >= 0
+        try expect(((try snapshot(terminal))["history_rows"] as? Int == (retained ? 1 : 0)),
+                   "history threshold \(delta) width \(width)")
+        try expect(terminal_history_bytes(terminal) == (retained ? charge : 0),
+                   "history byte threshold \(delta) width \(width)")
+      }
+    }
+  }
   #endif
   static func readiness() throws {
     let terminal = terminal_create(12, 3)!
@@ -243,6 +266,7 @@ import Foundation
     #if !RUST_BASELINE
     cases.append(("byte-retention", resizeByteRetention))
     cases.append(("history-storage", historyStorageCharge))
+    cases.append(("history-thresholds", historyByteThresholds))
     #endif
     do {
       let selected = CommandLine.arguments.dropFirst().first
