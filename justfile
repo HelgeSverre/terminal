@@ -157,6 +157,7 @@ lint:
     just terminal-scheduler-oracle
     just terminal-semantic-regression
     just terminal-boundary-regression
+    just terminal-graphics-oracle
     just swift-unicode18-corpus
     just swift-unicode-decoder
     just unicode-lowercase
@@ -193,6 +194,13 @@ swift-core-test:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_core) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/swift-core-tests
     target/native/swift-core-tests
+
+# Public graphics protocol, resource lifetime and document-anchor regressions.
+[group('check')]
+terminal-graphics-oracle:
+    mkdir -p target/native
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_graphics_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-graphics-oracle-tests
+    target/native/terminal-graphics-oracle-tests
 
 [group('check')]
 window-stress-motion-test:

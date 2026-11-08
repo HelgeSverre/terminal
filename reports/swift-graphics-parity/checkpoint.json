@@ -1,0 +1,120 @@
+{
+  "scope": "Public ABI graphics regressions translated from the pinned Rust graphics tests; not whole-terminal parity.",
+  "baseline_graphics_sha256": "181b4f8be7b6f369caf0b12816e48919c15ed9f8d46ec7ddee4d371d7841d6cf",
+  "baseline_core_sha256": "2a1afc25e80d6d20d4974d09cf20cad3453190a485c1426b15442336d041496a",
+  "baseline_test_first_sha256": "1e949982cf5322d6d623d3ab73e5832678772e4c29db2e69aa71eef2ff5b6c9b",
+  "red_controls": [
+    {
+      "name": "checked-ids",
+      "exit": null,
+      "signal": 5,
+      "passed": null
+    },
+    {
+      "name": "cursor-layout",
+      "exit": null,
+      "signal": 5,
+      "passed": null
+    },
+    {
+      "name": "reset-scroll",
+      "exit": null,
+      "signal": 5,
+      "passed": null
+    },
+    {
+      "name": "upload-lifecycle",
+      "exit": null,
+      "signal": 5,
+      "passed": null
+    },
+    {
+      "name": "delete-cache",
+      "exit": null,
+      "signal": 5,
+      "passed": null
+    },
+    {
+      "name": "feature-query",
+      "exit": null,
+      "signal": 5,
+      "passed": null
+    },
+    {
+      "name": "dmscene",
+      "exit": 0,
+      "signal": null,
+      "passed": true
+    },
+    {
+      "name": "png-zlib",
+      "exit": null,
+      "signal": 5,
+      "passed": null
+    },
+    {
+      "name": "height-identity",
+      "exit": null,
+      "signal": 5,
+      "passed": null
+    },
+    {
+      "name": "partitions",
+      "exit": 0,
+      "signal": null,
+      "passed": true
+    },
+    {
+      "name": "atomic-chunks",
+      "exit": 0,
+      "signal": null,
+      "passed": true
+    },
+    {
+      "name": "malformed-atomic",
+      "exit": 0,
+      "signal": null,
+      "passed": true
+    },
+    {
+      "name": "cross-screen-delete",
+      "exit": null,
+      "signal": 5,
+      "passed": null
+    }
+  ],
+  "final_test_sha256": "b6804ddde33617fa3d713e05ac1ebbf7ed2272e252e045a5cde29d6d0866e1fa",
+  "final_graphics_sha256": "bdea1e975a4a7411f55318fe97f61b4928852c74ebd25c496de1a77819160dc7",
+  "oracle_source_sha256": "bb26393a34772ddc7a527a4fab73f53c6d88d63e10536286f3debc096a2cc9ef",
+  "green_groups": [
+    "checked-ids",
+    "cursor-layout",
+    "reset-scroll",
+    "upload-lifecycle",
+    "delete-cache",
+    "feature-query",
+    "dmscene",
+    "png-zlib",
+    "height-identity",
+    "partitions",
+    "atomic-chunks",
+    "malformed-atomic",
+    "cross-screen-delete"
+  ],
+  "additional_green": [
+    "nine PNG sample formats including16-bit,indexed and transparency keys",
+    "PNG CRC and zlib Adler validation",
+    "anonymous image allocation",
+    "direct Document height-only identity retention"
+  ],
+  "passing_gates": [
+    "terminal-graphics-oracle",
+    "terminal-reflow-semantics",
+    "terminal-viewport-oracle",
+    "terminal-document-oracle",
+    "terminal-boundary-regression",
+    "snapshot-bridge-tests",
+    "swift-core-test geometry/pixel contracts"
+  ],
+  "qualification": "Baseline group probes predate the additional final assertions. Nine groups fail independently by signal5; four controls already pass. Source input modification aborted one document compile, which was rerun successfully from stable sources. No GUI or runtime-performance acceptance is asserted."
+}

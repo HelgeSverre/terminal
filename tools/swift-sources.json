@@ -52,6 +52,11 @@
     "SwiftTerminalCore.swift"
   ],
   "tests": {
+    "terminal_graphics_oracle": [
+      "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
+      "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift",
+      "tests/TerminalGraphicsOracleTests.swift"
+    ],
     "pty": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
       "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "UnicodeLowercase.swift", "SwiftSearchViewport.swift", "SwiftTerminalCore.swift"

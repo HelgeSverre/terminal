@@ -18,6 +18,28 @@ extension TerminalDocument {
     let oldPrimary = primary
     let oldPromptAnchor = oldPrimary.promptAnchor
     let input = history.rows + primary.rows
+    if nextColumns == oldColumns {
+      // A height change moves retained physical rows; it does not reflow or
+      // create new identities for existing content (including image anchors).
+      let cursor = oldHistoryCount + oldPrimary.cursorRow
+      let saved = oldHistoryCount + oldPrimary.savedRow
+      var start = max(0, oldHistoryCount - max(0, nextRows - oldRows))
+      if cursor < start { start = cursor }
+      if cursor >= start + nextRows { start = cursor + 1 - nextRows }
+      setSize(columns: nextColumns, rows: nextRows)
+      history.replace(Array(input.prefix(start)))
+      var retained = Array(input.dropFirst(start).prefix(nextRows))
+      while retained.count < nextRows { retained.append(blankRow()) }
+      primary.rows = retained
+      primary.cursorRow = min(nextRows - 1, max(0, cursor - start))
+      primary.savedRow = min(nextRows - 1, max(0, saved - start))
+      primary.topMargin = 0; primary.bottomMargin = nextRows - 1
+      primary.leftMargin = 0; primary.rightMargin = nextColumns - 1
+      if let prompt = oldPromptAnchor, !retained.contains(where: { $0.id == prompt.row }) { primary.retirePromptAnchor() }
+      return ReflowMapping(anchor: anchor,
+                           cursor: (primary.cursorRow, primary.cursorColumn, primary.pendingWrap),
+                           saved: (primary.savedRow, primary.savedColumn, primary.savedPendingWrap))
+    }
     let cursorSource = oldHistoryCount + oldPrimary.cursorRow
     let savedSource = oldHistoryCount + oldPrimary.savedRow
     let lastRelevant = input.indices.last(where: { index in

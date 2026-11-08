@@ -8,9 +8,9 @@ import Foundation
   static func main() {
     let store = KittyGraphicsStore()
     let first = store.consume(packet("a=T,t=d,f=24,s=2,v=1,i=7,p=9,c=3,r=2,C=1", [255, 0, 0, 0, 255, 0]), context: context, now: 1)
-    precondition(first.advance?.0 == 3 && first.advance?.1 == 2)
+    precondition(first.advance == nil)
     precondition(String(data: first.reply!, encoding: .utf8)!.contains("i=7,p=9;OK"))
-    let placement = store.visible(alternate: false).only!
+    let placement = store.visible(alternate: false, positions: [3: 3], height: 24).only!
     precondition(placement.image == 7 && placement.width == 2 && placement.height == 1)
     precondition(store.imageRGBA(id: 7, generation: placement.generation) == Data([255, 0, 0, 255, 0, 255, 0, 255]))
 
@@ -18,15 +18,15 @@ import Foundation
     let encoded = Data(original).base64EncodedString()
     let cut = encoded.index(encoded.startIndex, offsetBy: 8)
     _ = store.consume(Data("Ga=T,t=d,f=32,s=3,v=1,i=8,m=1;\(encoded[..<cut])".utf8), context: context, now: 2)
-    precondition(store.visible(alternate: false).count == 1)
+    precondition(store.visible(alternate: false, positions: [3: 3], height: 24).count == 1)
     _ = store.consume(Data("Gm=0;\(encoded[cut...])".utf8), context: context, now: 3)
-    let loaded = store.visible(alternate: false).first { $0.image == 8 }!
+    let loaded = store.visible(alternate: false, positions: [3: 3], height: 24).first { $0.image == 8 }!
     precondition(store.imageRGBA(id: 8, generation: loaded.generation) == Data(original))
 
     // zlib transport is decoded only into the declared image extent.
     let zlib: [UInt8] = [120, 1, 99, 100, 98, 102, 1, 0, 0, 24, 0, 11]
     let zlibResult = store.consume(packet("a=T,t=d,f=32,s=1,v=1,o=z,i=10", zlib), context: context, now: 4)
-    guard let zipped = store.visible(alternate: false).first(where: { $0.image == 10 }) else {
+    guard let zipped = store.visible(alternate: false, positions: [3: 3], height: 24).first(where: { $0.image == 10 }) else {
       fatalError(String(data: zlibResult.reply ?? Data(), encoding: .utf8) ?? "zlib placement missing")
     }
     precondition(store.imageRGBA(id: 10, generation: zipped.generation) == Data([1, 2, 3, 4]))
@@ -34,7 +34,7 @@ import Foundation
     precondition(String(data: bomb.reply!, encoding: .utf8)!.contains("EINVAL"))
 
     _ = store.consume(Data("Ga=d,d=I,i=7".utf8), context: context, now: 5)
-    precondition(store.visible(alternate: false).allSatisfy { $0.image != 7 })
+    precondition(store.visible(alternate: false, positions: [3: 3], height: 24).allSatisfy { $0.image != 7 })
     precondition(store.imageRGBA(id: 7, generation: placement.generation) == nil)
 
     let invalid = store.consume(Data("Ga=T,t=f,f=24,s=1,v=1,i=1;AQID".utf8), context: context, now: 6)

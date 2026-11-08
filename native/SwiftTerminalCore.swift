@@ -106,6 +106,7 @@ private final class SwiftTerminalCore {
   private var clipboardRequests: [(UInt64, Data)] = []
   private var pendingClipboardRequests = Set<UInt64>()
   private var title = ""
+  private var currentDirectory: String?
   private var applicationCursor = false
   private var applicationKeypad = false
   private var bracketedPaste = false
@@ -257,6 +258,7 @@ private final class SwiftTerminalCore {
   private func apply(_ effect: TerminalDocument.PrintEffect, mutations: Int = 1) {
     guard mutations > 0 else { return }
     applyAppendedHistory(effect.appendedHistory)
+    pruneGraphicsAnchors()
     if let printed = effect.lastPrinted {
       lastPrinted = printed
       let attributes = effect.repeatAttributes ?? TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)
@@ -274,6 +276,7 @@ private final class SwiftTerminalCore {
   private func resetClusterBoundary() { document.resetPrintCluster() }
   private func tick(_ now: UInt64) {
     clock = now
+    graphics.tick(now: now)
     if let deadline = syncDeadline, now >= deadline {
       syncDeadline = nil
       changed()
@@ -373,12 +376,14 @@ private final class SwiftTerminalCore {
           parser = .osc52(decoder, escaped: false)
         }
       case .apc:
-        if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
-        else if byte == 0x1b, sequence.utf8.count < 65_536 { sequence.append("\u{1b}") }
-        else if byte == 0x1b { parser = .discardString(escaped: true, osc: false); sequence = "" }
+        if byte == 0x18 || byte == 0x1a { graphics.abort(); sequence = ""; parser = .ground }
         else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
-        else if sequence.utf8.count < 65_536 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
-        else { parser = .discardString(escaped: false, osc: false); sequence = "" }
+        else if byte == 0x1b { if sequence.last != "\u{1b}" { sequence.append("\u{1b}") } }
+        else if sequence.last == "\u{1b}" || sequence.utf8.count >= 8192 {
+          graphics.abort(); parser = .discardString(escaped: false, osc: false); sequence = ""
+        }
+        else if sequence.isEmpty && byte != 0x47 { parser = .discardString(escaped: false, osc: false) }
+        else if byte >= 0x20 && byte != 0x7f { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
       case .discardString(let escaped, let osc):
         if byte == 0x18 || byte == 0x1a { parser = .ground }
         else if osc && byte == 0x07 { parser = .ground }
@@ -422,6 +427,7 @@ private final class SwiftTerminalCore {
     let rows = document.index(usingAlternate: usingAlternate, reverse: reverse,
                               leftRightMargins: leftRightMargins, eraseStyle: eraseStyle())
     applyAppendedHistory(rows)
+    pruneGraphicsAnchors()
     changed(history: !reverse && !usingAlternate)
   }
   private func lineFeed() { resetClusterBoundary(); index(reverse: false) }
@@ -448,7 +454,7 @@ private final class SwiftTerminalCore {
   private func reverseIndex() { index(reverse: true) }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
-  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); advanceSearchGeneration(); usingAlternate = false; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
+  private func reset() { graphics.clear(); document = TerminalDocument(columns: columns, rows: rowCount); advanceSearchGeneration(); usingAlternate = false; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
   private struct CSIParameterPacket {
     var values: [Int]
     // CSI > ... u and CSI = ... u historically parsed their first field
@@ -561,7 +567,7 @@ private final class SwiftTerminalCore {
     case "I": tab(false, count: n); changedActiveScreen = true
     case "Z": tab(true, count: n); changedActiveScreen = true
     case "r": setVerticalMargins(params); changedActiveScreen = true
-    case "S": resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: false)
+    case "S": resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: true)
     case "T": resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: false, allowHistory: false)
     case "b": repeatRemaining = min(1_000_000, max(0, params.first ?? 1)); clearsPending = false
     case "m": applySGR(params, colonSyntax: packet.hasColon ? raw : nil); clearsPending = false
@@ -591,9 +597,12 @@ private final class SwiftTerminalCore {
     // inside mode ownership prevents this generic CSI epilogue from writing a
     // stale primary copy back into the newly active alternate buffer.
     if !changedActiveScreen { if clearsPending { s.pendingWrap = false }; screen = s }
+    // Scroll commits its replacement screen before eviction resolves anchors.
+    if final == "S" { enforceHistoryLimits() }
+    if ["J", "L", "M", "S", "T", "h", "l"].contains(final) { pruneGraphicsAnchors() }
     if semanticChange { changed() }
   }
-  private func eraseDisplay(_ mode: Int, selective: Bool = false) { var s = screen; switch mode { case 2, 3: if selective { for row in 0..<rowCount { document.erase(&s, row: row, columns: 0..<columns, style: eraseStyle(), selective: true) } } else { s.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) } }; if mode == 3 && !usingAlternate { document.clearHistory(); advanceSearchGeneration(); historyEpoch &+= 1 }; case 1: for row in 0...s.cursorRow { document.erase(&s, row: row, columns: 0..<(row == s.cursorRow ? s.cursorColumn + 1 : columns), style: eraseStyle(), selective: selective) }; default: for row in s.cursorRow..<rowCount { document.erase(&s, row: row, columns: (row == s.cursorRow ? s.cursorColumn : 0)..<columns, style: eraseStyle(), selective: selective) } }; s.pendingWrap = false; screen = s }
+  private func eraseDisplay(_ mode: Int, selective: Bool = false) { if mode == 2 { graphics.clear(alternate: usingAlternate) }; var s = screen; switch mode { case 2, 3: if selective { for row in 0..<rowCount { document.erase(&s, row: row, columns: 0..<columns, style: eraseStyle(), selective: true) } } else { s.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) } }; if mode == 3 && !usingAlternate { document.clearHistory(); advanceSearchGeneration(); historyEpoch &+= 1 }; case 1: for row in 0...s.cursorRow { document.erase(&s, row: row, columns: 0..<(row == s.cursorRow ? s.cursorColumn + 1 : columns), style: eraseStyle(), selective: selective) }; default: for row in s.cursorRow..<rowCount { document.erase(&s, row: row, columns: (row == s.cursorRow ? s.cursorColumn : 0)..<columns, style: eraseStyle(), selective: selective) } }; s.pendingWrap = false; screen = s }
   private func eraseLine(_ mode: Int) { var s = screen; let range: Range<Int>; switch mode { case 1: range = 0..<(s.cursorColumn + 1); case 2: range = 0..<columns; default: range = s.cursorColumn..<columns }; document.erase(&s, row: s.cursorRow, columns: range, style: eraseStyle()); s.pendingWrap = false; screen = s }
   private func insertCharacters(_ count: Int) {
     var s = screen; let margins = horizontalMargins
@@ -629,7 +638,6 @@ private final class SwiftTerminalCore {
       if up && allowHistory && !usingAlternate && top == 0 && bottom == rowCount - 1 {
         document.history.append(removed)
         if viewAnchor != nil { viewOffset += 1 }
-        enforceHistoryLimits()
         historyEpoch &+= 1
       }
     }
@@ -812,9 +820,15 @@ private final class SwiftTerminalCore {
   private func finishString() {
     let payload = sequence; sequence = ""
     if case .osc = parser {
+      // String framing records byte values; decode once at the command seam.
+      guard let payload = String(bytes: payload.unicodeScalars.map { UInt8($0.value) }, encoding: .utf8) else { return }
       let parts = payload.split(separator: ";", omittingEmptySubsequences: false)
       guard let command = parts.first else { return }
       if command == "0" || command == "2" { title = parts.dropFirst().joined(separator: ";") }
+      else if command == "7" {
+        let directory = parts.dropFirst().joined(separator: ";")
+        if directory.utf8.count <= 8192 { currentDirectory = directory }
+      }
       else if command == "8" { currentLink = parts.count > 2 ? String(parts.dropFirst(2).joined(separator: ";")) : nil }
       else if command == "133" {
         let marker = parts.dropFirst().first
@@ -840,13 +854,15 @@ private final class SwiftTerminalCore {
     guard case .apc = parser else { return }
     let s = screen
     let outcome = graphics.consume(Data(payload.utf8), context: KittyGraphicsContext(
-      alternate: usingAlternate, row: s.cursorRow, column: s.cursorColumn,
-      cellWidth: cellPixelWidth, cellHeight: cellPixelHeight), now: 0)
+      alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
+      cellWidth: cellPixelWidth, cellHeight: cellPixelHeight), now: clock)
     if let reply = outcome.reply { replies.append(reply) }
     if let advance = outcome.advance {
+      resetClusterBoundary()
       var moved = s
       moved.cursorColumn = min(columns - 1, moved.cursorColumn + advance.0)
       moved.cursorRow = min(rowCount - 1, moved.cursorRow + advance.1)
+      moved.pendingWrap = false
       screen = moved
     }
   }
@@ -872,12 +888,14 @@ private final class SwiftTerminalCore {
       primary = promptScreen
     }
     let oldAlternate = alternate
+    if nextColumns != columns { graphics.clear(alternate: false) }
     let mapped = document.reflowPrimary(columns: nextColumns, rows: nextRows, anchor: viewAnchor)
     let resizedAlternate = document.resize(oldAlternate, columns: nextColumns, rows: nextRows)
     columns = nextColumns; rowCount = nextRows; alternate = resizedAlternate
     enforceHistoryLimits()
     viewAnchor = mapped.anchor ?? viewAnchor
     resolveViewportAnchor(clamp: true)
+    pruneGraphicsAnchors()
     syncDeadline = nil
     changed(geometry: true)
     return true
@@ -921,6 +939,25 @@ private final class SwiftTerminalCore {
        !primary.rows.contains(where: { $0.id == retainedAnchor }) {
       clampViewportAfterEviction()
     }
+    if evicted { pruneGraphicsAnchors() }
+  }
+  private func pruneGraphicsAnchors() {
+    guard graphics.hasPlacements else { return }
+    var retained = Set(history.map(\.id))
+    retained.formUnion(primary.rows.map(\.id)); retained.formUnion(alternate.rows.map(\.id))
+    graphics.pruneAnchors(retaining: retained)
+  }
+  private func visibleImages(offset: Int) -> [KittyImagePlacement] {
+    guard graphics.hasPlacements else { return [] }
+    var positions: [UInt64: Int] = [:]
+    if usingAlternate {
+      for (index, row) in alternate.rows.enumerated() { positions[row.id] = index }
+    } else {
+      let start = history.count - min(offset, history.count)
+      for (index, row) in history.enumerated() { positions[row.id] = index - start }
+      for (index, row) in primary.rows.enumerated() { positions[row.id] = history.count + index - start }
+    }
+    return graphics.visible(alternate: usingAlternate, positions: positions, height: rowCount)
   }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
   func setHistoryByteLimit(_ value: Int) { historyByteLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
@@ -997,6 +1034,7 @@ private final class SwiftTerminalCore {
   }
   func finish() {
     finishDecodedText()
+    graphics.abort()
     // OSC 52 writes require BEL/ST framing. EOF is an abort, never an
     // implicit successful terminator.
     parser = .ground
@@ -1230,8 +1268,10 @@ private final class SwiftTerminalCore {
   }
   private func snapshotMetadata(cursor: SwiftScreen, offset: Int,
                                 followingTail: Bool, search: [[String: Int]]) -> [String: Any] {
-    let images = graphics.visible(alternate: usingAlternate).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
-    return ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":Int(cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
+    let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
+    var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":Int(cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
+    if let currentDirectory { metadata["cwd"] = currentDirectory }
+    return metadata
   }
   private func colorJSON(_ color: UInt32) -> Any { if color >> 24 == 1 { return ["Indexed": Int(color & 255)] }; if color >> 24 == 2 { return ["Rgb": [Int((color >> 16) & 255), Int((color >> 8) & 255), Int(color & 255)]] }; return "Default" }
 }
