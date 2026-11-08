@@ -555,17 +555,10 @@ final class TerminalRendering: @unchecked Sendable {
       return Glyph(uv: resident.uv, width: resident.width, atlasPage: nil, texture: resident.texture, kind: resident.kind,
                    heap: nil, legacyID: nil)
     }
-    if let value = glyphs[key] { if let page = value.atlasPage { frameAtlasPages.insert(page) }; return value }
-    let width = request.cellWidth * cells; let height = request.cellHeight
-    if width + 1 >= atlasSize || height + 1 >= atlasSize { RendererMetrics.recordOversizedGlyphFallback() }
-    guard let placement = placement(width, height) else {
-      return directGlyph(key, width: width, height: height)
-    }
-    let pixels = glyphPixels(key, width: width, height: height)
-    let kind = glyphKind(pixels)
-    pixels.withUnsafeBytes { atlases[placement.page].replace(region: MTLRegionMake2D(placement.x, placement.y, width, height), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width * 4) }
-    let value = Glyph(uv: SIMD4(Float(placement.x) / Float(atlasSize), Float(placement.y) / Float(atlasSize), Float(width) / Float(atlasSize), Float(height) / Float(atlasSize)), width: width, atlasPage: placement.page, texture: nil, kind: kind, heap: nil, legacyID: nil)
-    frameAtlasPages.insert(placement.page); glyphs[key] = value; return value
+    // Raster misses never synchronously call CoreText/CoreGraphics on the
+    // render owner. The caller draws the exact-span outline until the bounded
+    // worker result reaches residency, including oversize/pressure cases.
+    return nil
   }
   private func draw(
     _ request: RenderRequest, drawable: CAMetalDrawable, surface: SurfaceLease, generation: UInt64
