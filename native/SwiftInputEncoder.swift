@@ -88,6 +88,10 @@ enum SwiftInputEncoder {
   static func key(_ key: Key, modifiers: Modifiers = .init(), event: Event = .press,
                   modes: Modes, metadata: KeyMetadata = .init()) -> Data {
     let flags = modes.kittyFlags
+    // Physical modifier presses are meaningful only in Kitty's full keyboard
+    // reporting mode.  The report-events flag alone must never leak CSI=u
+    // sequences for Option/Control/Command transitions.
+    if case .modifier = key, flags & 8 == 0 { return Data() }
     if event == .release && flags & 2 == 0 { return Data() }
     let protectedLegacy: Bool
     switch key { case .enter, .tab, .backspace: protectedLegacy = true; default: protectedLegacy = false }
@@ -197,8 +201,8 @@ enum SwiftInputEncoder {
     let associated: String
     if flags & 16 != 0, event != .release, !modifiers.control, !modifiers.command,
        let associatedText = metadata.associatedText ?? text.map(String.init),
-       let scalar = associatedText.unicodeScalars.first, !associatedText.isEmpty {
-      associated = ";\(scalar.value)"
+       let codepoints = associatedCodepoints(associatedText) {
+      associated = ";\(codepoints)"
     } else { associated = "" }
     return Data("\u{1b}[\(code)\(alternate);\(modifier)\(eventSuffix)\(associated)u".utf8)
   }
@@ -214,6 +218,15 @@ enum SwiftInputEncoder {
   }
   private static func singleScalar(_ value: Character) -> Unicode.Scalar? {
     value.unicodeScalars.count == 1 ? value.unicodeScalars.first : nil
+  }
+  /// Kitty associated text is a colon-delimited scalar list.  It is emitted
+  /// only for printable committed text: controls in IME metadata are not
+  /// terminal input and must not become protocol metadata.
+  private static func associatedCodepoints(_ text: String) -> String? {
+    guard !text.isEmpty,
+      text.unicodeScalars.allSatisfy({ $0.properties.generalCategory != .control })
+    else { return nil }
+    return text.unicodeScalars.map { String($0.value) }.joined(separator: ":")
   }
   private static func normalizedCode(_ value: Character) -> UInt32 {
     guard let scalar = singleScalar(value) else { return 0 }
