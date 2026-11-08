@@ -11,12 +11,17 @@ enum SwiftSearchCellKind: Equatable {
 struct SwiftSearchCell: Equatable {
   var text: String
   var kind: SwiftSearchCellKind
-  init(_ text: String = "", _ kind: SwiftSearchCellKind = .empty) {
+  /// Only non-default BCE background makes an otherwise blank hard-row cell
+  /// searchable. This mirrors the terminal model's trimming contract.
+  var hasBackground: Bool
+  init(_ text: String = "", _ kind: SwiftSearchCellKind = .empty, hasBackground: Bool = false) {
     self.text = text
     self.kind = kind
+    self.hasBackground = hasBackground
   }
   var columnWidth: Int { kind == .lead2 ? 2 : 1 }
   var participates: Bool { kind == .empty || kind == .lead1 || kind == .lead2 }
+  var endsHardRow: Bool { kind == .lead1 || kind == .lead2 || hasBackground }
 }
 
 struct SwiftSearchRow: Equatable {
@@ -58,6 +63,25 @@ struct SwiftSearchDocument {
     self.stamp = stamp
     self.rows = rows
   }
+  var source: SwiftSearchSource {
+    SwiftSearchSource(
+      stamp: stamp, rowCount: rows.count,
+      rowAt: { rows.indices.contains($0) ? rows[$0] : nil },
+      rowIDAt: { rows.indices.contains($0) ? rows[$0].id : nil },
+      retainedBytesAt: { rows.indices.contains($0) ? rows[$0].retainedBytes : nil })
+  }
+}
+
+/// Owner-only access to the live document. The closures must never escape a
+/// fill/accept call. A task retains only one converted row page, not this
+/// source nor a copy of scrollback.
+struct SwiftSearchSource {
+  let stamp: SwiftSearchStamp
+  let rowCount: Int
+  let rowAt: (Int) -> SwiftSearchRow?
+  let rowIDAt: (Int) -> UInt64?
+  /// Budget admission runs before a row's rich cell projection is built.
+  let retainedBytesAt: (Int) -> Int?
 }
 
 struct SwiftSearchHighlight: Equatable {
@@ -75,6 +99,8 @@ enum SwiftSearchAdmissionError: Error, Equatable { case query }
 enum SwiftSearchAcceptance: Equatable {
   case found([SwiftSearchHighlight])
   case missing
+  case working
+  case needsPage
   case changed
   case resourceLimit
   case cancelled
@@ -112,21 +138,22 @@ struct SwiftSearchTask {
   private static let cellsPerStep = 64
 
   private let stamp: SwiftSearchStamp
-  private let pattern: [Character]
+  private let pattern: [Unicode.Scalar]
   private let failure: [Int]
-  private let stopIndex: Int
-  private var nextIndex = 0
+  private let stop: UInt64?
+  private var next: UInt64?
+  private var hint = 0
   private var page: SwiftSearchPage?
   private var matched = 0
   private var recent: [SwiftSearchSpan] = []
   private var latest: [SwiftSearchSpan]?
   private(set) var status: SwiftSearchStatus = .needsPage
 
-  init(query: String, document: SwiftSearchDocument) throws {
+  init(query: String, source: SwiftSearchSource) throws {
     guard !query.isEmpty, query.utf8.count <= Self.maxQueryBytes else {
       throw SwiftSearchAdmissionError.query
     }
-    let folded = Array(query.folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX")))
+    let folded = query.unicodeScalars.flatMap(Self.lowercase)
     guard !folded.isEmpty else { throw SwiftSearchAdmissionError.query }
     var table = Array(repeating: 0, count: folded.count)
     if folded.count > 1 {
@@ -137,38 +164,58 @@ struct SwiftSearchTask {
         table[index] = prefix
       }
     }
-    stamp = document.stamp
+    stamp = source.stamp
     pattern = folded
     failure = table
-    stopIndex = document.rows.count - 1
-    if document.rows.isEmpty { status = .complete }
+    next = source.rowIDAt(0)
+    stop = source.rowIDAt(source.rowCount - 1)
+    if source.rowCount == 0 { status = .complete }
   }
 
   var found: Bool { latest != nil }
 
   /// Owner-only. It validates all epochs before lending exactly one immutable
   /// row to the worker. New output is never followed past `stopIndex`.
-  mutating func fill(from document: SwiftSearchDocument) -> SwiftSearchStatus {
-    guard status == .needsPage else { return status }
-    guard document.stamp == stamp, nextIndex <= stopIndex, document.rows.indices.contains(nextIndex) else {
+  mutating func fill(from source: SwiftSearchSource) -> SwiftSearchStatus {
+    guard source.stamp == stamp else {
       status = .changed
       return status
     }
-    let row = document.rows[nextIndex]
-    guard row.retainedBytes <= Self.maxRowBytes else {
+    guard status == .needsPage else { return status }
+    guard let next,
+          let index = searchIndex(of: next, hint: hint, source: source)
+    else {
+      status = .changed
+      return status
+    }
+    guard let retainedBytes = source.retainedBytesAt(index) else {
+      status = .changed
+      return status
+    }
+    guard retainedBytes <= Self.maxRowBytes else {
       status = .resourceLimit
       return status
     }
-    let hasNext = nextIndex < stopIndex
+    guard let row = source.rowAt(index) else {
+      status = .changed
+      return status
+    }
+    let nextID = row.id == stop ? nil : source.rowIDAt(index + 1)
+    guard nextID != nil || row.id == stop else {
+      status = .changed
+      return status
+    }
+    let hasNext = nextID != nil
     let soft = hasNext && row.softWrapsToNext
     let end: Int
     if soft {
       end = row.cells.count
     } else {
-      end = (row.cells.lastIndex { $0.participates && (!$0.text.isEmpty || $0.kind == .empty) }.map { $0 + 1 }) ?? 0
+      end = (row.cells.lastIndex { $0.endsHardRow }.map { $0 + 1 }) ?? 0
     }
     page = SwiftSearchPage(row: row, column: 0, end: end, hardBreak: hasNext && !soft)
-    nextIndex += 1
+    self.next = nextID
+    hint = index + 1
     status = .working
     return status
   }
@@ -186,18 +233,18 @@ struct SwiftSearchTask {
       let span = SwiftSearchSpan(
         proof: SwiftSearchProof(page.row), start: column, end: column + cell.columnWidth)
       if cell.kind == .empty {
-        push(" ", span: span, matchEnd: &matchEnd)
+        push(Unicode.Scalar(0x20)!, span: span, matchEnd: &matchEnd)
       } else if cell.kind == .lead1 || cell.kind == .lead2 {
-        for character in fold(cell.text) { push(character, span: span, matchEnd: &matchEnd) }
+        for scalar in cell.text.unicodeScalars.flatMap(Self.lowercase) { push(scalar, span: span, matchEnd: &matchEnd) }
       }
     }
     if page.column == page.end {
       if page.hardBreak {
         let point = SwiftSearchSpan(proof: SwiftSearchProof(page.row), start: page.end, end: page.end)
-        push("\n", span: point, matchEnd: &matchEnd)
+        push(Unicode.Scalar(0x0a)!, span: point, matchEnd: &matchEnd)
       }
       self.page = nil
-      status = nextIndex <= stopIndex ? .needsPage : .complete
+      status = next == nil ? .complete : .needsPage
     } else {
       self.page = page
     }
@@ -222,21 +269,22 @@ struct SwiftSearchTask {
 
   /// Owner-only acceptance. It rechecks epochs and per-row proofs, so a stale
   /// worker result can never navigate/highlight unrelated output.
-  func accept(in document: SwiftSearchDocument) -> SwiftSearchAcceptance {
+  func accept(in source: SwiftSearchSource) -> SwiftSearchAcceptance {
     switch status {
     case .changed: return .changed
     case .resourceLimit: return .resourceLimit
     case .cancelled: return .cancelled
-    case .working, .needsPage: return .changed
+    case .working: return .working
+    case .needsPage: return .needsPage
     case .complete: break
     }
-    guard document.stamp == stamp else { return .changed }
+    guard source.stamp == stamp else { return .changed }
     guard let latest else { return .missing }
     var highlights: [SwiftSearchHighlight] = []
     for span in latest {
-      guard let index = document.rows.firstIndex(where: {
-        SwiftSearchProof($0) == span.proof
-      }) else { return .changed }
+      guard let index = searchIndex(of: span.proof.id, hint: 0, source: source),
+            let row = source.rowAt(index), SwiftSearchProof(row) == span.proof
+      else { return .changed }
       if span.start < span.end {
         highlights.append(SwiftSearchHighlight(row: index, start: span.start, end: span.end))
       }
@@ -244,14 +292,19 @@ struct SwiftSearchTask {
     return .found(highlights)
   }
 
-  private func fold(_ text: String) -> [Character] {
-    Array(text.folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX")))
+  private static func lowercase(_ scalar: Unicode.Scalar) -> [Unicode.Scalar] {
+    Array(String(scalar).lowercased().unicodeScalars)
   }
-  private mutating func push(_ character: Character, span: SwiftSearchSpan, matchEnd: inout Int?) {
+  private func searchIndex(of id: UInt64, hint: Int, source: SwiftSearchSource) -> Int? {
+    if source.rowIDAt(hint) == id { return hint }
+    for index in 0..<source.rowCount where source.rowIDAt(index) == id { return index }
+    return nil
+  }
+  private mutating func push(_ scalar: Unicode.Scalar, span: SwiftSearchSpan, matchEnd: inout Int?) {
     recent.append(span)
     var candidate = matched
-    while candidate > 0 && character != pattern[candidate] { candidate = failure[candidate - 1] }
-    if character == pattern[candidate] { candidate += 1 }
+    while candidate > 0 && scalar != pattern[candidate] { candidate = failure[candidate - 1] }
+    if scalar == pattern[candidate] { candidate += 1 }
     if candidate == pattern.count {
       matchEnd = recent.count
       candidate = failure[candidate - 1]

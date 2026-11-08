@@ -23,8 +23,10 @@ private func decSpecialGraphics(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
 private enum SwiftParserState { case ground, escape, charset(Int), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool) }
 
 private final class SwiftCoreSearchToken {
-  let query: String
-  init(_ query: String) { self.query = query }
+  // The task contains only immutable page snapshots while it is with the
+  // worker. The core is consulted exclusively by fill/accept on its owner.
+  var task: SwiftSearchTask
+  init(_ task: SwiftSearchTask) { self.task = task }
 }
 
 // Owns byte storage for a synchronous ABI snapshot callback.  The callback
@@ -114,10 +116,17 @@ private final class SwiftTerminalCore {
   private var cursorShape: UInt8 = 0
   private var revision: UInt64 = 1
   private var geometryEpoch: UInt64 = 1
+  // TerminalDocument deliberately restarts row IDs after a hard reset. Keep a
+  // monotonic identity generation so a pending search cannot mistake a fresh
+  // post-RIS row for an old (id, revision) pair.
+  private var searchGeneration: UInt64 = 1
   private var documentEpoch: UInt64 = 1
   private var historyEpoch: UInt64 = 1
   private var screenEpoch: UInt64 = 1
-  private var searchHighlights: [[String: Int]] = []
+  // Accepted matches stay in document identity space. Snapshot publication
+  // resolves them against its selected row IDs, so a non-view snapshot never
+  // paints an old viewport-relative row onto unrelated live output.
+  private var searchHit: [(row: UInt64, start: Int, end: Int)] = []
   private let graphics = KittyGraphicsStore()
   private var cellPixelWidth = 8
   private var cellPixelHeight = 16
@@ -163,6 +172,10 @@ private final class SwiftTerminalCore {
   private func changed(history: Bool = false, geometry: Bool = false,
                        document: Bool = true, screen: Bool = true) {
     revision &+= 1
+    // Decorations are proofs over a particular document stamp. A mutation
+    // invalidates them immediately, even before an in-flight task reaches its
+    // owner-side acceptance check.
+    if document || geometry { searchHit.removeAll(keepingCapacity: true) }
     if document { documentEpoch &+= 1 }
     if screen { screenEpoch &+= 1 }
     if history { historyEpoch &+= 1 }
@@ -237,6 +250,7 @@ private final class SwiftTerminalCore {
   }
   private func apply(_ effect: TerminalDocument.PrintEffect, mutations: Int = 1) {
     guard mutations > 0 else { return }
+    searchHit.removeAll(keepingCapacity: true)
     applyAppendedHistory(effect.appendedHistory)
     if let printed = effect.lastPrinted {
       lastPrinted = printed
@@ -430,7 +444,7 @@ private final class SwiftTerminalCore {
   private func reverseIndex() { index(reverse: true) }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
-  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); historyByteCount = 0; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
+  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); searchGeneration &+= 1; usingAlternate = false; history.removeAll(); historyByteCount = 0; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
   private struct CSIParameterPacket {
     var values: [Int]
     // CSI > ... u and CSI = ... u historically parsed their first field
@@ -872,9 +886,9 @@ private final class SwiftTerminalCore {
     let offset: Int
     if amount > 0 { offset = min(history.count, current + amount) }
     else { offset = amount == Int.min ? 0 : max(0, current + amount) }
-    setViewOffset(offset); changed()
+    setViewOffset(offset); changed(document: false, screen: false)
   }
-  func followTail() { guard !usingAlternate else { return }; viewAnchor = nil; viewOffset = 0; viewportWasClamped = false; changed() }
+  func followTail() { guard !usingAlternate else { return }; viewAnchor = nil; viewOffset = 0; viewportWasClamped = false; changed(document: false, screen: false) }
   private func setViewOffset(_ offset: Int) {
     let bounded = min(history.count, max(0, offset)); viewOffset = bounded
     viewAnchor = bounded > 0 ? history[history.count - bounded].id : nil; viewportWasClamped = false
@@ -996,23 +1010,119 @@ private final class SwiftTerminalCore {
   }
   func historyBytes() -> UInt64 { historyByteCount }
   func imageRGBA(id: UInt32, generation: UInt64) -> Data? { graphics.imageRGBA(id: id, generation: generation) }
-  func startSearch(_ task: SwiftCoreSearchToken) -> UInt32 {
-    searchHighlights.removeAll()
-    let searchable = history + primary.rows
-    for (index, row) in searchable.enumerated() {
-      let text = row.cells.map(\ .text).joined()
-      guard let range = text.range(of: task.query, options: [.caseInsensitive]) else { continue }
-      // Search owns anchoring, so the renderer receives a visible stable hit.
-      viewOffset = index < history.count
-        ? min(history.count, max(1, history.count - index + rowCount - 1)) : 0
-      let allCount = history.count + primary.rows.count
-      let visibleEnd = max(rowCount, allCount - viewOffset)
-      let visibleStart = max(0, visibleEnd - rowCount)
-      let start = text.distance(from: text.startIndex, to: range.lowerBound)
-      let end = text.distance(from: text.startIndex, to: range.upperBound)
-      searchHighlights.append(["row": max(0, index - visibleStart), "start": start, "end": end])
+  private func searchKind(_ kind: UInt8) -> SwiftSearchCellKind {
+    switch kind {
+    case 0: return .empty
+    case 1: return .lead1
+    case 2: return .lead2
+    case 3: return .continuation
+    default: return .wrapSpacer
     }
-    return searchHighlights.isEmpty ? 4 : 5
+  }
+  private func searchProjection(_ row: SwiftRow) -> SwiftSearchRow {
+    // This conversion happens for one owner-admitted row only. In particular,
+    // starting a search does not turn all retained scrollback into String
+    // cells, and the worker retains just its current immutable page.
+    SwiftSearchRow(
+      id: row.id, revision: row.revision,
+      cells: row.cells.map { cell in
+        SwiftSearchCell(cell.text, searchKind(cell.kind), hasBackground: cell.style.background != 0)
+      }, softWrapsToNext: row.softWrapped)
+  }
+  private func searchSource() -> SwiftSearchSource {
+    let alternateMode = usingAlternate
+    let historyCount = history.count
+    let rowCount = alternateMode ? alternate.rows.count : historyCount + primary.rows.count
+    // Printing and scrollback admission advance the renderer publication
+    // counters. Search instead follows captured row identities and verifies
+    // row proofs at acceptance: later output must not make it chase rows, and
+    // eviction/mutation still fails lookup/proof. Geometry/alternate changes
+    // remain structural stamp boundaries.
+    let stamp = SwiftSearchStamp(document: searchGeneration, history: 0,
+                                 geometry: geometryEpoch, screen: 0,
+                                 alternate: alternateMode)
+    return SwiftSearchSource(
+      stamp: stamp, rowCount: rowCount,
+      rowAt: { [unowned self] index in
+        guard self.usingAlternate == alternateMode else { return nil }
+        if alternateMode {
+          guard self.alternate.rows.indices.contains(index) else { return nil }
+          return self.searchProjection(self.alternate.rows[index])
+        }
+        if index < historyCount {
+          guard self.history.indices.contains(index) else { return nil }
+          return self.searchProjection(self.history[index])
+        }
+        let primaryIndex = index - historyCount
+        guard self.primary.rows.indices.contains(primaryIndex) else { return nil }
+        return self.searchProjection(self.primary.rows[primaryIndex])
+      },
+      rowIDAt: { [unowned self] index in
+        guard self.usingAlternate == alternateMode else { return nil }
+        if alternateMode { return self.alternate.rows.indices.contains(index) ? self.alternate.rows[index].id : nil }
+        if index < historyCount { return self.history.indices.contains(index) ? self.history[index].id : nil }
+        let primaryIndex = index - historyCount
+        return self.primary.rows.indices.contains(primaryIndex) ? self.primary.rows[primaryIndex].id : nil
+      },
+      retainedBytesAt: { [unowned self] index in
+        guard self.usingAlternate == alternateMode else { return nil }
+        let row: SwiftRow?
+        if alternateMode {
+          row = self.alternate.rows.indices.contains(index) ? self.alternate.rows[index] : nil
+        } else if index < historyCount {
+          row = self.history.indices.contains(index) ? self.history[index] : nil
+        } else {
+          let primaryIndex = index - historyCount
+          row = self.primary.rows.indices.contains(primaryIndex) ? self.primary.rows[primaryIndex] : nil
+        }
+        guard let row else { return nil }
+        return row.retainedStorageCost > UInt64(Int.max) ? Int.max : Int(row.retainedStorageCost)
+      })
+  }
+  func createSearch(_ query: String) -> SwiftCoreSearchToken? {
+    searchHit.removeAll(keepingCapacity: true)
+    return try? SwiftCoreSearchToken(SwiftSearchTask(query: query, source: searchSource()))
+  }
+  private func searchStatus(_ status: SwiftSearchStatus) -> UInt32 {
+    switch status {
+    case .working: return 0
+    case .needsPage: return 1
+    case .complete: return 2
+    case .changed, .cancelled: return 3
+    case .resourceLimit: return 4
+    }
+  }
+  func fillSearch(_ token: SwiftCoreSearchToken) -> UInt32 {
+    searchStatus(token.task.fill(from: searchSource()))
+  }
+  static func stepSearch(_ token: SwiftCoreSearchToken) -> UInt32 {
+    // No core/document access: Session explicitly migrates this token to its
+    // utility worker before calling this function.
+    switch token.task.step() {
+    case .working: return 0
+    case .needsPage: return 1
+    case .complete: return 2
+    case .changed, .cancelled: return 3
+    case .resourceLimit: return 4
+    }
+  }
+  func acceptSearch(_ token: SwiftCoreSearchToken) -> UInt32 {
+    let source = searchSource()
+    switch token.task.accept(in: source) {
+    case .found(let absolute):
+      guard let first = absolute.map(\ .row).min() else { return 2 }
+      if !usingAlternate { setViewOffset(history.count - first) }
+      searchHit = absolute.compactMap { highlight in
+        guard highlight.start < highlight.end, let row = source.rowIDAt(highlight.row) else { return nil }
+        return (row, highlight.start, highlight.end)
+      }
+      return 5
+    case .missing: return 2
+    case .working: return 0
+    case .needsPage: return 1
+    case .changed, .cancelled: return 3
+    case .resourceLimit: return 4
+    }
   }
   private func palette() -> [[Int]] {
     var output = [[27,28,31], [239,68,68], [34,197,94], [250,204,21], [96,165,250], [192,132,252], [34,211,238], [212,212,216], [107,111,118], [248,113,113], [74,222,128], [253,224,71], [147,197,253], [216,180,254], [103,232,249], [250,250,250]]
@@ -1027,13 +1137,22 @@ private final class SwiftTerminalCore {
     let end = max(rowCount, all.count - min(requested, history.count))
     return (Array(all[max(0, end - rowCount)..<end]), min(requested, history.count))
   }
+  private func visibleSearchHighlights(in rows: [SwiftRow]) -> [[String: Int]] {
+    guard !searchHit.isEmpty else { return [] }
+    var byRow: [UInt64: [(Int, Int)]] = [:]
+    for hit in searchHit { byRow[hit.row, default: []].append((hit.start, hit.end)) }
+    return rows.enumerated().flatMap { index, row in
+      (byRow[row.id] ?? []).map { ["row": index, "start": $0.0, "end": $0.1] }
+    }
+  }
   func publishBinary(view: Bool, scroll: Int, now: UInt64, context: UnsafeMutableRawPointer?, callback: SnapshotCallback?) -> Bool {
     tick(now)
     guard !publicationGated else { return false }
     guard let callback else { return false }
     let selected = rowsForSnapshot(view: view, scroll: view ? nil : scroll)
     let metadataObject = snapshotMetadata(cursor: screen, offset: selected.offset,
-                                          followingTail: selected.offset == 0)
+                                          followingTail: selected.offset == 0,
+                                          search: visibleSearchHighlights(in: selected.rows))
     guard let metadata = try? JSONSerialization.data(withJSONObject: metadataObject) else { return false }
     let borrowed = SwiftBorrowedCells()
     var views: [TerminalCellView] = []
@@ -1074,14 +1193,15 @@ private final class SwiftTerminalCore {
     source = selected.rows; offset = selected.offset
     let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(cell.style.foreground), "background": colorJSON(cell.style.background), "underline_color": colorJSON(cell.style.underline), "underline": Int(cell.style.underlineKind), "bold": cell.style.flags & 1 != 0, "faint": cell.style.flags & 2 != 0, "italic": cell.style.flags & 4 != 0, "inverse": cell.style.flags & 8 != 0, "conceal": cell.style.flags & 16 != 0, "strike": cell.style.flags & 32 != 0, "overline": cell.style.flags & 64 != 0, "blink": cell.style.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
     var data = snapshotMetadata(cursor: screen, offset: offset,
-                                followingTail: usingAlternate || viewAnchor == nil)
+                                followingTail: usingAlternate || viewAnchor == nil,
+                                search: visibleSearchHighlights(in: source))
     data["rows"] = rows
     return (try? JSONSerialization.data(withJSONObject: data)) ?? Data("{}".utf8)
   }
   private func snapshotMetadata(cursor: SwiftScreen, offset: Int,
-                                followingTail: Bool) -> [String: Any] {
+                                followingTail: Bool, search: [[String: Int]]) -> [String: Any] {
     let images = graphics.visible(alternate: usingAlternate).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
-    return ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":Int(cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
+    return ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":Int(cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
   }
   private func colorJSON(_ color: UInt32) -> Any { if color >> 24 == 1 { return ["Indexed": Int(color & 255)] }; if color >> 24 == 2 { return ["Rgb": [Int((color >> 16) & 255), Int((color >> 8) & 255), Int(color & 255)]] }; return "Default" }
 }
@@ -1144,8 +1264,23 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
   return true
 }
 @_cdecl("terminal_image_rgba") func swift_terminal_image_rgba(_ pointer: OpaquePointer?, _ image: UInt32, _ generation: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool { guard let callback, let pixels = core(pointer)?.imageRGBA(id: image, generation: generation) else { return false }; pixels.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, pixels.count) }; return true }
-@_cdecl("terminal_search_create") func swift_terminal_search_create(_ pointer: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ count: Int) -> OpaquePointer? { guard let bytes, count > 0, let query = String(bytes: UnsafeBufferPointer(start: bytes, count: count), encoding: .utf8) else { return nil }; return OpaquePointer(Unmanaged.passRetained(SwiftCoreSearchToken(query)).toOpaque()) }
+@_cdecl("terminal_search_create") func swift_terminal_search_create(_ pointer: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ count: Int) -> OpaquePointer? {
+  guard let bytes, count > 0, count <= 4_096,
+        let query = String(bytes: UnsafeBufferPointer(start: bytes, count: count), encoding: .utf8),
+        let token = core(pointer)?.createSearch(query)
+  else { return nil }
+  return OpaquePointer(Unmanaged.passRetained(token).toOpaque())
+}
 @_cdecl("terminal_search_destroy") func swift_terminal_search_destroy(_ pointer: OpaquePointer?) { if let pointer { Unmanaged<SwiftCoreSearchToken>.fromOpaque(UnsafeMutableRawPointer(pointer)).release() } }
-@_cdecl("terminal_search_fill") func swift_terminal_search_fill(_ pointer: OpaquePointer?, _ task: OpaquePointer?) -> UInt32 { 2 }
-@_cdecl("terminal_search_step") func swift_terminal_search_step(_ pointer: OpaquePointer?) -> UInt32 { 2 }
-@_cdecl("terminal_search_accept") func swift_terminal_search_accept(_ pointer: OpaquePointer?, _ task: OpaquePointer?) -> UInt32 { guard let terminal = core(pointer), let task else { return 4 }; return terminal.startSearch(Unmanaged<SwiftCoreSearchToken>.fromOpaque(UnsafeMutableRawPointer(task)).takeUnretainedValue()) }
+@_cdecl("terminal_search_fill") func swift_terminal_search_fill(_ pointer: OpaquePointer?, _ task: OpaquePointer?) -> UInt32 {
+  guard let terminal = core(pointer), let task else { return 3 }
+  return terminal.fillSearch(Unmanaged<SwiftCoreSearchToken>.fromOpaque(UnsafeMutableRawPointer(task)).takeUnretainedValue())
+}
+@_cdecl("terminal_search_step") func swift_terminal_search_step(_ pointer: OpaquePointer?) -> UInt32 {
+  guard let pointer else { return 3 }
+  return SwiftTerminalCore.stepSearch(Unmanaged<SwiftCoreSearchToken>.fromOpaque(UnsafeMutableRawPointer(pointer)).takeUnretainedValue())
+}
+@_cdecl("terminal_search_accept") func swift_terminal_search_accept(_ pointer: OpaquePointer?, _ task: OpaquePointer?) -> UInt32 {
+  guard let terminal = core(pointer), let task else { return 3 }
+  return terminal.acceptSearch(Unmanaged<SwiftCoreSearchToken>.fromOpaque(UnsafeMutableRawPointer(task)).takeUnretainedValue())
+}
