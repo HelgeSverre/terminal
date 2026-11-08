@@ -39,7 +39,7 @@ import Darwin
       "split_resize_frames_match_drawables",
       "split_resize_drops_stale_frames",
       "split_resize_layer_placement_configured",
-      "completed_without_timeout", "accessibility_text_ranges",
+      "completed_without_timeout", "accessibility_text_ranges", "accessibility_attributed_text",
       "startup_input_ready",
       "native_keypad_enter",
       "pane_focus_consistent", "settings_window",
@@ -312,6 +312,10 @@ import Darwin
     guard let pane = controller.panes.first else { return }
     controller.window?.makeFirstResponder(pane)
     controller.panes.forEach { $0.updateFocus() }
+    measurements["navigation_app_active"] = NSApp.isActive
+    measurements["navigation_key_window"] = controller.window?.isKeyWindow == true
+    measurements["navigation_app_key_window"] = NSApp.keyWindow === controller.window
+    measurements["navigation_first_responder"] = controller.window?.firstResponder === pane
     phase = 6
     pane.insertText(" : ", replacementRange: NSRange(location: NSNotFound, length: 0))
     deliverCommandArrow(left: true)
@@ -409,6 +413,18 @@ import Darwin
           && frame.width > 0 && frame.height > 0
         measurements["accessibility_utf16_count"] = visible.length
         measurements["accessibility_first_range_frame"] = NSStringFromRect(frame)
+      }
+      if let text {
+        let styled = (text as NSString).rangeOfCharacter(from: CharacterSet.newlines.inverted)
+        if styled.location != NSNotFound, let attributed = pane.accessibilityAttributedString(for: styled) {
+          let attributes = attributed.attributes(at: 0, effectiveRange: nil)
+          let run = pane.accessibilityStyleRange(for: styled.location)
+          checks["accessibility_attributed_text"] = attributed.string == pane.accessibilityString(for: styled)
+            && attributes[.accessibilityFont] is [String: Any]
+            && attributes[.accessibilityForegroundColor].map { CFGetTypeID($0 as CFTypeRef) == CGColor.typeID } == true
+            && attributes[.accessibilityBackgroundColor].map { CFGetTypeID($0 as CFTypeRef) == CGColor.typeID } == true
+            && run.location != NSNotFound && NSLocationInRange(styled.location, run)
+        }
       }
     }
     (NSApp.delegate as? AppDelegate)?.settings(nil)

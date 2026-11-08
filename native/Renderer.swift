@@ -203,17 +203,6 @@ final class MetalRenderer: @unchecked Sendable {
         bytesPerRow: 4)
     }
   }
-  private static func linear(_ s: Float) -> Float {
-    s <= 0.04045 ? s / 12.92 : pow((s + 0.055) / 1.055, 2.4)
-  }
-  private func color(_ spec: TerminalColor, fallback: [Int], palette: [[Int]]) -> SIMD4<Float> {
-    let rgb =
-      spec.rgb ?? spec.index.flatMap { palette.indices.contains($0) ? palette[$0] : nil }
-      ?? fallback
-    return SIMD4(
-      Self.linear(Float(rgb[0]) / 255), Self.linear(Float(rgb[1]) / 255),
-      Self.linear(Float(rgb[2]) / 255), 1)
-  }
   private func reserve(_ width: Int, _ height: Int, in page: Int) -> (x: Int, y: Int)? {
     guard width > 0, height > 0, width + 1 < atlasSize, height + 1 < atlasSize else {
       return nil
@@ -257,7 +246,7 @@ final class MetalRenderer: @unchecked Sendable {
         for component in 0..<3 {
           let straight = min(1, Float(pixels[pixel + component]) / 255 / alpha)
           pixels[pixel + component] = UInt8(
-            clamping: Int((Self.linear(straight) * alpha * 255).rounded()))
+            clamping: Int((CellPalette.linear(straight) * alpha * 255).rounded()))
         }
       } else {
         pixels[pixel] = 0
@@ -355,9 +344,8 @@ final class MetalRenderer: @unchecked Sendable {
     var directGlyphQuads: [(quad: Quad, texture: MTLTexture)] = []
     let snap = request.snapshot
     let searchRows = Dictionary(snap.search.map { ($0.row, $0) }, uniquingKeysWith: { first, _ in first })
-    let baseBackground = SIMD4<Float>(
-      Self.linear(Float(snap.default_bg[0]) / 255), Self.linear(Float(snap.default_bg[1]) / 255),
-      Self.linear(Float(snap.default_bg[2]) / 255), 1)
+    let palette = CellPalette(snapshot: snap)
+    let baseBackground = palette.background
     let whiteUV = SIMD4<Float>(0.5 / Float(atlasSize), 0.5 / Float(atlasSize), 0, 0)
     func rect(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ color: SIMD4<Float>) {
       quads.append(
@@ -388,10 +376,9 @@ final class MetalRenderer: @unchecked Sendable {
         for (c, cell) in row.cells.enumerated() {
           let x = request.inset + c * request.cellWidth
           let y = request.inset + r * request.cellHeight
-          var fg = color(cell.style.foreground, fallback: snap.default_fg, palette: snap.palette)
-          var bg = color(cell.style.background, fallback: snap.default_bg, palette: snap.palette)
-          if cell.style.inverse != snap.modes.reverse_video { swap(&fg, &bg) }
-          if cell.style.faint { fg *= SIMD4(0.65, 0.65, 0.65, 1) }
+          let colors = palette.resolve(cell.style)
+          var fg = colors.foreground
+          var bg = colors.background
           if let search, search.start <= c && c < search.end {
             bg = TerminalTheme.linear(TerminalTheme.accent)
             fg = TerminalTheme.linear(TerminalTheme.background)
@@ -445,7 +432,7 @@ final class MetalRenderer: @unchecked Sendable {
               }
             }
             if cell.style.underline > 0 {
-              rect(x, y + request.cellHeight - 3, request.cellWidth * cells, 1, fg)
+              rect(x, y + request.cellHeight - 3, request.cellWidth * cells, 1, colors.underline(matching: fg))
             }
             if cell.style.strike {
               rect(x, y + request.cellHeight / 2, request.cellWidth * cells, 1, fg)
@@ -544,9 +531,8 @@ final class MetalRenderer: @unchecked Sendable {
     descriptor.colorAttachments[0].loadAction = .clear
     descriptor.colorAttachments[0].storeAction = .store
     descriptor.colorAttachments[0].clearColor = MTLClearColor(
-      red: Double(Self.linear(Float(snap.default_bg[0]) / 255)),
-      green: Double(Self.linear(Float(snap.default_bg[1]) / 255)),
-      blue: Double(Self.linear(Float(snap.default_bg[2]) / 255)), alpha: 1)
+      red: Double(baseBackground.x), green: Double(baseBackground.y),
+      blue: Double(baseBackground.z), alpha: 1)
     guard let encoder = command.makeRenderCommandEncoder(descriptor: descriptor) else {
       inFlight.signal()
       return

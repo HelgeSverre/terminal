@@ -55,6 +55,19 @@ Accessibility consent. Accessibility permission is instead required by the
 the normal AppKit accessibility tree. The terminal's screen `AXValue` and
 selected text remain deliberately non-writable.
 
+The terminal text area also supplies `AXAttributedStringForRange` and
+`AXStyleRangeForIndex`. The same bounded UTF-16 projection supplies plain text,
+character geometry and style runs, including fonts, foreground/background
+colors, underline and strikethrough attributes. OSC 8 links expose AX link
+elements with a URL, frame and Press action. Press revalidates the link against
+the current screen before opening an HTTP, HTTPS or mailto URL. Synthetic line
+separators carry no cell styling. Historical text beyond the displayed viewport
+and real VoiceOver behavior still need validation.
+
+These use AppKit's [accessibility attributed-string interface](https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol/accessibilityattributedstring%28for%3A%29)
+and [AX text attributes](https://developer.apple.com/documentation/appkit/text-attributed-string-attributes-and-constants),
+including AX font dictionaries, CGColor values and link element references.
+
 ## Fixture check
 
 Run `just automation-smoke`. It builds the app, copies it into a fresh

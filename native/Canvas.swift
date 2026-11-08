@@ -174,6 +174,12 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     accessible?.string(in: accessibilitySelectedTextRange())
   }
   override func accessibilityString(for range: NSRange) -> String? { accessible?.string(in: range) }
+  override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
+    accessible?.attributedString(in: range, fontSize: fontPoints, parent: self)
+  }
+  override func accessibilityStyleRange(for index: Int) -> NSRange {
+    accessible?.styleRange(for: index) ?? NSRange(location: NSNotFound, length: 0)
+  }
   override func accessibilityRange(for index: Int) -> NSRange {
     accessible?.range(for: index) ?? NSRange(location: NSNotFound, length: 0)
   }
@@ -540,7 +546,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     }
     if event.modifierFlags.contains(.command), let value = snapshot,
       let link = value.rows[index / value.cols].cells[index % value.cols].link,
-      let url = URL(string: link), ["https", "http", "mailto"].contains(url.scheme ?? "")
+      let url = AccessibleTerminalLink.url(link)
     {
       NSWorkspace.shared.open(url)
     }

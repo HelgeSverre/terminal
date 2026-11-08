@@ -1,0 +1,44 @@
+{
+  "base_commit": "5ad5228b654c03cf7d5d6aa28586b11b6137626a",
+  "source_sha256": {
+    "native/CellPalette.swift": "b372061add8a053c013e7f663471a4e7f94fb9c34f4c33ad65b8c72924376716",
+    "native/AccessibilityProjection.swift": "6eee746f1b09b5cfaa691b346a786d80f0e3e7194c465457136b4e010f234d02",
+    "native/Canvas.swift": "d1435e32d21f81b01eaa9098bbf8fbcde8c7b1599f510c75ad5f0976b3e3953c",
+    "native/Renderer.swift": "6d8d896725c2953d70fc5f410d50e87386c81f3949704e639ceb62d1903571d8",
+    "native/Smoke.swift": "4b09c04988f6d722c32e81111e199234fcdc74aacb273f8098d0c0e98e93ee2d",
+    "native/tests/SnapshotBridgeTests.swift": "e6f00fbaf01798725037a0b727eb181f79ccb1abaecc19110bb21f6660ee4177",
+    "tools/swift-sources.json": "b17f7520b2aee0e242f5693a8e5f8c86437d0767e47205a17cddd02d797b8571"
+  },
+  "app_executable_sha256": "3c725671ef9201f1003707b5f454f60f54a4a063de7978be927fd9f432275af2",
+  "build": {
+    "command": "just build",
+    "exit": 0
+  },
+  "checks": {
+    "snapshot_bridge": {
+      "exit": 0,
+      "scope": "Exact binary/JSON equivalence and AX style/link/UTF16 bounds, 8191 alternating styled cells"
+    },
+    "session": {
+      "exit": 0,
+      "output": "PASS session: REP ordering, lossless admission, live-mode paste encoding, saturation/cancel/close, owned-child reaping"
+    },
+    "clipboard_access": {
+      "exit": 0,
+      "output": "PASS clipboard: private pasteboard allow/deny/stale/closed/bounds and real PTY OSC 52 read denial"
+    }
+  },
+  "native_smoke": {
+    "passed": false,
+    "attributed_delegate_check_passed": true,
+    "reports": [
+      "native-smoke-phase6-failure.json",
+      "native-smoke-startup-failure.json"
+    ],
+    "note": "Full native smoke timed out at phase 6 and phase 0 respectively; both live-view accessibility checks passed. Failures retained separately and under investigation; not counted as a full native PASS. Phase-6 artifact predates diagnostic navigation metrics; source/binary hash above is the later phase-0 build."
+  },
+  "limits": [
+    "External probe has separate output and provenance",
+    "Real VoiceOver and asynchronous history fetch remain unverified"
+  ]
+}

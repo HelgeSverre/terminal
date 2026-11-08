@@ -2,17 +2,17 @@
   "app": [
     "Statistics.swift", "Geometry.swift", "Font.swift", "FontCatalog.swift", "Preferences.swift",
     "Transport.swift", "Session.swift", "ClipboardAccess.swift", "SnapshotBridge.swift",
-    "AccessibilityProjection.swift", "Theme.swift", "Settings.swift", "Renderer.swift", "KeyMap.swift",
+    "CellPalette.swift", "AccessibilityProjection.swift", "Theme.swift", "Settings.swift", "Renderer.swift", "KeyMap.swift",
     "Canvas.swift", "Automation.swift", "Smoke.swift", "EditingSmoke.swift", "ResizeSmoke.swift", "main.swift"
   ],
   "tests": {
     "transport": ["Transport.swift", "tests/TransportTests.swift"],
-    "session": ["Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift", "AccessibilityProjection.swift", "tests/SessionTests.swift"],
-    "clipboard_access": ["Preferences.swift", "Transport.swift", "Session.swift", "ClipboardAccess.swift", "SnapshotBridge.swift", "AccessibilityProjection.swift", "tests/ClipboardAccessTests.swift"],
+    "session": ["Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift", "CellPalette.swift", "AccessibilityProjection.swift", "tests/SessionTests.swift"],
+    "clipboard_access": ["Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "ClipboardAccess.swift", "SnapshotBridge.swift", "CellPalette.swift", "AccessibilityProjection.swift", "tests/ClipboardAccessTests.swift"],
     "geometry": ["Geometry.swift", "tests/GeometryTests.swift"],
     "statistics": ["Statistics.swift", "tests/StatisticsTests.swift"],
     "preferences": ["Preferences.swift", "tests/PreferencesTests.swift"],
-    "snapshot_bridge": ["Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift", "AccessibilityProjection.swift", "tests/SnapshotBridgeTests.swift"],
+    "snapshot_bridge": ["Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift", "CellPalette.swift", "AccessibilityProjection.swift", "tests/SnapshotBridgeTests.swift"],
     "keymap": ["Preferences.swift", "KeyMap.swift", "tests/KeyMapTests.swift"]
   }
 }

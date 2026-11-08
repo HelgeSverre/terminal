@@ -1,7 +1,7 @@
-import Foundation
+import AppKit
 
 @main struct SnapshotBridgeTests {
-  static func main() throws {
+  @MainActor static func main() throws {
     guard let core = terminal_create(8, 3) else { fatalError("create core") }
     func feed(_ text: String) {
       let bytes = Array(text.utf8) + [0]
@@ -83,6 +83,78 @@ import Foundation
     precondition(bounded.text == "A" && bounded.truncated)
     let empty = AccessibilityProjection(snapshot: styled, limit: 0)
     precondition(empty.length == 0 && empty.spans(for: NSRange(location: 0, length: 0)).count == 1)
+    let parent = NSView(frame: .zero)
+    let allText = NSRange(location: 0, length: projection.length)
+    let attributed = projection.attributedString(in: allText, fontSize: 14, parent: parent)!
+    precondition(attributed.string == projection.text)
+    let attributes = attributed.attributes(at: 0, effectiveRange: nil)
+    let font = attributes[.accessibilityFont] as! [String: Any]
+    precondition(!(font[NSAccessibility.FontAttributeKey.fontName.rawValue] as! String).isEmpty)
+    precondition((font[NSAccessibility.FontAttributeKey.fontSize.rawValue] as! NSNumber).doubleValue == 14)
+    precondition((attributes[.accessibilityUnderline] as! NSNumber).intValue > 0)
+    precondition((attributes[.accessibilityStrikethrough] as! NSNumber).boolValue)
+    let linked = attributes[.accessibilityLink] as! AccessibleTerminalLink
+    precondition(linked.accessibilityURL()?.absoluteString == first.link)
+    precondition(linked.accessibilityRole() == .link)
+    precondition((linked.accessibilityParent() as? NSView) === parent)
+    precondition(!linked.isAccessibilityEnabled() && !linked.accessibilityPerformPress())
+    let concealedForeground = attributes[.accessibilityForegroundColor] as! CGColor
+    let concealedBackground = attributes[.accessibilityBackgroundColor] as! CGColor
+    precondition(concealedForeground == concealedBackground)
+    let colors = CellPalette(snapshot: styled).resolve(first.style)
+    // Indexed red background becomes the foreground under inverse, then dims
+    // in linear light. Accessibility and rendering consume this same resolver.
+    precondition(abs(colors.foreground.x - 0.65) < 0.00001)
+    precondition(colors.foreground.y == 0 && colors.foreground.z == 0)
+    let underline = colors.underline(matching: SIMD4(0, 0, 0, 0))
+    let underlineColor = CGColor(colorSpace: CGColorSpace(name: CGColorSpace.linearSRGB)!,
+      components: [CGFloat(underline.x), CGFloat(underline.y), CGFloat(underline.z), 1])!
+    let srgbUnderline = NSColor(cgColor: underlineColor)!.usingColorSpace(.sRGB)!
+    precondition(abs(srgbUnderline.redComponent - 90.0 / 255) < 0.00001)
+    precondition(abs(srgbUnderline.greenComponent - 80.0 / 255) < 0.00001)
+    precondition(projection.attributedString(in: emojiRange, fontSize: 18, parent: parent)?.string == emoji)
+    let newline = NSMaxRange(projection.range(forLine: 0)) - 1
+    precondition(attributed.attributes(at: newline, effectiveRange: nil).isEmpty)
+    precondition(projection.styleRange(for: emojiRange.location) == NSRange(location: 0, length: newline))
+    precondition(projection.styleRange(for: newline) == NSRange(
+      location: newline, length: projection.length - newline))
+    precondition(projection.styleRange(for: projection.length).location == NSNotFound)
+    precondition(projection.attributedString(in: NSRange(location: 1, length: Int.max), fontSize: 14, parent: parent) == nil)
+    precondition(projection.attributedString(in: allText, fontSize: .nan, parent: parent) == nil)
+    precondition(empty.attributedString(in: NSRange(location: 0, length: 0), fontSize: 14, parent: parent)?.length == 0)
+    precondition(bounded.attributedString(in: NSRange(location: 0, length: 1), fontSize: 14, parent: parent)?.string == "A")
+    precondition(AccessibleTerminalLink.url("file:///tmp/example") == nil)
+    precondition(AccessibleTerminalLink.url("javascript:alert(1)") == nil)
+    precondition(AccessibleTerminalLink.url("HTTPS://example.test") != nil)
+    // Alternating styles exercise both ends of the sorted run index and
+    // ranges crossing a synthetic newline without asking for the full grid.
+    let stripedCore = terminal_create(128, 64)!
+    let stripes = Data((0..<8_191).map { "\u{1b}[\($0.isMultiple(of: 2) ? 31 : 32)mX" }.joined().utf8)
+    stripes.withUnsafeBytes { raw in
+      let bytes = raw.bindMemory(to: UInt8.self)
+      var offset = 0
+      while offset < bytes.count || terminal_has_work(stripedCore) {
+        offset += terminal_feed(stripedCore, bytes.baseAddress! + offset, bytes.count - offset, 0)
+      }
+    }
+    let striped = AccessibilityProjection(snapshot: SnapshotBridge.read(stripedCore, scroll: 0, now: 0).snapshot!)
+    terminal_destroy(stripedCore)
+    precondition(striped.length == 8_191 + 63)
+    for index in 0..<striped.length {
+      precondition(striped.styleRange(for: index) == NSRange(location: index, length: 1))
+    }
+    for index in [0, 127, 129, 32 * 129, striped.length - 1] {
+      let single = striped.attributedString(in: NSRange(location: index, length: 1), fontSize: 14, parent: parent)!
+      precondition(single.string == "X" && single.attribute(.accessibilityForegroundColor, at: 0, effectiveRange: nil) != nil)
+    }
+    let crossLine = striped.attributedString(in: NSRange(location: 127, length: 3), fontSize: 14, parent: parent)!
+    precondition(crossLine.string == "X\nX")
+    precondition(crossLine.attributes(at: 1, effectiveRange: nil).isEmpty)
+    precondition(crossLine.attribute(.accessibilityForegroundColor, at: 0, effectiveRange: nil) as! CGColor
+      != crossLine.attribute(.accessibilityForegroundColor, at: 2, effectiveRange: nil) as! CGColor)
+    precondition(striped.styleRange(for: -1).location == NSNotFound)
+    precondition(striped.styleRange(for: striped.length).location == NSNotFound)
+    precondition(striped.attributedString(in: NSRange(location: striped.length, length: 0), fontSize: 14, parent: parent)?.length == 0)
     feed("\u{1b}]8;;\u{1b}\\\u{1b}[0m\r\nplain\r\nmore\r\nlast\r\n")
     _ = try check()
     _ = try check(scroll: 2)

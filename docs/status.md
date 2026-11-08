@@ -58,7 +58,11 @@ Implemented and locally exercised:
   bytes; exact old/new bridge equivalence and copy lifetime tests pass.
 - Bounded visible accessibility projection with UTF-16↔cluster/cell maps,
   line/range/selection lookup, screen-coordinate geometry and local selection
-  changes. Direct arbitrary text replacement through AX is not exposed.
+  changes. Attributed text reports fonts, colors, underlines, strikethrough and
+  actionable hyperlink elements; style lookup uses an indexed run map. Direct
+  arbitrary text replacement through AX is not exposed. In-process tests and an
+  external AX client cover attributed-string serialization and UTF-16 queries;
+  real VoiceOver validation remains separate.
 - DECLRMM/DECSLRM, per-screen horizontal margins, origin-aware coordinates/replies,
   regional wrap/tab/CR/BS, rectangular scrolling and insert/delete with wide-edge
   repair and no partial-width history. Partial-width image scrolling currently
@@ -197,7 +201,7 @@ Required work remaining before the requested completion gate:
   with bracket closure is implemented and tested at every partial-write offset.
 - Retained row snapshot ABI/revision reuse, row/run shaping caches, asynchronous raster service,
   ligatures, complete geometric glyph coverage, global GPU budgets and GPU recovery testing.
-- Additional accessibility history fetching/style attributes and real VoiceOver
+- Accessibility history fetching and real VoiceOver
   validation, real CJK input methods and dead keys/layout/Option-policy testing,
   composition routing during focus/resize.
 - Broader configuration validation and lifecycle/configuration tests. Persisted font size/history/Option settings are implemented.
