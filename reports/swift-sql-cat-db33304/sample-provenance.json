@@ -1,0 +1,7 @@
+{
+  "source_commit": "db33304",
+  "app_pid": 71954,
+  "sample_sha256": "64be375b2194cbac1168f087189b159b6d263d6c7e9a134c54c0677bcdca4fe4",
+  "passed": true,
+  "scope": "Owned primary-history SQL run; diagnostic sampling, not comparison timing"
+}
