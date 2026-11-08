@@ -7,15 +7,15 @@ document must replay before this area can be marked green.
 
 | Rust oracle | Required document behavior | Status |
 | --- | --- | --- |
-| `margins_origin_home_queries_validation_and_ansi_save_conflict` | screen-local margins, origin/CUP, saved cursor | red: no `TerminalDocument` |
-| `regional_wrap_does_not_join_full_rows_or_touch_side_columns` | regional wrap preserves side cells | red |
-| `rectangular_index_keeps_row_identity_side_cells_and_history` | regional scroll preserves row identity/history | red |
-| `rectangular_insert_delete_lines_and_bce` | blank cells inherit erase background | red |
-| `horizontal_insert_delete_and_wide_edges` | insert/delete repairs wide pairs | red |
-| `rectangular_scroll_remaps_styles_links_clusters_and_protection` | rich payload survives rectangular scroll | red |
-| `screen_scope_reset_resize_and_margin_mode_disable` | screen-local reset/resize/margin policy | red |
-| `every_partition_and_ascii_scalar_paths_agree_with_rectangles` | protocol chunking reaches same document result | red |
-| `carriage_return_backspace_and_tabs_respect_horizontal_region` | editing motions obey active region | red |
+| `margins_origin_home_queries_validation_and_ansi_save_conflict` | screen-local margins, origin/CUP, saved cursor | green: `TerminalDocumentOracleTests.originHomeQueriesAndSaveConflict` |
+| `regional_wrap_does_not_join_full_rows_or_touch_side_columns` | regional wrap preserves side cells | green: `TerminalDocumentOracleTests.regionalWrapAndMotions` |
+| `rectangular_index_keeps_row_identity_side_cells_and_history` | regional scroll preserves row identity/history | green: `TerminalDocumentOracleTests.rectangularIndexIdentityAndNoHistory` |
+| `rectangular_insert_delete_lines_and_bce` | blank cells inherit erase background | green: `TerminalDocumentOracleTests.rectangularInsertDeleteAndEraseBackground` |
+| `horizontal_insert_delete_and_wide_edges` | insert/delete repairs wide pairs | green: `TerminalDocumentOracleTests.horizontalInsertDeleteAndWideEdges` |
+| `rectangular_scroll_remaps_styles_links_clusters_and_protection` | rich payload survives rectangular scroll | green: `TerminalDocumentOracleTests.richRectangularScroll` |
+| `screen_scope_reset_resize_and_margin_mode_disable` | screen-local reset/resize/margin policy | green: `TerminalDocumentOracleTests.screenScopeResetResizeAndMarginDisable` |
+| `every_partition_and_ascii_scalar_paths_agree_with_rectangles` | protocol chunking reaches same document result | green: `TerminalDocumentOracleTests.chunkingAndRegionalTabs` |
+| `carriage_return_backspace_and_tabs_respect_horizontal_region` | editing motions obey active region | green: `TerminalDocumentOracleTests.chunkingAndRegionalTabs` |
 | `output_preserves_content_and_scroll_is_relative_to_current_anchor` | anchored viewport holds document identity | red |
 | `eviction_clamps_once_without_leaving_anchored_mode` | history eviction atomically clamps anchor | red |
 | `alternate_has_no_history_and_retains_primary_view_for_return` | primary/alternate document separation | red |

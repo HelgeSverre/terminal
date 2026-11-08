@@ -114,48 +114,48 @@
     },
     {
       "rust_test": "carriage_return_backspace_and_tabs_respect_horizontal_region",
-      "status": "unported",
-      "evidence": null
+      "status": "swift-emulator-replayed",
+      "evidence": "native/tests/TerminalDocumentOracleTests.swift (chunkingAndRegionalTabs)"
     },
     {
       "rust_test": "every_partition_and_ascii_scalar_paths_agree_with_rectangles",
-      "status": "unported",
-      "evidence": null
+      "status": "swift-emulator-replayed",
+      "evidence": "native/tests/TerminalDocumentOracleTests.swift (chunkingAndRegionalTabs)"
     },
     {
       "rust_test": "horizontal_insert_delete_and_wide_edges",
-      "status": "unported",
-      "evidence": null
+      "status": "swift-emulator-replayed",
+      "evidence": "native/tests/TerminalDocumentOracleTests.swift (horizontalInsertDeleteAndWideEdges)"
     },
     {
       "rust_test": "margins_origin_home_queries_validation_and_ansi_save_conflict",
-      "status": "unported",
-      "evidence": null
+      "status": "swift-emulator-replayed",
+      "evidence": "native/tests/TerminalDocumentOracleTests.swift (originHomeQueriesAndSaveConflict)"
     },
     {
       "rust_test": "rectangular_index_keeps_row_identity_side_cells_and_history",
-      "status": "unported",
-      "evidence": null
+      "status": "swift-emulator-replayed",
+      "evidence": "native/tests/TerminalDocumentOracleTests.swift (rectangularIndexIdentityAndNoHistory)"
     },
     {
       "rust_test": "rectangular_insert_delete_lines_and_bce",
-      "status": "unported",
-      "evidence": null
+      "status": "swift-emulator-replayed",
+      "evidence": "native/tests/TerminalDocumentOracleTests.swift (rectangularInsertDeleteAndEraseBackground)"
     },
     {
       "rust_test": "rectangular_scroll_remaps_styles_links_clusters_and_protection",
-      "status": "unported",
-      "evidence": null
+      "status": "swift-emulator-replayed",
+      "evidence": "native/tests/TerminalDocumentOracleTests.swift (richRectangularScroll)"
     },
     {
       "rust_test": "regional_wrap_does_not_join_full_rows_or_touch_side_columns",
-      "status": "unported",
-      "evidence": null
+      "status": "swift-emulator-replayed",
+      "evidence": "native/tests/TerminalDocumentOracleTests.swift (regionalWrapAndMotions)"
     },
     {
       "rust_test": "screen_scope_reset_resize_and_margin_mode_disable",
-      "status": "unported",
-      "evidence": null
+      "status": "swift-emulator-replayed",
+      "evidence": "native/tests/TerminalDocumentOracleTests.swift (screenScopeResetResizeAndMarginDisable)"
     },
     {
       "rust_test": "bounded_quanta_overlapping_matches_and_query_admission",

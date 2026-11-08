@@ -44,8 +44,12 @@ private final class SwiftTerminalCore {
   private var history: [SwiftRow] { get { document.history } set { document.history = newValue } }
   private var historyLimit = 10_000
   private var viewOffset = 0
-  private var topMargin = 0
-  private var bottomMargin = 23
+  // Modes describe protocol policy. Geometry itself belongs to each document
+  // screen, because primary and alternate retain independent margins.
+  private var originMode = false
+  private var leftRightMargins = false
+  private var autoWrap = true
+  private var protectedOutput = false
   private var parser = SwiftParserState.ground
   private var utf8 = SwiftUnicode.UTF8Decoder()
   private var sequence = ""
@@ -76,7 +80,6 @@ private final class SwiftTerminalCore {
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
     self.rowCount = max(1, min(4096, rows))
-    bottomMargin = self.rowCount - 1
     document = TerminalDocument(columns: self.columns, rows: self.rowCount)
   }
 
@@ -84,6 +87,19 @@ private final class SwiftTerminalCore {
     get { usingAlternate ? alternate : primary }
     set { if usingAlternate { alternate = newValue } else { primary = newValue } }
   }
+  private var horizontalMargins: (left: Int, right: Int) {
+    let s = screen
+    return leftRightMargins ? (s.leftMargin, s.rightMargin) : (0, columns - 1)
+  }
+  private var verticalMargins: (top: Int, bottom: Int) {
+    let s = screen
+    return (s.topMargin, s.bottomMargin)
+  }
+  private func writeBounds(_ column: Int) -> (left: Int, right: Int) {
+    let margins = horizontalMargins
+    return column <= margins.right ? margins : (0, columns - 1)
+  }
+  private func eraseStyle() -> SwiftStyle { pen.erased() }
   private func changed(history: Bool = false, geometry: Bool = false) {
     revision &+= 1; documentEpoch &+= 1; screenEpoch &+= 1
     if history { historyEpoch &+= 1 }
@@ -157,67 +173,101 @@ private final class SwiftTerminalCore {
     var s = screen
     let measuredWidth = SwiftUnicode.cellWidth(of: text)
     if measuredWidth == 0 {
-      if s.cursorColumn > 0 { s.rows[s.cursorRow].cells[s.cursorColumn - 1].text.append(text) }
+      if s.cursorColumn > 0 {
+        let owner = document.repairedCellOwner(in: s.rows[s.cursorRow], at: s.cursorColumn - 1)
+        s.rows[s.cursorRow].cells[owner].text.append(text)
+      }
       screen = s; changed(); return
     }
     let width = min(2, max(1, measuredWidth))
-    if s.pendingWrap { s.rows[s.cursorRow].softWrapped = true; s.cursorColumn = 0; s.pendingWrap = false; advanceLine(&s) }
-    if width == 2 && s.cursorColumn == columns - 1 { s.rows[s.cursorRow].softWrapped = true; s.cursorColumn = 0; advanceLine(&s) }
+    if s.pendingWrap && autoWrap { wrap(&s) }
+    let bounds = writeBounds(s.cursorColumn)
+    if width == 2 && s.cursorColumn + 2 > bounds.right + 1 && bounds.right > bounds.left && autoWrap {
+      document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<(s.cursorColumn + 1), style: eraseStyle())
+      if bounds.left == 0 && bounds.right == columns - 1 { s.rows[s.cursorRow].cells[s.cursorColumn].kind = 4 }
+      wrap(&s)
+    }
     guard s.cursorRow < s.rows.count, s.cursorColumn < columns else { return }
-    s.rows[s.cursorRow].cells[s.cursorColumn] = SwiftCell(text: text, kind: width == 2 ? 2 : 1, style: pen, link: currentLink)
+    let right = writeBounds(s.cursorColumn).right
+    let occupied = min(width, right + 1 - s.cursorColumn)
+    if occupied <= 0 { return }
+    document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<(s.cursorColumn + occupied), style: eraseStyle())
+    let truncatedWide = width == 2 && occupied < width
+    s.rows[s.cursorRow].cells[s.cursorColumn] = SwiftCell(text: text, kind: width == 2 && occupied == 2 ? 2 : 1, style: pen, link: currentLink, flags: (protectedOutput ? 2 : 0) | (truncatedWide ? 1 : 0), protected: protectedOutput)
     lastPrinted = text
-    if width == 2 && s.cursorColumn + 1 < columns { s.rows[s.cursorRow].cells[s.cursorColumn + 1] = SwiftCell(text: "", kind: 3, style: pen, link: currentLink) }
-    if s.cursorColumn + width >= columns { s.cursorColumn = columns - 1; s.pendingWrap = true }
-    else { s.cursorColumn += width }
+    if width == 2 && occupied == 2 { s.rows[s.cursorRow].cells[s.cursorColumn + 1] = SwiftCell(text: "", kind: 3, style: pen, link: currentLink, flags: protectedOutput ? 2 : 0, protected: protectedOutput) }
+    let reachesPastRight = s.cursorColumn + occupied > right
+    s.cursorColumn = min(right, s.cursorColumn + occupied)
+    s.pendingWrap = reachesPastRight && autoWrap
     screen = s; changed()
   }
-  private func advanceLine(_ s: inout SwiftScreen) {
-    if s.cursorRow + 1 < rowCount { s.cursorRow += 1; return }
-    let removed = s.rows.removeFirst()
-    // New physical rows are document-owned identities. Reflow, viewport and
-    // search proofs can therefore distinguish eviction from replacement.
-    s.rows.append(document.blankRow())
-    if !usingAlternate { history.append(removed); if history.count > historyLimit { history.removeFirst(history.count - historyLimit) }; historyEpoch &+= 1 }
+  private func wrap(_ s: inout SwiftScreen) {
+    let old = s.cursorRow
+    s.rows[old].softWrapped = horizontalMargins.left == 0 && horizontalMargins.right == columns - 1
+    index(&s, reverse: false, allowHistory: true)
+    s.cursorColumn = writeBounds(s.cursorColumn).left
+    s.pendingWrap = false
   }
-  private func lineFeed() { var s = screen; s.pendingWrap = false; advanceLine(&s); screen = s; changed(history: !usingAlternate) }
-  private func carriageReturn() { var s = screen; s.cursorColumn = 0; s.pendingWrap = false; screen = s; changed() }
-  private func backspace() { var s = screen; s.cursorColumn = max(0, s.cursorColumn - 1); s.pendingWrap = false; screen = s; changed() }
-  private func tab() { var s = screen; s.cursorColumn = min(columns - 1, ((s.cursorColumn / 8) + 1) * 8); s.pendingWrap = false; screen = s; changed() }
-  private func reverseIndex() { var s = screen; if s.cursorRow > 0 { s.cursorRow -= 1 } else { s.rows.insert(SwiftRow(columns: columns), at: 0); _ = s.rows.popLast() }; screen = s; changed() }
-  private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; screen = s }
-  private func restoreCursor() { var s = screen; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; s.pendingWrap = false; screen = s; changed() }
-  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); pen = SwiftStyle(); changed(history: true) }
+  private func index(_ s: inout SwiftScreen, reverse: Bool, allowHistory: Bool) {
+    let vertical = (s.topMargin, s.bottomMargin), horizontal = horizontalMargins
+    let inside = (horizontal.left...horizontal.right).contains(s.cursorColumn)
+    if reverse {
+      if s.cursorRow == vertical.0 && inside { scroll(&s, top: vertical.0, bottom: vertical.1, count: 1, up: false, allowHistory: false) }
+      else { s.cursorRow = max(0, s.cursorRow - 1) }
+    } else if s.cursorRow == vertical.1 && inside {
+      scroll(&s, top: vertical.0, bottom: vertical.1, count: 1, up: true, allowHistory: allowHistory)
+    } else { s.cursorRow = min(rowCount - 1, s.cursorRow + 1) }
+  }
+  private func lineFeed() { var s = screen; s.pendingWrap = false; index(&s, reverse: false, allowHistory: true); screen = s; changed(history: !usingAlternate) }
+  private func carriageReturn() { var s = screen; let left = horizontalMargins.left; s.cursorColumn = s.cursorColumn >= left ? left : 0; s.pendingWrap = false; screen = s; changed() }
+  private func backspace() { var s = screen; let left = horizontalMargins.left; s.cursorColumn = max(s.cursorColumn >= left ? left : 0, s.cursorColumn - 1); s.pendingWrap = false; screen = s; changed() }
+  private func tab(_ reverse: Bool = false, count: Int = 1) { var s = screen; let margins = horizontalMargins; let left = s.cursorColumn >= margins.left ? margins.left : 0; let right = writeBounds(s.cursorColumn).right; for _ in 0..<min(count, columns) { if reverse { s.cursorColumn = stride(from: s.cursorColumn - 1, through: left, by: -1).first(where: { $0 > 0 && $0 % 8 == 0 }) ?? left } else { s.cursorColumn = ((s.cursorColumn + 1)...right).first(where: { $0 > 0 && $0 % 8 == 0 }) ?? right } }; s.pendingWrap = false; screen = s; changed() }
+  private func reverseIndex() { var s = screen; s.pendingWrap = false; index(&s, reverse: true, allowHistory: false); screen = s; changed() }
+  private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedOrigin = originMode; screen = s }
+  private func restoreCursor() { var s = screen; originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false; screen = s; changed() }
+  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false; changed(history: true) }
   private func parameters(_ raw: String) -> [Int] { raw.split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 } }
   private func handleCSI(_ raw: String, final: Character) {
     let privateMode = raw.first == "?"
-    let params = parameters(privateMode ? String(raw.dropFirst()) : raw)
+    let command = privateMode ? String(raw.dropFirst()) : raw
+    let params = parameters(command.filter { $0 == ";" || $0.isNumber })
     let n = max(1, params.first ?? 0)
     var s = screen
     var changedActiveScreen = false
     switch final {
-    case "A": s.cursorRow = max(0, s.cursorRow - n)
-    case "B": s.cursorRow = min(rowCount - 1, s.cursorRow + n)
-    case "C": s.cursorColumn = min(columns - 1, s.cursorColumn + n)
-    case "D": s.cursorColumn = max(0, s.cursorColumn - n)
-    case "G": s.cursorColumn = min(columns - 1, n - 1)
-    case "d": s.cursorRow = min(rowCount - 1, n - 1)
-    case "H", "f": s.cursorRow = min(rowCount - 1, max(0, (params.first ?? 1) - 1)); s.cursorColumn = min(columns - 1, max(0, (params.dropFirst().first ?? 1) - 1))
-    case "J": eraseDisplay(params.first ?? 0)
-    case "K": eraseLine(params.first ?? 0)
-    case "@": insertCharacters(n)
-    case "P": deleteCharacters(n)
-    case "L": insertLines(n)
-    case "M": deleteLines(n)
+    case "A": s.cursorRow = max(originMode ? s.topMargin : 0, s.cursorRow - n)
+    case "B": s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, s.cursorRow + n)
+    case "C": s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, s.cursorColumn + n)
+    case "D": s.cursorColumn = max(originMode ? horizontalMargins.left : 0, s.cursorColumn - n)
+    case "G": s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + n - 1)
+    case "d": s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + n - 1)
+    case "H", "f": s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + max(0, (params.first ?? 1) - 1)); s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + max(0, (params.dropFirst().first ?? 1) - 1))
+    case "J": eraseDisplay(params.first ?? 0); changedActiveScreen = true
+    case "K": eraseLine(params.first ?? 0); changedActiveScreen = true
+    case "@": insertCharacters(n); changedActiveScreen = true
+    case "P": deleteCharacters(n); changedActiveScreen = true
+    case "L": insertLines(n); changedActiveScreen = true
+    case "M": deleteLines(n); changedActiveScreen = true
+    case "I": tab(false, count: n); changedActiveScreen = true
+    case "Z": tab(true, count: n); changedActiveScreen = true
     case "r": setVerticalMargins(params); changedActiveScreen = true
+    case "S": scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: false)
+    case "T": scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: false, allowHistory: false)
     case "b": repeatRemaining = min(1_000_000, max(0, params.first ?? 1))
     case "m": applySGR(params)
-    case "s": saveCursor()
+    case "s":
+      if leftRightMargins { setHorizontalMargins(params); changedActiveScreen = true }
+      else { s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedOrigin = originMode }
     case "u":
       if raw.first == ">" { kittyKeyboardFlags = UInt32(max(0, parameters(String(raw.dropFirst())).first ?? 0)) & 31 }
       else if raw.first == "?" { replies.append(contentsOf: "\u{1b}[?\(kittyKeyboardFlags)u".utf8) }
-      else { restoreCursor() }
-    case "n": if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { replies.append(contentsOf: "\u{1b}[\(s.cursorRow + 1);\(s.cursorColumn + 1)R".utf8) }
+      else { originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false }
+    case "n": if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = s.cursorRow + 1 - (originMode ? s.topMargin : 0); let column = s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0); replies.append(contentsOf: "\u{1b}[\(row);\(column)R".utf8) }
     case "c": replies.append(contentsOf: "\u{1b}[?62;4c".utf8)
+    case "p" where privateMode && raw.hasSuffix("$"):
+      replies.append(contentsOf: "\u{1b}[?\(params.first ?? 0);\(params.first == 69 ? (leftRightMargins ? 1 : 2) : 0)$y".utf8)
+    case "p" where raw.hasSuffix("!"): softReset(); changedActiveScreen = true
+    case "q" where raw.hasSuffix("\""): protectedOutput = (params.first ?? 0) == 1
     case "h", "l": changedActiveScreen = setMode(params, enabled: final == "h", privateMode: privateMode)
     default: break
     }
@@ -227,36 +277,50 @@ private final class SwiftTerminalCore {
     if !changedActiveScreen { s.pendingWrap = false; screen = s }
     changed()
   }
-  private func eraseDisplay(_ mode: Int) { var s = screen; switch mode { case 2, 3: s.rows = Array(repeating: SwiftRow(columns: columns), count: rowCount); if mode == 3 && !usingAlternate { history.removeAll(); historyEpoch &+= 1 }; case 1: for r in 0...s.cursorRow { let end = r == s.cursorRow ? s.cursorColumn : columns - 1; for c in 0...end { s.rows[r].cells[c] = SwiftCell() } }; default: for r in s.cursorRow..<rowCount { let start = r == s.cursorRow ? s.cursorColumn : 0; for c in start..<columns { s.rows[r].cells[c] = SwiftCell() } } }; screen = s }
-  private func eraseLine(_ mode: Int) { var s = screen; let range: Range<Int>; switch mode { case 1: range = 0..<(s.cursorColumn + 1); case 2: range = 0..<columns; default: range = s.cursorColumn..<columns }; for c in range { s.rows[s.cursorRow].cells[c] = SwiftCell() }; screen = s }
+  private func eraseDisplay(_ mode: Int) { var s = screen; switch mode { case 2, 3: s.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }; if mode == 3 && !usingAlternate { history.removeAll(); historyEpoch &+= 1 }; case 1: for row in 0...s.cursorRow { document.erase(&s, row: row, columns: 0..<(row == s.cursorRow ? s.cursorColumn + 1 : columns), style: eraseStyle()) }; default: for row in s.cursorRow..<rowCount { document.erase(&s, row: row, columns: (row == s.cursorRow ? s.cursorColumn : 0)..<columns, style: eraseStyle()) } }; s.pendingWrap = false; screen = s }
+  private func eraseLine(_ mode: Int) { var s = screen; let range: Range<Int>; switch mode { case 1: range = 0..<(s.cursorColumn + 1); case 2: range = 0..<columns; default: range = s.cursorColumn..<columns }; document.erase(&s, row: s.cursorRow, columns: range, style: eraseStyle()); s.pendingWrap = false; screen = s }
   private func insertCharacters(_ count: Int) {
-    var s = screen; let row = s.cursorRow; let column = s.cursorColumn; let amount = min(count, columns - column)
-    guard amount > 0 else { return }
-    for index in stride(from: columns - 1, through: column + amount, by: -1) { s.rows[row].cells[index] = s.rows[row].cells[index - amount] }
-    for index in column..<(column + amount) { s.rows[row].cells[index] = SwiftCell() }
-    s.rows[row].revision &+= 1; screen = s
+    var s = screen; let margins = horizontalMargins
+    if (margins.left...margins.right).contains(s.cursorColumn) { document.shift(&s, row: s.cursorRow, column: s.cursorColumn, right: margins.right, count: count, inserting: true, eraseStyle: eraseStyle()); s.pendingWrap = false }
+    else { s.pendingWrap = false }; screen = s
   }
   private func deleteCharacters(_ count: Int) {
-    var s = screen; let row = s.cursorRow; let column = s.cursorColumn; let amount = min(count, columns - column)
-    guard amount > 0 else { return }
-    for index in column..<(columns - amount) { s.rows[row].cells[index] = s.rows[row].cells[index + amount] }
-    for index in (columns - amount)..<columns { s.rows[row].cells[index] = SwiftCell() }
-    s.rows[row].revision &+= 1; screen = s
+    var s = screen; let margins = horizontalMargins
+    if (margins.left...margins.right).contains(s.cursorColumn) { document.shift(&s, row: s.cursorRow, column: s.cursorColumn, right: margins.right, count: count, inserting: false, eraseStyle: eraseStyle()); s.pendingWrap = false }; screen = s
   }
   private func insertLines(_ count: Int) { scrollLines(count, up: false) }
   private func deleteLines(_ count: Int) { scrollLines(count, up: true) }
   private func setVerticalMargins(_ params: [Int]) {
     let top = max(0, (params.first ?? 1) - 1)
-    let bottom = min(rowCount - 1, (params.dropFirst().first ?? rowCount) - 1)
+    let bottom = min(rowCount - 1, ((params.dropFirst().first ?? rowCount) == 0 ? rowCount : (params.dropFirst().first ?? rowCount)) - 1)
     guard top < bottom else { return }
-    topMargin = top; bottomMargin = bottom
-    var s = screen; s.cursorRow = top; s.cursorColumn = 0; s.pendingWrap = false; screen = s
+    var s = screen; s.topMargin = top; s.bottomMargin = bottom; s.cursorRow = originMode ? top : 0; s.cursorColumn = originMode ? horizontalMargins.left : 0; s.pendingWrap = false; screen = s
   }
   private func scrollLines(_ count: Int, up: Bool) {
-    var s = screen; guard s.cursorRow >= topMargin else { return }; let amount = min(count, bottomMargin - s.cursorRow + 1); guard amount > 0 else { return }
-    if up { for row in s.cursorRow...(bottomMargin - amount) { s.rows[row] = s.rows[row + amount] }; for row in (bottomMargin - amount + 1)...bottomMargin { s.rows[row] = document.blankRow() } }
-    else { for row in stride(from: bottomMargin, through: s.cursorRow + amount, by: -1) { s.rows[row] = s.rows[row - amount] }; for row in s.cursorRow..<(s.cursorRow + amount) { s.rows[row] = document.blankRow() } }
-    screen = s
+    var s = screen; let margins = horizontalMargins
+    guard s.cursorRow >= s.topMargin, s.cursorRow <= s.bottomMargin, (margins.left...margins.right).contains(s.cursorColumn) else { s.pendingWrap = false; screen = s; return }
+    scroll(&s, top: s.cursorRow, bottom: s.bottomMargin, count: count, up: up, allowHistory: false); s.cursorColumn = margins.left; s.pendingWrap = false; screen = s
+  }
+  private func scroll(_ s: inout SwiftScreen, top: Int, bottom: Int, count: Int, up: Bool, allowHistory: Bool) {
+    let margins = horizontalMargins; let amount = min(count, bottom - top + 1); guard amount > 0 else { return }
+    if margins.left != 0 || margins.right != columns - 1 {
+      document.scrollRectangle(&s, top: top, bottom: bottom, left: margins.left, right: margins.right, count: amount, up: up, eraseStyle: eraseStyle()); return
+    }
+    for _ in 0..<amount {
+      let removed: SwiftRow
+      if up { removed = s.rows.remove(at: top); s.rows.insert(document.eraseRow(eraseStyle()), at: bottom) }
+      else { removed = s.rows.remove(at: bottom); s.rows.insert(document.eraseRow(eraseStyle()), at: top) }
+      if up && allowHistory && !usingAlternate && top == 0 && bottom == rowCount - 1 { history.append(removed); if history.count > historyLimit { history.removeFirst(history.count - historyLimit) }; historyEpoch &+= 1 }
+    }
+  }
+  private func setHorizontalMargins(_ params: [Int]) {
+    let left = max(0, (params.first ?? 1) - 1); let suppliedRight = params.dropFirst().first ?? columns
+    let requestedRight = suppliedRight == 0 ? columns : suppliedRight
+    guard requestedRight <= columns else { return }
+    let right = requestedRight - 1
+    guard left < right else { return }
+    var s = screen; s.leftMargin = left; s.rightMargin = right
+    s.cursorRow = originMode ? s.topMargin : 0; s.cursorColumn = originMode ? left : 0; s.pendingWrap = false; screen = s
   }
   private func applySGR(_ p: [Int]) {
     let values = p.isEmpty ? [0] : p
@@ -307,19 +371,32 @@ private final class SwiftTerminalCore {
     for mode in params where privateMode {
       switch mode {
       case 1: applicationCursor = enabled
+      case 6: originMode = enabled; var s = screen; s.cursorRow = enabled ? s.topMargin : 0; s.cursorColumn = enabled ? horizontalMargins.left : 0; s.pendingWrap = false; screen = s; changedActiveScreen = true
+      case 7: autoWrap = enabled; if !enabled { var s = screen; s.pendingWrap = false; screen = s }; changedActiveScreen = true
       case 25: cursorVisible = enabled
       case 47, 1047, 1049:
         usingAlternate = enabled
-        if enabled { alternate = SwiftScreen(columns: columns, rows: rowCount) }
+        if enabled && (params.contains(1047) || params.contains(1049)) { alternate = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns) }
         viewOffset = 0
         changedActiveScreen = true
       case 1004: focusReporting = enabled
       case 2004: bracketedPaste = enabled
       case 5: reverseVideo = enabled
+      case 69:
+        leftRightMargins = enabled
+        if !enabled { primary.leftMargin = 0; primary.rightMargin = columns - 1; primary.pendingWrap = false; alternate.leftMargin = 0; alternate.rightMargin = columns - 1; alternate.pendingWrap = false; originMode = false }
+        changedActiveScreen = true
       default: break
       }
     }
     return changedActiveScreen
+  }
+  private func softReset() {
+    originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false
+    pen = SwiftStyle(); currentLink = nil; applicationCursor = false; applicationKeypad = false
+    bracketedPaste = false; focusReporting = false
+    var s = screen; s.topMargin = 0; s.bottomMargin = rowCount - 1; s.cursorRow = 0; s.cursorColumn = 0; s.pendingWrap = false; screen = s
+    primary.leftMargin = 0; primary.rightMargin = columns - 1; alternate.leftMargin = 0; alternate.rightMargin = columns - 1
   }
   private func finishString() {
     let payload = sequence; sequence = ""
@@ -344,22 +421,8 @@ private final class SwiftTerminalCore {
       screen = moved
     }
   }
-  func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool { guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows) else { return false }; columns = nextColumns; rowCount = nextRows; primary = resized(primary); alternate = resized(alternate); viewOffset = min(viewOffset, history.count); changed(geometry: true); return true }
+  func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool { guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows), nextColumns <= 1_048_576 / nextRows else { return false }; let resizedPrimary = document.resize(primary, columns: nextColumns, rows: nextRows); let resizedAlternate = document.resize(alternate, columns: nextColumns, rows: nextRows); columns = nextColumns; rowCount = nextRows; primary = resizedPrimary; alternate = resizedAlternate; primary.topMargin = 0; primary.bottomMargin = nextRows - 1; primary.leftMargin = 0; primary.rightMargin = nextColumns - 1; alternate.topMargin = 0; alternate.bottomMargin = nextRows - 1; alternate.leftMargin = 0; alternate.rightMargin = nextColumns - 1; viewOffset = min(viewOffset, history.count); changed(geometry: true); return true }
   func resize(columns nextColumns: Int, rows nextRows: Int, cellWidth: Int, cellHeight: Int) -> Bool { guard resize(columns: nextColumns, rows: nextRows) else { return false }; cellPixelWidth = max(1, cellWidth); cellPixelHeight = max(1, cellHeight); return true }
-  private func resized(_ old: SwiftScreen) -> SwiftScreen {
-    var value = SwiftScreen(rows: [])
-    for _ in 0..<rowCount { value.rows.append(document.blankRow()) }
-    let start = max(0, old.rows.count - rowCount)
-    for (target, source) in old.rows.suffix(rowCount).enumerated() {
-      // Retain identity and rich cell attributes for physical rows that survive
-      // a resize; only newly exposed rows receive fresh document identities.
-      var row = source
-      row.cells = Array(source.cells.prefix(columns))
-      if row.cells.count < columns { row.cells.append(contentsOf: repeatElement(TerminalCell(), count: columns - row.cells.count)) }
-      value.rows[target] = row
-    }
-    value.cursorRow = min(rowCount - 1, max(0, old.cursorRow - start)); value.cursorColumn = min(columns - 1, old.cursorColumn); return value
-  }
   func scroll(_ amount: Int) { viewOffset = max(0, min(history.count, viewOffset + amount)); changed() }
   func followTail() { viewOffset = 0; changed() }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); if history.count > historyLimit { history.removeFirst(history.count - historyLimit); historyEpoch &+= 1 }; viewOffset = min(viewOffset, history.count) }
@@ -472,9 +535,9 @@ private final class SwiftTerminalCore {
     let selected = rowsForSnapshot(view: view)
     source = selected.rows; offset = selected.offset
     let cursor = screen
-    let rows: [[String: Any]] = source.map { row in ["soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(cell.style.foreground), "background": colorJSON(cell.style.background), "underline_color": colorJSON(cell.style.underline), "underline": Int(cell.style.underlineKind), "bold": cell.style.flags & 1 != 0, "faint": cell.style.flags & 2 != 0, "italic": cell.style.flags & 4 != 0, "inverse": cell.style.flags & 8 != 0, "conceal": cell.style.flags & 16 != 0, "strike": cell.style.flags & 32 != 0, "overline": cell.style.flags & 64 != 0, "blink": cell.style.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
+    let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(cell.style.foreground), "background": colorJSON(cell.style.background), "underline_color": colorJSON(cell.style.underline), "underline": Int(cell.style.underlineKind), "bold": cell.style.flags & 1 != 0, "faint": cell.style.flags & 2 != 0, "italic": cell.style.flags & 4 != 0, "inverse": cell.style.flags & 8 != 0, "conceal": cell.style.flags & 16 != 0, "strike": cell.style.flags & 32 != 0, "overline": cell.style.flags & 64 != 0, "blink": cell.style.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
     let images = graphics.visible(alternate: usingAlternate).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
-    let data: [String: Any] = ["at_prompt":atPrompt,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":offset == 0,"viewport_clamp_revision":revision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":0],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":true,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":false,"left_right_margins":false,"mouse":0,"newline":false,"origin":false,"reverse_video":reverseVideo,"sgr_mouse":false],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
+    let data: [String: Any] = ["at_prompt":atPrompt,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":offset == 0,"viewport_clamp_revision":revision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":0],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":false,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
     return (try? JSONSerialization.data(withJSONObject: data)) ?? Data("{}".utf8)
   }
   private func colorJSON(_ color: UInt32) -> Any { if color >> 24 == 1 { return ["Indexed": Int(color & 255)] }; if color >> 24 == 2 { return ["Rgb": [Int((color >> 16) & 255), Int((color >> 8) & 255), Int(color & 255)]] }; return "Default" }
