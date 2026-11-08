@@ -6,8 +6,10 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   private let container = NSView()
   private var root: NSView?
   private var initialLaunch: LaunchSpec?
+  private let diagnosticSplitLaunch: LaunchSpec?
   init(launch: LaunchSpec? = nil) {
     initialLaunch = launch
+    diagnosticSplitLaunch = CommandLine.arguments.contains("--resize-smoke") ? launch : nil
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 1000, height: 680),
       styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
@@ -32,7 +34,8 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   private func makePane() -> TerminalCanvasView {
-    let pane = TerminalCanvasView(frame: .zero, session: Session(launch: initialLaunch))
+    let pane = TerminalCanvasView(
+      frame: .zero, session: Session(launch: initialLaunch ?? diagnosticSplitLaunch))
     initialLaunch = nil
     pane.onStatus = { [weak self, weak pane] text in
       NSLog("Session: %@", text)
@@ -138,16 +141,33 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   func windowDidBecomeKey(_ notification: Notification) {
     panes.forEach { $0.updateFocus() }
     if !(window?.firstResponder is TerminalCanvasView) { window?.makeFirstResponder(panes.first) }
+    if let pane = window?.firstResponder as? TerminalCanvasView {
+      (NSApp.delegate as? AppDelegate)?.rememberFocus(pane)
+    }
   }
 }
 final class AppDelegate: NSObject, NSApplicationDelegate {
   var windows: [TerminalWindow] = []
+  let clipboardAccess = ClipboardAccess()
   private var preferencesWindow: TerminalSettingsWindow?
+  private weak var lastFocusedPane: TerminalCanvasView?
   private var terminationRequested = false
+  var acceptsAutomation: Bool { !terminationRequested }
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.regular)
     menu()
-    if CommandLine.arguments.contains("--glyph-smoke") {
+    if CommandLine.arguments.contains("--resize-smoke") {
+      let fixtureDirectory = Bundle.main.bundleURL
+        .appendingPathComponent("Contents/Resources/ShellIntegration/ResizeSmokeZsh").path
+      setenv("ZDOTDIR", fixtureDirectory, 1)
+      let shell = LaunchSpec.shell
+      let launch = LaunchSpec(
+        executable: "/bin/zsh", arguments: ["/bin/zsh", "-i"], cwd: shell.cwd, launcher: shell.launcher)
+      let window = TerminalWindow(launch: launch)
+      windows.append(window)
+      window.showWindow(nil)
+      window.window?.makeKeyAndOrderFront(nil)
+    } else if CommandLine.arguments.contains("--glyph-smoke") {
       let shell = LaunchSpec.shell
       let launch = LaunchSpec(executable: "/bin/sh", arguments: ["/bin/sh", "-c",
         "stty raw -echo; printf 'GLYPH_READY'; exec /bin/cat"], cwd: shell.cwd, launcher: shell.launcher)
@@ -204,6 +224,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     {
       CatSmokeTest.start(window: window, path: CommandLine.arguments[index + 1], bytes: bytes)
     }
+    if let index = CommandLine.arguments.firstIndex(of: "--resize-smoke"),
+      CommandLine.arguments.count > index + 1, let window = windows.first
+    {
+      ResizeSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
+    }
   }
   @objc func newWindow(_ sender: Any?) {
     let window = TerminalWindow()
@@ -212,7 +237,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     window.window?.makeKeyAndOrderFront(nil)
   }
   @objc func newTab(_ sender: Any?) {
-    let previous = NSApp.keyWindow
+    let previous = (NSApp.keyWindow?.windowController as? TerminalWindow)?.window
+      ?? intendedPane()?.window
     let window = TerminalWindow()
     windows.append(window)
     if let tab = window.window {
@@ -223,11 +249,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   @objc func settings(_ sender: Any?) {
     if preferencesWindow == nil {
       preferencesWindow = TerminalSettingsWindow { [weak self] prefs in
-        prefs.save()
-        self?.windows.flatMap { $0.panes }.forEach { $0.applyPreferences() }
+        self?.applyPreferences(prefs)
       }
     }
     preferencesWindow?.present()
+  }
+  func rememberFocus(_ pane: TerminalCanvasView) {
+    guard pane.window?.firstResponder === pane,
+      windows.contains(where: { $0.panes.contains { $0 === pane } })
+    else { return }
+    lastFocusedPane = pane
+  }
+  func intendedPane() -> TerminalCanvasView? {
+    if let current = NSApp.keyWindow?.firstResponder as? TerminalCanvasView {
+      rememberFocus(current)
+      if current === lastFocusedPane { return current }
+    }
+    guard let pane = lastFocusedPane, pane.window != nil,
+      windows.contains(where: { $0.panes.contains { $0 === pane } })
+    else { return nil }
+    return pane
+  }
+  func applyPreferences(_ preferences: TerminalPreferences) {
+    preferences.save()
+    windows.lazy.flatMap(\.panes).forEach { $0.applyPreferences() }
+    preferencesWindow?.reload()
   }
   func remove(_ window: TerminalWindow) { windows.removeAll { $0 === window } }
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }

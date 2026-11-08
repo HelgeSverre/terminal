@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="Helge Terminal Scripting Dictionary">
+  <suite name="Terminal Suite" code="HTer" description="Automation commands for Helge Terminal.">
+    <command name="send text" code="HTermsnt" description="Queue text in order for a terminal pane; this is not a simulated keyboard event.">
+      <cocoa class="TerminalSendTextCommand"/>
+      <direct-parameter type="text" description="The text to send."/>
+      <parameter name="to pane" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
+      <result type="text" description="The pane identifier that accepted the text."/>
+    </command>
+    <command name="read screen" code="HTermrds" description="Read the current, bounded screen projection of a terminal pane.">
+      <cocoa class="TerminalReadScreenCommand"/>
+      <parameter name="from pane" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
+      <parameter name="max characters" code="Hmxc" type="integer" optional="yes" description="A limit from 1 through 262144; the default is 32768."><cocoa key="MaxCharacters"/></parameter>
+      <result type="text" description="The most recent part of the current screen projection."/>
+    </command>
+    <command name="clear screen" code="HTermclr" description="Clear the terminal display without fabricating Command-K.">
+      <cocoa class="TerminalClearScreenCommand"/>
+      <parameter name="in pane" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
+      <result type="text" description="The cleared pane identifier."/>
+    </command>
+    <command name="focus pane" code="HTermfcs" description="Make a terminal pane the key responder.">
+      <cocoa class="TerminalFocusPaneCommand"/>
+      <parameter name="pane id" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
+      <result type="text" description="The focused pane identifier."/>
+    </command>
+    <command name="split right" code="HTermsrt" description="Split a pane to the right and return the new pane identifier.">
+      <cocoa class="TerminalSplitRightCommand"/>
+      <parameter name="pane id" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
+      <result type="text" description="The new pane identifier."/>
+    </command>
+    <command name="split below" code="HTermsbl" description="Split a pane below and return the new pane identifier.">
+      <cocoa class="TerminalSplitBelowCommand"/>
+      <parameter name="pane id" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
+      <result type="text" description="The new pane identifier."/>
+    </command>
+    <command name="close pane" code="HTermclp" description="Close a pane; closing the last pane closes its window.">
+      <cocoa class="TerminalClosePaneCommand"/>
+      <parameter name="pane id" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
+      <result type="boolean" description="True when the close operation was accepted."/>
+    </command>
+    <command name="new window" code="HTermnww" description="Open a new terminal window and return its first pane identifier."><cocoa class="TerminalNewWindowCommand"/><result type="text" description="The new pane identifier."/></command>
+    <command name="new tab" code="HTermntb" description="Open a new terminal tab and return its first pane identifier."><cocoa class="TerminalNewTabCommand"/><result type="text" description="The new pane identifier."/></command>
+    <command name="list panes" code="HTermlsp" description="Return stable identifiers for every open terminal pane."><cocoa class="TerminalListPanesCommand"/><result description="Stable pane identifiers."><type type="text" list="yes"/></result></command>
+    <command name="show settings" code="HTermset" description="Present Terminal's Settings window."><cocoa class="TerminalShowSettingsCommand"/><result type="boolean"/></command>
+    <command name="configure preferences" code="HTermcfg" description="Validate, save and apply the supplied Terminal preferences.">
+      <cocoa class="TerminalConfigurePreferencesCommand"/>
+      <parameter name="font size" code="Hfnt" type="real" optional="yes"><cocoa key="FontSize"/></parameter>
+      <parameter name="scrollback rows" code="Hscr" type="integer" optional="yes"><cocoa key="HistoryRows"/></parameter>
+      <parameter name="option sends escape" code="Hopt" type="boolean" optional="yes"><cocoa key="OptionSendsEscape"/></parameter>
+      <parameter name="follows tail on input" code="Hfol" type="boolean" optional="yes"><cocoa key="FollowTailOnInput"/></parameter>
+      <parameter name="starting directory" code="Hdir" type="text" optional="yes"><cocoa key="StartingDirectory"/></parameter>
+      <result type="text" description="A summary of the saved preferences."/>
+    </command>
+  </suite>
+</dictionary>

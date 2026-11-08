@@ -14,5 +14,7 @@
 <key>LSMinimumSystemVersion</key><string>15.0</string>
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSHighResolutionCapable</key><true/>
+<key>NSAppleScriptEnabled</key><true/>
+<key>OSAScriptingDefinition</key><string>Terminal.sdef</string>
 <key>NSDownloadsFolderUsageDescription</key><string>Commands you run in Terminal may read and write files in Downloads.</string>
 </dict></plist>

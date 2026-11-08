@@ -100,6 +100,16 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       display(value)
     }
     session.onStatus = { [weak self] status in self?.onStatus?(status) }
+    session.onClipboardWrite = { [weak self] request in
+      guard let self, let delegate = NSApp.delegate as? AppDelegate else {
+        request.resolve(false) { _ in }
+        return
+      }
+      delegate.clipboardAccess.request(request, from: self.window)
+    }
+    session.setClipboardClosedHandler { sessionID in
+      (NSApp.delegate as? AppDelegate)?.clipboardAccess.cancel(sessionID: sessionID)
+    }
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   private func display(_ value: TerminalSnapshot) {
@@ -246,7 +256,11 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     updateGeometry()
   }
   override func becomeFirstResponder() -> Bool {
-    DispatchQueue.main.async { [weak self] in self?.updateFocus() }
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.updateFocus()
+      (NSApp.delegate as? AppDelegate)?.rememberFocus(self)
+    }
     return true
   }
   override func resignFirstResponder() -> Bool {
@@ -312,6 +326,13 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       clearSelection()
     }
     redraw()
+    return accepted
+  }
+  // Scripted text is a committed text operation, not a simulated key event.
+  // Canvas owns the accompanying input-method and selection transition.
+  @discardableResult func submitAutomationText(_ text: String) -> Bool {
+    let accepted = send(text)
+    if accepted { cancelComposition() }
     return accepted
   }
   private func modifiers(_ flags: NSEvent.ModifierFlags) -> UInt32 {

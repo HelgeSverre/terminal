@@ -144,17 +144,19 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     window.center()
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
+  func reload() {
+    window?.endEditing(for: nil)
+    let prefs = TerminalPreferences.load()
+    fontSize.stringValue = String(format: "%g", Double(prefs.fontSize))
+    familyName.stringValue = TerminalFont.appKit(size: prefs.fontSize).familyName ?? "Menlo"
+    historyRows.stringValue = String(prefs.historyRows)
+    option.state = prefs.optionSendsEscape ? .on : .off
+    followTail.state = prefs.followTailOnInput ? .on : .off
+    startingDirectory.stringValue = prefs.startingDirectoryText
+    validate()
+  }
   func present() {
-    if window?.isVisible != true {
-      let prefs = TerminalPreferences.load()
-      fontSize.stringValue = String(format: "%g", Double(prefs.fontSize))
-      familyName.stringValue = TerminalFont.appKit(size: prefs.fontSize).familyName ?? "Menlo"
-      historyRows.stringValue = String(prefs.historyRows)
-      option.state = prefs.optionSendsEscape ? .on : .off
-      followTail.state = prefs.followTailOnInput ? .on : .off
-      startingDirectory.stringValue = prefs.startingDirectoryText
-      validate()
-    }
+    if window?.isVisible != true { reload() }
     showWindow(nil)
     window?.makeKeyAndOrderFront(nil)
   }
