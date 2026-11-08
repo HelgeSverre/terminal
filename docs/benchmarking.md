@@ -112,31 +112,30 @@ unrelated broad permissions to obtain a benchmark.
 
 ## Frozen Swift–Rust core exploration
 
-The later [Swift printing probe](../reports/swift-printing-315f055/summary.md)
-isolates range-local wide-cell repair at `315f055`: three paired 2 MiB runs
-improve ASCII from 2.15 to 2.64 MiB/s and mixed text from 3.62 to 3.96 MiB/s.
-Both replay streams and canonical final states match. This is a Swift-only
-engine comparison; it does not measure whole-app performance or rerun Rust.
+The [latest frozen replay comparison](../reports/swift-decoder-a19f77f/summary.md)
+pairs Swift `a19f77f` with the verified archived Rust `b5a9fea` executable.
+Three alternating 2 MiB pairs per workload measured:
 
-reports/emulator-comparison-ef3b625-b5a9fea/ records a headless C-ABI replay
-of frozen Swift ef3b625 and Rust b5a9fea cores. It fixes geometry at 160×50
-with zero retained history and includes feed, reply draining, parser finish,
-invariant validation, and final snapshot serialization/free. All 60 timed
-samples passed the canonical final-snapshot gate; raw-state hashes and four
-representative raw snapshots are retained with the report.
+| Engine throughput | Swift | Rust |
+| --- | ---: | ---: |
+| ASCII | 2.90 MiB/s | 35.93 MiB/s |
+| Mixed Unicode | 4.22 MiB/s | 20.59 MiB/s |
 
-This was an exploratory M2 Max/macOS 15.6/32 GiB battery run while unrelated
-desktop work was active, not an idle-machine acceptance run. It excludes the
-GUI, renderer, PTY, retained history, search, and streaming OSC 52. The reported
-headless backend build-wall values reuse existing SDK/compiler caches, so they
-are neither full-app cold/incremental timings nor a matched compile benchmark.
-Read verification.md in that report before quoting its throughput, size, RSS,
-or build figures; it makes no full-product, language-intrinsic, or parity claim.
+Payload/reply byte counts and hashes match, and canonical final states match.
+The same report separately isolates the Swift UTF-8 decoder optimization:
+ASCII improves 21.2% and mixed text 13.2% against its direct parent.
 
-The [updated ownership comparison](../reports/emulator-comparison-6c601d1-a49a5af/summary.md)
-uses Swift `6c601d1`, after document-owned ASCII placement, and the verified
-archived Rust backend. Three paired 8 MiB runs measured median ASCII throughput
-of 2.53 MiB/s in Swift and 39.60 MiB/s in Rust; mixed text measured 1.28 and
-22.06 MiB/s. Payloads, replies and canonical final snapshots match. This shorter
-run has recorded desktop background load and is separate from sustained
-acceptance, full-app UI and compilation measurements.
+These are short headless C-ABI probes at 160×50 with zero retained history
+and 64 KiB feed spans, collected on an M2 Max/macOS 15.6 under recorded desktop
+load. They include feed, reply draining, parser finish, invariant validation
+and final snapshot serialization/free. They exclude the GUI, renderer, PTY,
+retained history and search; they do not establish complete behavioral parity.
+Rust was not rebuilt, and recorded build wall times are provenance rather than
+a matched full-app compilation benchmark. Main remains Rust-backed while the
+Swift experiment is optimized separately.
+
+Earlier evidence is retained in the [range-local printing probe](../reports/swift-printing-315f055/summary.md),
+[ownership comparison](../reports/emulator-comparison-6c601d1-a49a5af/summary.md)
+and `reports/emulator-comparison-ef3b625-b5a9fea/`. Each has its own source,
+corpus and measurement contract; use its accompanying limitations when quoting
+numbers instead of combining separate runs into a single speedup claim.

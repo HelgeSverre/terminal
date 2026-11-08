@@ -1,0 +1,488 @@
+{
+  "protocol": 1,
+  "started_at_utc": "2026-11-08T11:25:28Z",
+  "contract": {
+    "labels": {
+      "baseline": "Swift f5dd5a9 -O",
+      "candidate": "Swift a19f77f -O"
+    },
+    "geometry": [
+      160,
+      50
+    ],
+    "history_rows": 0,
+    "workloads": [
+      "ascii",
+      "mixed"
+    ],
+    "requested_bytes": 2097152,
+    "max_feed_span": 65536,
+    "warmup_per_implementation": 1,
+    "alternating_pairs": 3,
+    "timed_operations": "feed, reply drain, pending-work drain, finish, reply drain, invariant validation, snapshot serialization/copy/free"
+  },
+  "binaries": {
+    "baseline": {
+      "path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/decoder-emission-a19f77f/binaries/baseline",
+      "sha256": "5611045aaa708f4ed922412d0d4a3fac4fdc94d84a5dc4f2f305cdbf64f06cc5",
+      "bytes": 616280
+    },
+    "candidate": {
+      "path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/decoder-emission-a19f77f/binaries/candidate",
+      "sha256": "7024cd454fbd27b1ca50f2cbc9073557cd2c8cd5503a14de026fd92302667fbd",
+      "bytes": 619320
+    }
+  },
+  "hardware": {
+    "os_product_version": "15.6",
+    "kernel": "Darwin Helges-MacBook-Pro.local 24.6.0 Darwin Kernel Version 24.6.0: Mon Jul 14 11:30:30 PDT 2025; root:xnu-11417.140.69~1/RELEASE_ARM64_T6020 arm64",
+    "model": "Mac14,6",
+    "cpu": "Apple M2 Max",
+    "logical_cpus": "12",
+    "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=7340131)\t100%; charged; 0:00 remaining present: true"
+  },
+  "background_at_start": {
+    "observed_at_utc": "2026-11-08T11:25:28Z",
+    "load_average": "{ 3.25 3.03 3.07 }",
+    "top_processes": [
+      {
+        "name": "qemu-system-aarch64-headless",
+        "cpu_percent": 187.8
+      },
+      {
+        "name": "ruby",
+        "cpu_percent": 12.9
+      },
+      {
+        "name": "qemu-system-aarch64-headless",
+        "cpu_percent": 5.4
+      },
+      {
+        "name": "OrbStack Helper",
+        "cpu_percent": 3.4
+      },
+      {
+        "name": "codex",
+        "cpu_percent": 2.9
+      },
+      {
+        "name": "locationd",
+        "cpu_percent": 2.1
+      },
+      {
+        "name": "DisplayLinkUserAgent",
+        "cpu_percent": 1.8
+      },
+      {
+        "name": "WindowServer",
+        "cpu_percent": 1.7
+      }
+    ]
+  },
+  "warmups": [
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 813034000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "bf9af9f9620808e9",
+      "rusage_max_rss_bytes": 30326784,
+      "implementation": "baseline",
+      "phase": "warmup",
+      "pair": null,
+      "wall_ns": 833089000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/warmup-ascii-baseline.json",
+      "snapshot_sha256": "ebc3b1fe6dc8048d013e7a689545ccfc202694a74b29ab5e68c874e9c5153519"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 677300000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "ec53e6f89f0a590f",
+      "rusage_max_rss_bytes": 30277632,
+      "implementation": "candidate",
+      "phase": "warmup",
+      "pair": null,
+      "wall_ns": 917508000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/warmup-ascii-candidate.json",
+      "snapshot_sha256": "a69f39ef3fbf3ab7adb0cdb0273a4ac9a20e4069e84cc125a177b0832957f968"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 531100000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "84ee522f53816127",
+      "rusage_max_rss_bytes": 30375936,
+      "implementation": "baseline",
+      "phase": "warmup",
+      "pair": null,
+      "wall_ns": 542873000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/warmup-mixed-baseline.json",
+      "snapshot_sha256": "d8f0a58553d6e022632a2fe9110679f15c0028f412a721367877197f88b2cf06"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 468074000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "6ab1812ab71369db",
+      "rusage_max_rss_bytes": 29769728,
+      "implementation": "candidate",
+      "phase": "warmup",
+      "pair": null,
+      "wall_ns": 481704000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/warmup-mixed-candidate.json",
+      "snapshot_sha256": "f5357d3f22fc25427b1d6252bceeb36073292cf8ca39aa69b3f08fba9076db92"
+    }
+  ],
+  "samples": [
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 815312000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "6dcfa51656b660f7",
+      "rusage_max_rss_bytes": 29720576,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 1,
+      "wall_ns": 841449000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-ascii-pair1-baseline.json",
+      "snapshot_sha256": "7c8cd3f229483635c685d98bfe5a47376d2c28edba254d9fa2987b2fef270423"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 673067000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "1751bea732b1d305",
+      "rusage_max_rss_bytes": 30294016,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 1,
+      "wall_ns": 711436000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-ascii-pair1-candidate.json",
+      "snapshot_sha256": "5855dbe45aca6ee59fe4b463e4e8576b27c1408580396fbd9b38ba6e74ba1fd9"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 672599000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "f5ae160ad3656515",
+      "rusage_max_rss_bytes": 30228480,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 2,
+      "wall_ns": 684027000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-ascii-pair2-candidate.json",
+      "snapshot_sha256": "4bbfe272194018ecd1f00ad88562dce565f5dcde5120e1ae013f2dd712611ee5"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 815826000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "4f223b58cfadf49f",
+      "rusage_max_rss_bytes": 30359552,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 2,
+      "wall_ns": 828642000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-ascii-pair2-baseline.json",
+      "snapshot_sha256": "3bdd8b1696d59998c8bcb1b405e18261aa827fc9a81dad727dd97a6d89d4f363"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 816314000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "8949a89086cac977",
+      "rusage_max_rss_bytes": 30408704,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 3,
+      "wall_ns": 834616000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-ascii-pair3-baseline.json",
+      "snapshot_sha256": "bee0766a6e7f8311e13cc7063905c070c87de1a1b4c1cb382465438e9f8a437b"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 678491000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "4ced3a1cb8838577",
+      "rusage_max_rss_bytes": 30375936,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 3,
+      "wall_ns": 694451000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-ascii-pair3-candidate.json",
+      "snapshot_sha256": "07dae6c4649b29a28789188b48e6d265b60ca70aba7db5e238040613556d18be"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 528012000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "e91239635a0fb0f1",
+      "rusage_max_rss_bytes": 30441472,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 1,
+      "wall_ns": 567704000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-mixed-pair1-baseline.json",
+      "snapshot_sha256": "a67e8d33553e2ec0e33e508d5c1c7466773598a1411f66c44a3ad85cb11b7ced"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 467569000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "f59afddde7cd0ccd",
+      "rusage_max_rss_bytes": 35143680,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 1,
+      "wall_ns": 506704000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-mixed-pair1-candidate.json",
+      "snapshot_sha256": "fd1b2df8e9bbc5699bbb21d67755e6000543a2e7f4d031aca5c6f72f690cac56"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 471168000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "3fb6f4312062c82f",
+      "rusage_max_rss_bytes": 30556160,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 2,
+      "wall_ns": 490954000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-mixed-pair2-candidate.json",
+      "snapshot_sha256": "5fb68f10d0a911ce560b7e783720fc0107530adf97eb72ee27c7e95932eb620c"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 532392000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "1497641b38309a7b",
+      "rusage_max_rss_bytes": 30687232,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 2,
+      "wall_ns": 543902000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-mixed-pair2-baseline.json",
+      "snapshot_sha256": "4b4ff29048b1bab04b93562ec2ad56de9af4b472d1e590a867253b315286bdff"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 529184000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "6973502f1a33c7bb",
+      "rusage_max_rss_bytes": 29999104,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 3,
+      "wall_ns": 550436000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-mixed-pair3-baseline.json",
+      "snapshot_sha256": "b375e6eaac7ce433e580c3be571c6975502b9a338d0bde7b0cd06ceb5a5e4689"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 466374000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "afe722123edf4b07",
+      "rusage_max_rss_bytes": 30490624,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 3,
+      "wall_ns": 489874000,
+      "snapshot_path": "reports/printing-probe-6674c22/decoder-emission-a19f77f/snapshots/sample-mixed-pair3-candidate.json",
+      "snapshot_sha256": "e149d791aa4d16b93859962c545b904951a194c854d293b0bbfc7bbbf56bb562"
+    }
+  ],
+  "replay_gate": {
+    "passed": true,
+    "observed_stream_values": {
+      "ascii": {
+        "baseline": [
+          [
+            2097232,
+            "98086dfeac17f2a3",
+            204599,
+            "4b90ac2d1f1d701f"
+          ]
+        ],
+        "candidate": [
+          [
+            2097232,
+            "98086dfeac17f2a3",
+            204599,
+            "4b90ac2d1f1d701f"
+          ]
+        ]
+      },
+      "mixed": {
+        "baseline": [
+          [
+            2097183,
+            "4099fd8d5d41bf79",
+            162879,
+            "413d5fd6f3264428"
+          ]
+        ],
+        "candidate": [
+          [
+            2097183,
+            "4099fd8d5d41bf79",
+            162879,
+            "413d5fd6f3264428"
+          ]
+        ]
+      }
+    },
+    "failures": []
+  },
+  "snapshot_gate": {
+    "passed": true,
+    "mismatches": [],
+    "canonicalizer_source": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/canonicalizer-source.rb",
+    "canonicalizer_sha256": "8122ef7fdaa701417e1ef568c80309307b5f65c3a9eb842c7bb6e71400654a5a"
+  },
+  "status": "complete",
+  "finished_at_utc": "2026-11-08T11:25:40Z"
+}

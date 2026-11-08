@@ -1,0 +1,488 @@
+{
+  "protocol": 1,
+  "started_at_utc": "2026-11-08T11:27:00Z",
+  "contract": {
+    "labels": {
+      "baseline": "Archived Rust b5a9fea C-ABI binary (not rebuilt)",
+      "candidate": "Swift a19f77f -O"
+    },
+    "geometry": [
+      160,
+      50
+    ],
+    "history_rows": 0,
+    "workloads": [
+      "ascii",
+      "mixed"
+    ],
+    "requested_bytes": 2097152,
+    "max_feed_span": 65536,
+    "warmup_per_implementation": 1,
+    "alternating_pairs": 3,
+    "timed_operations": "feed, reply drain, pending-work drain, finish, reply drain, invariant validation, snapshot serialization/copy/free"
+  },
+  "binaries": {
+    "baseline": {
+      "path": "/Users/helge/.codex/artifacts/terminal-emulator-comparison-20261108/binaries/rust-emulator-comparison",
+      "sha256": "3b6eb607628b9c863cb917a2e0a80a34904692bb5ba8abbabff31fbb8a74b913",
+      "bytes": 2438272
+    },
+    "candidate": {
+      "path": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/decoder-emission-a19f77f/binaries/candidate",
+      "sha256": "7024cd454fbd27b1ca50f2cbc9073557cd2c8cd5503a14de026fd92302667fbd",
+      "bytes": 619320
+    }
+  },
+  "hardware": {
+    "os_product_version": "15.6",
+    "kernel": "Darwin Helges-MacBook-Pro.local 24.6.0 Darwin Kernel Version 24.6.0: Mon Jul 14 11:30:30 PDT 2025; root:xnu-11417.140.69~1/RELEASE_ARM64_T6020 arm64",
+    "model": "Mac14,6",
+    "cpu": "Apple M2 Max",
+    "logical_cpus": "12",
+    "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=7340131)\t100%; charged; 0:00 remaining present: true"
+  },
+  "background_at_start": {
+    "observed_at_utc": "2026-11-08T11:27:00Z",
+    "load_average": "{ 3.23 3.09 3.09 }",
+    "top_processes": [
+      {
+        "name": "qemu-system-aarch64-headless",
+        "cpu_percent": 192.7
+      },
+      {
+        "name": "ruby",
+        "cpu_percent": 5.2
+      },
+      {
+        "name": "qemu-system-aarch64-headless",
+        "cpu_percent": 5.2
+      },
+      {
+        "name": "tccd",
+        "cpu_percent": 5.0
+      },
+      {
+        "name": "codex",
+        "cpu_percent": 4.4
+      },
+      {
+        "name": "syspolicyd",
+        "cpu_percent": 4.0
+      },
+      {
+        "name": "Codex (Aperitif Renderer)",
+        "cpu_percent": 3.2
+      },
+      {
+        "name": "trustd",
+        "cpu_percent": 3.0
+      }
+    ]
+  },
+  "warmups": [
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 56419000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2145019,
+      "snapshot_fnv1a64": "1bbd97a98d63dde0",
+      "rusage_max_rss_bytes": 11190272,
+      "implementation": "baseline",
+      "phase": "warmup",
+      "pair": null,
+      "wall_ns": 84361000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/warmup-ascii-baseline.json",
+      "snapshot_sha256": "46339dd9cec37cbe90d7ea3ab3c9e9428482ef2db28f259174e7ae5a6a81e3ed"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 684814000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "7246a1ed3d8f2d49",
+      "rusage_max_rss_bytes": 30326784,
+      "implementation": "candidate",
+      "phase": "warmup",
+      "pair": null,
+      "wall_ns": 707260000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/warmup-ascii-candidate.json",
+      "snapshot_sha256": "5564dfa21f6ab8b29bf862537e966c4557693337ced5d9fe6790e39dd348d44e"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 97057000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2148764,
+      "snapshot_fnv1a64": "ededb017cc402eb9",
+      "rusage_max_rss_bytes": 11206656,
+      "implementation": "baseline",
+      "phase": "warmup",
+      "pair": null,
+      "wall_ns": 120219000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/warmup-mixed-baseline.json",
+      "snapshot_sha256": "f7f8b82480062279a94868ac064d20cad75cac60d9cc22e108680110dbf4bb1a"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 472372000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "2364f4d1c4c03d41",
+      "rusage_max_rss_bytes": 30523392,
+      "implementation": "candidate",
+      "phase": "warmup",
+      "pair": null,
+      "wall_ns": 484128000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/warmup-mixed-candidate.json",
+      "snapshot_sha256": "f5489904fb300aa622dac230bce86d1f966a74a61da7b67798365d6d28f07486"
+    }
+  ],
+  "samples": [
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 55666000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2145019,
+      "snapshot_fnv1a64": "1bbd97a98d63dde0",
+      "rusage_max_rss_bytes": 11337728,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 1,
+      "wall_ns": 67312000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-ascii-pair1-baseline.json",
+      "snapshot_sha256": "46339dd9cec37cbe90d7ea3ab3c9e9428482ef2db28f259174e7ae5a6a81e3ed"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 690282000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "42c2b1ee96a58a07",
+      "rusage_max_rss_bytes": 30408704,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 1,
+      "wall_ns": 701961000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-ascii-pair1-candidate.json",
+      "snapshot_sha256": "517d5d49b9de7a80f6c3e4c2cba79860254502595a7cda5d114516b3ce50175e"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 691388000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "2d65955e8db68b63",
+      "rusage_max_rss_bytes": 30408704,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 2,
+      "wall_ns": 714892000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-ascii-pair2-candidate.json",
+      "snapshot_sha256": "6e070dc4ea3bb3d173f4669549443db1b702925379c0ddcb0a4d0ff77b6482f4"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 55815000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2145019,
+      "snapshot_fnv1a64": "1bbd97a98d63dde0",
+      "rusage_max_rss_bytes": 11354112,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 2,
+      "wall_ns": 100197000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-ascii-pair2-baseline.json",
+      "snapshot_sha256": "46339dd9cec37cbe90d7ea3ab3c9e9428482ef2db28f259174e7ae5a6a81e3ed"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 55440000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2145019,
+      "snapshot_fnv1a64": "1bbd97a98d63dde0",
+      "rusage_max_rss_bytes": 11386880,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 3,
+      "wall_ns": 84358000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-ascii-pair3-baseline.json",
+      "snapshot_sha256": "46339dd9cec37cbe90d7ea3ab3c9e9428482ef2db28f259174e7ae5a6a81e3ed"
+    },
+    {
+      "protocol": 1,
+      "workload": "ascii",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097232,
+      "payload_fnv1a64": "98086dfeac17f2a3",
+      "elapsed_ns": 685067000,
+      "reply_bytes": 204599,
+      "reply_fnv1a64": "4b90ac2d1f1d701f",
+      "snapshot_bytes": 2146356,
+      "snapshot_fnv1a64": "65af264b838d7245",
+      "rusage_max_rss_bytes": 30343168,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 3,
+      "wall_ns": 704214000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-ascii-pair3-candidate.json",
+      "snapshot_sha256": "7be818c0768ad19f7f20da0e0db2e6500e4afea4b974eb80f74cb904690f39f5"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 96633000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2148764,
+      "snapshot_fnv1a64": "ededb017cc402eb9",
+      "rusage_max_rss_bytes": 11730944,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 1,
+      "wall_ns": 117153000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-mixed-pair1-baseline.json",
+      "snapshot_sha256": "f7f8b82480062279a94868ac064d20cad75cac60d9cc22e108680110dbf4bb1a"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 473465000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "bbbba188d70e4a19",
+      "rusage_max_rss_bytes": 29851648,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 1,
+      "wall_ns": 509889000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-mixed-pair1-candidate.json",
+      "snapshot_sha256": "3cca9849bfe95b6147440ab3e2da95f6e9c6fe7f56f68e595e558b44924893f0"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 476667000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "5a8fdd524e301311",
+      "rusage_max_rss_bytes": 34471936,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 2,
+      "wall_ns": 515434000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-mixed-pair2-candidate.json",
+      "snapshot_sha256": "5ddb3cea9c218c7eb9c163c5abdd413082484988e19646134d6f2d6ceb95ad51"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 97124000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2148764,
+      "snapshot_fnv1a64": "ededb017cc402eb9",
+      "rusage_max_rss_bytes": 11632640,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 2,
+      "wall_ns": 111861000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-mixed-pair2-baseline.json",
+      "snapshot_sha256": "f7f8b82480062279a94868ac064d20cad75cac60d9cc22e108680110dbf4bb1a"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 97285000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2148764,
+      "snapshot_fnv1a64": "ededb017cc402eb9",
+      "rusage_max_rss_bytes": 11993088,
+      "implementation": "baseline",
+      "phase": "sample",
+      "pair": 3,
+      "wall_ns": 121438000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-mixed-pair3-baseline.json",
+      "snapshot_sha256": "f7f8b82480062279a94868ac064d20cad75cac60d9cc22e108680110dbf4bb1a"
+    },
+    {
+      "protocol": 1,
+      "workload": "mixed",
+      "columns": 160,
+      "rows": 50,
+      "history_rows": 0,
+      "requested_bytes": 2097152,
+      "payload_bytes": 2097183,
+      "payload_fnv1a64": "4099fd8d5d41bf79",
+      "elapsed_ns": 473149000,
+      "reply_bytes": 162879,
+      "reply_fnv1a64": "413d5fd6f3264428",
+      "snapshot_bytes": 2150098,
+      "snapshot_fnv1a64": "8072ef969277f08b",
+      "rusage_max_rss_bytes": 30539776,
+      "implementation": "candidate",
+      "phase": "sample",
+      "pair": 3,
+      "wall_ns": 484602000,
+      "snapshot_path": "reports/printing-probe-6674c22/rust-reference-a19f77f/snapshots/sample-mixed-pair3-candidate.json",
+      "snapshot_sha256": "0cb69ab6bb586c64ab21ccc62c288dfdd728ebc68d0a2c444a700cabd3f30341"
+    }
+  ],
+  "replay_gate": {
+    "passed": true,
+    "observed_stream_values": {
+      "ascii": {
+        "baseline": [
+          [
+            2097232,
+            "98086dfeac17f2a3",
+            204599,
+            "4b90ac2d1f1d701f"
+          ]
+        ],
+        "candidate": [
+          [
+            2097232,
+            "98086dfeac17f2a3",
+            204599,
+            "4b90ac2d1f1d701f"
+          ]
+        ]
+      },
+      "mixed": {
+        "baseline": [
+          [
+            2097183,
+            "4099fd8d5d41bf79",
+            162879,
+            "413d5fd6f3264428"
+          ]
+        ],
+        "candidate": [
+          [
+            2097183,
+            "4099fd8d5d41bf79",
+            162879,
+            "413d5fd6f3264428"
+          ]
+        ]
+      }
+    },
+    "failures": []
+  },
+  "snapshot_gate": {
+    "passed": true,
+    "mismatches": [],
+    "canonicalizer_source": "/Users/helge/code/terminal-swift-experiment/reports/printing-probe-6674c22/canonicalizer-source.rb",
+    "canonicalizer_sha256": "8122ef7fdaa701417e1ef568c80309307b5f65c3a9eb842c7bb6e71400654a5a"
+  },
+  "status": "complete",
+  "finished_at_utc": "2026-11-08T11:27:07Z"
+}

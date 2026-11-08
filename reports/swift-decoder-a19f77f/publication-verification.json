@@ -1,0 +1,47 @@
+{
+  "reports": [
+    {
+      "labels": {
+        "baseline": "Swift f5dd5a9 -O",
+        "candidate": "Swift a19f77f -O"
+      },
+      "checks": {
+        "ascii": {
+          "records_checked": 8,
+          "canonical_sha256": "86144e754ed287b7b875504fb91dc91171d4a2c9bfa82f9a106eda75d00b7741",
+          "streams_match": true
+        },
+        "mixed": {
+          "records_checked": 8,
+          "canonical_sha256": "35cb5285c53409fcae504a030634e6d579013a831588aa42045adca345b1d287",
+          "streams_match": true
+        }
+      }
+    },
+    {
+      "labels": {
+        "baseline": "Archived Rust b5a9fea C-ABI binary (not rebuilt)",
+        "candidate": "Swift a19f77f -O"
+      },
+      "checks": {
+        "ascii": {
+          "records_checked": 8,
+          "canonical_sha256": "86144e754ed287b7b875504fb91dc91171d4a2c9bfa82f9a106eda75d00b7741",
+          "streams_match": true
+        },
+        "mixed": {
+          "records_checked": 8,
+          "canonical_sha256": "35cb5285c53409fcae504a030634e6d579013a831588aa42045adca345b1d287",
+          "streams_match": true
+        }
+      }
+    }
+  ],
+  "archive_binaries": {
+    "decoder-emission-a19f77f/binaries/baseline": "5611045aaa708f4ed922412d0d4a3fac4fdc94d84a5dc4f2f305cdbf64f06cc5",
+    "decoder-emission-a19f77f/binaries/candidate": "7024cd454fbd27b1ca50f2cbc9073557cd2c8cd5503a14de026fd92302667fbd",
+    "rust-emulator-comparison": "3b6eb607628b9c863cb917a2e0a80a34904692bb5ba8abbabff31fbb8a74b913"
+  },
+  "passed": true,
+  "archive_sha256": "039dc1395cd5633518ca68ac814328b5de88e5d904dc729bc94ead70e69f538c"
+}

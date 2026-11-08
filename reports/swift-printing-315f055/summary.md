@@ -33,3 +33,8 @@ attestation. The source is preserved remotely by annotated checkpoint
 
 This short probe does not replace the [Swift/Rust comparison](../emulator-comparison-6c601d1-a49a5af/summary.md).
 The measured sources, corpus size and run date differ; Rust was not rerun here.
+
+The later-added [reproducer](run_range_local_probe.rb) uses the retained frozen
+[canonicalizer](canonicalizer-source.rb) and accepts a new report directory,
+then the extracted baseline and candidate binary paths. It was syntax checked;
+the original measured records remain unchanged.
