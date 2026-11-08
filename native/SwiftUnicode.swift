@@ -88,6 +88,9 @@ enum SwiftUnicode {
     private var third: UInt8 = 0
     private var pendingCount = 0
 
+    /// True when the next byte begins a fresh scalar.
+    @inline(__always) var isIdle: Bool { pendingCount == 0 }
+
     private static let replacement = Unicode.Scalar(0xfffd)!
 
     @inline(__always)

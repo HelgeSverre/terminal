@@ -46,6 +46,26 @@ private final class SwiftBorrowedCells {
   }
 }
 
+// This view is valid only during the synchronous C ABI feed call. It feeds
+// the reusable decoder scratch; Document continues to receive ArraySlice.
+private struct ASCIIInputScalars: RandomAccessCollection {
+  typealias Element = Unicode.Scalar
+  typealias Index = Int
+
+  let bytes: UnsafePointer<UInt8>
+  let startIndex = 0
+  let endIndex: Int
+
+  init(_ bytes: UnsafePointer<UInt8>, count: Int) {
+    self.bytes = bytes
+    endIndex = count
+  }
+
+  @inline(__always) subscript(position: Int) -> Unicode.Scalar {
+    Unicode.Scalar(bytes[position])
+  }
+}
+
 private final class SwiftTerminalCore {
   private enum DisplayClearAction: UInt32 {
     case ignoredAlternate = 0, cleared = 1, redrawPrompt = 2
@@ -110,6 +130,7 @@ private final class SwiftTerminalCore {
   private var charsetSlot = 0
   private var decodedScalars: [Unicode.Scalar] = []
   private var decodedScalarStart = 0
+  private static let minimumASCIIInputRun = 16
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
@@ -177,6 +198,39 @@ private final class SwiftTerminalCore {
     decodedScalars.removeAll(keepingCapacity: true)
     decodedScalarStart = 0
   }
+  // Long printable ASCII bypasses per-byte UTF-8 decoding, but remains in the
+  // same bounded scratch array and therefore reaches the specialized
+  // ArraySlice document transaction used by every other decoder emission.
+  private func appendASCIIInput(_ bytes: UnsafePointer<UInt8>, offset: Int, limit: Int) -> Int? {
+    guard case .ground = parser, utf8.isIdle, !charsetSpecial[charsetSlot] else { return nil }
+    var count = 0
+    while offset + count < limit {
+      let byte = bytes[offset + count]
+      guard (0x20...0x7e).contains(byte) else { break }
+      count += 1
+    }
+    guard count > 0 else { return nil }
+    if count < Self.minimumASCIIInputRun {
+      // Consume the known short range at once so ANSI/Unicode-adjacent text
+      // cannot pay a triangular sequence of run scans.
+      for index in 0..<count { emitDecoded(utf8.push(bytes[offset + index])) }
+      return count
+    }
+
+    var admitted = 0
+    while admitted < count {
+      let available = 1024 - (decodedScalars.count - decodedScalarStart)
+      if available == 0 {
+        flushDecodedScalars()
+        continue
+      }
+      let amount = min(available, count - admitted)
+      decodedScalars.append(contentsOf: ASCIIInputScalars(bytes.advanced(by: offset + admitted), count: amount))
+      admitted += amount
+      if decodedScalars.count - decodedScalarStart == 1024 { flushDecodedScalars() }
+    }
+    return count
+  }
   private func apply(_ effect: TerminalDocument.PrintEffect, mutations: Int = 1) {
     guard mutations > 0 else { return }
     applyAppendedHistory(effect.appendedHistory)
@@ -223,9 +277,16 @@ private final class SwiftTerminalCore {
     }
     guard let bytes, count > 0 else { return 0 }
     let limit = min(count, 65_536)
-    for (offset, byte) in UnsafeBufferPointer(start: bytes, count: limit).enumerated() {
+    var offset = 0
+    while offset < limit {
+      let byte = bytes[offset]
       switch parser {
       case .ground:
+        if (0x20...0x7e).contains(byte),
+           let admitted = appendASCIIInput(bytes, offset: offset, limit: limit) {
+          offset += admitted
+          continue
+        }
         switch byte {
         case 0x1b: finishDecodedText(); parser = .escape
         case 0x00...0x07: finishDecodedText(); if byte == 0x07 { /* bell belongs to host */ }
@@ -302,6 +363,7 @@ private final class SwiftTerminalCore {
         else if escaped && byte == 0x5c { parser = .ground }
         else { parser = .discardString(escaped: byte == 0x1b, osc: osc) }
       }
+      offset += 1
     }
     flushDecodedScalars()
     return limit

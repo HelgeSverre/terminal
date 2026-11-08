@@ -104,9 +104,9 @@ import Foundation
     }
   }
   static func asciiByteAdmission() {
-    // The whole-buffer path admits long ASCII directly from its borrowed ABI
-    // bytes. One-byte and irregular feeds retain the decoder/scratch path;
-    // their complete snapshots must nevertheless remain identical.
+    // The whole-buffer path admits long ASCII in bulk to the same decoder
+    // scratch. One-byte and irregular feeds retain per-byte decoding; their
+    // complete snapshots must nevertheless remain identical.
     let text = "\u{1b}]8;;https://ascii.example\u{7}\u{1b}[31m\u{0600}" +
       String(repeating: "A", count: 1_024) +
       "\u{1b}]8;;https://current.example\u{7}\u{1b}[32m\u{301}\u{1b}[3b\u{1b}]8;;\u{7}\u{1b}[0m"
@@ -120,7 +120,7 @@ import Foundation
     precondition(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
 
     // A viable prefix must force its following ASCII through UTF-8 rejection
-    // first; direct admission resumes only after the decoder becomes idle.
+    // first; bulk admission resumes only after the decoder becomes idle.
     let pending = Data([0xe1, 0x80]) + Data(repeating: UInt8(ascii: "B"), count: 32)
     let pendingWhole = terminal_create(8, 2)!, pendingBytes = terminal_create(8, 2)!
     defer { terminal_destroy(pendingWhole); terminal_destroy(pendingBytes) }
@@ -153,7 +153,7 @@ import Foundation
     precondition(stableSnapshot(shortBytes) == shortExpected && stableSnapshot(shortIrregular) == shortExpected)
 
     // Feed consumes no more than 64 KiB even when that first chunk is one
-    // direct ASCII run. History is disabled to keep this ABI boundary small.
+    // bulk ASCII run. History is disabled to keep this ABI boundary small.
     let boundary = terminal_create(8, 2)!
     defer { terminal_destroy(boundary) }
     terminal_set_history_limit(boundary, 0)
@@ -162,7 +162,7 @@ import Foundation
     precondition(rawFeed(boundary, Data(bytes.suffix(1))) == 1)
     precondition(terminal_validate(boundary))
 
-    // REP remains a resumable input boundary even after a direct ASCII run:
+    // REP remains a resumable input boundary even after a bulk ASCII run:
     // the final CSI byte is admitted, then both repeat budgets drain before
     // the withheld suffix can become last-printed text.
     let repeatCore = terminal_create(128, 2)!
