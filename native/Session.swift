@@ -212,6 +212,8 @@ final class Session: @unchecked Sendable {
     var readCallbacks = 0, readCalls = 0, outputEvents = 0, pumpSchedules = 0, pumpTurns = 0, feedCalls = 0, queueHighWater = 0, suspends = 0, resumes = 0, publishCalls = 0
     var feedBytes: UInt64 = 0, readNanoseconds: UInt64 = 0, feedNanoseconds: UInt64 = 0, snapshotNanoseconds: UInt64 = 0, pumpNanoseconds: UInt64 = 0
     var queuedBytesHighWater = 0
+    mutating func observeEventQueue(_ count: Int) { queueHighWater = max(queueHighWater, count) }
+    mutating func observeQueuedBytes(_ count: Int) { queuedBytesHighWater = max(queuedBytesHighWater, count) }
   }
   let queue = DispatchQueue(label: "no.helgesverre.terminal.owner", qos: .userInteractive)
   private enum Event {
@@ -486,7 +488,7 @@ final class Session: @unchecked Sendable {
   private func enqueue(_ event: Event) {
     if case .output = event { streamStatistics?.outputEvents += 1 }
     events.append(event)
-    streamStatistics?.queueHighWater = max(streamStatistics?.queueHighWater ?? 0, events.count - head)
+    streamStatistics?.observeEventQueue(events.count - head)
     scheduleOwner()
   }
   private func scheduleOwner() {
@@ -640,7 +642,7 @@ final class Session: @unchecked Sendable {
       if count > 0 {
         enqueue(.output(Data(slab.prefix(count)), 0))
         queuedOutput += count
-        if streamStatistics != nil { streamStatistics!.queuedBytesHighWater = max(streamStatistics!.queuedBytesHighWater, queuedOutput) }
+        streamStatistics?.observeQueuedBytes(queuedOutput)
         bytesRead += UInt64(count)
         if firstReadNs == 0 { firstReadNs = DispatchTime.now().uptimeNanoseconds }
         total += count
