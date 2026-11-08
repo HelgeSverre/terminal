@@ -109,6 +109,10 @@ Current automated evidence:
   cancellation, stale/closed callbacks, prompt bounds and a real PTY read-denial
   exchange. An explicit child handshake makes the pending-request EOF case
   deterministic, and the fixture waits for every child to be reaped.
+- The signed AppleScript fixture passes the complete dictionary, including
+  inactive/settings targeting and an exact 4 KiB input receipt. It exits normally
+  and reaps all five PTY children. Six headless fault tests cover command timeout,
+  fixture locking, cleanup/report failures and UTF-8-safe evidence output.
 - Native smoke sets a real Canvas accessibility selection and injects synthetic
   AppKit Shift/Command events in legacy and Kitty all-keys modes. Separate real
   Session/PTY tests verify anchored history, legacy shifted bytes, typed metadata

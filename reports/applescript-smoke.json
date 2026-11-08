@@ -1,8 +1,561 @@
 {
   "passed": true,
-  "panes_created": 5,
-  "child_processes_reaped": 5,
+  "failure": null,
+  "source": {
+    "bundle_path": "/Users/helge/code/terminal/dist/Terminal.app",
+    "revision": "a49a5af1774c3b824aade7d4e054dbc1fbc63ce9",
+    "executable_sha256": "18bfbc24f59e73e36e860fd3ded7086f1f66b759d39b684c2fabeeeb4d42f66e",
+    "code_signature": "Executable=/Users/helge/code/terminal/dist/Terminal.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20400 size=29104 flags=0x2(adhoc) hashes=903+3 location=embedded\nSignature=adhoc\nInfo.plist entries=16\nTeamIdentifier=not set\nSealed Resources version=2 rules=13 files=24\nInternal requirements count=0 size=12\n"
+  },
+  "fixture": {
+    "bundle_id": "no.helgesverre.terminal.automation-fixture",
+    "display_name": "Terminal Automation Fixture",
+    "path": "/Users/helge/code/terminal/target/automation-fixture/Terminal Automation Fixture.app",
+    "pid": 97537,
+    "signing_identity": "Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)",
+    "code_signature": "Executable=/Users/helge/code/terminal/target/automation-fixture/Terminal Automation Fixture.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal.automation-fixture\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20500 size=29142 flags=0x10000(runtime) hashes=903+3 location=embedded\nSignature size=9059\nAuthority=Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=8 Nov 2026 at 10:35:14\nInfo.plist entries=16\nTeamIdentifier=9Z2L5FBZS3\nRuntime Version=26.2.0\nSealed Resources version=2 rules=13 files=24\nInternal requirements count=1 size=204\n"
+  },
+  "permission": {
+    "status": 0,
+    "outcome": "permitted",
+    "requested_standard_consent": false
+  },
+  "targeting": {
+    "bundle_id": "no.helgesverre.terminal.automation-fixture",
+    "expected_path": "/Users/helge/code/terminal/target/automation-fixture/Terminal Automation Fixture.app",
+    "running": []
+  },
+  "preflight_only": false,
+  "commands": [
+    {
+      "name": "AppleEvent permission preflight",
+      "language": "JavaScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "JavaScript",
+        "-e",
+        "ObjC.import('Foundation');\nObjC.import('CoreServices');\nObjC.bindFunction('AEDeterminePermissionToAutomateTarget', ['int', ['void*', 'uint32', 'uint32', 'bool']]);\nconst target = $.NSAppleEventDescriptor.descriptorWithBundleIdentifier(\"no.helgesverre.terminal.automation-fixture\");\nconsole.log(String($.AEDeterminePermissionToAutomateTarget(target.aeDesc, 1213490546, 1835426675, false)));\n"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "e6ec65fc91349c5202224653facd50af9d5b0761c40e4a9d6b1264cf442609e5",
+      "stdout": "0\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "get fixture name",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to get name"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "2e428d9ebe5ff8b481b52d3310cd50c7b9d7e95bf9d1002c765128fb206c597c",
+      "stdout": "Terminal Automation Fixture\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "get fixture id",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to get id"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "39cb2f11a3497e3b939891eeebfbcccf42e8d84b6839fc030f9b4ebde78f9fb3",
+      "stdout": "no.helgesverre.terminal.automation-fixture\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "initial focus pane",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to focus pane"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "35218b19ef5c9abb0fbcbf80d042cd041c75c4d5c49ffb10d6930c1665d5a30b",
+      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "reject unknown pane",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to read screen from pane \"no.helgesverre.terminal.pane.missing\""
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "cb803b11b00de8fc3d92d6404fddf74c0f4c1b5f56b830ee61e323cc271666ef",
+      "stdout": "68:128: execution error: Terminal Automation Fixture got an error: The requested terminal pane is closed or does not exist. (-1728)\n",
+      "exit_status": 1,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "new window",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to new window"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "47ce571b300fca9fba11170f638e821c883e4fca764a828879d9783ef2fdda87",
+      "stdout": "no.helgesverre.terminal.pane.355DF705-F705-4146-9B7C-11DC7F395F10\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "split right",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to split right pane id \"no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\""
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "097ffcd53874ad3f764e6f18144c0a0d070e5fb36f8894b64a6882747e77224e",
+      "stdout": "no.helgesverre.terminal.pane.BD12CBA8-9254-4CCC-8B47-8F306DBEE408\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "split below",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to split below pane id \"no.helgesverre.terminal.pane.BD12CBA8-9254-4CCC-8B47-8F306DBEE408\""
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "ed118ec6ba6f48b8813373a6a395866d20eb8a3852a278919aea800c164494d1",
+      "stdout": "no.helgesverre.terminal.pane.DE247733-5DE8-4247-94B3-2729F7E05113\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "show settings",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to show settings"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "05b2541f7f7dec77b600d678223dd1f678a62637c7e413068f22cd43bc0e916f",
+      "stdout": "true\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "new tab",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to new tab"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "90c2f2bed0190717250d087e043ead87be0005facf1af601d6437651d0c157c6",
+      "stdout": "no.helgesverre.terminal.pane.BA957549-4800-477B-B3A0-D1B3868CCEA8\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "list panes",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to list panes"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "3b1c76041dfd08f5b6a2f1b252ac47dbeb9004c1db418b0587c5611b7e89064a",
+      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379, no.helgesverre.terminal.pane.BD12CBA8-9254-4CCC-8B47-8F306DBEE408, no.helgesverre.terminal.pane.DE247733-5DE8-4247-94B3-2729F7E05113, no.helgesverre.terminal.pane.355DF705-F705-4146-9B7C-11DC7F395F10, no.helgesverre.terminal.pane.BA957549-4800-477B-B3A0-D1B3868CCEA8\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "focus named pane",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to focus pane pane id \"no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\""
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "adee3612ad7041bcf9efbc393411dd35200bf3aa4909cca3e12332f7a63a42df",
+      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "reject zero read limit",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to read screen max characters 0"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "063ae4819dead560cbeca1f2b38a8eba99c96e2e14ad2115445b2bdbe6770d45",
+      "stdout": "68:96: execution error: Terminal Automation Fixture got an error: max characters must be between 1 and 262144. (-1700)\n",
+      "exit_status": 1,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "reject oversized read limit",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to read screen max characters 262145"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "0fb1a37c2a2414441f9510bb1d97c30fe069cf8b0ad3cc889cf66a09b24bd5c6",
+      "stdout": "68:101: execution error: Terminal Automation Fixture got an error: max characters must be between 1 and 262144. (-1700)\n",
+      "exit_status": 1,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "reject invalid font size",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to configure preferences font size 7.0"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "46fac6a8b081a0b4109d2b73f48a760e27124d102e9b0b2c7f37bca5b7524db4",
+      "stdout": "68:103: execution error: Terminal Automation Fixture got an error: Enter a font size from 8–40 pt. (-1700)\n",
+      "exit_status": 1,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "reject invalid directory",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to configure preferences starting directory \"/does/not/exist\""
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "71f0032f566f82c225255e8cc6e50de357258a3c4f3cf2ca44c49959682f18e0",
+      "stdout": "68:126: execution error: Terminal Automation Fixture got an error: Choose an existing starting directory. (-1700)\n",
+      "exit_status": 1,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "show settings while focused",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to show settings"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "05b2541f7f7dec77b600d678223dd1f678a62637c7e413068f22cd43bc0e916f",
+      "stdout": "true\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "hide fixture",
+      "language": "JavaScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "JavaScript",
+        "-e",
+        "ObjC.import('AppKit');\nconst application = $.NSRunningApplication.runningApplicationWithProcessIdentifier(97537);\nif (application) application.hide;\n"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "782d3062c9b1e5f53f0372d05e4ad4d6e9f45474be2fa1a599e6da4362b86746",
+      "stdout": "false\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "send large committed text",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to send text (\"AUTOMATION_TEXT_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx_END\" & return)"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "711871e5817aa8b1a1dda9051f6459856a46bcf41f111e8644aaa8c74493ac9e",
+      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "read screen",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to read screen max characters 2048"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "9fa7c95f8a1de04af793f70bb05b4b4f692029f7cccd789bec2809723103dd46",
+      "stdout": "AUTOMATION_RECEIPT cd91bc6a737e0e94fb65266623f4fcc947\nb577688893497eb3db0001e920020a\n                              \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "configure preferences",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to configure preferences font size 15.0 scrollback rows 1000 option sends escape true follows tail on input false starting directory \"/tmp\""
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "cf80bed605239eeabbcd73dee652061b0d7cc9b1c042507c759af8731a4cbd81",
+      "stdout": "font size 15, scrollback rows 1000, starting directory /tmp\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "clear screen",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to clear screen"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "29e4b90e5035d9c6e1bf6043a9a378513ca4b5ff0c8a036d998688ae13ca42a0",
+      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "close tab pane",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.BA957549-4800-477B-B3A0-D1B3868CCEA8\""
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "11504fd6f31b7be72682e9b92a2cda5f9b481ea0b1141459c6adecf482f97640",
+      "stdout": "true\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "close below pane",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.DE247733-5DE8-4247-94B3-2729F7E05113\""
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "3669ad4f9915199850dfb946a47b9bc73c37225e917291aec5cd9bebc552178e",
+      "stdout": "true\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "close right pane",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.BD12CBA8-9254-4CCC-8B47-8F306DBEE408\""
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "fee3340204d7e37c6a5995a9b0e499acf0aac935d0d1e2e22aac274b73197b97",
+      "stdout": "true\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "close other window",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.355DF705-F705-4146-9B7C-11DC7F395F10\""
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "31f5f331ed4f248263d3803f0f56d41c2b96e8eb865324e51d63b5796d762a77",
+      "stdout": "true\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "list remaining panes",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to list panes"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "3b1c76041dfd08f5b6a2f1b252ac47dbeb9004c1db418b0587c5611b7e89064a",
+      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
+      "name": "quit fixture",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to quit"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "20667d68690d8c5ec704f223de30d9c214ab497887350ce4cde5e6126e8fb4a5",
+      "stdout": "",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    }
+  ],
+  "cleanup": {
+    "owned_pids_before_cleanup": [],
+    "owned_pids_after_cleanup": [],
+    "survivors": [],
+    "app_exit_status": {
+      "observed": true,
+      "exited": true,
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null
+    },
+    "recorded_child_pids": [
+      97542,
+      97556,
+      97669,
+      97693,
+      97712
+    ],
+    "recorded_children_exited": true,
+    "active_fixture_pids_after_cleanup": []
+  },
+  "fixture_stdout_stderr": "2026-11-08 10:35:18.375 Terminal[97537:25020680] Session: Process exited (status 1); draining output\n2026-11-08 10:35:18.573 Terminal[97537:25020680] Session: Process exited (status 1); draining output\n",
   "scenarios": [
+    "permission",
     "invalid-target",
     "bounded-read",
     "preferences",
@@ -12,6 +565,8 @@
     "focus",
     "settings",
     "inactive",
+    "large-committed-text",
+    "clear",
     "close",
     "cleanup"
   ]

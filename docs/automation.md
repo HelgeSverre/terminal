@@ -77,9 +77,15 @@ AX interface; it does not replace a VoiceOver reading/selection check.
 
 ## Fixture check
 
-Run `just automation-smoke`. It builds the app, copies it into a fresh
-temporary bundle with a random bundle identifier, uses only a raw `cat` PTY
-child, invokes real `osascript`, and waits for both the fixture application and
-child to exit. It never targets the installed app or its preferences. macOS may
-ask the `osascript` client for Automation permission; the check does not reset
-or bypass TCC.
+Run `just automation-smoke`. It builds the app and creates a signed disposable
+`Terminal Automation Fixture`, using the Developer ID application identity in
+`~/.config/terminal/release.json` or `APPLE_APPLICATION_SIGNING_IDENTITY`.
+The fixture keeps a stable bundle identity so macOS can remember your Automation
+decision. It uses controlled PTY children, invokes real `osascript`, and waits
+for the fixture application and its children to exit. It never targets the
+installed app or its preferences, and concurrent fixture runs are rejected.
+
+The check first performs a non-prompting permission query. If macOS requires
+consent, run `just automation-consent` and approve the standard dialog, then
+rerun the smoke test. A denied permission is reported separately from missing
+consent. These commands do not reset or bypass TCC.

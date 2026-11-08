@@ -31,6 +31,11 @@ atlas-budget-smoke: build (_native-smoke "atlas-budget")
 automation-smoke: build
     ruby tools/applescript_smoke.rb
 
+# Request macOS Automation consent for the signed disposable fixture.
+[group('check')]
+automation-consent: build
+    TERMINAL_AUTOMATION_REQUEST_CONSENT=1 TERMINAL_AUTOMATION_PREFLIGHT_ONLY=1 ruby tools/applescript_smoke.rb
+
 # Close the last window; require both the app and its HUP-resistant child to exit
 [group('check')]
 close-smoke: build
@@ -126,6 +131,7 @@ swift-host-build-test: build
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     ruby tools/native_smoke_test.rb
     ruby tools/close_smoke_test.rb
+    ruby tools/applescript_smoke_test.rb
     xcrun swiftc -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/DistributionTests.swift -o target/native/distribution-tests
     target/native/distribution-tests
     mkdir -p target/native/automation-dictionary
