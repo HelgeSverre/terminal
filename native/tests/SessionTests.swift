@@ -20,6 +20,8 @@ import Foundation
         "closed_focus_and_key_releases_are_quiet",
         "closed_text_input_is_reported", "committed_text_round_trip",
       ].map { ($0, false) })
+    checks["split_inherits_cwd"] = false
+    checks["split_children_reaped"] = false
     var statuses: [String] = []
     let splitFolder = FileManager.default.temporaryDirectory.appendingPathComponent("Terminal split 猫 #% \(UUID().uuidString)")
     try! FileManager.default.createDirectory(at: splitFolder, withIntermediateDirectories: false)
@@ -64,6 +66,8 @@ import Foundation
       RunLoop.main.run(until: Date().addingTimeInterval(0.01))
     }
     parent.close(); sibling?.close()
+    checks["split_inherits_cwd"] = siblingMatched
+    checks["split_children_reaped"] = parentEnded && siblingEnded
     precondition(parentEnded && siblingEnded && siblingMatched,
       "split cwd: parent=\(parentEnded), child=\(siblingEnded), match=\(siblingMatched), cwd=\(String(describing: parentCWD)), childText=\(childText)")
     // The first partial REP snapshot arrives before its suffix sets bracketed paste.
