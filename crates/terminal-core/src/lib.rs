@@ -6,6 +6,7 @@ pub mod graphics;
 pub mod input;
 mod margins;
 pub mod model;
+mod osc52;
 pub mod parser;
 mod resize;
 pub mod search;
@@ -107,6 +108,7 @@ pub struct Terminal {
     clipboard_requests: VecDeque<ClipboardWriteRequest>,
     outstanding_clipboard_requests: BTreeSet<u64>,
     next_clipboard_request_id: u64,
+    osc52: Option<osc52::Decoder>,
 }
 impl Terminal {
     pub fn new(cols: usize, rows: usize) -> Result<Self, Error> {
@@ -171,6 +173,7 @@ impl Terminal {
             clipboard_requests: VecDeque::new(),
             outstanding_clipboard_requests: BTreeSet::new(),
             next_clipboard_request_id: 1,
+            osc52: None,
         })
     }
     pub fn validate_geometry(cols: usize, rows: usize) -> Result<(), Error> {
@@ -335,6 +338,27 @@ impl Terminal {
             } => self.escape(&intermediates, final_byte),
             Operation::Csi(c) => self.csi(c),
             Operation::Osc(s) => self.osc(&s),
+            Operation::Osc52Start => {
+                self.osc52 = Some(osc52::Decoder::new(
+                    self.outstanding_clipboard_requests.len() < MAX_OUTSTANDING_OSC52_REQUESTS,
+                ));
+            }
+            Operation::Osc52Data(bytes) => {
+                if let Some(decoder) = &mut self.osc52 {
+                    decoder.push(&bytes);
+                }
+            }
+            Operation::Osc52End => {
+                let Some(decoder) = self.osc52.take() else {
+                    return;
+                };
+                match decoder.finish() {
+                    osc52::Outcome::Write(data) => self.request_clipboard_write(data),
+                    osc52::Outcome::Query => self.reply(b"\x1b]52;c;\x1b\\".to_vec()),
+                    osc52::Outcome::Reject => {}
+                }
+            }
+            Operation::Osc52Abort => self.osc52 = None,
             Operation::GraphicsAbort => self.graphics.abort(),
             Operation::Graphics(packet) => {
                 let cursor = self.screen().cursor.clone();

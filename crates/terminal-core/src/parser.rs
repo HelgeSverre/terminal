@@ -5,7 +5,6 @@ pub const MAX_OSC: usize = 65_536;
 // OSC 52 carries base64 text. Its 1 MiB decoded limit needs at most this many
 // RFC 4648 bytes plus a small command/selection prefix. All other OSC strings
 // retain the smaller parser-level cap.
-const MAX_OSC52: usize = 1_398_168;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Csi {
@@ -38,6 +37,10 @@ pub enum Operation {
     },
     Csi(Csi),
     Osc(Vec<u8>),
+    Osc52Start,
+    Osc52Data(Vec<u8>),
+    Osc52End,
+    Osc52Abort,
     Graphics(Vec<u8>),
     GraphicsAbort,
 }
@@ -45,6 +48,7 @@ pub enum Operation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StringKind {
     Osc,
+    Osc52,
     Apc,
     Unsupported,
 }
@@ -88,7 +92,9 @@ impl VtParser {
         else {
             return 0;
         };
-        if *kind == StringKind::Apc && bytes.is_empty() && !*discard {
+        if (*kind == StringKind::Apc && bytes.is_empty() && !*discard)
+            || (*kind == StringKind::Osc && bytes.len() < 5)
+        {
             return 0;
         }
         let count = input
@@ -98,7 +104,11 @@ impl VtParser {
         if count == 0 {
             return 0;
         }
-        if !*discard {
+        if *kind == StringKind::Osc52 {
+            if !*discard {
+                sink(Operation::Osc52Data(input[..count].to_vec()));
+            }
+        } else if !*discard {
             let limit = string_limit(*kind, bytes, input);
             if bytes.len() + count > limit {
                 bytes.clear();
@@ -118,6 +128,15 @@ impl VtParser {
         }
     }
     pub fn finish(&mut self, mut sink: impl FnMut(Operation)) {
+        if matches!(
+            self.state,
+            State::String {
+                kind: StringKind::Osc52,
+                ..
+            }
+        ) {
+            sink(Operation::Osc52Abort);
+        }
         if !self.utf8.is_empty() {
             sink(Operation::Print('\u{fffd}'));
         }
@@ -160,6 +179,15 @@ impl VtParser {
                 }
             ) {
                 sink(Operation::GraphicsAbort);
+            }
+            if matches!(
+                self.state,
+                State::String {
+                    kind: StringKind::Osc52,
+                    ..
+                }
+            ) {
+                sink(Operation::Osc52Abort);
             }
             self.state = State::Ground;
             return;
@@ -313,15 +341,19 @@ impl VtParser {
                 }
             }
             State::String {
-                kind,
+                mut kind,
                 mut bytes,
                 mut discard,
                 mut escape,
             } => {
-                if (escape && byte == b'\\') || (kind == StringKind::Osc && byte == 7) {
+                if (escape && byte == b'\\')
+                    || (matches!(kind, StringKind::Osc | StringKind::Osc52) && byte == 7)
+                {
                     if !discard {
                         if kind == StringKind::Osc {
                             sink(Operation::Osc(bytes));
+                        } else if kind == StringKind::Osc52 {
+                            sink(Operation::Osc52End);
                         } else if kind == StringKind::Apc {
                             sink(Operation::Graphics(bytes));
                         }
@@ -335,6 +367,9 @@ impl VtParser {
                         escape: true,
                     }
                 } else if escape && !discard && kind != StringKind::Apc {
+                    if kind == StringKind::Osc52 {
+                        sink(Operation::Osc52Abort);
+                    }
                     // Supported incomplete string abandoned; this byte follows fresh ESC.
                     self.state = State::Escape(Vec::new());
                     self.byte(byte, sink);
@@ -350,6 +385,15 @@ impl VtParser {
                         discard = true;
                     }
                     if !discard && byte >= 0x20 && byte != 0x7f {
+                        if kind == StringKind::Osc52 {
+                            sink(Operation::Osc52Data(vec![byte]));
+                            return self.state = State::String {
+                                kind,
+                                bytes,
+                                discard,
+                                escape,
+                            };
+                        }
                         let limit = string_limit(kind, &bytes, &[byte]);
                         if bytes.len() == limit {
                             bytes.clear();
@@ -359,6 +403,11 @@ impl VtParser {
                             }
                         } else {
                             bytes.push(byte);
+                            if kind == StringKind::Osc && bytes == b"52;c;" {
+                                sink(Operation::Osc52Start);
+                                bytes.clear();
+                                kind = StringKind::Osc52;
+                            }
                         }
                     }
                     State::String {
@@ -380,27 +429,18 @@ fn string_limit(kind: StringKind, bytes: &[u8], next: &[u8]) -> usize {
     if kind != StringKind::Osc {
         return MAX_OSC;
     }
-    let prefix = b"52;c;";
-    let matched = bytes.len().min(prefix.len());
-    if bytes[..matched] != prefix[..matched] {
-        return MAX_OSC;
-    }
-    let needed = prefix.len() - matched;
-    if next.len() >= needed && next[..needed] == prefix[matched..] {
-        MAX_OSC52
-    } else {
-        MAX_OSC
-    }
+    let _ = (bytes, next);
+    MAX_OSC
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_OSC, MAX_OSC52, StringKind, string_limit};
+    use super::{MAX_OSC, StringKind, string_limit};
 
     #[test]
     fn osc52_exception_does_not_expand_other_string_kinds() {
         let prefix = b"52;c;";
-        assert_eq!(string_limit(StringKind::Osc, &[], prefix), MAX_OSC52);
+        assert_eq!(string_limit(StringKind::Osc, &[], prefix), MAX_OSC);
         assert_eq!(string_limit(StringKind::Unsupported, &[], prefix), MAX_OSC);
     }
 }
