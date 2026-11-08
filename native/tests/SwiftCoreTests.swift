@@ -98,6 +98,96 @@ import Foundation
       offset += count
     }
   }
+  static func rawFeed(_ core: OpaquePointer, _ bytes: Data) -> Int {
+    bytes.withUnsafeBytes {
+      terminal_feed(core, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0)
+    }
+  }
+  static func asciiByteAdmission() {
+    // The whole-buffer path admits long ASCII directly from its borrowed ABI
+    // bytes. One-byte and irregular feeds retain the decoder/scratch path;
+    // their complete snapshots must nevertheless remain identical.
+    let text = "\u{1b}]8;;https://ascii.example\u{7}\u{1b}[31m\u{0600}" +
+      String(repeating: "A", count: 1_024) +
+      "\u{1b}]8;;https://current.example\u{7}\u{1b}[32m\u{301}\u{1b}[3b\u{1b}]8;;\u{7}\u{1b}[0m"
+    let payload = Data(text.utf8)
+    let whole = terminal_create(8, 2)!, bytewise = terminal_create(8, 2)!, irregular = terminal_create(8, 2)!
+    defer { terminal_destroy(whole); terminal_destroy(bytewise); terminal_destroy(irregular) }
+    feed(whole, bytes: payload, partitions: [payload.count])
+    feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
+    feed(irregular, bytes: payload, partitions: [3, 17, 1_023, 2, 19, 7, 53])
+    let expected = stableSnapshot(whole)
+    precondition(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
+
+    // A viable prefix must force its following ASCII through UTF-8 rejection
+    // first; direct admission resumes only after the decoder becomes idle.
+    let pending = Data([0xe1, 0x80]) + Data(repeating: UInt8(ascii: "B"), count: 32)
+    let pendingWhole = terminal_create(8, 2)!, pendingBytes = terminal_create(8, 2)!
+    defer { terminal_destroy(pendingWhole); terminal_destroy(pendingBytes) }
+    feed(pendingWhole, bytes: pending, partitions: [pending.count])
+    feed(pendingBytes, bytes: pending, partitions: [1, 1] + Array(repeating: 1, count: 32))
+    precondition(stableSnapshot(pendingWhole) == stableSnapshot(pendingBytes))
+
+    // DEC Special Graphics maps printable bytes, so its run remains on the
+    // ordinary decoder path; normal charset resumes borrowed admission.
+    let dec = Data(("\u{1b}(0" + String(repeating: "q", count: 32) +
+      "\u{1b}(B" + String(repeating: "x", count: 32)).utf8)
+    let decWhole = terminal_create(8, 2)!, decBytes = terminal_create(8, 2)!
+    defer { terminal_destroy(decWhole); terminal_destroy(decBytes) }
+    feed(decWhole, bytes: dec, partitions: [dec.count])
+    feed(decBytes, bytes: dec, partitions: Array(repeating: 1, count: dec.count))
+    precondition(stableSnapshot(decWhole) == stableSnapshot(decBytes))
+
+    // Runs below the admission threshold stay on the existing decoder path.
+    // Repeated Unicode and ANSI boundaries must not change their partition
+    // semantics while avoiding a fresh scan for every ASCII byte.
+    let shortMixed = Data((String(repeating: "a", count: 15) + "猫" +
+      "\u{1b}[31m" + String(repeating: "b", count: 15) + "\u{1b}[0m" +
+      String(repeating: "c", count: 15) + "\u{301}").utf8)
+    let shortWhole = terminal_create(8, 2)!, shortBytes = terminal_create(8, 2)!, shortIrregular = terminal_create(8, 2)!
+    defer { terminal_destroy(shortWhole); terminal_destroy(shortBytes); terminal_destroy(shortIrregular) }
+    feed(shortWhole, bytes: shortMixed, partitions: [shortMixed.count])
+    feed(shortBytes, bytes: shortMixed, partitions: Array(repeating: 1, count: shortMixed.count))
+    feed(shortIrregular, bytes: shortMixed, partitions: [4, 11, 3, 15, 2, 7, 9])
+    let shortExpected = stableSnapshot(shortWhole)
+    precondition(stableSnapshot(shortBytes) == shortExpected && stableSnapshot(shortIrregular) == shortExpected)
+
+    // Feed consumes no more than 64 KiB even when that first chunk is one
+    // direct ASCII run. History is disabled to keep this ABI boundary small.
+    let boundary = terminal_create(8, 2)!
+    defer { terminal_destroy(boundary) }
+    terminal_set_history_limit(boundary, 0)
+    let bytes = Data(repeating: UInt8(ascii: "z"), count: 65_537)
+    precondition(rawFeed(boundary, bytes) == 65_536)
+    precondition(rawFeed(boundary, Data(bytes.suffix(1))) == 1)
+    precondition(terminal_validate(boundary))
+
+    // REP remains a resumable input boundary even after a direct ASCII run:
+    // the final CSI byte is admitted, then both repeat budgets drain before
+    // the withheld suffix can become last-printed text.
+    let repeatCore = terminal_create(128, 2)!
+    defer { terminal_destroy(repeatCore) }
+    let repeatPrefix = Data((String(repeating: "A", count: 32) + "\u{1b}[5000bZ").utf8)
+    let suffixOffset = repeatPrefix.firstIndex(of: UInt8(ascii: "Z"))!
+    precondition(rawFeed(repeatCore, repeatPrefix) == suffixOffset)
+    func visibleZCount() -> Int {
+      (snapshot(repeatCore)["rows"] as! [[String: Any]]).flatMap { $0["cells"] as! [[String: Any]] }
+        .filter { $0["text"] as? String == "Z" }.count
+    }
+    precondition(visibleZCount() == 0)
+    precondition(rawFeed(repeatCore, Data("Z".utf8)) == 0) // first 4,096 repeats
+    precondition(visibleZCount() == 0)
+    precondition(rawFeed(repeatCore, Data("Z".utf8)) == 0) // remaining 904
+    precondition(visibleZCount() == 0)
+    precondition(rawFeed(repeatCore, Data("Z".utf8)) == 1)
+    let afterSuffix = snapshot(repeatCore)
+    precondition((afterSuffix["revision"] as? Int) == 5_035)
+    precondition((afterSuffix["document_epoch"] as? Int) == 5_035)
+    precondition(visibleZCount() == 1)
+    precondition(rawFeed(repeatCore, Data("\u{1b}[1b".utf8)) == 4)
+    precondition(terminal_feed(repeatCore, nil, 0, 0) == 0)
+    precondition(visibleZCount() == 2)
+  }
   static func decodedBatchEquivalence() {
     // The whole-buffer case reaches the <=1024 decoded scalar writer, while
     // the byte and irregular cases force ordinary feed boundaries.  A full
@@ -268,6 +358,7 @@ import Foundation
   }
   static func main() {
     nativeModifierWire()
+    asciiByteAdmission()
     decodedBatchEquivalence()
     indexHistoryUsesMutatedPrimaryForViewportClamp()
     csiASCIIParsing()

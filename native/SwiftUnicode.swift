@@ -88,6 +88,10 @@ enum SwiftUnicode {
     private var third: UInt8 = 0
     private var pendingCount = 0
 
+    /// True when the next byte begins a fresh scalar.  Core uses this to
+    /// admit a borrowed ASCII run without changing malformed-prefix ordering.
+    @inline(__always) var isIdle: Bool { pendingCount == 0 }
+
     private static let replacement = Unicode.Scalar(0xfffd)!
 
     @inline(__always)
