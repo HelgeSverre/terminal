@@ -327,8 +327,9 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
   mutating func removeAll() { rows.removeAll(); byteCount = 0 }
   mutating func replace(_ values: [TerminalRow]) { rows = values; byteCount = values.reduce(0) { $0 + $1.retainedStorageCost } }
   mutating func trim(rows limit: Int, bytes: Int) -> Int {
-    var remove = 0; let cap = UInt64(max(0, bytes)); var total = byteCount
-    while rows.count - remove > max(0, limit) || (total > cap && remove < rows.count) {
+    var remove = 0; let cap = UInt64(Swift.max(0, bytes)); var total = byteCount
+    let rowLimit = Swift.max(0, limit)
+    while rows.count - remove > rowLimit || (total > cap && remove < rows.count) {
       total &-= rows[remove].retainedStorageCost; remove += 1
     }
     if remove > 0 { rows.removeFirst(remove); byteCount = total }
