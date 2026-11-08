@@ -310,9 +310,10 @@ final class MetalRenderer: @unchecked Sendable {
     guard let placement = placement(width, height) else {
       if let glyph = directGlyph(key, width: width, height: height) { return glyph }
       let replacementKey = GlyphKey(text: "□", cells: 1, bold: false, italic: false)
-      if let replacementGlyph { return replacementGlyph }
-      replacementGlyph = directGlyph(
-        replacementKey, width: request.cellWidth, height: request.cellHeight, limited: false)
+      if replacementGlyph == nil {
+        replacementGlyph = directGlyph(
+          replacementKey, width: request.cellWidth, height: request.cellHeight, limited: false)
+      }
       if replacementGlyph != nil { RendererMetrics.recordSubstituteGlyphFallback() }
       return replacementGlyph
     }
