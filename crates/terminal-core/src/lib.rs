@@ -376,7 +376,7 @@ impl Terminal {
                 open.flags |= 4;
                 self.row_mut(open.row).cells[open.col].flags |= 4;
             } else {
-                let mut candidate = open.text.clone();
+                let mut candidate = std::mem::take(&mut open.text);
                 candidate.push(ch);
                 open.scalar_count += 1;
                 let new_width = candidate.as_str().width().clamp(1, 2);
