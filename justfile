@@ -145,6 +145,7 @@ lint:
     just terminal-boundary-regression
     just swift-unicode18-corpus
     just swift-input-encoder
+    just osc52-protocol
     xcrun clang -Wall -Wextra -Werror -I native -c native/tests/pty.c -o target/native/swift-pty-tests.o
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty) target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
     target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
