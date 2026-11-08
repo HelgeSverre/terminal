@@ -1,0 +1,306 @@
+[
+  {
+    "name": "terminal-document-ownership",
+    "command": [
+      "just",
+      "terminal-document-ownership"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true,
+    "seconds": 9.891823999991175
+  },
+  {
+    "name": "swift-core-test",
+    "command": [
+      "just",
+      "swift-core-test"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true,
+    "seconds": 24.44350500003202
+  },
+  {
+    "name": "terminal-viewport-oracle",
+    "command": [
+      "just",
+      "terminal-viewport-oracle"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true,
+    "seconds": 21.583632999972906
+  },
+  {
+    "name": "terminal-graphics-oracle",
+    "command": [
+      "just",
+      "terminal-graphics-oracle"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true,
+    "seconds": 21.394978999975137
+  },
+  {
+    "name": "terminal-palette",
+    "command": [
+      "just",
+      "terminal-palette"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true,
+    "seconds": 2.364612999954261
+  },
+  {
+    "name": "terminal-scheduler-oracle",
+    "command": [
+      "just",
+      "terminal-scheduler-oracle"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true,
+    "seconds": 22.089128000021446
+  },
+  {
+    "name": "terminal-prompt-clear-oracle",
+    "command": [
+      "just",
+      "terminal-prompt-clear-oracle"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true,
+    "seconds": 22.585353999980725
+  },
+  {
+    "name": "spawn",
+    "command": [
+      "xcrun",
+      "clang",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-mmacosx-version-min=15.0",
+      "-c",
+      "native/Spawn.c",
+      "-o",
+      "target/native/integration-Spawn.o"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true,
+    "seconds": 0.1359340000199154
+  },
+  {
+    "name": "snapshot_bridge-compile",
+    "command": [
+      "xcrun",
+      "swiftc",
+      "-swift-version",
+      "5",
+      "-O",
+      "-import-objc-header",
+      "native/Bridge.h",
+      "-D",
+      "SNAPSHOT_ABI_DIAGNOSTICS",
+      "native/TerminalDocument.swift",
+      "native/DocumentReflow.swift",
+      "native/TerminalWidth.swift",
+      "native/TerminalWidthTables.swift",
+      "native/SwiftUnicode18Tables.swift",
+      "native/SwiftUnicode.swift",
+      "native/SwiftInputEncoder.swift",
+      "native/ClipboardProtocol.swift",
+      "native/SwiftGraphics.swift",
+      "native/TerminalPalette.swift",
+      "native/UnicodeLowercase.swift",
+      "native/SwiftSearchViewport.swift",
+      "native/TerminalSnapshot.swift",
+      "native/SwiftTerminalCore.swift",
+      "native/Font.swift",
+      "native/Preferences.swift",
+      "native/Transport.swift",
+      "native/Session.swift",
+      "native/SnapshotBridge.swift",
+      "native/CellPalette.swift",
+      "native/AccessibilityProjection.swift",
+      "native/tests/BinarySnapshotOracle.swift",
+      "native/tests/SnapshotBridgeTests.swift",
+      "target/native/integration-Spawn.o",
+      "-framework",
+      "Foundation",
+      "-framework",
+      "CoreFoundation",
+      "-framework",
+      "CoreGraphics",
+      "-framework",
+      "ImageIO",
+      "-framework",
+      "Security",
+      "-liconv",
+      "-o",
+      "target/native/integration-snapshot_bridge"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true,
+    "seconds": 28.284175000037067
+  },
+  {
+    "name": "session-compile",
+    "command": [
+      "xcrun",
+      "swiftc",
+      "-swift-version",
+      "5",
+      "-O",
+      "-import-objc-header",
+      "native/Bridge.h",
+      "native/TerminalDocument.swift",
+      "native/DocumentReflow.swift",
+      "native/TerminalWidth.swift",
+      "native/TerminalWidthTables.swift",
+      "native/SwiftUnicode18Tables.swift",
+      "native/SwiftUnicode.swift",
+      "native/SwiftInputEncoder.swift",
+      "native/ClipboardProtocol.swift",
+      "native/SwiftGraphics.swift",
+      "native/TerminalPalette.swift",
+      "native/UnicodeLowercase.swift",
+      "native/SwiftSearchViewport.swift",
+      "native/TerminalSnapshot.swift",
+      "native/SwiftTerminalCore.swift",
+      "native/Font.swift",
+      "native/Preferences.swift",
+      "native/Transport.swift",
+      "native/Session.swift",
+      "native/SnapshotBridge.swift",
+      "native/CellPalette.swift",
+      "native/AccessibilityProjection.swift",
+      "native/tests/SessionTests.swift",
+      "target/native/integration-Spawn.o",
+      "-framework",
+      "Foundation",
+      "-framework",
+      "CoreFoundation",
+      "-framework",
+      "CoreGraphics",
+      "-framework",
+      "ImageIO",
+      "-framework",
+      "Security",
+      "-liconv",
+      "-o",
+      "target/native/integration-session"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true,
+    "seconds": 25.662192000017967
+  },
+  {
+    "name": "launcher",
+    "command": [
+      "xcrun",
+      "clang",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-mmacosx-version-min=15.0",
+      "native/Launcher.c",
+      "-o",
+      "/Users/helge/code/terminal-swift-experiment/reports/swift-integration-direct-snapshot-4a26322/session-fixture/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true,
+    "seconds": 0.061701999977231026
+  },
+  {
+    "name": "snapshot_bridge",
+    "command": [
+      "target/native/integration-snapshot_bridge"
+    ],
+    "exit": null,
+    "signal": 5,
+    "passed": null,
+    "seconds": 0.32161000004271045
+  },
+  {
+    "name": "snapshot_bridge-revised-compile",
+    "command": [
+      "xcrun",
+      "swiftc",
+      "-D",
+      "SNAPSHOT_ABI_DIAGNOSTICS",
+      "-swift-version",
+      "5",
+      "-O",
+      "-import-objc-header",
+      "native/Bridge.h",
+      "native/TerminalDocument.swift",
+      "native/DocumentReflow.swift",
+      "native/TerminalWidth.swift",
+      "native/TerminalWidthTables.swift",
+      "native/SwiftUnicode18Tables.swift",
+      "native/SwiftUnicode.swift",
+      "native/SwiftInputEncoder.swift",
+      "native/ClipboardProtocol.swift",
+      "native/SwiftGraphics.swift",
+      "native/TerminalPalette.swift",
+      "native/UnicodeLowercase.swift",
+      "native/SwiftSearchViewport.swift",
+      "native/TerminalSnapshot.swift",
+      "native/SwiftTerminalCore.swift",
+      "native/Font.swift",
+      "native/Preferences.swift",
+      "native/Transport.swift",
+      "native/Session.swift",
+      "native/SnapshotBridge.swift",
+      "native/CellPalette.swift",
+      "native/AccessibilityProjection.swift",
+      "native/tests/BinarySnapshotOracle.swift",
+      "native/tests/SnapshotBridgeTests.swift",
+      "target/native/integration-Spawn.o",
+      "-framework",
+      "Foundation",
+      "-framework",
+      "CoreFoundation",
+      "-framework",
+      "CoreGraphics",
+      "-framework",
+      "ImageIO",
+      "-framework",
+      "Security",
+      "-liconv",
+      "-o",
+      "target/native/integration-snapshot_bridge"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true
+  },
+  {
+    "name": "snapshot_bridge-revised",
+    "command": [
+      "target/native/integration-snapshot_bridge"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true
+  },
+  {
+    "name": "session",
+    "command": [
+      "target/native/integration-session",
+      "/Users/helge/code/terminal-swift-experiment/reports/swift-integration-direct-snapshot-4a26322/session-fixture"
+    ],
+    "exit": 0,
+    "signal": null,
+    "passed": true
+  }
+]

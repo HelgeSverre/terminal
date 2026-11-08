@@ -317,12 +317,18 @@ struct PromptAnchor: Equatable {
 }
 struct TerminalHistory: RandomAccessCollection, Equatable {
   private struct Entry: Equatable { let row: TerminalRow; let chargedBytes: UInt64 }
+  private static let maximumRetiredRowBytes: UInt64 = 256 * 1024
   private var entries: [Entry?] = []
   // Entries retain their absolute slot while the history's front is trimmed.
   // The map makes a pinned viewport's row lookup independent of scrollback
   // length; row identity zero is the unassigned placeholder and never anchors.
   private var absoluteIndexByRowID: [UInt64: Int] = [:]
   private var head = 0
+  // One genuinely evicted row of at most 256 KiB charged storage may supply
+  // the next document replacement. Large text/link payloads are not cached.
+  // It is outside the retained history/accounting contract, holds no queue
+  // alias after transfer, and still obeys row COW when a snapshot retains it.
+  private var retiredRow: TerminalRow?
   private(set) var byteCount: UInt64 = 0
   var count: Int { entries.count - head }
   var startIndex: Int { 0 }
@@ -338,12 +344,16 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
     byteCount &+= cost
   }
   mutating func append(contentsOf values: [TerminalRow]) { for row in values { append(row) } }
-  mutating func removeAll() { entries.removeAll(); absoluteIndexByRowID.removeAll(); head = 0; byteCount = 0 }
+  mutating func removeAll() { entries.removeAll(); absoluteIndexByRowID.removeAll(); retiredRow = nil; head = 0; byteCount = 0 }
   mutating func replace(_ values: [TerminalRow]) { removeAll(); append(contentsOf: values) }
   func index(ofRowID rowID: UInt64) -> Int? {
     guard rowID != 0, let absoluteIndex = absoluteIndexByRowID[rowID],
           absoluteIndex >= head, absoluteIndex < entries.count, entries[absoluteIndex] != nil else { return nil }
     return absoluteIndex - head
+  }
+  fileprivate mutating func takeRetiredRow() -> TerminalRow? {
+    defer { retiredRow = nil }
+    return retiredRow
   }
   mutating func trim(rows limit: Int, bytes: Int) -> Int {
     var remove = 0; let cap = UInt64(Swift.max(0, bytes)); var total = byteCount
@@ -352,6 +362,8 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
       total &-= entries[head + remove]!.chargedBytes; remove += 1
     }
     if remove > 0 {
+      let last = entries[head + remove - 1]!
+      retiredRow = last.chargedBytes <= Self.maximumRetiredRowBytes ? last.row : nil
       for index in head..<(head + remove) {
         if let entry = entries[index], entry.row.id != 0,
            absoluteIndexByRowID[entry.row.id] == index {
@@ -413,7 +425,7 @@ struct TerminalDocument {
     var protected: Bool
   }
   struct PrintEffect {
-    var appendedHistory: [TerminalRow]
+    var appendedHistoryCount: Int
     var lastPrinted: String?
     var repeatAttributes: PrintAttributes?
   }
@@ -462,7 +474,16 @@ struct TerminalDocument {
   }
   mutating func eraseRow(_ style: TerminalStyle) -> TerminalRow {
     defer { nextRowID &+= 1 }
-    return TerminalRow.erased(columns: columns, logicalCellCapacity: blankCellCapacity, style: style, id: nextRowID)
+    return Self.erasedRow(columns: columns, logicalCellCapacity: blankCellCapacity,
+                          style: style, id: nextRowID, history: &history)
+  }
+  private static func erasedRow(columns: Int, logicalCellCapacity: Int, style: TerminalStyle,
+                                id: UInt64, history: inout TerminalHistory) -> TerminalRow {
+    if var row = history.takeRetiredRow() {
+      row.resetForReuse(columns: columns, logicalCellCapacity: logicalCellCapacity, style: style, id: id)
+      return row
+    }
+    return TerminalRow.erased(columns: columns, logicalCellCapacity: logicalCellCapacity, style: style, id: id)
   }
   mutating func setSize(columns: Int, rows: Int) {
     if self.columns != columns { blankCellCapacity = TerminalRow.blankLogicalCapacity(columns: columns) }
@@ -492,25 +513,25 @@ struct TerminalDocument {
 
   // LF/IND/RI select and mutate their screen here so callers do not need to
   // materialize a whole screen value merely to alter its cursor or rows.
-  // The returned row is the only one eligible for primary history retention.
+  // The result reports history admission; retained rows never leave this owner.
   mutating func index(usingAlternate: Bool, reverse: Bool,
-                      leftRightMargins: Bool, eraseStyle: TerminalStyle) -> [TerminalRow] {
+                      leftRightMargins: Bool, eraseStyle: TerminalStyle) -> Int {
     if usingAlternate {
       _ = Self.index(&alternate, columns: columns, blankCellCapacity: blankCellCapacity, recycleDiscarded: true, reverse: reverse,
                      leftRightMargins: leftRightMargins, eraseStyle: eraseStyle,
-                     nextRowID: &nextRowID)
-      return []
+                     history: &history, nextRowID: &nextRowID)
+      return 0
     }
     guard let removed = Self.index(&primary, columns: columns, blankCellCapacity: blankCellCapacity, recycleDiscarded: false, reverse: reverse,
                                    leftRightMargins: leftRightMargins, eraseStyle: eraseStyle,
-                                   nextRowID: &nextRowID) else { return [] }
+                                   history: &history, nextRowID: &nextRowID) else { return 0 }
     history.append(removed)
-    return [removed]
+    return 1
   }
 
   private static func index(_ screen: inout TerminalScreen, columns: Int, blankCellCapacity: Int, recycleDiscarded: Bool,
                             reverse: Bool, leftRightMargins: Bool,
-                            eraseStyle: TerminalStyle, nextRowID: inout UInt64) -> TerminalRow? {
+                            eraseStyle: TerminalStyle, history: inout TerminalHistory, nextRowID: inout UInt64) -> TerminalRow? {
     let horizontal = leftRightMargins ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
     let inside = (horizontal.0...horizontal.1).contains(screen.cursorColumn)
     screen.pendingWrap = false
@@ -518,14 +539,14 @@ struct TerminalDocument {
       if screen.cursorRow == screen.topMargin && inside {
         _ = scrollForIndex(&screen, columns: columns, blankCellCapacity: blankCellCapacity, recycleDiscarded: recycleDiscarded, top: screen.topMargin, bottom: screen.bottomMargin,
                            left: horizontal.0, right: horizontal.1, up: false, eraseStyle: eraseStyle,
-                           nextRowID: &nextRowID)
+                           history: &history, nextRowID: &nextRowID)
       } else {
         screen.cursorRow = max(0, screen.cursorRow - 1)
       }
     } else if screen.cursorRow == screen.bottomMargin && inside {
       return scrollForIndex(&screen, columns: columns, blankCellCapacity: blankCellCapacity, recycleDiscarded: recycleDiscarded, top: screen.topMargin, bottom: screen.bottomMargin,
                             left: horizontal.0, right: horizontal.1, up: true, eraseStyle: eraseStyle,
-                            nextRowID: &nextRowID)
+                            history: &history, nextRowID: &nextRowID)
     } else {
       screen.cursorRow = min(screen.rows.count - 1, screen.cursorRow + 1)
     }
@@ -534,7 +555,7 @@ struct TerminalDocument {
 
   private static func scrollForIndex(_ screen: inout TerminalScreen, columns: Int, blankCellCapacity: Int, recycleDiscarded: Bool,
                                      top: Int, bottom: Int, left: Int, right: Int, up: Bool,
-                                     eraseStyle: TerminalStyle, nextRowID: inout UInt64) -> TerminalRow? {
+                                     eraseStyle: TerminalStyle, history: inout TerminalHistory, nextRowID: inout UInt64) -> TerminalRow? {
     guard top >= 0, bottom < screen.rows.count, top <= bottom else { return nil }
     if left != 0 || right != columns - 1 {
       scrollRectangleInPlace(&screen, columns: columns, top: top, bottom: bottom,
@@ -549,7 +570,8 @@ struct TerminalDocument {
       screen.rows.insert(removed, at: up ? bottom : top)
       return nil
     }
-    let replacement = TerminalRow.erased(columns: columns, logicalCellCapacity: blankCellCapacity, style: eraseStyle, id: nextRowID)
+    let replacement = erasedRow(columns: columns, logicalCellCapacity: blankCellCapacity,
+                                style: eraseStyle, id: nextRowID, history: &history)
     nextRowID &+= 1
     screen.rows.insert(replacement, at: up ? bottom : top)
     return up && top == 0 && bottom == screen.rows.count - 1 ? removed : nil
@@ -569,9 +591,9 @@ struct TerminalDocument {
     return batch.mutationCount == 0 ? nil : batch.effect
   }
 
-  // Bounded text transaction for the ordinary decoder path. History admission
-  // remains a Core boundary; replacement IDs are document-owned and can be
-  // assigned immediately without yielding when no history was appended.
+  // Bounded text transaction for the ordinary decoder path. Rows and their
+  // replacement IDs stay document-owned. A history append yields its count so
+  // the caller can enforce budgets and viewport clamps before more printing.
   mutating func print<C: Collection>(_ scalars: C, usingAlternate: Bool,
                       leftRightMargins: Bool, autoWrap: Bool, insertMode: Bool,
                       attributes: borrowing PrintAttributes) -> PrintBatchEffect where C.Element == Unicode.Scalar {
@@ -605,9 +627,7 @@ struct TerminalDocument {
                                                 state: inout PrintState,
                                                 nextRowID: inout UInt64) -> PrintBatchEffect
   where C.Element == Unicode.Scalar {
-    var appended: [TerminalRow] = []
-    var replacements: [Int] = []
-    var effect = PrintEffect(appendedHistory: [], lastPrinted: nil, repeatAttributes: nil)
+    var effect = PrintEffect(appendedHistoryCount: 0, lastPrinted: nil, repeatAttributes: nil)
     var consumed = 0, mutations = 0
     var index = scalars.startIndex
     while index != scalars.endIndex {
@@ -625,18 +645,12 @@ struct TerminalDocument {
       }
       Self.print(scalar, category: category, startsCluster: startsCluster, in: &screen, columns: columns, blankCellCapacity: blankCellCapacity,
                  leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
-                 attributes: attributes, history: &appended, replacementRows: &replacements,
+                 attributes: attributes, history: &history, nextRowID: &nextRowID,
                  retainHistory: retainHistory, state: &state, effect: &effect)
       mutations += 1
-      // Install document-owned row IDs immediately. Only a primary-history
-      // append yields: Core must enforce budgets/clamps before another scroll.
-      if !replacements.isEmpty {
-        assignRowIDs(&screen, at: replacements, nextRowID: &nextRowID)
-        replacements.removeAll(keepingCapacity: true)
-      }
-      if !appended.isEmpty {
-        if retainHistory { history.append(contentsOf: appended) }
-        effect.appendedHistory = appended
+      // Only a primary-history append yields: Core must enforce budgets and
+      // viewport clamps before another scalar can scroll the document.
+      if effect.appendedHistoryCount > 0 {
         return PrintBatchEffect(effect: effect, consumedScalarCount: consumed, mutationCount: mutations)
       }
 
@@ -690,7 +704,6 @@ struct TerminalDocument {
       mutations += count
       index = end
     }
-    effect.appendedHistory = appended
     return PrintBatchEffect(effect: effect, consumedScalarCount: consumed, mutationCount: mutations)
   }
 
@@ -701,21 +714,11 @@ struct TerminalDocument {
       screen.rows[owner.row].count > owner.column
   }
 
-  private static func assignRowIDs(_ screen: inout TerminalScreen, at indices: [Int], nextRowID: inout UInt64) {
-    for index in indices where screen.rows.indices.contains(index) {
-      // The placeholder is installed while the selected screen is held
-      // inout; allocating its identity afterwards avoids a temporary screen
-      // copy and makes row allocation explicit at the ownership seam.
-      screen.rows[index].id = nextRowID
-      nextRowID &+= 1
-    }
-  }
-
   private static func print(_ scalar: Unicode.Scalar, category: SwiftUnicode.Category, startsCluster: Bool,
                             in screen: inout TerminalScreen, columns: Int, blankCellCapacity: Int,
                             leftRightMargins: Bool, autoWrap: Bool, insertMode: Bool,
-                            attributes: borrowing PrintAttributes, history: inout [TerminalRow],
-                            replacementRows: inout [Int], retainHistory: Bool,
+                            attributes: borrowing PrintAttributes, history: inout TerminalHistory,
+                            nextRowID: inout UInt64, retainHistory: Bool,
                             state: inout PrintState,
                             effect: inout PrintEffect) {
     let horizontal = leftRightMargins ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
@@ -743,15 +746,17 @@ struct TerminalDocument {
     func scrollUpFullWidth() {
       var removed = screen.rows.remove(at: screen.topMargin)
       if retainHistory {
-        screen.rows.insert(TerminalRow.erased(columns: columns, logicalCellCapacity: blankCellCapacity, style: attributes.style), at: screen.bottomMargin)
+        screen.rows.insert(Self.erasedRow(columns: columns, logicalCellCapacity: blankCellCapacity,
+                                         style: attributes.style, id: nextRowID, history: &history), at: screen.bottomMargin)
       } else {
         removed.resetForReuse(columns: columns, logicalCellCapacity: blankCellCapacity,
-                              style: attributes.style, id: 0)
+                              style: attributes.style, id: nextRowID)
         screen.rows.insert(removed, at: screen.bottomMargin)
       }
-      replacementRows.append(screen.bottomMargin)
+      nextRowID &+= 1
       if retainHistory && screen.topMargin == 0 && screen.bottomMargin == screen.rows.count - 1 {
         history.append(removed)
+        effect.appendedHistoryCount += 1
       }
     }
     func wrap() {
@@ -845,6 +850,11 @@ struct TerminalDocument {
     }
     let width = min(2, max(1, measuredWidth))
     state.capped = false
+    // A pending wrap lands at the left edge. A width <= 2 then fits, except
+    // in a one-column region where it clips; the overflow branch below cannot
+    // wrap that scalar twice. Cluster extension above also wraps at most once
+    // before returning. The effect counts actual appends rather than assuming
+    // one, and the batch yields immediately after this scalar's transaction.
     if screen.pendingWrap && autoWrap { wrap() }
     guard screen.rows.indices.contains(screen.cursorRow),
           (0..<columns).contains(screen.cursorColumn) else { return }

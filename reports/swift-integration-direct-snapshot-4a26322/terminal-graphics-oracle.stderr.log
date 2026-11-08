@@ -1,0 +1,3 @@
+mkdir -p target/native
+xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_graphics_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-graphics-oracle-tests
+target/native/terminal-graphics-oracle-tests

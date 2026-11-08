@@ -246,7 +246,7 @@ import Foundation
     let removedID = document.primary.rows[0].id
     let forward = document.index(usingAlternate: false, reverse: false,
                                  leftRightMargins: false, eraseStyle: TerminalStyle(background: 9))
-    precondition(!document.primary.pendingWrap && forward.count == 1 && document.history.count == 1)
+    precondition(!document.primary.pendingWrap && forward == 1 && document.history.count == 1)
     precondition(document.history[0].id == removedID && document.history[0].cells[0].text == "A")
     precondition(document.primary.rows[1].id != removedID && document.primary.rows[1].cells.allSatisfy { $0.style.background == 9 })
 
@@ -254,20 +254,20 @@ import Foundation
     document.alternate.cursorRow = 1; document.alternate.cursorColumn = 0
     let alternate = document.index(usingAlternate: true, reverse: false,
                                    leftRightMargins: false, eraseStyle: TerminalStyle())
-    precondition(alternate.isEmpty && document.history.count == 1)
+    precondition(alternate == 0 && document.history.count == 1)
     precondition(alternateBefore.rows[0].id != document.alternate.rows[1].id)
 
     document.primary.cursorRow = 0; document.primary.cursorColumn = 0
     let reverse = document.index(usingAlternate: false, reverse: true,
                                  leftRightMargins: false, eraseStyle: TerminalStyle())
-    precondition(reverse.isEmpty && document.history.count == 1)
+    precondition(reverse == 0 && document.history.count == 1)
     precondition(document.hasValidInvariants(document.primary) && document.hasValidInvariants(document.alternate))
 
     document.primary.leftMargin = 1; document.primary.rightMargin = 2
     document.primary.cursorRow = 1; document.primary.cursorColumn = 1
     let partial = document.index(usingAlternate: false, reverse: false,
                                  leftRightMargins: true, eraseStyle: TerminalStyle(background: 3))
-    precondition(partial.isEmpty && document.history.count == 1)
+    precondition(partial == 0 && document.history.count == 1)
     precondition(document.primary.rows[1].cells[1].style.background == 3 && document.primary.rows[1].cells[2].style.background == 3)
   }
 
@@ -412,7 +412,7 @@ import Foundation
       }
       var offset = 0, batchMutations = 0
       var last = TerminalDocument.PrintBatchEffect(
-        effect: .init(appendedHistory: [], lastPrinted: nil, repeatAttributes: nil),
+        effect: .init(appendedHistoryCount: 0, lastPrinted: nil, repeatAttributes: nil),
         consumedScalarCount: 0, mutationCount: 0)
       while offset < values.count {
         last = batch.print(values[offset...], usingAlternate: false, leftRightMargins: leftRightMargins,
@@ -488,13 +488,13 @@ import Foundation
     precondition(retainedAlternate.rows[0].cells.allSatisfy { $0.kind == 0 })
 
     // A span may fill a row, but the following scalar still owns the wrap and
-    // must yield its newly retained history row before further admission.
+    // must report its history append before further admission.
     var history = TerminalDocument(columns: 2, rows: 1)
     let yielded = history.print(Array("ABCD".unicodeScalars), usingAlternate: false,
                                 leftRightMargins: false, autoWrap: true, insertMode: false,
                                 attributes: attributes)
     precondition(yielded.consumedScalarCount == 3 && yielded.mutationCount == 3)
-    precondition(yielded.effect.appendedHistory.count == 1 && history.history.count == 1)
+    precondition(yielded.effect.appendedHistoryCount == 1 && history.history.count == 1)
     precondition(history.history[0].cells[0].text == "A" && history.history[0].cells[1].text == "B")
   }
 
@@ -513,11 +513,42 @@ import Foundation
                        autoWrap: true, insertMode: false, attributes: attributes)
     }
     precondition(effect.consumedScalarCount == offered.count && effect.mutationCount == offered.count)
-    precondition(effect.effect.appendedHistory.isEmpty && batch.history.isEmpty)
+    precondition(effect.effect.appendedHistoryCount == 0 && batch.history.isEmpty)
     precondition(batch.alternate == scalar.alternate)
     precondition(batch.alternate.rows.allSatisfy { $0.id != 0 })
     precondition(retained.rows.allSatisfy { $0.cells.allSatisfy { $0.kind == 0 } })
     precondition(retainedCells.allSatisfy { $0.kind == 0 })
+  }
+
+  static func appendCountsPreserveYieldAndIdentities() {
+    let attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
+    for columns in 1...2 {
+      var document = TerminalDocument(columns: columns, rows: 1)
+      _ = document.print(Array(String(repeating: "A", count: columns).unicodeScalars), usingAlternate: false,
+                         leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+      let oldID = document.primary.rows[0].id
+      let nextID = max(oldID, document.alternate.rows[0].id) + 1
+      let result = document.print(Array("界Z".unicodeScalars), usingAlternate: false,
+                                  leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+      precondition(result.consumedScalarCount == 1 && result.mutationCount == 1)
+      precondition(result.effect.appendedHistoryCount == 1 && document.history.count == 1)
+      precondition(document.history[0].id == oldID && document.primary.rows[0].id == nextID)
+      precondition(document.primary.rows[0].cells[0].text == "界")
+      precondition(document.hasValidInvariants(document.primary))
+      _ = document.index(usingAlternate: false, reverse: false, leftRightMargins: false, eraseStyle: TerminalStyle())
+      precondition(document.primary.rows[0].id == nextID + 1)
+    }
+    var growth = TerminalDocument(columns: 2, rows: 1)
+    _ = growth.print(Array("A©".unicodeScalars), usingAlternate: false, leftRightMargins: false,
+                     autoWrap: true, insertMode: false, attributes: attributes)
+    let nextID = max(growth.primary.rows[0].id, growth.alternate.rows[0].id) + 1
+    let result = growth.print(Array("\u{fe0f}Z".unicodeScalars), usingAlternate: false, leftRightMargins: false,
+                              autoWrap: true, insertMode: false, attributes: attributes)
+    precondition(result.consumedScalarCount == 1 && result.effect.appendedHistoryCount == 1)
+    precondition(growth.history.count == 1 && growth.primary.rows[0].id == nextID)
+    precondition(growth.primary.rows[0].cells[0].text == "©\u{fe0f}" && growth.primary.rows[0].cells[1].kind == 3)
+    _ = growth.index(usingAlternate: false, reverse: false, leftRightMargins: false, eraseStyle: TerminalStyle())
+    precondition(growth.primary.rows[0].id == nextID + 1)
   }
 
   static func discardedAlternateReuseRespectsSnapshots() {
@@ -576,6 +607,136 @@ import Foundation
     let reverse = indexed.alternate.rows[0]
     precondition(identity(reverse) == indexIdentity && reverse.id != forwardID && reverse.revision == 0)
     precondition(reverse.cells.allSatisfy { $0.style.background == 7 && $0.kind == 0 })
+  }
+
+  static func evictedPrimaryReuseRespectsSnapshots() {
+    final class WeakStorage {
+      weak var value: AnyObject?
+      init(_ value: AnyObject) { self.value = value }
+    }
+    func storage(_ row: TerminalRow) -> AnyObject {
+      Mirror(reflecting: row).children.first { $0.label == "storage" }!.value as AnyObject
+    }
+    func identity(_ row: TerminalRow) -> ObjectIdentifier { ObjectIdentifier(storage(row)) }
+    let attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(background: 7),
+                                                       link: "https://example.test/retired", protected: true)
+    func print(_ text: String, into document: inout TerminalDocument) {
+      _ = document.print(Array(text.unicodeScalars), usingAlternate: false,
+                         leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+    }
+    var document = TerminalDocument(columns: 3, rows: 1)
+    print("abcD", into: &document)
+    let evictedID = document.history[0].id
+    let evictedStorage = identity(document.history[0])
+    let liveStorage = WeakStorage(storage(document.history[0]))
+    precondition(document.trimHistory(rowLimit: 0, byteLimit: 0) == 1)
+    precondition(document.history.isEmpty && document.history.byteCount == 0)
+    // The single evicted row stays alive without retaining it in this test.
+    // This fails on the former allocate-every-primary-wrap implementation.
+    precondition(liveStorage.value != nil)
+    print("EFG", into: &document)
+    precondition(identity(document.primary.rows[0]) == evictedStorage)
+    precondition(document.primary.rows[0].id != evictedID && !document.primary.rows[0].softWrapped)
+    precondition(document.primary.rows[0].cells[0].text == "G")
+    precondition(document.primary.rows[0].cells.dropFirst().allSatisfy {
+      $0.text.isEmpty && $0.link == nil && $0.flags == 0 && !$0.protected && $0.style.background == 7
+    })
+    precondition(document.history.count == 1 && document.history[0].cells.map(\.text) == ["D", "E", "F"])
+    precondition(document.history.byteCount == document.history[0].retainedStorageCost)
+
+    // Keeping the result alive must not keep the appended row alive. Core
+    // needs only the admission count; the document owns the retained value.
+    var heldResult = TerminalDocument(columns: 3, rows: 1)
+    let result = heldResult.print(Array("abcD".unicodeScalars), usingAlternate: false,
+                                   leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+    let resultStorage = identity(heldResult.history[0])
+    _ = heldResult.trimHistory(rowLimit: 0, byteLimit: 0)
+    print("EFG", into: &heldResult)
+    withExtendedLifetime(result) {
+      precondition(identity(heldResult.primary.rows[0]) == resultStorage)
+      precondition(result.effect.appendedHistoryCount == 1 && result.effect.lastPrinted == "D")
+    }
+
+    var shared = TerminalDocument(columns: 3, rows: 1)
+    print("abcD", into: &shared)
+    let heldHistory = shared.history
+    let heldCells = shared.history[0].cells
+    let sharedStorage = identity(shared.history[0])
+    _ = shared.trimHistory(rowLimit: 0, byteLimit: 0)
+    print("EFG", into: &shared)
+    precondition(identity(shared.primary.rows[0]) != sharedStorage)
+    precondition(heldHistory[0].cells.map(\.text) == ["a", "b", "c"])
+    precondition(heldCells.map(\.text) == ["a", "b", "c"])
+    precondition(heldHistory.byteCount == heldHistory[0].retainedStorageCost)
+
+    var indexed = TerminalDocument(columns: 3, rows: 1)
+    print("abcD", into: &indexed)
+    let indexStorage = identity(indexed.history[0])
+    _ = indexed.trimHistory(rowLimit: 0, byteLimit: 0)
+    _ = indexed.index(usingAlternate: false, reverse: false, leftRightMargins: false,
+                      eraseStyle: TerminalStyle(background: 9))
+    precondition(identity(indexed.primary.rows[0]) == indexStorage)
+    precondition(indexed.primary.rows[0].revision == 0 && !indexed.primary.rows[0].softWrapped)
+    precondition(indexed.primary.rows[0].cells.allSatisfy {
+      $0.text.isEmpty && $0.kind == 0 && $0.link == nil && $0.flags == 0 && !$0.protected && $0.style.background == 9
+    })
+    precondition(indexed.primary.rows[0].retainedStorageCost == 32 + UInt64(indexed.primary.rows[0].retainedCellCapacity) * 64)
+
+    // Geometry changes consume the same bounded cache but allocate a correctly
+    // shaped row; clearHistory releases even that one retirement candidate.
+    _ = indexed.trimHistory(rowLimit: 0, byteLimit: 0)
+    indexed.setSize(columns: 4, rows: 1)
+    let resized = indexed.eraseRow(TerminalStyle(background: 5))
+    precondition(resized.count == 4 && resized.cells.allSatisfy { $0.kind == 0 && $0.style.background == 5 })
+    var clearing = TerminalDocument(columns: 3, rows: 1)
+    print("abcD", into: &clearing)
+    let clearedStorage = WeakStorage(storage(clearing.history[0]))
+    _ = clearing.trimHistory(rowLimit: 0, byteLimit: 0)
+    precondition(clearedStorage.value != nil)
+    clearing.clearHistory()
+    precondition(clearedStorage.value == nil)
+
+    // A large trim keeps exactly one candidate, not the entire evicted prefix.
+    var many = TerminalDocument(columns: 3, rows: 1)
+    var oldOwners: [WeakStorage] = []
+    for _ in 0..<8 {
+      _ = many.index(usingAlternate: false, reverse: false, leftRightMargins: false, eraseStyle: TerminalStyle())
+      oldOwners.append(WeakStorage(storage(many.history.last!)))
+    }
+    precondition(many.trimHistory(rowLimit: 0, byteLimit: 0) == 8)
+    precondition(oldOwners.dropLast().allSatisfy { $0.value == nil } && oldOwners.last!.value != nil)
+
+    // After warmup, repeated cap-pressure LF alternates two storage objects.
+    // These IDs do not retain storage and therefore cannot manufacture COW.
+    var steady = TerminalDocument(columns: 512, rows: 1)
+    var owners: Set<ObjectIdentifier> = [identity(steady.primary.rows[0])]
+    for _ in 0..<2_000 {
+      _ = steady.index(usingAlternate: false, reverse: false, leftRightMargins: false, eraseStyle: TerminalStyle())
+      owners.insert(identity(steady.primary.rows[0]))
+      precondition(steady.trimHistory(rowLimit: 0, byteLimit: 0) == 1)
+    }
+    precondition(owners.count == 2)
+
+    // Row count alone is not a memory bound: distinct OSC 8 links can make
+    // even a narrow row expensive. Its cached history charge must reject it
+    // without keeping the row or scanning its cells again during eviction.
+    var oversized = TerminalHistory()
+    func appendLinkedRow(to history: inout TerminalHistory) -> WeakStorage {
+      var row = TerminalRow(columns: 64)
+      for column in 0..<64 {
+        let suffix = String(column)
+        let link = String(repeating: "x", count: 8192 - suffix.utf8.count) + suffix
+        row.setCell(TerminalCell(text: "x", kind: 1, link: link), at: column)
+      }
+      precondition(row.retainedStorageCost > 256 * 1024)
+      let reference = WeakStorage(storage(row))
+      history.append(row)
+      return reference
+    }
+    let oversizedStorage = appendLinkedRow(to: &oversized)
+    precondition(oversizedStorage.value != nil)
+    precondition(oversized.trim(rows: 0, bytes: 0) == 1 && oversized.byteCount == 0)
+    precondition(oversizedStorage.value == nil)
   }
 
   static func historyOwnerChargesAndTrimsOnce() {
@@ -783,6 +944,8 @@ import Foundation
     asciiSpanMatchesScalarTransactions()
     alternateMultiwrapBatchDoesNotYieldForReplacements()
     discardedAlternateReuseRespectsSnapshots()
+    evictedPrimaryReuseRespectsSnapshots()
+    appendCountsPreserveYieldAndIdentities()
     historyOwnerChargesAndTrimsOnce()
     scalarStorageChargesUTF8WithoutRichText()
     historyOwnerRetainsSnapshotsAndHeterogeneousBoundaries()
