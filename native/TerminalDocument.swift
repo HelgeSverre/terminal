@@ -20,6 +20,18 @@ struct TerminalRow: Equatable {
   var id: UInt64; var revision: UInt64; var cells: [TerminalCell]; var softWrapped = false
   init(id: UInt64 = 0, revision: UInt64 = 0, cells: [TerminalCell]) { self.id = id; self.revision = revision; self.cells = cells }
   init(columns: Int) { self.init(cells: Array(repeating: TerminalCell(), count: columns)) }
+  // History charges fixed row/cell storage and referenced UTF-8 payloads.
+  // Shared links and inline strings are charged per retained cell; this is
+  // an ownership budget, rather than a measurement of allocator/RSS overhead.
+  var retainedStorageCost: UInt64 {
+    var bytes = UInt64(MemoryLayout<Self>.stride)
+      + UInt64(cells.capacity) * UInt64(MemoryLayout<TerminalCell>.stride)
+    for cell in cells {
+      bytes += UInt64(cell.text.utf8.count)
+      if let link = cell.link { bytes += UInt64(link.utf8.count) }
+    }
+    return bytes
+  }
 }
 struct PromptAnchor: Equatable {
   var row: UInt64

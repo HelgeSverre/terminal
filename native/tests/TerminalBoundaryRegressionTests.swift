@@ -141,6 +141,25 @@ import Foundation
     try expect(terminal_resize(bytesTerminal, 32, 2), "wide resize rejected")
     try expect(terminal_history_bytes(bytesTerminal) <= limit, "reflow exceeded byte retention")
   }
+  static func historyStorageCharge() throws {
+    let wide = terminal_create(80, 1)!
+    defer { terminal_destroy(wide) }
+    // A retained row cannot cost less than its fixed cell slots, even when
+    // almost every cell is blank. Keep the budget below that lower bound.
+    let belowCellStorage = UInt64(80 * MemoryLayout<TerminalCell>.stride - 1)
+    terminal_set_history_byte_limit(wide, belowCellStorage)
+    try feed(wide, "A\r\nB\r\nC")
+    try expect((try snapshot(wide))["history_rows"] as? Int == 0, "history budget omitted fixed cell storage")
+    try expect(terminal_history_bytes(wide) == 0, "evicted cell storage remained charged")
+
+    let linked = terminal_create(4, 1)!
+    defer { terminal_destroy(linked) }
+    terminal_set_history_byte_limit(linked, 1_024)
+    let url = "https://example.test/" + String(repeating: "x", count: 4_096)
+    try feed(linked, "\u{1b}]8;;\(url)\u{7}A\u{1b}]8;;\u{7}\r\nB")
+    try expect((try snapshot(linked))["history_rows"] as? Int == 0, "history budget omitted hyperlink content")
+    try expect(terminal_history_bytes(linked) == 0, "evicted hyperlink remained charged")
+  }
   #endif
   static func readiness() throws {
     let terminal = terminal_create(12, 3)!
@@ -223,6 +242,7 @@ import Foundation
     ]
     #if !RUST_BASELINE
     cases.append(("byte-retention", resizeByteRetention))
+    cases.append(("history-storage", historyStorageCharge))
     #endif
     do {
       let selected = CommandLine.arguments.dropFirst().first

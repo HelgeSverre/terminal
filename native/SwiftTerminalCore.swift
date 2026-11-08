@@ -291,7 +291,7 @@ private final class SwiftTerminalCore {
       leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
       attributes: TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)) else { return }
     if !effect.appendedHistory.isEmpty {
-      for row in effect.appendedHistory { historyByteCount &+= rowStorageBytes(row) }
+      for row in effect.appendedHistory { historyByteCount &+= row.retainedStorageCost }
       if viewAnchor != nil { viewOffset += effect.appendedHistory.count }
       enforceHistoryLimits()
       historyEpoch &+= 1
@@ -442,7 +442,7 @@ private final class SwiftTerminalCore {
       else { removed = s.rows.remove(at: bottom); s.rows.insert(document.eraseRow(eraseStyle()), at: top) }
       if up && allowHistory && !usingAlternate && top == 0 && bottom == rowCount - 1 {
         history.append(removed)
-        historyByteCount &+= rowStorageBytes(removed)
+        historyByteCount &+= removed.retainedStorageCost
         if viewAnchor != nil { viewOffset += 1 }
         enforceHistoryLimits()
         historyEpoch &+= 1
@@ -686,7 +686,7 @@ private final class SwiftTerminalCore {
     let mapped = document.reflowPrimary(columns: nextColumns, rows: nextRows, anchor: viewAnchor)
     let resizedAlternate = document.resize(oldAlternate, columns: nextColumns, rows: nextRows)
     columns = nextColumns; rowCount = nextRows; alternate = resizedAlternate
-    historyByteCount = UInt64(history.reduce(0) { $0 + Int(rowStorageBytes($1)) })
+    historyByteCount = history.reduce(0) { $0 + $1.retainedStorageCost }
     enforceHistoryLimits()
     viewAnchor = mapped.anchor ?? viewAnchor
     resolveViewportAnchor(clamp: true)
@@ -725,14 +725,11 @@ private final class SwiftTerminalCore {
     guard viewAnchor != nil else { return }
     if let row = history.first ?? primary.rows.first { viewAnchor = row.id; viewOffset = history.first == nil ? 0 : history.count; if !viewportWasClamped { viewportClampRevision &+= 1; viewportWasClamped = true } }
   }
-  private func rowStorageBytes(_ row: SwiftRow) -> UInt64 {
-    UInt64(row.cells.count + row.cells.reduce(0) { $0 + $1.text.utf8.count })
-  }
   private func enforceHistoryLimits() {
     let retainedAnchor = viewAnchor
     var evicted = false
     while history.count > historyLimit || (historyByteCount > UInt64(historyByteLimit) && !history.isEmpty) {
-      historyByteCount &-= rowStorageBytes(history.removeFirst())
+      historyByteCount &-= history.removeFirst().retainedStorageCost
       evicted = true
     }
     if evicted, let retainedAnchor,
