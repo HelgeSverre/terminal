@@ -309,7 +309,20 @@ private final class SwiftTerminalCore {
   }
   func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool { guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows) else { return false }; columns = nextColumns; rowCount = nextRows; primary = resized(primary); alternate = resized(alternate); viewOffset = min(viewOffset, history.count); changed(geometry: true); return true }
   func resize(columns nextColumns: Int, rows nextRows: Int, cellWidth: Int, cellHeight: Int) -> Bool { guard resize(columns: nextColumns, rows: nextRows) else { return false }; cellPixelWidth = max(1, cellWidth); cellPixelHeight = max(1, cellHeight); return true }
-  private func resized(_ old: SwiftScreen) -> SwiftScreen { var value = SwiftScreen(columns: columns, rows: rowCount); let start = max(0, old.rows.count - rowCount); for (target, source) in old.rows.suffix(rowCount).enumerated() { var row = SwiftRow(columns: columns); for i in 0..<min(columns, source.cells.count) { row.cells[i] = source.cells[i] }; row.softWrapped = source.softWrapped; value.rows[target] = row }; value.cursorRow = min(rowCount - 1, max(0, old.cursorRow - start)); value.cursorColumn = min(columns - 1, old.cursorColumn); return value }
+  private func resized(_ old: SwiftScreen) -> SwiftScreen {
+    var value = SwiftScreen(rows: [])
+    for _ in 0..<rowCount { value.rows.append(document.blankRow()) }
+    let start = max(0, old.rows.count - rowCount)
+    for (target, source) in old.rows.suffix(rowCount).enumerated() {
+      // Retain identity and rich cell attributes for physical rows that survive
+      // a resize; only newly exposed rows receive fresh document identities.
+      var row = source
+      row.cells = Array(source.cells.prefix(columns))
+      if row.cells.count < columns { row.cells.append(contentsOf: repeatElement(TerminalCell(), count: columns - row.cells.count)) }
+      value.rows[target] = row
+    }
+    value.cursorRow = min(rowCount - 1, max(0, old.cursorRow - start)); value.cursorColumn = min(columns - 1, old.cursorColumn); return value
+  }
   func scroll(_ amount: Int) { viewOffset = max(0, min(history.count, viewOffset + amount)); changed() }
   func followTail() { viewOffset = 0; changed() }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); if history.count > historyLimit { history.removeFirst(history.count - historyLimit); historyEpoch &+= 1 }; viewOffset = min(viewOffset, history.count) }
