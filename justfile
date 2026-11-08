@@ -242,11 +242,18 @@ metal-upload-probe:
 glyph-rendering-tests: build _glyph-rendering-tests
 
 [private]
-_glyph-rendering-tests:
+_glyph-rendering-tests: _glyph-raster-tests _glyph-residency-tests
+
+[private]
+_glyph-raster-tests:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print glyph_raster_worker) -framework AppKit -framework CoreText -o target/native/glyph-raster-worker-tests
     target/native/glyph-raster-worker-tests
+
+[private]
+_glyph-residency-tests:
+    mkdir -p target/native
     xcrun swiftc -D GLYPH_RESIDENCY_TESTING $(xcrun swift tools/SwiftIncrementalBuild.swift --print glyph_residency) -framework AppKit -framework CoreText -framework Metal -o target/native/glyph-residency-tests
     target/native/glyph-residency-tests
 
@@ -255,17 +262,23 @@ _glyph-rendering-tests:
 # a GPU pass; local/default gates still execute the residency test normally.
 [private]
 glyph-rendering-ci:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _glyph-raster-tests
     mkdir -p reports/gpu-policy target/native
+    rm -f reports/gpu-policy/glyph-residency.json
     xcrun swiftc -parse-as-library $(xcrun swift tools/SwiftIncrementalBuild.swift --print metal_upload_probe) -framework Metal -o target/native/metal-upload-probe
     set +e
     target/native/metal-upload-probe 2>&1 | tee reports/gpu-policy/metal-upload-probe.log
-    probe_status=${PIPESTATUS[0]}
+    pipeline_status=("${PIPESTATUS[@]}")
     set -e
+    probe_status="${pipeline_status[0]}"
+    if [[ "${pipeline_status[1]}" != "0" ]]; then exit "${pipeline_status[1]}"; fi
     if [[ "$probe_status" == "139" ]] && grep -q 'METAL_UPLOAD_DEVICE=name=Apple Paravirtual' reports/gpu-policy/metal-upload-probe.log && grep -q 'METAL_UPLOAD_PROBE=after_shared_texture_replace' reports/gpu-policy/metal-upload-probe.log && grep -q 'METAL_UPLOAD_PROBE=before_shared_heap_texture_replace' reports/gpu-policy/metal-upload-probe.log; then
     printf '%s\n' '{"status":"skipped","reason":"Apple Paravirtual SIGSEGV on shared heap texture replace after standalone upload passed","local_real_gpu_required":true}' > reports/gpu-policy/glyph-residency.json
     echo 'SKIPPED glyph residency: hosted Apple Paravirtual shared-heap upload driver fault; local real-GPU gate remains required'
     elif [[ "$probe_status" == "0" ]]; then
-    just _glyph-rendering-tests
+    just _glyph-residency-tests
     else
     exit "$probe_status"
     fi
