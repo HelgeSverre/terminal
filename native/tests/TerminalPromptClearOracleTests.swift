@@ -103,6 +103,20 @@ import Foundation
     for (marker, expected) in [("A", true), ("B", true), ("C", false), ("D;0", false), ("A;k=v", true)] { feed(markers, "\u{1b}]133;\(marker)\u{7}"); precondition(snapshot(markers)["at_prompt"] as! Bool == expected) }
     feed(markers, "\u{1b}c"); precondition(!(snapshot(markers)["at_prompt"] as! Bool))
   }
+  static func promptPhasePublishesInputReadiness() {
+    let terminal = make(); defer { terminal_destroy(terminal) }
+    feed(terminal, "\u{1b}]133;A;redraw=1\u{7}")
+    var value = snapshot(terminal)
+    precondition(value["at_prompt"] as? Bool == true && value["input_ready"] as? Bool == false)
+    feed(terminal, "\u{1b}]133;B\u{7}")
+    value = snapshot(terminal)
+    precondition(value["at_prompt"] as? Bool == true && value["input_ready"] as? Bool == true)
+    for marker in ["C", "D;0"] {
+      feed(terminal, "\u{1b}]133;\(marker)\u{7}")
+      value = snapshot(terminal)
+      precondition(value["at_prompt"] as? Bool == false && value["input_ready"] as? Bool == false)
+    }
+  }
   static func clearDropsOnlyPrimaryImages() {
     let t = make(8, 3); defer { terminal_destroy(t) }
     feed(t, "\u{1b}_Ga=T,f=24,s=1,v=1,i=1,C=1;AQID\u{1b}\\")
@@ -116,7 +130,7 @@ import Foundation
   }
   static func main() {
     promptClearsBeforeShellRedraw(); plainPromptAndPrefixSurvive(); fullWidthAndWidePrefixesSurvive()
-    alternatePixelEvictionAndCommandBoundaries(); promptClearPreservesModesAndRebasesAnchor(); unmarkedAlternateAndMarkers(); clearDropsOnlyPrimaryImages()
+    alternatePixelEvictionAndCommandBoundaries(); promptClearPreservesModesAndRebasesAnchor(); unmarkedAlternateAndMarkers(); promptPhasePublishesInputReadiness(); clearDropsOnlyPrimaryImages()
     print("PASS Prompt/reflow and display-clear oracles: 16 Rust scenarios through Swift ABI")
   }
 }

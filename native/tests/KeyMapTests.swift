@@ -38,6 +38,21 @@ private final class Capture { var data = Data() }
     ] {
       precondition(encode(UInt16(code), expected) == Data(expected.utf8))
     }
+    let localizedKeypad = NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+      windowNumber: 0, context: nil, characters: ",", charactersIgnoringModifiers: ".",
+      isARepeat: false, keyCode: 65)!
+    guard case .encoded(let localizedKey, let localizedText, let localizedModifiers) = NativeKeyMap.route(localizedKeypad) else {
+      fatalError("localized keypad must route to terminal")
+    }
+    let localizedCapture = Capture()
+    precondition(terminal_input(
+      core, localizedText, localizedKey, localizedModifiers, 0,
+      Unmanaged.passUnretained(localizedCapture).toOpaque(), { context, bytes, count in
+        guard let context, let bytes else { return }
+        Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().data.append(bytes, count: count)
+      }))
+    precondition(localizedCapture.data == Data(",".utf8))
     feed("\u{1b}=")
     precondition(encode(76) == Data("\u{1b}OM".utf8))
     precondition(encode(36) == Data([13]))

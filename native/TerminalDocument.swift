@@ -32,7 +32,7 @@ struct TerminalScreen: Equatable {
   var savedStyle = TerminalStyle(); var savedLink: String?
   var keyboardFlags: UInt32 = 0
   // OSC 133 prompt identity is screen-local and survives resize by row ID.
-  var atPrompt = false; var promptRedraw = false
+  var atPrompt = false; var inputReady = false; var promptRedraw = false
   var promptAnchor: PromptAnchor?
   var topMargin: Int; var bottomMargin: Int; var leftMargin: Int; var rightMargin: Int
   init(rows: [TerminalRow], columns: Int) {
@@ -88,7 +88,7 @@ struct TerminalDocument {
   mutating func clearPromptSuffix(_ screen: inout TerminalScreen, eraseStyle: TerminalStyle) -> Bool {
     guard let anchor = screen.promptAnchor,
           let rowIndex = screen.rows.firstIndex(where: { $0.id == anchor.row }) else {
-      screen.promptAnchor = nil; screen.promptRedraw = false; screen.atPrompt = false
+      screen.promptAnchor = nil; screen.promptRedraw = false; screen.atPrompt = false; screen.inputReady = false
       return false
     }
     if !anchor.pendingWrap {

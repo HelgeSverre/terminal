@@ -82,9 +82,11 @@ import Foundation
     let saved = make(4, 2); defer { terminal_destroy(saved) }
     feed(saved, "\u{1b}[31mabcd\u{1b}7\u{1b}[0m\rX\u{1b}8e")
     precondition(line(snapshot(saved), 0).hasPrefix("Xbcd") && (cell(snapshot(saved), 1, 0)["style"] as! [String: Any])["foreground"] as? [String: Int] == ["Indexed": 1])
-    let colors = make(); defer { terminal_destroy(colors) }
-    for code in ["38;2;12;34;56", "38:2::12:34:56", "38:2:12:34:56"] { feed(colors, "\u{1b}[\(code)mX") }
-    precondition((cell(snapshot(colors), 0, 2)["style"] as! [String: Any])["foreground"] as? [String: [Int]] == ["Rgb": [12, 34, 56]])
+    for code in ["38;2;12;34;56", "38:2::12:34:56", "38:2:12:34:56"] {
+      let colors = make(); defer { terminal_destroy(colors) }
+      feed(colors, "\u{1b}[\(code)mX")
+      precondition((cell(snapshot(colors), 0, 0)["style"] as! [String: Any])["foreground"] as? [String: [Int]] == ["Rgb": [12, 34, 56]])
+    }
     let overflow = make(); defer { terminal_destroy(overflow) }
     feed(overflow, "abc\u{1b}[4294967296DZ"); precondition(line(snapshot(overflow), 0).hasPrefix("abcZ"))
     let protected = make(); defer { terminal_destroy(protected) }
@@ -138,6 +140,15 @@ import Foundation
       let terminal = make(40, 2); defer { terminal_destroy(terminal) }; feed(terminal, Data(bytes)); terminal_finish(terminal)
       let rendered = line(snapshot(terminal), 0).trimmingCharacters(in: .whitespaces)
       guard rendered == String(decoding: bytes, as: UTF8.self) else { fatalError("utf8 \(bytes): \(rendered.debugDescription) != \(String(decoding: bytes, as: UTF8.self).debugDescription)") }
+    }
+    for (bytes, expected) in [([UInt8](arrayLiteral: 0xf0, 0x41), "�A"), ([0xe0, 0x80], "��"), ([0xe1, 0x80, 0x41], "�A")] {
+      let whole = make(40, 2); defer { terminal_destroy(whole) }; feed(whole, Data(bytes)); terminal_finish(whole)
+      let chunked = make(40, 2); defer { terminal_destroy(chunked) }
+      for byte in bytes { feed(chunked, Data([byte])) }
+      terminal_finish(chunked)
+      let wholeText = line(snapshot(whole), 0).trimmingCharacters(in: .whitespaces)
+      let chunkedText = line(snapshot(chunked), 0).trimmingCharacters(in: .whitespaces)
+      precondition(wholeText == expected && chunkedText == expected)
     }
     let eof = make(); defer { terminal_destroy(eof) }
     feed(eof, "a\u{1b}[12;"); terminal_finish(eof); precondition(line(snapshot(eof), 0).hasPrefix("a"))
@@ -196,6 +207,21 @@ import Foundation
     payload.append(Data("\u{1b}[2J\u{1b}\\b".utf8))
     feed(strings, payload)
     guard line(snapshot(strings), 0).hasPrefix("ab") else { fatalError("discard \(line(snapshot(strings), 0).debugDescription)") }
+    let bel = make(); defer { terminal_destroy(bel) }
+    var oversizedBEL = Data("a\u{1b}]2;".utf8)
+    oversizedBEL.append(Data(repeating: UInt8(ascii: "x"), count: 70_000))
+    oversizedBEL.append(Data("\u{7}b".utf8))
+    feed(bel, oversizedBEL)
+    precondition(line(snapshot(bel), 0).hasPrefix("ab"))
+  }
+
+  static func viewportStaysAnchoredWithoutEviction() {
+    let terminal = make(4, 2); defer { terminal_destroy(terminal) }
+    feed(terminal, "a\r\nb\r\nc\r\nd")
+    terminal_view_scroll(terminal, 1)
+    feed(terminal, "\r\ne")
+    let value = snapshot(terminal)
+    precondition(line(value, 0).hasPrefix("b") && line(value, 1).hasPrefix("c"))
   }
 
   static func cappedGraphemeKeepsIncrementalBoundaryState() {
@@ -205,6 +231,16 @@ import Foundation
     precondition(cell(value, 0, 2)["text"] as? String == "X")
     precondition((cell(value, 0, 0)["text"] as! String).unicodeScalars.count == 64)
     precondition(((cell(value, 0, 0)["flags"] as! Int) & 4) != 0)
+    let exactCap = make(); defer { terminal_destroy(exactCap) }
+    feed(exactCap, "👩" + String(repeating: "\u{301}", count: 62) + "\u{200d}👩X")
+    let exact = snapshot(exactCap)
+    precondition((cell(exact, 0, 0)["text"] as! String).unicodeScalars.count == 64)
+    precondition(((cell(exact, 0, 0)["flags"] as! Int) & 4) != 0 && cell(exact, 0, 2)["text"] as? String == "X")
+    let nonEmoji = make(); defer { terminal_destroy(nonEmoji) }
+    feed(nonEmoji, "a\u{200d}👩X")
+    let separated = snapshot(nonEmoji)
+    precondition(cell(separated, 0, 0)["text"] as? String == "a\u{200d}")
+    precondition(cell(separated, 0, 1)["kind"] as? String == "Lead2" && cell(separated, 0, 3)["text"] as? String == "X")
   }
 
   static func physicalKeyMetadataUsesABI() {
@@ -270,6 +306,7 @@ import Foundation
     decCharsetPartitionsAndHistoryBounds(); utf8EOFEditingAndResetSemantics(); displayClusterAndMalformedOSC()
     bytePartitionsAgree()
     clustersAndDiscardBound()
+    viewportStaysAnchoredWithoutEviction()
     cappedGraphemeKeepsIncrementalBoundaryState()
     physicalKeyMetadataUsesABI()
     snapshotsAreImmutableAndIngressIsPartitionIndependent()

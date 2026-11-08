@@ -23,7 +23,10 @@ enum NativeKeyMap {
     let optionEsc = TerminalPreferences.load().optionSendsEscape
     let nativeOption = flags & 2 != 0 && !optionEsc && flags & (4 | 8) == 0
     if let key = special[event.keyCode], !(nativeOption && isTextKeypad(key)) {
-      return .encoded(key: key, text: event.charactersIgnoringModifiers ?? "", modifiers: flags)
+      // Numeric keypad symbols are physical-key metadata. In legacy numeric
+      // mode the PTY must receive AppKit's committed text, which can differ
+      // from the unshifted/logical layout symbol (for example `,` vs `.`).
+      return .encoded(key: key, text: event.characters ?? event.charactersIgnoringModifiers ?? "", modifiers: flags)
     }
     if flags & 4 != 0 || (flags & 2 != 0 && optionEsc) {
       return .encoded(key: 200, text: event.charactersIgnoringModifiers ?? "", modifiers: flags)

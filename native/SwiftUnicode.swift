@@ -99,6 +99,19 @@ enum SwiftUnicode {
           output.append("\u{fffd}"); offset += 1; continue
         }
         guard pending.count - offset >= length else {
+          // A non-continuation (or an impossible second byte) proves the
+          // candidate invalid before its nominal length arrives. Preserve the
+          // following printable byte for the next scalar instead of holding it
+          // until EOF. For an incomplete but viable prefix, maximal-subpart
+          // handling consumes the remaining prefix at EOF.
+          let available = Array(pending[offset..<pending.count])
+          let secondIsPossible = available.count < 2 || {
+            let second = available[1]
+            guard second & 0xc0 == 0x80 else { return false }
+            switch first { case 0xe0: return second >= 0xa0; case 0xed: return second <= 0x9f; case 0xf0: return second >= 0x90; case 0xf4: return second <= 0x8f; default: return true }
+          }()
+          let continuationsAreValid = available.dropFirst(2).allSatisfy { $0 & 0xc0 == 0x80 }
+          if !secondIsPossible || !continuationsAreValid { output.append("\u{fffd}"); offset += 1; continue }
           if endOfInput {
             // The remaining bytes form one incomplete maximal subpart.
             output.append("\u{fffd}"); offset = pending.count
@@ -108,15 +121,19 @@ enum SwiftUnicode {
         }
         var value = UInt32(first & ((1 << (8 - length - 1)) - 1))
         var valid = true
+        var invalidIndex: Int?
         for index in 1..<length {
           let byte = pending[offset + index]
-          guard byte & 0xc0 == 0x80 else { valid = false; break }
+          guard byte & 0xc0 == 0x80 else { valid = false; invalidIndex = index; break }
           value = (value << 6) | UInt32(byte & 0x3f)
         }
         if valid, value >= minimum, value <= 0x10ffff, !(0xd800...0xdfff).contains(value), let scalar = Unicode.Scalar(value) {
           output.append(scalar); offset += length
         } else {
-          output.append("\u{fffd}"); offset += 1
+          output.append("\u{fffd}")
+          // The maximal invalid subpart includes continuations before the
+          // first non-continuation, leaving that byte to decode normally.
+          offset += invalidIndex ?? 1
         }
       }
       pending.removeFirst(offset)
