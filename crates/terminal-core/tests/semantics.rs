@@ -475,6 +475,136 @@ fn selective_erase_protects_whole_wide_glyph() {
     assert_eq!(lines(&t)[0], "猫");
 }
 #[test]
+fn osc133_prompt_is_cleared_before_reflowed_shell_redraw() {
+    let mut t = terminal(
+        64,
+        12,
+        "\x1b]133;A;redraw=1\x07RESIZE_PROMPT\r\n> RESIZE_BUFFER\x1b[K\x1b[46CRESIZE_RPROMPT\x1b[60D",
+    );
+    let wide_redraw =
+        "\r\r\x1b[A\x1b[JRESIZE_PROMPT\r\n> RESIZE_BUFFER\x1b[K\x1b[80CRESIZE_RPROMPT\x1b[94D";
+    let narrow_redraw = "\r\r\x1b[A\x1b[JRESIZE_PROMPT\r\n> RESIZE_BUFFER";
+    for _ in 0..5 {
+        t.resize(111, 12).unwrap();
+        feed(&mut t, wide_redraw);
+        t.resize(17, 12).unwrap();
+        feed(&mut t, narrow_redraw);
+        assert!(t.check_invariants());
+        assert_eq!(t.copy_all().matches("RESIZE_PROMPT").count(), 1);
+    }
+}
+#[test]
+fn plain_osc133_prompt_is_preserved_across_reflow() {
+    let mut t = terminal(16, 5, "\x1b]133;A\x07PROMPT\r\n> BUFFER");
+    assert!(!t.primary.prompt_redraw);
+    t.resize(8, 5).unwrap();
+    assert!(t.copy_all().contains("PROMPT"));
+    assert!(t.copy_all().contains("BUFFER"));
+    assert!(t.check_invariants());
+}
+#[test]
+fn redrawable_prompt_reflow_preserves_prefix_before_mid_row_marker() {
+    let mut t = terminal(
+        16,
+        4,
+        "\x1b]8;;https://example.test\x1b\\\x1b[31mKEEP\x1b[0m\x1b]8;;\x1b\\  \x1b]133;A;redraw=1\x07PROMPT\r\n> BUFFER",
+    );
+    t.resize(8, 4).unwrap();
+    assert!(t.copy_all().contains("KEEP  "));
+    assert_eq!(
+        t.primary.rows[0]
+            .style(t.primary.rows[0].cells[0])
+            .foreground,
+        Color::Indexed(1)
+    );
+    assert_eq!(
+        t.primary.rows[0]
+            .link(t.primary.rows[0].cells[0])
+            .as_deref(),
+        Some("https://example.test")
+    );
+    assert!(!t.copy_all().contains("PROMPT"));
+    assert!(t.check_invariants());
+}
+#[test]
+fn redrawable_prompt_after_full_width_prefix_preserves_the_last_cell() {
+    let mut t = terminal(4, 4, "KEEP\x1b]133;A;redraw=1\x07PROMPT");
+    assert!(t.primary.prompt_start.unwrap().pending_wrap);
+    t.resize(8, 4).unwrap();
+    assert!(t.copy_all().contains("KEEP"));
+    t.resize(4, 4).unwrap();
+    t.resize(8, 4).unwrap();
+    assert!(t.copy_all().contains("KEEP"));
+    assert!(t.check_invariants());
+}
+#[test]
+fn redrawable_prompt_after_full_width_wide_prefix_survives_shrink_and_grow() {
+    let mut t = terminal(4, 4, "猫猫\x1b]133;A;redraw=1\x07PROMPT");
+    assert!(t.primary.prompt_start.unwrap().pending_wrap);
+    t.resize(8, 4).unwrap();
+    assert!(t.copy_all().contains("猫猫"));
+    t.resize(4, 4).unwrap();
+    t.resize(8, 4).unwrap();
+    assert!(t.copy_all().contains("猫猫"));
+    assert!(t.check_invariants());
+}
+#[test]
+fn redrawable_prompt_boundary_survives_shrink_then_grow() {
+    let mut t = terminal(8, 4, "LASTCELL\x1b]133;A;redraw=1\x07PROMPT");
+    assert!(t.primary.prompt_start.unwrap().pending_wrap);
+    t.resize(4, 4).unwrap();
+    t.resize(8, 4).unwrap();
+    assert!(t.copy_all().contains("LASTCELL"));
+    assert!(t.check_invariants());
+}
+#[test]
+fn redrawable_primary_prompt_survives_alternate_screen_resize() {
+    let mut t = terminal(
+        16,
+        5,
+        "\x1b]133;A;redraw=1\x07PROMPT\r\n> BUFFER\x1b[?1049hALT",
+    );
+    t.resize(8, 5).unwrap();
+    feed(&mut t, "\x1b[?1049l");
+    assert!(t.copy_all().contains("PROMPT"));
+    assert!(t.copy_all().contains("BUFFER"));
+    assert!(t.check_invariants());
+}
+#[test]
+fn pixel_only_resize_does_not_clear_redrawable_prompt() {
+    let mut t = terminal(16, 5, "\x1b]133;A;redraw=1\x07PROMPT\r\n> BUFFER");
+    t.resize_pixels(16, 5, 12, 24).unwrap();
+    assert!(t.copy_all().contains("PROMPT"));
+    assert!(t.copy_all().contains("BUFFER"));
+    assert!(t.check_invariants());
+}
+#[test]
+fn evicted_prompt_marker_is_not_rebound_to_live_row_zero() {
+    let mut t = terminal(
+        8,
+        4,
+        "\x1b]133;A;redraw=1\x07PROMPT\r\nrow one\r\nrow two\r\nrow three",
+    );
+    t.resize(8, 2).unwrap();
+    assert!(t.primary.prompt_start.is_none());
+    assert!(!t.primary.prompt_redraw);
+    t.resize(8, 4).unwrap();
+    assert!(t.primary.prompt_start.is_none());
+    assert!(!t.primary.prompt_redraw);
+    assert!(t.check_invariants());
+}
+#[test]
+fn prompt_reflow_clear_keeps_pre_prompt_output_and_stops_after_command_start() {
+    let mut t = terminal(16, 5, "OUTPUT\r\n\x1b]133;A;redraw=1\x07PROMPT\r\n> BUFFER");
+    t.resize(8, 5).unwrap();
+    assert!(t.copy_all().contains("OUTPUT"));
+    assert!(!t.copy_all().contains("PROMPT"));
+    feed(&mut t, "\x1b]133;C\x07RUNNING");
+    t.resize(16, 5).unwrap();
+    assert!(t.copy_all().contains("RUNNING"));
+    assert!(t.check_invariants());
+}
+#[test]
 fn saved_cursor_excludes_appearance() {
     let t = terminal(8, 2, "abc\x1b7\x1b[?25l\x1b[5 q\x1b8");
     assert!(!t.primary.cursor.visible);

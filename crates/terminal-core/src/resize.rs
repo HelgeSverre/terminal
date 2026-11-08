@@ -35,6 +35,30 @@ impl Terminal {
         let old_height = self.height;
         let old_cols = self.cols;
         let old_start = self.history.len();
+        let prompt_start = self.primary.prompt_start.and_then(|anchor| {
+            self.primary
+                .rows
+                .iter()
+                .position(|row| row.id == anchor.row)
+                .map(|row| {
+                    (
+                        row,
+                        (anchor.col + usize::from(anchor.pending_wrap)).min(old_cols),
+                    )
+                })
+        });
+        let prompt_start_source = prompt_start.map(|(row, col)| (old_start + row, col));
+        if !self.is_alternate
+            && cols != old_cols
+            && self.primary.at_prompt
+            && self.primary.prompt_redraw
+            && let Some((prompt_start, prompt_col)) = prompt_start
+        {
+            for (index, row) in self.primary.rows.iter_mut().enumerate().skip(prompt_start) {
+                let start = if index == prompt_start { prompt_col } else { 0 };
+                Arc::make_mut(row).erase(start, old_cols, &Style::default(), false);
+            }
+        }
         let view_anchor = self.primary_view_anchor();
         let mut view_map = view_anchor;
         let current = (
@@ -57,6 +81,7 @@ impl Terminal {
         let mut cursor_map = (0, 0, false);
         let mut saved_map = (0, 0, false);
         let mut start_map = 0;
+        let mut prompt_start_map = None;
         if cols != old_cols {
             self.graphics.clear_screen(false);
         }
@@ -67,6 +92,8 @@ impl Terminal {
             cursor_map = current;
             saved_map = saved;
             start_map = old_start;
+            prompt_start_map =
+                prompt_start_source.map(|(row, col)| (row, col.min(cols - 1), col == cols));
         } else {
             let mut row = self.blank();
             let mut col = 0;
@@ -86,6 +113,11 @@ impl Terminal {
                 }
                 if index == saved.0 {
                     end = end.max(saved.1 + usize::from(saved.2));
+                }
+                if let Some((prompt_row, prompt_col)) = prompt_start_source
+                    && index == prompt_row
+                {
+                    end = end.max(prompt_col);
                 }
                 let soft = source
                     .get(index + 1)
@@ -128,6 +160,9 @@ impl Terminal {
                     }
                     if (index, old_col) == (saved.0, saved.1 + usize::from(saved.2)) {
                         saved_map = map;
+                    }
+                    if prompt_start_source == Some((index, old_col)) {
+                        prompt_start_map = Some(map);
                     }
                     if old_col == end {
                         break;
@@ -188,6 +223,18 @@ impl Terminal {
         self.primary.saved.cursor.row = saved_map.0.saturating_sub(start).min(height - 1);
         self.primary.saved.cursor.col = saved_map.1.min(cols - 1);
         self.primary.saved.cursor.pending_wrap = saved_map.2;
+        self.primary.prompt_start = prompt_start_map
+            .filter(|(row, _, _)| (start..start + height).contains(row))
+            .and_then(|(row, col, pending_wrap)| {
+                self.primary.rows.get(row - start).map(|row| PromptAnchor {
+                    row: row.id,
+                    col: col.min(cols - 1),
+                    pending_wrap,
+                })
+            });
+        if self.primary.prompt_start.is_none() {
+            self.primary.prompt_redraw = false;
+        }
         self.primary.margins = (0, height - 1);
         self.primary.horizontal_margins = (0, cols - 1);
         while self.alternate.rows.len() < height {

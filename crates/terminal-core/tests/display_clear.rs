@@ -1,4 +1,4 @@
-use terminal_core::{Terminal, display_clear::DisplayClear};
+use terminal_core::{Terminal, display_clear::DisplayClear, model::PromptAnchor};
 fn feed(t: &mut Terminal, text: &str) {
     let mut bytes = text.as_bytes();
     while !bytes.is_empty() || t.has_pending_work() {
@@ -35,6 +35,35 @@ fn prompt_clear_is_local_and_requests_redraw_without_resetting_terminal_modes() 
     assert_eq!(after.history_epoch, before.history_epoch + 1);
     assert!(after.screen_epoch > before.screen_epoch);
     assert!(t.replies.is_empty()); // The host, not the reply queue, redraws the shell.
+    assert!(t.check_invariants());
+}
+#[test]
+fn prompt_clear_rebases_a_redrawable_prompt_anchor_for_later_reflow() {
+    let mut t = Terminal::new(64, 12).unwrap();
+    feed(
+        &mut t,
+        "\x1b]133;A;redraw=1\x07RESIZE_PROMPT\r\n> RESIZE_BUFFER\x1b[K\x1b[46CRESIZE_RPROMPT\x1b[60D",
+    );
+    assert!(t.primary.prompt_redraw);
+    assert_eq!(t.clear_display(), DisplayClear::RedrawPrompt);
+    assert_eq!(
+        t.primary.prompt_start,
+        Some(PromptAnchor {
+            row: t.primary.rows[0].id,
+            col: 0,
+            pending_wrap: false,
+        })
+    );
+    let wide_redraw =
+        "\r\r\x1b[A\x1b[JRESIZE_PROMPT\r\n> RESIZE_BUFFER\x1b[K\x1b[80CRESIZE_RPROMPT\x1b[94D";
+    let narrow_redraw = "\r\r\x1b[A\x1b[JRESIZE_PROMPT\r\n> RESIZE_BUFFER";
+    for _ in 0..5 {
+        t.resize(111, 12).unwrap();
+        feed(&mut t, wide_redraw);
+        t.resize(17, 12).unwrap();
+        feed(&mut t, narrow_redraw);
+        assert_eq!(t.copy_all().matches("RESIZE_PROMPT").count(), 1);
+    }
     assert!(t.check_invariants());
 }
 #[test]
@@ -80,6 +109,8 @@ fn command_markers_leave_prompt_and_reset_clears_prompt_identity() {
     }
     feed(&mut t, "\x1bc");
     assert!(!t.snapshot(0).unwrap().at_prompt);
+    assert!(!t.primary.prompt_redraw);
+    assert!(t.primary.prompt_start.is_none());
 }
 #[test]
 fn clear_drops_primary_images_but_preserves_other_screen_resources() {

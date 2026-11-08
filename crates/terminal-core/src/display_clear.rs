@@ -1,5 +1,5 @@
 //! Native clear action, distinct from a child-issued erase or terminal reset.
-use crate::{Terminal, viewport::Viewport};
+use crate::{Terminal, model::PromptAnchor, viewport::Viewport};
 
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +31,14 @@ impl Terminal {
                 let row = self.blank();
                 self.primary.rows[index] = row;
             }
+            // The fresh grid has new row identities. Keep the prompt anchor on
+            // its first row so a later width resize can still clear this
+            // redrawable prompt before ZLE repaints it.
+            self.primary.prompt_start = self.primary.rows.front().map(|row| PromptAnchor {
+                row: row.id,
+                col: 0,
+                pending_wrap: false,
+            });
             self.primary.cursor.row = 0;
             self.primary.cursor.col = 0;
             self.primary.cursor.pending_wrap = false;

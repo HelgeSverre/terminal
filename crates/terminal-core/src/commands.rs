@@ -437,6 +437,8 @@ impl Terminal {
     }
     fn clear_active(&mut self) {
         self.screen_mut().at_prompt = false;
+        self.screen_mut().prompt_redraw = false;
+        self.screen_mut().prompt_start = None;
         self.screen_epoch += 1;
         self.graphics.clear_screen(self.is_alternate);
         for r in 0..self.height {
@@ -633,8 +635,24 @@ impl Terminal {
         };
         match code {
             "133" => match value.split(';').next() {
-                Some("A" | "B") => self.screen_mut().at_prompt = true,
-                Some("C" | "D") => self.screen_mut().at_prompt = false,
+                Some("A") => {
+                    let screen = self.screen_mut();
+                    screen.at_prompt = true;
+                    screen.prompt_redraw =
+                        value.split(';').skip(1).any(|option| option == "redraw=1");
+                    screen.prompt_start =
+                        screen.rows.get(screen.cursor.row).map(|row| PromptAnchor {
+                            row: row.id,
+                            col: screen.cursor.col,
+                            pending_wrap: screen.cursor.pending_wrap,
+                        });
+                }
+                Some("B") => self.screen_mut().at_prompt = true,
+                Some("C" | "D") => {
+                    self.screen_mut().at_prompt = false;
+                    self.screen_mut().prompt_redraw = false;
+                    self.screen_mut().prompt_start = None;
+                }
                 _ => {}
             },
             "0" | "2" => {

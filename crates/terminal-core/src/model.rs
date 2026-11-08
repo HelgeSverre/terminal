@@ -404,9 +404,23 @@ pub struct Saved {
     pub charset: [bool; 2],
     pub charset_slot: usize,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PromptAnchor {
+    pub row: u64,
+    pub col: usize,
+    /// A prompt marker may occur at the insertion boundary immediately after a
+    /// full row. That boundary must not be confused with the row's last cell.
+    pub pending_wrap: bool,
+}
 #[derive(Debug, Clone)]
 pub struct Screen {
     pub at_prompt: bool,
+    /// The shell explicitly promised that it redraws its complete prompt after a
+    /// width change (OSC 133 `A;redraw=1`). Semantic prompt marks alone are not
+    /// enough: they are also emitted by programs that keep their prompt on the
+    /// screen while resizing.
+    pub prompt_redraw: bool,
+    pub prompt_start: Option<PromptAnchor>,
     pub rows: VecDeque<Arc<Row>>,
     pub cursor: Cursor,
     pub saved: Saved,
@@ -423,6 +437,8 @@ impl Screen {
             .map_or(0, |row| row.cells.len().saturating_sub(1));
         Self {
             at_prompt: false,
+            prompt_redraw: false,
+            prompt_start: None,
             rows,
             cursor: Cursor {
                 visible: true,
