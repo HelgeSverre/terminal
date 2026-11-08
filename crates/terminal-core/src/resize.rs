@@ -286,25 +286,27 @@ impl Terminal {
 mod tests {
     use super::*;
 
-    fn terminal_retaining(row: Arc<Row>) -> Terminal {
+    fn terminal_retaining(change: impl FnOnce(&mut Row)) -> (Terminal, Arc<Row>) {
         let mut terminal = Terminal::new(2, 2).unwrap();
+        let mut row = terminal.blank();
+        change(Arc::make_mut(&mut row));
         terminal.history_bytes = row.accounted_bytes();
-        terminal.history.push_back(row);
-        terminal
+        terminal.history.push_back(row.clone());
+        (terminal, row)
     }
 
     #[test]
     fn height_only_resize_preserves_compact_history_sharing_and_compacts_dirty_rows() {
-        let compact = Arc::new(Row::new(1, 2, &Style::default()));
+        let (mut terminal, compact) = terminal_retaining(|_| {});
         let compact_bytes = compact.accounted_bytes();
-        let mut terminal = terminal_retaining(compact.clone());
+        assert!(terminal.check_invariants());
 
         terminal.resize(2, 1).unwrap();
 
         assert!(Arc::ptr_eq(&compact, terminal.history.front().unwrap()));
         assert_eq!(terminal.history_bytes, compact_bytes);
+        assert!(terminal.check_invariants());
 
-        let mut dirty = Row::new(2, 2, &Style::default());
         let first_style = Style {
             foreground: Color::Indexed(1),
             ..Style::default()
@@ -313,33 +315,34 @@ mod tests {
             foreground: Color::Indexed(2),
             ..Style::default()
         };
-        dirty.write(
-            0,
-            "a\u{301}",
-            CellWidth {
-                occupied: 1,
-                nominal: 1,
-            },
-            &first_style,
-            Some("https://first.example"),
-            0,
-        );
-        dirty.write(
-            0,
-            "b\u{301}",
-            CellWidth {
-                occupied: 1,
-                nominal: 1,
-            },
-            &second_style,
-            Some("https://second.example"),
-            0,
-        );
+        let (mut terminal, dirty) = terminal_retaining(|dirty| {
+            dirty.write(
+                0,
+                "a\u{301}",
+                CellWidth {
+                    occupied: 1,
+                    nominal: 1,
+                },
+                &first_style,
+                Some("https://first.example"),
+                0,
+            );
+            dirty.write(
+                0,
+                "b\u{301}",
+                CellWidth {
+                    occupied: 1,
+                    nominal: 1,
+                },
+                &second_style,
+                Some("https://second.example"),
+                0,
+            );
+        });
         assert!(dirty.has_stale_resources());
-        let dirty = Arc::new(dirty);
         let dirty_bytes = dirty.accounted_bytes();
         let dirty_text = dirty.copy_text();
-        let mut terminal = terminal_retaining(dirty.clone());
+        assert!(terminal.check_invariants());
 
         terminal.resize(2, 1).unwrap();
 
@@ -350,5 +353,6 @@ mod tests {
         assert_eq!(compacted.copy_text(), dirty_text);
         assert!(compacted.accounted_bytes() < dirty_bytes);
         assert_eq!(terminal.history_bytes, compacted.accounted_bytes());
+        assert!(terminal.check_invariants());
     }
 }
