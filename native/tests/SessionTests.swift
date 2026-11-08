@@ -10,7 +10,8 @@ import Foundation
     }
     var checks = Dictionary(
       uniqueKeysWithValues: [
-        "accepted_input_during_rep", "input_before_mode_suffix", "ordered_mode_encoding_after_rep",
+        "input_admitted_for_ordered_output", "input_before_mode_suffix_is_unbracketed",
+        "input_after_accepted_output_is_bracketed", "ordered_mode_encoding_after_rep",
         "rep_completed", "large_paste_accepted", "oversize_paste_rejected",
         "saturated_cancel_close_reaped", "cancel_close_under_three_seconds",
         "ordinary_ingress_busy", "release_admitted_under_ingress_pressure",
@@ -22,8 +23,44 @@ import Foundation
         "finished_pty_refuses_text", "finished_pty_retains_search",
       ].map { ($0, false) })
     var statuses: [String] = []
-    // The first partial REP snapshot arrives before its suffix sets bracketed paste.
-    // Input admitted at that point must wait for the accepted byte event to finish.
+    // A UI snapshot is intentionally coalesced, so it cannot timestamp parser order.
+    // Check both sides of the boundary directly: an input encoded while REP still
+    // holds the suffix is plain, while the same input after accepting the packet is
+    // bracketed. This is the ordering that Session's FIFO preserves for its PTY data.
+    let orderingCore = terminal_create(80, 24)!
+    defer { terminal_destroy(orderingCore) }
+    let orderingPacket = Data("X\u{1b}[500000b\u{1b}[?2004h".utf8)
+    let capture: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void = {
+      context, bytes, count in
+      guard let context, let bytes, count > 0 else { return }
+      Unmanaged<NSMutableData>.fromOpaque(context).takeUnretainedValue().append(bytes, length: count)
+    }
+    func encodePaste() -> Data {
+      let encoded = NSMutableData()
+      let accepted = "hello\nworld".withCString {
+        terminal_input(
+          orderingCore, $0, 1, 0, 0, Unmanaged.passUnretained(encoded).toOpaque(), capture)
+      }
+      precondition(accepted)
+      return encoded as Data
+    }
+    let firstAccepted = orderingPacket.withUnsafeBytes {
+      terminal_feed(orderingCore, $0.bindMemory(to: UInt8.self).baseAddress!, orderingPacket.count, 0)
+    }
+    precondition(firstAccepted < orderingPacket.count && terminal_has_work(orderingCore))
+    checks["input_before_mode_suffix_is_unbracketed"] =
+      encodePaste() == Data("hello\rworld".utf8)
+    var accepted = firstAccepted
+    orderingPacket.withUnsafeBytes { packet in
+      let bytes = packet.bindMemory(to: UInt8.self)
+      while accepted < orderingPacket.count || terminal_has_work(orderingCore) {
+        accepted += terminal_feed(
+          orderingCore, bytes.baseAddress!.advanced(by: accepted), orderingPacket.count - accepted, 0)
+      }
+    }
+    checks["input_after_accepted_output_is_bracketed"] =
+      encodePaste() == Data("\u{1b}[200~hello\rworld\u{1b}[201~".utf8)
+    // The PTY session must make that same final-mode decision for a live child.
     let orderedScript =
       "stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; print \"X\\e[500000b\\e[?2004hREADY\"; s=STDIN.read(23); print(s==\"\\e[200~hello\\rworld\\e[201~\" ? \"\\r\\nORDERED_PASTE_OK\" : \"\\r\\nBAD_PASTE\")'"
     let ordered = Session(launch: spec(orderedScript))
@@ -34,8 +71,7 @@ import Foundation
       let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
       if !sent && text.contains("X") {
         sent = true
-        checks["input_before_mode_suffix"] = !snapshot.modes.bracketed_paste
-        checks["accepted_input_during_rep"] = ordered.input("hello\nworld", key: 1)
+        checks["input_admitted_for_ordered_output"] = ordered.input("hello\nworld", key: 1)
       }
       if text.contains("ORDERED_PASTE_OK") {
         checks["ordered_mode_encoding_after_rep"] = true
