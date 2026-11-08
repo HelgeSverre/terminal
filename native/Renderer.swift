@@ -148,6 +148,7 @@ final class TerminalRendering: @unchecked Sendable {
   // no queue entry and therefore cannot gate a healthy surface.
   private var readySurfaces: [UUID] = []
   private var readySet: Set<UUID> = []
+  private var drainScheduled = false
   private var gpuBusy = false
   private var atlases: [MTLTexture] = []
   private var glyphs: [GlyphKey: Glyph] = [:]
@@ -261,7 +262,7 @@ final class TerminalRendering: @unchecked Sendable {
     }
     surfacesLock.unlock()
     displayLinks.forEach { $0.requestFrame() }
-    executor.async { [weak self] in self?.drainReady() }
+    scheduleDrain()
   }
   private func beginDisplayLinkLocked(_ surface: SurfaceState) -> SurfaceDisplayLink? {
     guard !surface.awaitingDrawable, surface.pendingDrawable == nil, !surface.rendering,
@@ -310,11 +311,22 @@ final class TerminalRendering: @unchecked Sendable {
   private func drainReady() {
     var displayLinks: [SurfaceDisplayLink] = []
     surfacesLock.lock()
+    drainScheduled = false
     displayLinks = armEligibleSurfacesLocked()
     let submission = nextSubmissionLocked()
     surfacesLock.unlock()
     displayLinks.forEach { $0.requestFrame() }
     submit(submission)
+  }
+  private func scheduleDrain() {
+    surfacesLock.lock()
+    guard !drainScheduled else {
+      surfacesLock.unlock()
+      return
+    }
+    drainScheduled = true
+    surfacesLock.unlock()
+    executor.async { [weak self] in self?.drainReady() }
   }
   // The display-link callback can arrive on the main run loop. Keep it tiny:
   // ownership validation and Metal encoding remain serialized on executor.
@@ -338,15 +350,22 @@ final class TerminalRendering: @unchecked Sendable {
       surfacesLock.unlock()
       return
     }
+    // Pausing a display link does not cancel a callback already enqueued by
+    // Core Animation. Only the callback matching our outstanding demand may
+    // retain a drawable; all late/duplicate updates are released immediately.
+    guard surface.awaitingDrawable, !surface.rendering, surface.pendingDrawable == nil,
+      surface.latest != nil
+    else {
+      surfacesLock.unlock()
+      return
+    }
     surface.awaitingDrawable = false
     surface.targetTimestamp = target
     surface.targetPresentationTimestamp = presentationTarget
     // Keep at most one supplied drawable for a surface. It may wait behind a
     // different GPU submission, but no off-display surface can block another.
-    if surface.pendingDrawable == nil, surface.latest != nil {
-      surface.pendingDrawable = drawable
-      enqueueReadyLocked(lease.id)
-    }
+    surface.pendingDrawable = drawable
+    enqueueReadyLocked(lease.id)
     surfaces[lease.id] = surface
     displayLinks = armEligibleSurfacesLocked()
     submission = nextSubmissionLocked()
@@ -377,7 +396,11 @@ final class TerminalRendering: @unchecked Sendable {
       surface.rendering = false
       if command.error == nil {
         lease.recordCompletedRevision(revision)
-        if surface.generation == generation { surface.latest = nil }
+        if surface.generation == generation {
+          surface.latest = nil
+          // Defensive release if a duplicate callback raced an older build.
+          surface.pendingDrawable = nil
+        }
       }
       surfaces[lease.id] = surface
     }
