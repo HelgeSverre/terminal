@@ -1,0 +1,53 @@
+{
+  "passed": true,
+  "requested_bytes": 16777216,
+  "runs_per_workload": 10,
+  "geometry": [
+    100,
+    30
+  ],
+  "font": "Obel Mono",
+  "font_size": 14,
+  "runner_sha256": "2b4f97eb89af198eda81583e5d9f31e974c33d8184f00789274bfe874a884c51",
+  "order": [
+    "rust",
+    "swift"
+  ],
+  "apps": {
+    "rust": {
+      "bundle": "/Users/helge/code/terminal/target/frozen-main-9cc6f92.app",
+      "executable_sha256": "7f3226c77075ecbb651e3c821e0a3d996ab3165f4ebadec5ea07f1576690722d",
+      "executable_bytes": 3744784,
+      "bundle_regular_file_bytes": 9024636,
+      "natural_exit": true,
+      "cleanup_survivors": [],
+      "pid": 8067,
+      "exit_status": 0,
+      "report": "rust.json"
+    },
+    "swift": {
+      "bundle": "/Users/helge/code/terminal-swift-experiment/target/frozen-65cb446-release.app",
+      "executable_sha256": "d17a2f958ecfd1787bc2f39b745016ed0b4db03c5510d19c3558498e8a52db03",
+      "executable_bytes": 1998656,
+      "bundle_regular_file_bytes": 7278796,
+      "natural_exit": true,
+      "cleanup_survivors": [],
+      "pid": 8728,
+      "exit_status": 0,
+      "report": "swift.json"
+    }
+  },
+  "scope": "Sequential visible-app PTY pilot; parser barriers are not display latency. History is excluded by the driver alternate screen.",
+  "driver_sha256": "fea221df7dc59de890e2d1849958d3386c2c32185ee2f4087fefe37d678d7f9e",
+  "driver_source_sha256": "cbe52cd535960db64083aa08d6928e9ec6037e5c7d37caa6b1a680051e25577e",
+  "performance_gate": {
+    "minimum_swift_to_rust_ratio": 0.7,
+    "observed_ratios": {
+      "ascii_short_lines": 0.9340230311799702,
+      "ascii_long_lines": 0.9631367178609642,
+      "ansi_truecolor": 0.9024968528966087,
+      "unicode": 0.8681086757520935
+    },
+    "passed": true
+  }
+}
