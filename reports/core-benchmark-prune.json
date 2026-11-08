@@ -1,12 +1,17 @@
 {
   "baseline_commit": "c66584d904e416928fa434880295546a72688c30",
+  "candidate_commit": "65c0ea51cb080aca10e7ddd2b51fa15f3a5c18af",
   "candidate": "defer row resource pruning; use UnicodeWidthChar for single scalars",
+  "binaries": {
+    "baseline_sha256": "1202e16ae2dd5dd047548f7bc28005c5f33d6d09cf531d274a214507edbf307f",
+    "candidate_sha256": "7aa42484b7b189f8f14ac52b6b33ebd98bc83606ae16a1bc90ce72806acfaa5f"
+  },
   "conditions": {
     "os": "macOS 15.6 (24G84)",
     "rustc": "1.99.0 (b940084d7 2026-09-28)",
     "logical_cpus": 12,
-    "load_averages_at_start": [3.77, 5.79, 10.61],
-    "note": "Quiet coordinated interval: no task-owned compiler or GUI process. System/user load was not quiesced; runs alternate baseline/candidate and report all raw samples."
+    "load_averages_at_start": [4.88, 3.95, 5.97],
+    "note": "Final coordinated 90-second interval: relevant task owners held builds and GUI checks; pgrep found no compiler processes. System/user processes were not quiesced; runs alternate baseline/candidate and report all raw samples."
   },
   "fixture": {
     "scale_factor": 20,
@@ -37,47 +42,47 @@
   "alternated_runs": [
     {
       "baseline": {
-        "ascii_mib_per_s": [111.207558, 115.090295, 113.068475, 114.143394, 115.586773],
-        "mixed_mib_per_s": [13.984361, 13.874686, 13.888044, 13.994223, 13.913868],
-        "rss_bytes": 109397056
+        "ascii_mib_per_s": [115.329511, 117.151959, 116.604468, 116.919823, 118.978404],
+        "mixed_mib_per_s": [14.133127, 14.158451, 14.15898, 14.138298, 14.070247],
+        "rss_bytes": 108969984
       },
       "candidate": {
-        "ascii_mib_per_s": [123.191776, 123.715453, 123.06958, 122.881879, 122.802502],
-        "mixed_mib_per_s": [16.136576, 16.137504, 16.157246, 16.244759, 15.968726],
-        "rss_bytes": 109560832
+        "ascii_mib_per_s": [122.966168, 126.036741, 124.614607, 125.36451, 126.351117],
+        "mixed_mib_per_s": [16.533883, 16.598748, 16.528053, 16.241391, 16.623309],
+        "rss_bytes": 108855296
       }
     },
     {
       "baseline": {
-        "ascii_mib_per_s": [116.031284, 113.716251, 110.400618, 114.394307, 114.894929],
-        "mixed_mib_per_s": [13.861306, 13.932745, 13.994774, 14.053521, 13.17677],
-        "rss_bytes": 108430400
+        "ascii_mib_per_s": [115.582216, 114.88767, 113.505444, 115.519812, 114.786334],
+        "mixed_mib_per_s": [14.190138, 14.131171, 14.020981, 14.092214, 14.156692],
+        "rss_bytes": 109297664
       },
       "candidate": {
-        "ascii_mib_per_s": [124.007381, 124.233487, 122.592024, 122.3835, 122.895683],
-        "mixed_mib_per_s": [16.09646, 16.128222, 15.938714, 16.014364, 16.295341],
-        "rss_bytes": 108119296
+        "ascii_mib_per_s": [125.846047, 125.002236, 125.743311, 126.158467, 126.757832],
+        "mixed_mib_per_s": [16.315685, 16.406737, 16.505442, 16.443849, 16.413693],
+        "rss_bytes": 110182400
       }
     },
     {
       "baseline": {
-        "ascii_mib_per_s": [116.229217, 114.393255, 115.768344, 115.216354, 87.189162],
-        "mixed_mib_per_s": [14.159782, 14.130067, 14.216366, 12.850097, 14.020957],
-        "rss_bytes": 109134912
+        "ascii_mib_per_s": [115.847397, 116.518655, 115.048683, 115.04465, 114.79795],
+        "mixed_mib_per_s": [14.007769, 14.150337, 14.186785, 14.132919, 14.088307],
+        "rss_bytes": 109838336
       },
       "candidate": {
-        "ascii_mib_per_s": [120.202492, 121.290901, 119.966479, 121.734496, 118.238741],
-        "mixed_mib_per_s": [15.332455, 15.255071, 15.252344, 15.09896, 15.1048],
-        "rss_bytes": 109184192
+        "ascii_mib_per_s": [126.29739, 125.515998, 125.842526, 124.82063, 125.418412],
+        "mixed_mib_per_s": [16.411281, 16.422644, 16.506712, 16.467298, 16.522447],
+        "rss_bytes": 110297088
       }
     }
   ],
   "summary": {
-    "ascii_median_mib_per_s": {"baseline": 114.394307, "candidate": 122.802502, "change_percent": 7.35},
-    "mixed_median_mib_per_s": {"baseline": 13.984361, "candidate": 16.014364, "change_percent": 14.52},
-    "rss_range_bytes": {"baseline": [108430400, 109397056], "candidate": [108119296, 109560832]},
+    "ascii_median_mib_per_s": {"baseline": 115.519812, "candidate": 125.743311, "change_percent": 8.85},
+    "mixed_median_mib_per_s": {"baseline": 14.133127, "candidate": 16.467298, "change_percent": 16.52},
+    "rss_range_bytes": {"baseline": [108969984, 109838336], "candidate": [108855296, 110297088]},
     "targets_mib_per_s": {"ascii": 250, "mixed": 75},
     "targets_met": false,
-    "measurement_status": "prototype only: recorded before the final retention-accounting correction; remeasurement is required before presenting this patch's final performance."
+    "measurement_status": "final frozen-binary comparison; targets remain unmet."
   }
 }
