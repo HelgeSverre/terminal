@@ -158,7 +158,11 @@ final class GlyphResidency: @unchecked Sendable {
     guard recipe.width > 0, recipe.height > 0, recipe.width + 1 < kind.side,
       recipe.height + 1 < kind.side
     else { rememberFailure(recipe); return .impossible }
-    guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height) else {
+    // A staged batch represents one unchanged visible demand. Do not evict a
+    // peer admitted earlier in that batch: two individually-fitting glyphs
+    // must settle on resident+outline, not alternate eviction every frame.
+    guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height,
+      allowEviction: false) else {
       guard pages.values.contains(where: { $0.kind == kind && $0.pins > 0 }) else {
         rememberFailure(recipe)
         return .impossible
@@ -267,7 +271,8 @@ final class GlyphResidency: @unchecked Sendable {
     legacyBridgeBytes = max(0, legacyBridgeBytes - bytes)
   }
 
-  private func reserve(kind: PageKind, width: Int, height: Int) -> (page: Page, x: Int, y: Int)? {
+  private func reserve(kind: PageKind, width: Int, height: Int,
+                       allowEviction: Bool = true) -> (page: Page, x: Int, y: Int)? {
     guard width > 0, height > 0, width + 1 < kind.side, height + 1 < kind.side else { return nil }
     for page in pages.values where page.kind == kind {
       if let result = reserve(on: page, width: width, height: height) { return result }
@@ -275,7 +280,8 @@ final class GlyphResidency: @unchecked Sendable {
     guard let page = createPage(kind), let result = reserve(on: page, width: width, height: height) else {
       // All charged pages are full. Reclaim only a page no submitted frame can
       // still sample; its generation invalidates every old lease/UV.
-      guard let victim = pages.values.first(where: { $0.kind == kind && $0.pins == 0 }) else {
+      guard allowEviction,
+        let victim = pages.values.first(where: { $0.kind == kind && $0.pins == 0 }) else {
         return nil
       }
       evict(victim.id)
@@ -457,6 +463,26 @@ final class GlyphResidency: @unchecked Sendable {
     let changedFont = GlyphRasterRecipe(text: "bad0", width: 8, height: 8,
       pointSize: 12, bold: false, italic: false, fontIdentity: "new-font", backingScale: 1)
     return failed.count == failedLimit && !failed.contains(changedFont)
+  }
+
+  func testingTwoGlyphWorkingSetSettles() -> Bool {
+    let a = GlyphRasterRecipe(text: "A", width: 600, height: 600, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
+    let b = GlyphRasterRecipe(text: "B", width: 600, height: 600, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
+    let bitmap = [UInt8](repeating: 255, count: 600 * 600 * 4)
+    let resultA = GlyphRasterResult(recipe: a, pixels: bitmap, kind: .mask,
+      resolvedFonts: ["Menlo-Regular"], glyphIDs: [1])
+    let resultB = GlyphRasterResult(recipe: b, pixels: bitmap, kind: .mask,
+      resolvedFonts: ["Menlo-Regular"], glyphIDs: [2])
+    guard install(resultA) == .installed, install(resultB) == .impossible,
+      entries[a] != nil, entries[b] == nil, failed.contains(b)
+    else { return false }
+    // Resolving unchanged demand has a resident A and a deterministic B miss;
+    // it cannot enqueue a new raster or evict A.
+    let residentA = resolve(a) != nil
+    let stillMissingB = resolve(b) == nil
+    return residentA && stillMissingB && pages.count == 1
   }
   #endif
 }
