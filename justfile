@@ -211,7 +211,8 @@ check: test smoke
 benchmark-core:
     cargo run --release --locked -p terminal-tools --bin benchmark
 
-# Compare two app bundles through the real PTY, with owned process cleanup
+# Compare two app bundles through the real PTY, with owned process cleanup.
+# BENCH_FIRST=swift reverses app order; BENCH_BYTES and BENCH_RUNS set trial size.
 [group('bench')]
 @benchmark-apps rust_app swift_app output="reports/app-comparison":
     ruby tools/compare_terminal_apps.rb "$3" "$1" "$2"

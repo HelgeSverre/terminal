@@ -14,6 +14,9 @@ class TerminalAppComparison
   def initialize(output, rust_app, swift_app)
     @output = File.expand_path(output)
     @apps = { 'rust' => File.realpath(rust_app), 'swift' => File.realpath(swift_app) }
+    first = ENV.fetch('BENCH_FIRST', 'rust')
+    raise 'BENCH_FIRST must be rust or swift' unless @apps.key?(first)
+    @apps = @apps.sort_by { |label, _| label == first ? 0 : 1 }.to_h
     @bytes = Integer(ENV.fetch('BENCH_BYTES', '2097152'), 10)
     @runs = Integer(ENV.fetch('BENCH_RUNS', '3'), 10)
     raise 'BENCH_BYTES must be between 1 and 1 GiB' unless (1..1_073_741_824).cover?(@bytes)
