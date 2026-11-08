@@ -71,7 +71,12 @@ selection and absent, unfinished, failed or empty recording evidence.
 
 The exercise creates right and nested-below splits, drags both native dividers,
 drags the owned window's resize corner, performs programmatic window resizes, then
-leaves static output. Mouse events use HID delivery because the prior directed-PID
+leaves static output. After clicking pane0 it waits for that pane's actual AXFocused
+value before sending the second split key, avoiding cross-delivery ordering between
+HID mouse and PID-targeted keyboard events. It verifies pane0-above-pane2-left and
+pane1-full-right adjacency before deriving either divider point; the observed
+wrong-side nesting is a headless rejection fixture. Both native divider phases
+still require changing PTY geometry. Mouse events use HID delivery because the prior directed-PID
 mouse experiment did not enter AppKit tracking. Foreground ownership is checked
 immediately before every event; an exclusive GUI slot is still required because
 checking focus and posting an event are not one atomic operation. Cancellation

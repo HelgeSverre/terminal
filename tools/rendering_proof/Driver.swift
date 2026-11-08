@@ -51,6 +51,22 @@ func uniqueAXFrameIndex(_ frames: [CGRect?], target: CGRect) throws -> Int {
   guard matches.count == 1 else { throw Failure.invalid("Expected one AX window matching prepared CG frame; found \(matches.count)") }
   return matches[0]
 }
+struct NestedDividers {
+  let outer: CGPoint
+  let inner: CGPoint
+}
+func nestedDividers(top: CGRect, right: CGRect, bottom: CGRect) throws -> NestedDividers {
+  func near(_ a: CGFloat, _ b: CGFloat) -> Bool { abs(a - b) <= 1 }
+  func gap(_ start: CGFloat, _ end: CGFloat) -> Bool { (0...2).contains(end - start) }
+  guard [top, right, bottom].allSatisfy({ rectJSON($0).allSatisfy(\.isFinite) && $0.width > 0 && $0.height > 0 }),
+    near(top.minX, bottom.minX), near(top.maxX, bottom.maxX),
+    near(top.minY, right.minY), near(bottom.maxY, right.maxY),
+    gap(top.maxX, right.minX), gap(bottom.maxX, right.minX), gap(top.maxY, bottom.minY) else {
+    throw Failure.invalid("Expected pane0 above pane2 on left, pane1 spanning right; actual AX adjacency differs")
+  }
+  return NestedDividers(outer: CGPoint(x: (top.maxX + right.minX) / 2, y: right.midY),
+    inner: CGPoint(x: top.midX, y: (top.maxY + bottom.minY) / 2))
+}
 
 struct WindowMatch {
   let info: [String: Any]
@@ -181,6 +197,29 @@ func matchWindow(_ infos: [[String: Any]], pid: pid_t, axFrame: CGRect) throws -
     guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
       !running.isTerminated else { throw Failure.invalid("Owned PID lost foreground; input stopped") }
   }
+  func awaitFocusedPane(_ id: Int) throws {
+    let deadline = ProcessInfo.processInfo.systemUptime + 3
+    repeat {
+      try foreground()
+      let target = try pane(id)
+      var value: CFTypeRef?
+      let status = AXUIElementCopyAttributeValue(target, kAXFocusedAttribute as CFString, &value)
+      let focused = value as? Bool
+      note("await_pane_focus", ["pane": id, "ax_error": status.rawValue, "focused": focused as Any? ?? NSNull()])
+      if status == .success && focused == true { return }
+      guard ProcessInfo.processInfo.systemUptime < deadline else { break }
+      Thread.sleep(forTimeInterval: 0.02)
+    } while true
+    throw Failure.invalid("Clicked pane \(id) did not report AXFocused before split")
+  }
+  func verifiedNestedLayout() throws -> NestedDividers {
+    let top = try frame(pane(0)), right = try frame(pane(1)), bottom = try frame(pane(2))
+    note("nested_layout", ["panes": [rectJSON(top), rectJSON(right), rectJSON(bottom)]])
+    let dividers = try nestedDividers(top: top, right: right, bottom: bottom)
+    note("nested_layout_verified", ["outer_divider": [dividers.outer.x, dividers.outer.y],
+      "inner_divider": [dividers.inner.x, dividers.inner.y]])
+    return dividers
+  }
   func note(_ phase: String, _ data: [String: Any] = [:]) {
     var row = data; row["phase"] = phase; row["host_time"] = ProcessInfo.processInfo.systemUptime
     events.append(row)
@@ -286,14 +325,15 @@ func matchWindow(_ infos: [[String: Any]], pid: pid_t, axFrame: CGRect) throws -
     _ = try awaitPane(1)
     let first = try frame(pane(0))
     try click(CGPoint(x: first.minX + 30, y: first.minY + 25))
+    try awaitFocusedPane(0)
     note("split_below")
     try key([.maskCommand, .maskShift])
     _ = try awaitPane(2)
     Thread.sleep(forTimeInterval: 1)
-    let top = try frame(pane(0)), right = try frame(pane(1)), bottom = try frame(pane(2))
-    note("nested_layout", ["panes": [rectJSON(top), rectJSON(right), rectJSON(bottom)]])
-    try drag(CGPoint(x: right.minX - 0.5, y: right.midY), delta: CGPoint(x: -140, y: 0), phase: "native_outer_divider")
-    try drag(CGPoint(x: top.midX, y: bottom.minY - 0.5), delta: CGPoint(x: 0, y: 70), phase: "native_inner_divider")
+    let layout = try verifiedNestedLayout()
+    try drag(layout.outer, delta: CGPoint(x: -140, y: 0), phase: "native_outer_divider")
+    let afterOuter = try verifiedNestedLayout()
+    try drag(afterOuter.inner, delta: CGPoint(x: 0, y: 70), phase: "native_inner_divider")
     let windowFrame = try frame(window())
     try drag(CGPoint(x: windowFrame.maxX - 2, y: windowFrame.maxY - 2), delta: CGPoint(x: -100, y: -70), phase: "native_window_resize")
     note("programmatic_window_begin")
@@ -340,6 +380,18 @@ func matchWindow(_ infos: [[String: Any]], pid: pid_t, axFrame: CGRect) throws -
       precondition((try? uniqueAXFrameIndex([auxiliary], target: ax)) == nil)
       precondition((try? uniqueAXFrameIndex([nil, ax], target: ax)) == nil)
       print("PASS prepared AX window selection: nonmatching auxiliaries accepted; duplicate target/missing/unreadable frames rejected")
+      let top = CGRect(x: 30, y: 96, width: 549.5, height: 385.5)
+      let right = CGRect(x: 580.5, y: 96, width: 549.5, height: 772)
+      let bottom = CGRect(x: 30, y: 482.5, width: 549.5, height: 385.5)
+      let dividers = try nestedDividers(top: top, right: right, bottom: bottom)
+      precondition(dividers.outer == CGPoint(x: 580, y: 482))
+      precondition(dividers.inner == CGPoint(x: 304.75, y: 482))
+      // Frozen failed-run geometry: pane0 full left; pane1/pane2 split right.
+      precondition((try? nestedDividers(top: CGRect(x: 30, y: 96, width: 549.5, height: 772),
+        right: CGRect(x: 580.5, y: 96, width: 549.5, height: 385.5),
+        bottom: CGRect(x: 580.5, y: 482.5, width: 549.5, height: 385.5))) == nil)
+      precondition((try? nestedDividers(top: top, right: right, bottom: bottom.offsetBy(dx: 0, dy: 10))) == nil)
+      print("PASS nested divider geometry: expected adjacency accepted; recorded wrong-side split and gap rejected")
       var queries = 0, retries = 0
       let recovered: Int = try initialWindowQuery(query: {
         queries += 1
