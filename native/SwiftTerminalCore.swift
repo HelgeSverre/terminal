@@ -29,6 +29,15 @@ private final class SwiftCoreSearchToken {
   init(_ task: SwiftSearchTask) { self.task = task }
 }
 
+#if SNAPSHOT_ABI_DIAGNOSTICS
+// Test-build counters distinguish the direct value path from both C oracles.
+// No counter or per-cell instrumentation is compiled into the application.
+enum SnapshotABIDiagnostics {
+  static var borrowedStringAllocations = 0
+  static var jsonPublications = 0
+}
+#endif
+
 // Owns byte storage for a synchronous ABI snapshot callback.  The callback
 // promise is deliberately narrow: clients copy before return, so storage can
 // be released immediately afterwards.
@@ -37,6 +46,9 @@ private final class SwiftBorrowedCells {
   var links: [UnsafeMutablePointer<UInt8>] = []
   deinit { text.forEach { $0.deallocate() }; links.forEach { $0.deallocate() } }
   func copy(_ string: String, into target: inout [UnsafeMutablePointer<UInt8>]) -> UnsafePointer<UInt8>? {
+    #if SNAPSHOT_ABI_DIAGNOSTICS
+    SnapshotABIDiagnostics.borrowedStringAllocations += 1
+    #endif
     let bytes = Array(string.utf8)
     // A non-nil zero-length link means OSC 8 explicitly supplied an empty
     // URI; nil means no link. Preserve that distinction over the ABI.
@@ -1007,6 +1019,61 @@ private final class SwiftTerminalCore {
     tick(now)
     return publicationGated ? nil : snapshotJSON(scroll: scroll)
   }
+  func snapshotValue(scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
+    tick(now)
+    guard !publicationGated else { return (nil, nil) }
+    let selected = selectSnapshot(scroll: scroll)
+    let cursor = screen
+    if let error = TerminalSnapshot.geometryError(columns: columns, rows: selected.rows.count) {
+      return (nil, error)
+    }
+    let colors = palette()
+    guard colors.count == 256, colors.allSatisfy({ $0.count == 3 }) else {
+      return (nil, "Invalid snapshot dimensions or palette")
+    }
+    let kinds = ["Empty", "Lead1", "Lead2", "Continuation", "WrapSpacer"]
+    var rows: [RowSnapshot] = []
+    rows.reserveCapacity(selected.rows.count)
+    for row in selected.rows {
+      guard row.count == columns else { return (nil, "Invalid snapshot dimensions or palette") }
+      var cells: [CellSnapshot] = []
+      cells.reserveCapacity(columns)
+      for cell in row.cells {
+        guard Int(cell.kind) < kinds.count else { return (nil, "Invalid cell kind") }
+        let flags = cell.style.flags
+        let style = CellStyle(
+          foreground: TerminalColor(packed: cell.style.foreground),
+          background: TerminalColor(packed: cell.style.background),
+          underline_color: TerminalColor(packed: cell.style.underline),
+          underline: Int(cell.style.underlineKind), bold: flags & 1 != 0, faint: flags & 2 != 0,
+          italic: flags & 4 != 0, inverse: flags & 8 != 0, conceal: flags & 16 != 0,
+          strike: flags & 32 != 0, overline: flags & 64 != 0, blink: flags & 128 != 0)
+        cells.append(CellSnapshot(text: cell.text, kind: kinds[Int(cell.kind)], style: style,
+                                  link: cell.link, flags: Int(cell.flags)))
+      }
+      rows.append(RowSnapshot(cells: cells, soft_wrapped: row.softWrapped))
+    }
+    let search = visibleSearchHighlights(in: selected.rows).map {
+      SearchHighlight(row: $0["row"]!, start: $0["start"]!, end: $0["end"]!)
+    }
+    let images = graphics.visible(alternate: usingAlternate).map {
+      ImagePlacementSnapshot(image: $0.image, generation: $0.generation, width: $0.width, height: $0.height,
+                             source: $0.source, row: $0.row, col: $0.column, columns: $0.columns,
+                             rows: $0.rows, offset: $0.offset, natural: $0.natural, z: $0.z, placement: $0.placement)
+    }
+    return (TerminalSnapshot(
+      at_prompt: cursor.atPrompt, input_ready: cursor.inputReady, search: search, images: images,
+      revision: revision, geometry_epoch: geometryEpoch, document_epoch: documentEpoch,
+      history_epoch: historyEpoch, screen_epoch: screenEpoch, scroll_offset: selected.offset,
+      following_tail: selected.followingTail, viewport_clamp_revision: viewportClampRevision,
+      cols: columns, rows: rows,
+      cursor: CursorSnapshot(row: cursor.cursorRow, col: cursor.cursorColumn, pending_wrap: cursor.pendingWrap,
+                             visible: cursorVisible, shape: Int(cursorShape)),
+      modes: ModesSnapshot(application_cursor: applicationCursor, bracketed_paste: bracketedPaste,
+                           focus: focusReporting, mouse: 0, sgr_mouse: false, reverse_video: reverseVideo),
+      alternate: usingAlternate, title: title, history_rows: history.count,
+      palette: colors, default_fg: [230, 230, 230], default_bg: [10, 10, 11]), nil)
+  }
   func isValid() -> Bool {
     document.hasValidInvariants(primary) && document.hasValidInvariants(alternate) &&
       history.allSatisfy { $0.cells.count == columns }
@@ -1183,6 +1250,9 @@ private final class SwiftTerminalCore {
     let metadataObject = snapshotMetadata(cursor: screen, offset: selected.offset,
                                           followingTail: selected.followingTail,
                                           search: visibleSearchHighlights(in: selected.rows))
+    #if SNAPSHOT_ABI_DIAGNOSTICS
+    SnapshotABIDiagnostics.jsonPublications += 1
+    #endif
     guard let metadata = try? JSONSerialization.data(withJSONObject: metadataObject) else { return false }
     let borrowed = SwiftBorrowedCells()
     var views: [TerminalCellView] = []
@@ -1218,6 +1288,9 @@ private final class SwiftTerminalCore {
     }
   }
   func snapshotJSON(scroll: Int?) -> Data {
+    #if SNAPSHOT_ABI_DIAGNOSTICS
+    SnapshotABIDiagnostics.jsonPublications += 1
+    #endif
     let source: [SwiftRow]; let offset: Int
     let selected = selectSnapshot(scroll: scroll)
     source = selected.rows; offset = selected.offset
@@ -1240,6 +1313,11 @@ private final class SwiftTerminalCore {
 // replacement of the static Rust archive while all native call sites stay stable.
 
 private func core(_ pointer: OpaquePointer?) -> SwiftTerminalCore? { pointer.map { Unmanaged<SwiftTerminalCore>.fromOpaque(UnsafeMutableRawPointer($0)).takeUnretainedValue() } }
+// Internal Swift adapter: same owner-confined handle, no C callback or borrowed
+// row/cell storage. The returned value survives later mutation and destruction.
+func swiftTerminalSnapshot(_ pointer: OpaquePointer?, scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
+  core(pointer)?.snapshotValue(scroll: scroll, now: now) ?? (nil, nil)
+}
 private func inputCharacter(_ scalar: UInt32) -> Character? {
   guard scalar != 0, let value = UnicodeScalar(scalar) else { return nil }
   return Character(String(value))

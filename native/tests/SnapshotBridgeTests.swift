@@ -13,15 +13,7 @@ import AppKit
         }
       }
     }
-    func check(scroll: Int = 0) throws -> TerminalSnapshot {
-      guard let json = terminal_snapshot(core, scroll, 0) else { fatalError("legacy snapshot") }
-      let legacy = try JSONDecoder().decode(
-        TerminalSnapshot.self, from: Data(bytes: json, count: strlen(json)))
-      terminal_string_free(json)
-      let result = SnapshotBridge.read(core, scroll: scroll, now: 0)
-      guard let value = result.snapshot else {
-        fatalError(result.error ?? "binary snapshot absent")
-      }
+    func compare(_ value: TerminalSnapshot, _ legacy: TerminalSnapshot) {
       precondition(value.rows == legacy.rows, "cell layout/text/color/style/link/wrap mismatch")
       precondition(value.at_prompt == legacy.at_prompt)
       precondition(value.input_ready == legacy.input_ready)
@@ -37,9 +29,53 @@ import AppKit
       precondition(value.cols == legacy.cols && value.history_rows == legacy.history_rows)
       precondition(value.palette == legacy.palette && value.default_fg == legacy.default_fg)
       precondition(value.default_bg == legacy.default_bg && value.title == legacy.title)
+    }
+    func check(scroll: Int = 0) throws -> TerminalSnapshot {
+      guard let json = terminal_snapshot(core, scroll, 0) else { fatalError("legacy snapshot") }
+      let legacy = try JSONDecoder().decode(
+        TerminalSnapshot.self, from: Data(bytes: json, count: strlen(json)))
+      terminal_string_free(json)
+      let result = SnapshotBridge.read(core, scroll: scroll, now: 0)
+      guard let value = result.snapshot else {
+        fatalError(result.error ?? "direct snapshot absent")
+      }
+      compare(value, legacy)
+      let binary = BinarySnapshotOracle.read(core, scroll: scroll, now: 0)
+      guard let binaryValue = binary.snapshot else { fatalError(binary.error ?? "binary snapshot absent") }
+      compare(binaryValue, legacy)
       return value
     }
+    precondition(SnapshotBridge.read(nil, scroll: 0, now: 0).snapshot == nil)
+    #if SNAPSHOT_ABI_DIAGNOSTICS
+    for _ in 0..<100 {
+      precondition(SnapshotBridge.read(core, scroll: 0, now: 0).snapshot != nil)
+      precondition(SnapshotBridge.readView(core, now: 0).snapshot != nil)
+    }
+    precondition(SnapshotABIDiagnostics.borrowedStringAllocations == 0)
+    precondition(SnapshotABIDiagnostics.jsonPublications == 0)
+    #endif
     _ = try check()
+    #if SNAPSHOT_ABI_DIAGNOSTICS
+    // Positive controls: the independent C oracles really exercised their
+    // borrowed-string and JSON paths rather than silently using Swift values.
+    precondition(SnapshotABIDiagnostics.borrowedStringAllocations > 0)
+    precondition(SnapshotABIDiagnostics.jsonPublications >= 2)
+    #endif
+    let shapeJSON = terminal_snapshot(core, 0, 0)!
+    var shapeMetadata = try JSONSerialization.jsonObject(
+      with: Data(bytes: shapeJSON, count: strlen(shapeJSON))) as! [String: Any]
+    terminal_string_free(shapeJSON)
+    for (columns, rows) in [(0, 1), (1, 0), (4097, 1), (1, 4097), (4096, 257), (Int.max, Int.max)] {
+      let error = TerminalSnapshot.geometryError(columns: columns, rows: rows)
+      precondition(error != nil)
+      shapeMetadata["cols"] = columns
+      let product = columns.multipliedReportingOverflow(by: rows)
+      let old = BinarySnapshotOracle.malformedGeometry(
+        metadata: try JSONSerialization.data(withJSONObject: shapeMetadata),
+        cellCount: product.overflow ? 0 : product.partialValue, rowCount: rows)
+      precondition(old.snapshot == nil && old.error == error)
+    }
+    precondition(TerminalSnapshot.geometryError(columns: 4096, rows: 256) == nil)
     // Old experimental metadata did not have a readiness field. Preserve that
     // as unknown so automation cannot mistake an old A-only snapshot for B.
     feed("\u{1b}]133;A\u{7}")
@@ -172,9 +208,11 @@ import AppKit
     _ = try check(scroll: 2)
     terminal_view_scroll(core, 2)
     let anchored = SnapshotBridge.readView(core, now: 0).snapshot!
+    compare(anchored, BinarySnapshotOracle.readView(core, now: 0).snapshot!)
     precondition(!anchored.following_tail && anchored.scroll_offset == 2)
     feed("\r\nnew\r\noutput")
     let retained = SnapshotBridge.readView(core, now: 0).snapshot!
+    compare(retained, BinarySnapshotOracle.readView(core, now: 0).snapshot!)
     precondition(retained.rows == anchored.rows && retained.scroll_offset == 4)
     terminal_view_follow_tail(core)
     precondition(SnapshotBridge.readView(core, now: 0).snapshot!.following_tail)
@@ -187,6 +225,10 @@ import AppKit
     precondition(alternate.alternate)
     feed("\u{1b}[?2026hhidden")
     precondition(SnapshotBridge.read(core, scroll: 0, now: 0).snapshot == nil)
+    precondition(BinarySnapshotOracle.read(core, scroll: 0, now: 0).snapshot == nil)
+    // The direct seam owns the same deadline tick as either C endpoint.
+    let expired = SnapshotBridge.read(core, scroll: 0, now: 151).snapshot!
+    compare(expired, BinarySnapshotOracle.read(core, scroll: 0, now: 151).snapshot!)
     feed("\u{1b}[?2026l\u{1b}[?1049l")
     _ = try check()
     feed("\u{1b}[2J\u{1b}[H1234567猫")
@@ -209,6 +251,7 @@ import AppKit
     }
     terminal_view_scroll(historyCore, 1)
     let historyView = SnapshotBridge.readView(historyCore, now: 0).snapshot!
+    compare(historyView, BinarySnapshotOracle.readView(historyCore, now: 0).snapshot!)
     precondition(!historyView.following_tail)
     precondition(AccessibilityProjection(snapshot: historyView).text == "\n\n")
     // Legacy numeric offsets and the binary bridge must select the same
@@ -218,22 +261,42 @@ import AppKit
       let legacy = try JSONDecoder().decode(
         TerminalSnapshot.self, from: Data(bytes: raw, count: strlen(raw)))
       terminal_string_free(raw)
-      let binary = SnapshotBridge.read(historyCore, scroll: scroll, now: 0).snapshot!
-      precondition(binary.rows == legacy.rows && binary.cursor == legacy.cursor)
-      precondition(binary.scroll_offset == legacy.scroll_offset && binary.following_tail == legacy.following_tail)
-      precondition(binary.history_rows == legacy.history_rows && binary.revision == legacy.revision)
+      compare(SnapshotBridge.read(historyCore, scroll: scroll, now: 0).snapshot!, legacy)
+      compare(BinarySnapshotOracle.read(historyCore, scroll: scroll, now: 0).snapshot!, legacy)
     }
+    precondition(terminal_resize(historyCore, 8, 5))
+    let primaryAnchor = SnapshotBridge.readView(historyCore, now: 0).snapshot!
+    precondition(primaryAnchor.scroll_offset == 0 && !primaryAnchor.following_tail)
+    compare(primaryAnchor, BinarySnapshotOracle.readView(historyCore, now: 0).snapshot!)
     terminal_destroy(historyCore)
+    feed("\u{1b}cneedle")
+    let query = Array("needle".utf8)
+    let task = query.withUnsafeBufferPointer { terminal_search_create(core, $0.baseAddress, $0.count) }!
+    var searchStatus: UInt32 = 0
+    for _ in 0..<100 {
+      searchStatus = terminal_search_fill(core, task)
+      if searchStatus == 0 { _ = terminal_search_step(task) }
+      else if searchStatus == 2 { searchStatus = terminal_search_accept(core, task); break }
+      else { preconditionFailure("unexpected search status") }
+    }
+    terminal_search_destroy(task)
+    precondition(searchStatus == 5)
+    let searched = try check()
+    precondition(!searched.search.isEmpty)
     feed("\u{1b}c")
     precondition(terminal_resize(core, 1, 3))
     feed("猫")
     let clipped = try check()
     precondition(clipped.rows[0].cells[0].flags & 1 != 0)
+    feed("\u{1b}c\u{1b}]8;;\u{1b}\\a" + String(repeating: "\u{301}", count: 70))
+    let capped = try check()
+    precondition(capped.rows[0].cells[0].flags & 4 != 0)
+    precondition(capped.rows[0].cells[0].link == "" && capped.rows[1].cells[0].link == nil)
     terminal_destroy(core)
     // Owned Swift values must survive mutation, screen changes, and actor destruction.
     precondition(styled.rows[0].cells[0] == first && image.images.count == 1)
     print(
-      "PASS binary snapshot bridge: exact legacy equivalence, colors/styles/links, Unicode, scroll, images, sync gate, owned lifetimes"
+      "PASS direct Swift snapshot bridge: independent binary/JSON equivalence, styles/links, Unicode, search, scroll, images, sync gate, owned lifetimes"
     )
   }
 }
