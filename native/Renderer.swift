@@ -68,6 +68,8 @@ final class TerminalRendering: @unchecked Sendable {
   struct SurfaceStatus {
     let attached: Bool
     let completedSnapshotRevision: UInt64
+    let lastTargetTimestamp: CFTimeInterval
+    let lastPresentationTargetTimestamp: CFTimeInterval
   }
   private struct SurfaceState {
     let lease: SurfaceLease
@@ -76,7 +78,16 @@ final class TerminalRendering: @unchecked Sendable {
     var latest: RenderRequest?
     var generation: UInt64 = 0
     var awaitingDrawable = false
+    var pendingDrawable: CAMetalDrawable?
     var rendering = false
+    var targetTimestamp: CFTimeInterval = 0
+    var targetPresentationTimestamp: CFTimeInterval = 0
+  }
+  private struct Submission {
+    let request: RenderRequest
+    let drawable: CAMetalDrawable
+    let surface: SurfaceLease
+    let generation: UInt64
   }
   // CAMetalDisplayLink supplies a drawable in its update callback, avoiding a
   // blocking nextDrawable call. This object lives on the main run loop; it
@@ -104,8 +115,8 @@ final class TerminalRendering: @unchecked Sendable {
       else { DispatchQueue.main.async(execute: resume) }
     }
     func invalidate() {
-      let stop = { [weak self] in
-        guard let self, !self.invalidated else { return }
+      let stop = { [self] in
+        guard !invalidated else { return }
         self.invalidated = true
         self.link.isPaused = true
         self.link.invalidate()
@@ -118,7 +129,9 @@ final class TerminalRendering: @unchecked Sendable {
       // Demand-paused: each accepted update hands one drawable to the owner.
       // A newer request can re-arm the link after this callback returns.
       link.isPaused = true
-      rendering?.received(drawable: update.drawable, surface: lease)
+      rendering?.received(
+        drawable: update.drawable, target: update.targetTimestamp,
+        presentationTarget: update.targetPresentationTimestamp, surface: lease)
     }
   }
   private let device: MTLDevice
@@ -131,6 +144,10 @@ final class TerminalRendering: @unchecked Sendable {
   private let executor = DispatchQueue(label: "no.helgesverre.terminal.render", qos: .userInteractive)
   private let surfacesLock = NSLock()
   private var surfaces: [UUID: SurfaceState] = [:]
+  // Ready drawables are admitted FIFO. A nonresponsive/off-display surface has
+  // no queue entry and therefore cannot gate a healthy surface.
+  private var readySurfaces: [UUID] = []
+  private var readySet: Set<UUID> = []
   private var gpuBusy = false
   private var atlases: [MTLTexture] = []
   private var glyphs: [GlyphKey: Glyph] = [:]
@@ -206,8 +223,11 @@ final class TerminalRendering: @unchecked Sendable {
     return lease
   }
   func detach(_ lease: SurfaceLease) {
+    precondition(Thread.isMainThread)
     surfacesLock.lock()
     let surface = surfaces.removeValue(forKey: lease.id)
+    readySet.remove(lease.id)
+    readySurfaces.removeAll { $0 == lease.id }
     surfacesLock.unlock()
     surface?.displayLink.invalidate()
     executor.async { [weak self] in
@@ -215,27 +235,38 @@ final class TerminalRendering: @unchecked Sendable {
     }
   }
   func surfaceStatus(_ lease: SurfaceLease?, layer: CAMetalLayer?) -> SurfaceStatus {
-    guard let layer, let lease else { return SurfaceStatus(attached: false, completedSnapshotRevision: 0) }
+    guard let layer, let lease else {
+      return SurfaceStatus(
+        attached: false, completedSnapshotRevision: 0, lastTargetTimestamp: 0,
+        lastPresentationTargetTimestamp: 0)
+    }
     surfacesLock.lock()
     defer { surfacesLock.unlock() }
-    let attached = surfaces[lease.id]?.layer === layer
+    let surface = surfaces[lease.id]
+    let attached = surface?.layer === layer
     return SurfaceStatus(
-      attached: attached, completedSnapshotRevision: attached ? lease.completedRevision() : 0)
+      attached: attached, completedSnapshotRevision: attached ? lease.completedRevision() : 0,
+      lastTargetTimestamp: attached ? surface?.targetTimestamp ?? 0 : 0,
+      lastPresentationTargetTimestamp: attached ? surface?.targetPresentationTimestamp ?? 0 : 0)
   }
   func request(_ lease: SurfaceLease, latest value: RenderRequest) {
-    var displayLink: SurfaceDisplayLink?
+    var displayLinks: [SurfaceDisplayLink] = []
     surfacesLock.lock()
     if var surface = surfaces[lease.id] {
       surface.latest = value
       surface.generation &+= 1
       surfaces[lease.id] = surface
-      displayLink = beginDisplayLinkLocked(surface)
+      if surface.pendingDrawable != nil { enqueueReadyLocked(lease.id) }
+      displayLinks = armEligibleSurfacesLocked()
     }
     surfacesLock.unlock()
-    displayLink?.requestFrame()
+    displayLinks.forEach { $0.requestFrame() }
+    executor.async { [weak self] in self?.drainReady() }
   }
   private func beginDisplayLinkLocked(_ surface: SurfaceState) -> SurfaceDisplayLink? {
-    guard !surface.awaitingDrawable, !surface.rendering, !gpuBusy, surface.latest != nil else {
+    guard !surface.awaitingDrawable, surface.pendingDrawable == nil, !surface.rendering,
+      surface.latest != nil
+    else {
       return nil
     }
     var updated = surface
@@ -243,34 +274,85 @@ final class TerminalRendering: @unchecked Sendable {
     surfaces[surface.lease.id] = updated
     return surface.displayLink
   }
+  private func armEligibleSurfacesLocked() -> [SurfaceDisplayLink] {
+    Array(surfaces.values).compactMap { beginDisplayLinkLocked($0) }
+  }
+  private func enqueueReadyLocked(_ id: UUID) {
+    guard readySet.insert(id).inserted else { return }
+    readySurfaces.append(id)
+  }
+  private func nextSubmissionLocked() -> Submission? {
+    guard !gpuBusy else { return nil }
+    while !readySurfaces.isEmpty {
+      let id = readySurfaces.removeFirst()
+      readySet.remove(id)
+      guard var surface = surfaces[id], !surface.rendering,
+        let request = surface.latest, let drawable = surface.pendingDrawable
+      else { continue }
+      surface.pendingDrawable = nil
+      surface.rendering = true
+      let generation = surface.generation
+      surfaces[id] = surface
+      gpuBusy = true
+      return Submission(request: request, drawable: drawable, surface: surface.lease, generation: generation)
+    }
+    return nil
+  }
+  private func submit(_ submission: Submission?) {
+    guard let submission else { return }
+    if !draw(
+      submission.request, drawable: submission.drawable, surface: submission.surface,
+      generation: submission.generation)
+    {
+      finishedWithoutSubmission(surface: submission.surface, generation: submission.generation)
+    }
+  }
+  private func drainReady() {
+    var displayLinks: [SurfaceDisplayLink] = []
+    surfacesLock.lock()
+    displayLinks = armEligibleSurfacesLocked()
+    let submission = nextSubmissionLocked()
+    surfacesLock.unlock()
+    displayLinks.forEach { $0.requestFrame() }
+    submit(submission)
+  }
   // The display-link callback can arrive on the main run loop. Keep it tiny:
   // ownership validation and Metal encoding remain serialized on executor.
-  fileprivate func received(drawable: CAMetalDrawable, surface lease: SurfaceLease) {
-    executor.async { [weak self, lease] in self?.accept(drawable: drawable, surface: lease) }
+  fileprivate func received(
+    drawable: CAMetalDrawable, target: CFTimeInterval, presentationTarget: CFTimeInterval,
+    surface lease: SurfaceLease
+  ) {
+    executor.async { [weak self, lease] in
+      self?.accept(
+        drawable: drawable, target: target, presentationTarget: presentationTarget, surface: lease)
+    }
   }
-  private func accept(drawable: CAMetalDrawable, surface lease: SurfaceLease) {
-    var next: SurfaceDisplayLink?
+  private func accept(
+    drawable: CAMetalDrawable, target: CFTimeInterval, presentationTarget: CFTimeInterval,
+    surface lease: SurfaceLease
+  ) {
+    var displayLinks: [SurfaceDisplayLink] = []
+    var submission: Submission?
     surfacesLock.lock()
     guard var surface = surfaces[lease.id] else {
       surfacesLock.unlock()
       return
     }
     surface.awaitingDrawable = false
-    guard let request = surface.latest, !gpuBusy else {
-      surfaces[lease.id] = surface
-      next = beginDisplayLinkLocked(surface)
-      surfacesLock.unlock()
-      next?.requestFrame()
-      return
+    surface.targetTimestamp = target
+    surface.targetPresentationTimestamp = presentationTarget
+    // Keep at most one supplied drawable for a surface. It may wait behind a
+    // different GPU submission, but no off-display surface can block another.
+    if surface.pendingDrawable == nil, surface.latest != nil {
+      surface.pendingDrawable = drawable
+      enqueueReadyLocked(lease.id)
     }
-    surface.rendering = true
-    let generation = surface.generation
     surfaces[lease.id] = surface
-    gpuBusy = true
+    displayLinks = armEligibleSurfacesLocked()
+    submission = nextSubmissionLocked()
     surfacesLock.unlock()
-    if !draw(request, drawable: drawable, surface: lease, generation: generation) {
-      finishedWithoutSubmission(surface: lease, generation: generation)
-    }
+    displayLinks.forEach { $0.requestFrame() }
+    submit(submission)
   }
   private func finishedWithoutSubmission(surface lease: SurfaceLease, generation: UInt64) {
     surfacesLock.lock()
@@ -279,9 +361,11 @@ final class TerminalRendering: @unchecked Sendable {
       surfaces[lease.id] = surface
     }
     gpuBusy = false
-    let next = nextDisplayLinkLocked()
+    let displayLinks = armEligibleSurfacesLocked()
+    let submission = nextSubmissionLocked()
     surfacesLock.unlock()
-    next?.requestFrame()
+    displayLinks.forEach { $0.requestFrame() }
+    submit(submission)
   }
   private func completed(
     surface lease: SurfaceLease, generation: UInt64, revision: UInt64, command: MTLCommandBuffer
@@ -298,17 +382,11 @@ final class TerminalRendering: @unchecked Sendable {
       surfaces[lease.id] = surface
     }
     gpuBusy = false
-    let next = nextDisplayLinkLocked()
+    let displayLinks = armEligibleSurfacesLocked()
+    let submission = nextSubmissionLocked()
     surfacesLock.unlock()
-    next?.requestFrame()
-  }
-  private func nextDisplayLinkLocked() -> SurfaceDisplayLink? {
-    for surface in surfaces.values where surface.latest != nil && !surface.awaitingDrawable && !surface.rendering {
-      if let displayLink = beginDisplayLinkLocked(surface) {
-        return displayLink
-      }
-    }
-    return nil
+    displayLinks.forEach { $0.requestFrame() }
+    submit(submission)
   }
   private func resetAtlas() {
     glyphs.removeAll(keepingCapacity: true)

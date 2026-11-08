@@ -57,6 +57,9 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       "contents_are_flipped": layer?.contentsAreFlipped() ?? false,
       "renderer_matches_layer": renderingStatus?.attached ?? false,
       "completed_snapshot_revision": renderingStatus?.completedSnapshotRevision ?? 0,
+      "display_link_target_timestamp": renderingStatus?.lastTargetTimestamp ?? 0,
+      "display_link_presentation_target_timestamp":
+        renderingStatus?.lastPresentationTargetTimestamp ?? 0,
       "focused": focused,
       "first_responder": window?.firstResponder === self,
     ]
