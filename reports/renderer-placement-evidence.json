@@ -1,0 +1,118 @@
+{
+  "probe_commit": "c9cf06e",
+  "candidate_commit": "4b9e64c",
+  "runs": [
+    {
+      "mode": "scale-full-v2",
+      "identity": {
+        "window": 21535,
+        "executable": "/Users/helge/code/terminal-rendering-probe/dist/RenderingProbe.app/Contents/MacOS/Terminal",
+        "pid": 63952,
+        "mode": "SCALE CONTROL",
+        "sha256": "2863e151216e28c258a68925412d9cfe1596e9b3d2e9a99878ca3894d75b6f82",
+        "base_commit": "eb0293e2831ffdb504bfbbef733da48dacaefbe6"
+      },
+      "complete_frames": 536,
+      "distorted_frames": 61,
+      "missing_top_left_marker_frames": 57,
+      "missing_marker_first_frames": [
+        1,
+        27,
+        29,
+        68,
+        76,
+        78,
+        100,
+        121,
+        123,
+        170,
+        172,
+        202
+      ],
+      "content_scales": [
+        "1"
+      ],
+      "sha256": {
+        "capture.mp4": "cc157e754133257baf12963cda659e42c5152e7b6625143c3b59fbd8d2249333",
+        "frames.jsonl": "57a66d62648049d257011eab23e1b7093858b97a995b104c07a6176780db482e",
+        "geometry.jsonl": "d60b36cb0d711520f22c26b166646acb90cee03629e18ef6d50c197fa2e289a8",
+        "identity.json": "292112d35da61e3ee93eaf69364d626746d6e496ae6d179e7e0085037e8fde3c"
+      }
+    },
+    {
+      "mode": "current-full",
+      "identity": {
+        "window": 21547,
+        "executable": "/Users/helge/code/terminal-rendering-probe/dist/RenderingProbe.app/Contents/MacOS/Terminal",
+        "mode": "CURRENT FIX",
+        "pid": 64422,
+        "sha256": "2863e151216e28c258a68925412d9cfe1596e9b3d2e9a99878ca3894d75b6f82",
+        "base_commit": "eb0293e2831ffdb504bfbbef733da48dacaefbe6"
+      },
+      "complete_frames": 542,
+      "distorted_frames": 0,
+      "missing_top_left_marker_frames": 38,
+      "missing_marker_first_frames": [
+        205,
+        338,
+        355,
+        368,
+        372,
+        374,
+        378,
+        380,
+        398,
+        400,
+        404,
+        406
+      ],
+      "content_scales": [
+        "1"
+      ],
+      "sha256": {
+        "capture.mp4": "700cbc19f5659c13bb9c1c3a337a6a07b1be2a880b4fb572faecce114758e4d8",
+        "frames.jsonl": "6d41a81c93ac9f59f1ec27e4fb0cb04b48688878d5b1aa84aaf7deb2c33b71bc",
+        "geometry.jsonl": "ebea2f994aae838adb05f6c4f236d344541da7e30741b2aaced3014b0af6b80c",
+        "identity.json": "9efd355b98a6ee8f708cf657e6601da994d9d6da62a9a21e89776fe4f327c6a8"
+      }
+    },
+    {
+      "mode": "view-full",
+      "identity": {
+        "pid": 65078,
+        "window": 21559,
+        "mode": "VIEW PLACEMENT",
+        "executable": "/Users/helge/code/terminal-rendering-probe/dist/RenderingProbe.app/Contents/MacOS/Terminal",
+        "sha256": "2863e151216e28c258a68925412d9cfe1596e9b3d2e9a99878ca3894d75b6f82",
+        "base_commit": "eb0293e2831ffdb504bfbbef733da48dacaefbe6"
+      },
+      "complete_frames": 536,
+      "distorted_frames": 0,
+      "missing_top_left_marker_frames": 0,
+      "missing_marker_first_frames": [],
+      "content_scales": [
+        "1"
+      ],
+      "sha256": {
+        "capture.mp4": "9476811036335e9b9139eacd86c11fc2979e54277a533c3ac0e4e2c4f001ff98",
+        "frames.jsonl": "93c63dec8fabafebf8fc6832c17a233836b8866916573cd6885baf62cd90da6b",
+        "geometry.jsonl": "0e8cdd949410ebdd20bd8ffb52d70b6c8b55cfee310f18fa665bb6bd3c074225",
+        "identity.json": "75e91fcf540b2c48f8a4f35c56c6e6de72008c7d6facbb6e79200ac781324d22"
+      }
+    }
+  ],
+  "integrated_commit": "c7d52b6",
+  "capture": {
+    "api": "ScreenCaptureKit desktopIndependentWindow",
+    "requested_fps": 60,
+    "audio": false,
+    "microphone": false,
+    "width": 2400,
+    "height": 1600,
+    "scalesToFit": false,
+    "preservesAspectRatio": true
+  },
+  "scope": "Actual terminal renderer; static synthetic text and60x60pixel markers; vertical and horizontal nested splits;181 divider steps and100 whole-window size changes; no artificial renderer delay.",
+  "limitations": "Complete capture frames were measured; this is not proof about every physical display scanout, continuous mouse tracking, mixed-DPI displays, or arbitrary shell content.",
+  "artifact_root": "/Users/helge/.codex/artifacts/terminal-rendering-review"
+}

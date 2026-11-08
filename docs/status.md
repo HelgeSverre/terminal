@@ -56,6 +56,15 @@ Implemented and locally exercised:
   Enter, enhanced press/repeat/release encoding, delivered-key identity tracking
   across releases, and focus-loss cleanup. A 64 KiB control reserve inside the
   existing 2 MiB ingress cap admits owned releases under ordinary-input pressure.
+- Bundled Obel Mono faces and Symbols Nerd Font Mono fallback, numeric font-size
+  input with Up/Down and stepper controls. Exhaustive glyph inspection covers
+  10,624 printable Nerd characters in four styles; real PTY/Metal runs cover 44 pages.
+- Native AppleScript dictionary with stable pane identifiers, bounded screen reads,
+  input, splits/windows/tabs and validated preference changes. The disposable
+  automation fixture verifies targeting while Settings is active and child cleanup.
+- Final-window closure quits the app and reaps PTY children; closed sessions
+  silently reject late focus/key releases. PTY EOF closes input admission while
+  leaving the final screen and history searchable.
 
 Current automated evidence:
 
@@ -68,6 +77,13 @@ Current automated evidence:
   marked-text callback commit, guarded preedit cancellation on resize/focus,
   resize, split and Metal submission checks. Session tests exercise native
   scroll/focus/release/typing event ordering through the typed view snapshot ABI.
+- Independent captured-frame resize comparison found an incorrect retained-frame
+  anchor with raw layer gravity. The development build now sets AppKit's native
+  top-left placement policy. Across the controlled nested-split/window-resize
+  sequence, all detected markers in 536 captured candidate frames stayed 60×60;
+  the scaling control distorted 61 of 536 frames. The report records scope and
+  provenance in `docs/rendering-second-review.md`; this is separate from shell
+  prompt-redraw correctness.
 - `reports/core-benchmark.json`: actual five-run release headless throughput and
   one 10k-row resize measurement, including parser finish and final snapshot.
 - `reports/metal-shell.png`: observed local native shell window.
@@ -97,6 +113,10 @@ Current automated evidence:
 
 Required work remaining before the requested completion gate:
 
+- Resolve prompt fragments under rapid nested Starship/ZLE resize. A controlled
+  actual-Starship-init fixture reproduces them here; Ghostty and Kitty controls
+  retain one prompt/right-prompt/edit buffer. The original cause remains under
+  investigation; no speculative shell-geometry workaround is shipped.
 - Resolve the host's Downloads authorization stall for Launch Services launches:
   a read/discard probe blocks in `open` without a visible permission alert, despite
   a valid ad-hoc signature and Downloads usage description. Direct launch from
