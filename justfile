@@ -142,6 +142,7 @@ lint:
     just terminal-scheduler-oracle
     just terminal-semantic-regression
     just swift-unicode18-corpus
+    just swift-input-encoder
     xcrun clang -Wall -Wextra -Werror -I native -c native/tests/pty.c -o target/native/swift-pty-tests.o
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty) target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
     target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
@@ -219,6 +220,13 @@ swift-unicode18-corpus:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_unicode18_corpus) -framework Foundation -o target/native/swift-unicode18-corpus
     target/native/swift-unicode18-corpus "$PWD" --strict
+
+[group('check')]
+swift-input-encoder:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_input_encoder) -framework Foundation -o target/native/swift-input-encoder-tests
+    target/native/swift-input-encoder-tests
 
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
 [group('check')]

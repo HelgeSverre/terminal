@@ -109,6 +109,9 @@
     ],
     "swift_unicode18_corpus": [
       "SwiftUnicode18Tables.swift", "SwiftUnicode.swift", "tests/SwiftUnicode18CorpusTests.swift"
+    ],
+    "swift_input_encoder": [
+      "SwiftInputEncoder.swift", "tests/SwiftInputEncoderTests.swift"
     ]
   }
 }
