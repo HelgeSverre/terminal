@@ -1,0 +1,22 @@
+{
+  "swift_commit": "9de068ab3b46368c178d1fb34fe2547ced9a3ee8",
+  "rust_commit": "f4268ee2b6a2ed4bc4942c5b7b3d8341c0e3b119",
+  "fixtures": 5,
+  "partitions": ["whole", "byte", "random"],
+  "canonical_result": "15 of 15 fixture/partition comparisons passed",
+  "reports": {
+    "whole": {
+      "file": "differential-9de-canonical-whole.json",
+      "sha256": "5cfa5c681a39c867e2feeba185b72a0cc60c256e5ccdc3218bd731d6279a46ac"
+    },
+    "byte": {
+      "file": "differential-9de-canonical-byte.json",
+      "sha256": "2962398039075a5e29ec2036500692657fe7d47e4aa6554970864470ca70de7a"
+    },
+    "random": {
+      "file": "differential-9de-canonical-random.json",
+      "sha256": "45faa1da672b5055155d570040cbb7785b8091c971af7dcebdaaf15fc7f63040"
+    }
+  },
+  "schema_note": "Raw snapshots and Swift-only screen-margin/reply observations are retained. Canonical comparison retains all fields exposed by both snapshots; Rust terminal-tools has no margin or reply-queue JSON projection."
+}
