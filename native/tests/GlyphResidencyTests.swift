@@ -36,6 +36,7 @@ final class RendererMetrics {
     precondition(makeResidency().testingNegativeCacheIsBoundedAndRecipeScoped())
     precondition(makeResidency().testingTwoGlyphWorkingSetSettles())
     precondition(makeResidency().testingOversizeExactResident())
+    precondition(makeResidency().testingOversizeRecoveryAndPins())
     // Real raster-worker → owner-queue delivery, with an empty frame boundary
     // before B completes. This catches the old permit-reset race.
     let callbackOwner = DispatchQueue(label: "glyph-residency-async-test")

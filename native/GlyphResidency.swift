@@ -644,6 +644,28 @@ final class GlyphResidency: @unchecked Sendable {
       && directFallbackBytes > 0
   }
 
+  func testingOversizeRecoveryAndPins() -> Bool {
+    let a = GlyphRasterRecipe(text: "A", width: 1024, height: 1024, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
+    let b = GlyphRasterRecipe(text: "B", width: 1024, height: 1024, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
+    let pixels = [UInt8](repeating: 255, count: a.width * a.height * 4)
+    let resultA = GlyphRasterResult(recipe: a, pixels: pixels, kind: .mask,
+      resolvedFonts: ["Menlo-Regular"], glyphIDs: [1])
+    let resultB = GlyphRasterResult(recipe: b, pixels: pixels, kind: .mask,
+      resolvedFonts: ["Menlo-Regular"], glyphIDs: [2])
+    guard install(resultA) == .installed, resolve(a) != nil else { return false }
+    finishFrameDemand() // A is visible and therefore protected.
+    submitted()
+    currentDemand = [b]; finishFrameDemand()
+    // B cannot reclaim the still-submitted A direct texture.
+    guard install(resultB) == .impossible else { return false }
+    completedSubmission()
+    // Same B result recovers once A's completion pin drains.
+    guard install(resultB) == .installed, entries[a] == nil, entries[b] != nil else { return false }
+    return directResident.values.allSatisfy { $0.pins == 0 }
+  }
+
   func testingHasResident(_ recipe: GlyphRasterRecipe) -> Bool { entries[recipe] != nil }
   #endif
 }
