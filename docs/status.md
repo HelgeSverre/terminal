@@ -223,6 +223,7 @@ Latest native evidence: Obel Mono is the configured font. `session-tests.json`
 checks input admission before a mode suffix behind a 500k REP, framed paste,
 oversize rejection, and saturation/cancel/close. `native-idle.json` records a
 60-second idle test on an M2 Max: zero submissions, ~0.013% of one CPU core,
-~42 MiB physical footprint for one visible pane. This is not the original M1 Pro
-reference machine. `native-smoke.json` includes actual pane/layer geometry and
+~42 MiB physical footprint for one visible pane. The specification names an
+M2-class MacBook with 32 GiB RAM; this Max-class result is not an equivalent
+reference configuration. `native-smoke.json` includes actual pane/layer geometry and
 Metal command times; `quit-smoke.json` also verified the process exits.
