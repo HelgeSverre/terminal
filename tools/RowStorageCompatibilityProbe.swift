@@ -3,6 +3,14 @@ import Foundation
 // The same source is compiled against both frozen revisions. Budgets come
 // exclusively from the baseline binary, including tests of the candidate.
 @main enum RowStorageCompatibilityProbe {
+  private final class Metadata { var value = Data() }
+  private static let collectMetadata: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int,
+    UnsafePointer<TerminalCellView>?, Int, UnsafePointer<UInt8>?, Int
+  ) -> Void = { context, metadata, count, _, _, _, _ in
+    guard let context, let metadata, count > 0 else { return }
+    Unmanaged<Metadata>.fromOpaque(context).takeUnretainedValue().value = Data(bytes: metadata, count: count)
+  }
   static let widths: [UInt32] = [1, 2, 3, 4, 7, 17, 31, 63, 80, 127]
   static func feed(_ terminal: OpaquePointer, _ text: String) {
     let data = Data(text.utf8)
@@ -12,9 +20,16 @@ import Foundation
     precondition(used == data.count)
   }
   static func snapshot(_ terminal: OpaquePointer) -> [String: Any] {
-    let raw = terminal_snapshot(terminal, Int.max, 0)!
+    let capture = Metadata()
+    precondition(terminal_view_snapshot_binary(
+      terminal, 0, Unmanaged.passUnretained(capture).toOpaque(), collectMetadata))
+    var owner = try! JSONSerialization.jsonObject(with: capture.value) as! [String: Any]
+    let offset = owner["scroll_offset"] as! Int
+    let raw = terminal_snapshot(terminal, offset, 0)!
     defer { terminal_string_free(raw) }
-    return try! JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8)) as! [String: Any]
+    let numeric = try! JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8)) as! [String: Any]
+    owner["rows"] = numeric["rows"]
+    return owner
   }
   static func setup(_ width: UInt32, linked: Bool) -> OpaquePointer {
     let terminal = terminal_create(width, 3)!
