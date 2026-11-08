@@ -22,9 +22,7 @@ import Foundation
   }
   static func feed(_ terminal: OpaquePointer, _ text: String, now: UInt64 = 0) { feed(terminal, Data(text.utf8), now: now) }
   static func snapshot(_ terminal: OpaquePointer, now: UInt64 = 0) -> [String: Any] {
-    let raw = terminal_snapshot(terminal, Int.max, now)!
-    defer { terminal_string_free(raw) }
-    return try! JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8)) as! [String: Any]
+    TerminalSnapshotTestSupport.ownerSnapshot(terminal, now: now)!
   }
   static func line(_ snapshot: [String: Any], _ row: Int) -> String {
     (((snapshot["rows"] as! [[String: Any]])[row]["cells"] as! [[String: Any]]).map { ($0["text"] as! String).isEmpty ? " " : ($0["text"] as! String) }.joined())

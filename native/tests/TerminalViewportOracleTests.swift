@@ -5,9 +5,7 @@ import Foundation
   static func make(_ columns: UInt32 = 8, _ rows: UInt32 = 3) -> OpaquePointer { terminal_create(columns, rows)! }
   static func feed(_ terminal: OpaquePointer, _ text: String) { let data = Data(text.utf8); _ = data.withUnsafeBytes { terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, data.count, 0) } }
   static func snapshot(_ terminal: OpaquePointer) -> [String: Any]? {
-    guard let pointer = terminal_snapshot(terminal, Int.max, 0) else { return nil }
-    defer { terminal_string_free(pointer) }
-    return try! JSONSerialization.jsonObject(with: Data(String(cString: pointer).utf8)) as? [String: Any]
+    TerminalSnapshotTestSupport.ownerSnapshot(terminal)
   }
   static func lines(_ value: [String: Any]) -> [String] {
     (value["rows"] as! [[String: Any]]).map { row in

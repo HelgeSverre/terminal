@@ -1003,7 +1003,10 @@ private final class SwiftTerminalCore {
   }
   var hasPendingWork: Bool { repeatRemaining > 0 }
   var publicationGated: Bool { syncDeadline != nil }
-  func snapshot(now: UInt64) -> Data? { tick(now); return publicationGated ? nil : snapshotJSON(view: true) }
+  func snapshot(scroll: Int?, now: UInt64) -> Data? {
+    tick(now)
+    return publicationGated ? nil : snapshotJSON(scroll: scroll)
+  }
   func isValid() -> Bool {
     document.hasValidInvariants(primary) && document.hasValidInvariants(alternate) &&
       history.allSatisfy { $0.cells.count == columns }
@@ -1125,12 +1128,27 @@ private final class SwiftTerminalCore {
     for index in 0..<24 { let value = 8 + index * 10; output.append([value, value, value]) }
     return output
   }
-  private func rowsForSnapshot(view: Bool, scroll: Int? = nil) -> (rows: [SwiftRow], offset: Int) {
-    let requested = max(0, scroll ?? viewOffset)
+  private struct SnapshotSelection {
+    var rows: [SwiftRow]
+    var offset: Int
+    var followingTail: Bool
+  }
+  private func rowsForSnapshot(offset: Int) -> (rows: [SwiftRow], offset: Int) {
+    let requested = max(0, offset)
     guard !usingAlternate, requested > 0 else { return (screen.rows, 0) }
     let all = history + primary.rows
     let end = max(rowCount, all.count - min(requested, history.count))
     return (Array(all[max(0, end - rowCount)..<end]), min(requested, history.count))
+  }
+  private func selectSnapshot(scroll: Int?) -> SnapshotSelection {
+    guard let scroll else {
+      let selected = rowsForSnapshot(offset: viewOffset)
+      return SnapshotSelection(rows: selected.rows, offset: selected.offset,
+                               followingTail: usingAlternate || viewAnchor == nil)
+    }
+    let selected = rowsForSnapshot(offset: scroll)
+    return SnapshotSelection(rows: selected.rows, offset: selected.offset,
+                             followingTail: selected.offset == 0)
   }
   private func visibleSearchHighlights(in rows: [SwiftRow]) -> [[String: Int]] {
     guard let hit = searchHit else { return [] }
@@ -1157,13 +1175,13 @@ private final class SwiftTerminalCore {
       }
     }
   }
-  func publishBinary(view: Bool, scroll: Int, now: UInt64, context: UnsafeMutableRawPointer?, callback: SnapshotCallback?) -> Bool {
+  func publishBinary(scroll: Int?, now: UInt64, context: UnsafeMutableRawPointer?, callback: SnapshotCallback?) -> Bool {
     tick(now)
     guard !publicationGated else { return false }
     guard let callback else { return false }
-    let selected = rowsForSnapshot(view: view, scroll: view ? nil : scroll)
+    let selected = selectSnapshot(scroll: scroll)
     let metadataObject = snapshotMetadata(cursor: screen, offset: selected.offset,
-                                          followingTail: view ? (usingAlternate || viewAnchor == nil) : selected.offset == 0,
+                                          followingTail: selected.followingTail,
                                           search: visibleSearchHighlights(in: selected.rows))
     guard let metadata = try? JSONSerialization.data(withJSONObject: metadataObject) else { return false }
     let borrowed = SwiftBorrowedCells()
@@ -1199,13 +1217,13 @@ private final class SwiftTerminalCore {
       return true
     }
   }
-  func snapshotJSON(view: Bool) -> Data {
+  func snapshotJSON(scroll: Int?) -> Data {
     let source: [SwiftRow]; let offset: Int
-    let selected = rowsForSnapshot(view: view)
+    let selected = selectSnapshot(scroll: scroll)
     source = selected.rows; offset = selected.offset
     let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(cell.style.foreground), "background": colorJSON(cell.style.background), "underline_color": colorJSON(cell.style.underline), "underline": Int(cell.style.underlineKind), "bold": cell.style.flags & 1 != 0, "faint": cell.style.flags & 2 != 0, "italic": cell.style.flags & 4 != 0, "inverse": cell.style.flags & 8 != 0, "conceal": cell.style.flags & 16 != 0, "strike": cell.style.flags & 32 != 0, "overline": cell.style.flags & 64 != 0, "blink": cell.style.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
     var data = snapshotMetadata(cursor: screen, offset: offset,
-                                followingTail: usingAlternate || viewAnchor == nil,
+                                followingTail: selected.followingTail,
                                 search: visibleSearchHighlights(in: source))
     data["rows"] = rows
     return (try? JSONSerialization.data(withJSONObject: data)) ?? Data("{}".utf8)
@@ -1242,10 +1260,10 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
 @_cdecl("terminal_set_history_limit") func swift_terminal_set_history_limit(_ pointer: OpaquePointer?, _ limit: UInt32) { core(pointer)?.setHistoryLimit(Int(limit)) }
 @_cdecl("terminal_set_history_byte_limit") func swift_terminal_set_history_byte_limit(_ pointer: OpaquePointer?, _ limit: UInt64) { core(pointer)?.setHistoryByteLimit(limit > UInt64(Int.max) ? Int.max : Int(limit)) }
 @_cdecl("terminal_history_bytes") func swift_terminal_history_bytes(_ pointer: OpaquePointer?) -> UInt64 { core(pointer)?.historyBytes() ?? 0 }
-@_cdecl("terminal_snapshot") func swift_terminal_snapshot(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64) -> UnsafeMutablePointer<CChar>? { guard let snapshot = core(pointer)?.snapshot(now: now) else { return nil }; return strdup(String(data: snapshot, encoding: .utf8) ?? "{}") }
+@_cdecl("terminal_snapshot") func swift_terminal_snapshot(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64) -> UnsafeMutablePointer<CChar>? { guard let snapshot = core(pointer)?.snapshot(scroll: scroll, now: now) else { return nil }; return strdup(String(data: snapshot, encoding: .utf8) ?? "{}") }
 @_cdecl("terminal_string_free") func swift_terminal_string_free(_ value: UnsafeMutablePointer<CChar>?) { if let value { free(value) } }
-@_cdecl("terminal_snapshot_binary") func swift_terminal_snapshot_binary(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: SnapshotCallback?) -> Bool { core(pointer)?.publishBinary(view: false, scroll: scroll, now: now, context: context, callback: callback) ?? false }
-@_cdecl("terminal_view_snapshot_binary") func swift_terminal_view_snapshot_binary(_ pointer: OpaquePointer?, _ now: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: SnapshotCallback?) -> Bool { core(pointer)?.publishBinary(view: true, scroll: 0, now: now, context: context, callback: callback) ?? false }
+@_cdecl("terminal_snapshot_binary") func swift_terminal_snapshot_binary(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: SnapshotCallback?) -> Bool { core(pointer)?.publishBinary(scroll: scroll, now: now, context: context, callback: callback) ?? false }
+@_cdecl("terminal_view_snapshot_binary") func swift_terminal_view_snapshot_binary(_ pointer: OpaquePointer?, _ now: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: SnapshotCallback?) -> Bool { core(pointer)?.publishBinary(scroll: nil, now: now, context: context, callback: callback) ?? false }
 @_cdecl("terminal_view_scroll") func swift_terminal_view_scroll(_ pointer: OpaquePointer?, _ amount: Int64) { core(pointer)?.scroll(Int(amount)) }
 @_cdecl("terminal_view_follow_tail") func swift_terminal_view_follow_tail(_ pointer: OpaquePointer?) { core(pointer)?.followTail() }
 @_cdecl("terminal_clear_display") func swift_terminal_clear_display(_ pointer: OpaquePointer?) -> UInt32 { core(pointer)?.clearDisplay() ?? 0 }

@@ -28,7 +28,11 @@ import Foundation
     return try! JSONSerialization.jsonObject(with: capture.value) as! [String: Any]
   }
   static func snapshot(_ core: OpaquePointer) -> [String: Any] {
-    guard let raw = terminal_snapshot(core, Int.max, 0) else { fatalError("missing snapshot") }
+    guard let snapshot = TerminalSnapshotTestSupport.ownerSnapshot(core) else { fatalError("missing snapshot") }
+    return snapshot
+  }
+  static func legacySnapshot(_ core: OpaquePointer, scroll: Int) -> [String: Any] {
+    guard let raw = terminal_snapshot(core, scroll, 0) else { fatalError("missing legacy snapshot") }
     defer { terminal_string_free(raw) }
     return try! JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8)) as! [String: Any]
   }
@@ -87,6 +91,9 @@ import Foundation
       (row["cells"] as! [[String: Any]]).map { $0["text"] as! String }.joined()
         .trimmingCharacters(in: .whitespaces)
     }
+  }
+  static func JSON(_ value: Any) -> Data {
+    try! JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
   }
   static func stableSnapshot(_ core: OpaquePointer) -> Data {
     try! JSONSerialization.data(withJSONObject: snapshot(core), options: [.sortedKeys])
@@ -631,6 +638,44 @@ import Foundation
     precondition(viewHeader(core)["following_tail"] as? Bool == false)
     precondition(binaryHeader(core, scroll: 0)["following_tail"] as? Bool == true)
   }
+  static func legacySnapshotHonorsExplicitNumericScroll() {
+    let core = terminal_create(8, 3)!
+    defer { terminal_destroy(core) }
+    feed(core, "zero\r\none\r\ntwo\r\nthree\r\nfour\r\nfive")
+
+    let tail = legacySnapshot(core, scroll: 0)
+    let previous = legacySnapshot(core, scroll: 1)
+    let oldest = legacySnapshot(core, scroll: Int.max)
+    let historyRows = tail["history_rows"] as! Int
+    precondition(historyRows > 1)
+    precondition(tail["scroll_offset"] as? Int == 0 && tail["following_tail"] as? Bool == true)
+    precondition(previous["scroll_offset"] as? Int == 1 && previous["following_tail"] as? Bool == false)
+    precondition(oldest["scroll_offset"] as? Int == historyRows && oldest["following_tail"] as? Bool == false)
+    precondition(JSON(tail["cursor"]!) == JSON(previous["cursor"]!))
+    precondition(JSON(previous["cursor"]!) == JSON(oldest["cursor"]!))
+    for key in ["revision", "document_epoch", "history_epoch", "screen_epoch", "geometry_epoch", "cols", "history_rows"] {
+      precondition(tail[key] as? Int == previous[key] as? Int && previous[key] as? Int == oldest[key] as? Int)
+    }
+    let tailRows = tail["rows"] as! [[String: Any]]
+    let previousRows = previous["rows"] as! [[String: Any]]
+    let oldestRows = oldest["rows"] as! [[String: Any]]
+    precondition((tailRows.last?["id"] as? Int) != (previousRows.last?["id"] as? Int))
+    precondition((previousRows.first?["id"] as? Int) != (oldestRows.first?["id"] as? Int))
+
+    let wrapped = terminal_create(4, 2)!
+    defer { terminal_destroy(wrapped) }
+    feed(wrapped, "abcdefghijkl")
+    let wrappedOldest = legacySnapshot(wrapped, scroll: Int.max)
+    precondition((wrappedOldest["rows"] as! [[String: Any]]).contains { $0["soft_wrapped"] as? Bool == true })
+
+    terminal_view_scroll(core, 1)
+    precondition(terminal_resize(core, 8, 4))
+    let owner = snapshot(core)
+    let explicitTail = legacySnapshot(core, scroll: 0)
+    precondition(owner["scroll_offset"] as? Int == 0 && owner["following_tail"] as? Bool == false)
+    precondition(explicitTail["scroll_offset"] as? Int == 0 && explicitTail["following_tail"] as? Bool == true)
+    precondition(JSON(owner["rows"]!) == JSON(explicitTail["rows"]!))
+  }
   static func defaultHistoryBudgetSurvivesContinuousOutput() {
     let core = terminal_create(4_096, 1)!
     defer { terminal_destroy(core) }
@@ -641,12 +686,12 @@ import Foundation
       precondition(terminal_history_bytes(core) <= limit)
     }
     terminal_view_scroll(core, Int64.max) // Retain the oldest available row.
-    let before = binaryHeader(core, scroll: Int.max)["viewport_clamp_revision"] as! Int
+    let before = viewHeader(core)["viewport_clamp_revision"] as! Int
     for _ in 0..<300 {
       precondition(rawFeed(core, line) == line.count)
       precondition(terminal_history_bytes(core) <= limit)
     }
-    let after = binaryHeader(core, scroll: Int.max)
+    let after = viewHeader(core)
     precondition((after["viewport_clamp_revision"] as! Int) > before)
     precondition(after["following_tail"] as? Bool == false)
     precondition((after["history_rows"] as! Int) < 500)
@@ -667,6 +712,7 @@ import Foundation
     carriageReturnEquivalence()
     searchABI()
     binarySnapshotOffsetsRemainIndependentOfOwnerViewport()
+    legacySnapshotHonorsExplicitNumericScroll()
     defaultHistoryBudgetSurvivesContinuousOutput()
     guard let core = terminal_create(8, 3) else { fatalError("create") }
     defer { terminal_destroy(core) }

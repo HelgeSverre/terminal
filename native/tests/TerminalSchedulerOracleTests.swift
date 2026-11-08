@@ -13,9 +13,7 @@ import Foundation
   }
   static func feed(_ terminal: OpaquePointer, _ text: String, now: UInt64 = 0) { _ = feed(terminal, Data(text.utf8), now: now) }
   static func snapshot(_ terminal: OpaquePointer, now: UInt64 = 0) -> [String: Any]? {
-    guard let raw = terminal_snapshot(terminal, Int.max, now) else { return nil }
-    defer { terminal_string_free(raw) }
-    return try! JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8)) as? [String: Any]
+    TerminalSnapshotTestSupport.ownerSnapshot(terminal, now: now)
   }
   static func text(_ value: [String: Any]) -> String {
     (value["rows"] as! [[String: Any]]).flatMap { $0["cells"] as! [[String: Any]] }.map { $0["text"] as! String }.joined()

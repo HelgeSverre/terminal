@@ -211,6 +211,18 @@ import AppKit
     let historyView = SnapshotBridge.readView(historyCore, now: 0).snapshot!
     precondition(!historyView.following_tail)
     precondition(AccessibilityProjection(snapshot: historyView).text == "\n\n")
+    // Legacy numeric offsets and the binary bridge must select the same
+    // explicit viewport; this is deliberately distinct from the owner view.
+    for scroll in [0, 1, Int.max] {
+      let raw = terminal_snapshot(historyCore, scroll, 0)!
+      let legacy = try JSONDecoder().decode(
+        TerminalSnapshot.self, from: Data(bytes: raw, count: strlen(raw)))
+      terminal_string_free(raw)
+      let binary = SnapshotBridge.read(historyCore, scroll: scroll, now: 0).snapshot!
+      precondition(binary.rows == legacy.rows && binary.cursor == legacy.cursor)
+      precondition(binary.scroll_offset == legacy.scroll_offset && binary.following_tail == legacy.following_tail)
+      precondition(binary.history_rows == legacy.history_rows && binary.revision == legacy.revision)
+    }
     terminal_destroy(historyCore)
     feed("\u{1b}c")
     precondition(terminal_resize(core, 1, 3))
