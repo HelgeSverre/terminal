@@ -1,0 +1,39 @@
+{
+  "passed": true,
+  "scope": "Instrumented short-ASCII diagnosis; not performance acceptance.",
+  "app": "/Users/helge/code/terminal-swift-experiment/target/frozen-868d669-wmo.app",
+  "executable_sha256": "4bf635b6c19348c9f93bf2eebdd20737611ee3b22b51ea40d03973dbc197d36f",
+  "driver_source_sha256": "cbe52cd535960db64083aa08d6928e9ec6037e5c7d37caa6b1a680051e25577e",
+  "runner_sha256": "c91c155ae9bc3d4d3664adaf0a85fbe0df9c6d16950a78d5649cf7d9438eeee9",
+  "requested_bytes_per_run": 16777216,
+  "runs": 10,
+  "driver_sha256": "fea221df7dc59de890e2d1849958d3386c2c32185ee2f4087fefe37d678d7f9e",
+  "pid": 48062,
+  "exit_status": 0,
+  "diagnostic_mib_per_second": {
+    "samples": 10,
+    "p50": 58.459875,
+    "p95": 58.811637,
+    "p99": 58.811637,
+    "max": 58.841701
+  },
+  "per_source_mib": {
+    "feed_bytes": 1064712.13125,
+    "feed_calls": 1040.65,
+    "feed_nanoseconds": 10308726.3,
+    "output_events": 1040.65,
+    "publish_calls": 1.68125,
+    "pump_nanoseconds": 10689888.63125,
+    "pump_schedules": 1040.68125,
+    "pump_turns": 1040.68125,
+    "read_callbacks": 1039.0875,
+    "read_calls": 2079.7375,
+    "read_nanoseconds": 2665140.63125,
+    "read_resumes": 0.0,
+    "read_suspends": 0.0,
+    "snapshot_nanoseconds": 1761085.9375
+  },
+  "mean_output_event_bytes": 1023.1222132801614,
+  "natural_exit": true,
+  "cleanup_survivors": []
+}

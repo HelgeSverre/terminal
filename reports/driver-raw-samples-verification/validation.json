@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "checks": [
+    "execution order",
+    "three raw samples per workload",
+    "all summary medians match raw observations",
+    "paired elapsed/rate relationship"
+  ]
+}
