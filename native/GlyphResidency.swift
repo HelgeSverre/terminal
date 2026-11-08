@@ -29,6 +29,10 @@ final class GlyphResidency: @unchecked Sendable {
     let directFallbackBytes: Int
     let transientReplacementBytes: Int
     let deniedAllocations: UInt64
+    let pendingJobs: Int
+    let queuedUploads: Int
+    let capacityWaiting: Bool
+    var quiescent: Bool { pendingJobs == 0 && queuedUploads == 0 && !capacityWaiting }
   }
   private enum PageKind { case mask, color
     var format: MTLPixelFormat { self == .mask ? .r8Unorm : .rgba8Unorm }
@@ -357,7 +361,8 @@ final class GlyphResidency: @unchecked Sendable {
   func diagnostics() -> Diagnostics {
     Diagnostics(residentBytes: residentBytes, retiredBytes: 0, reservations: reservations,
                 directFallbackBytes: directFallbackBytes, transientReplacementBytes: transientReplacementBytes,
-                deniedAllocations: deniedAllocations)
+                deniedAllocations: deniedAllocations, pendingJobs: pending.count,
+                queuedUploads: uploadQueue.count, capacityWaiting: capacityWait)
   }
 
   // The legacy bridge uses the same heap admission path as native pages. The

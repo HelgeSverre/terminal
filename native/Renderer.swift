@@ -212,7 +212,17 @@ final class TerminalRendering: @unchecked Sendable {
     pipeline = try gpu.makeRenderPipelineState(descriptor: descriptor)
     descriptor.fragmentFunction = library.makeFunction(name: "terminal_image_fragment")
     imagePipeline = try gpu.makeRenderPipelineState(descriptor: descriptor)
-    glyphResidency = GlyphResidency(device: gpu, owner: executor) {}
+    let legacyDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+      pixelFormat: .rgba8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
+    legacyDescriptor.storageMode = .shared; legacyDescriptor.usage = .shaderRead
+    let maskDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+      pixelFormat: .r8Unorm, width: 1024, height: 1024, mipmapped: false)
+    maskDescriptor.storageMode = .shared; maskDescriptor.usage = .shaderRead
+    let sharedBudget = fallbackBudgetSmoke
+      ? Int(gpu.heapTextureSizeAndAlign(descriptor: legacyDescriptor).size
+        + gpu.heapTextureSizeAndAlign(descriptor: maskDescriptor).size)
+      : 64 * 1024 * 1024
+    glyphResidency = GlyphResidency(device: gpu, owner: executor, budget: sharedBudget) {}
     font = TerminalFont.core(size: 14)
     boldFont = font
     italicFont = font
@@ -726,7 +736,9 @@ final class TerminalRendering: @unchecked Sendable {
       }
     }
     if !request.marked.isEmpty {
-      let cells = min(20, max(1, request.marked.count))
+      let smokeMarkedLimit = CommandLine.arguments.contains("--atlas-pressure-smoke")
+        || CommandLine.arguments.contains("--atlas-fallback-budget-smoke")
+      let cells = min(smokeMarkedLimit ? 160 : 20, max(1, request.marked.count))
       let key = GlyphKey(
         text: request.marked, cells: cells, bold: false, italic: false,
         width: request.cellWidth * cells, height: request.cellHeight,
@@ -880,6 +892,7 @@ final class TerminalRendering: @unchecked Sendable {
     let completedRevision = snap.revision
     glyphResidency.finishFrameDemand()
     glyphResidency.submitted()
+    RendererMetrics.recordResidency(glyphResidency.diagnostics())
     residencySubmitted = true
     command.addCompletedHandler { [weak self, retiredFallbackIDs, surface] command in
       self?.executor.async {
@@ -913,6 +926,15 @@ final class RendererMetrics: @unchecked Sendable {
   private static var preparation: [Double] = []
   private static var gpu: [Double] = []
   private static var errors = 0
+  private static var residency: [String: Any] = [:]
+  static func recordResidency(_ value: GlyphResidency.Diagnostics) {
+    lock.lock()
+    residency = ["resident_bytes": value.residentBytes, "reservations": value.reservations,
+      "direct_bytes": value.directFallbackBytes, "denied_allocations": value.deniedAllocations,
+      "pending_jobs": value.pendingJobs, "queued_uploads": value.queuedUploads,
+      "capacity_waiting": value.capacityWaiting, "quiescent": value.quiescent]
+    lock.unlock()
+  }
   static func record(preparationMs: Double) {
     lock.lock()
     count += 1
@@ -1021,6 +1043,7 @@ final class RendererMetrics: @unchecked Sendable {
       "peak_glyph_fallback_count": peakGlyphFallbackCount,
       "dropped_quad_buffers": droppedQuadBuffers,
       "peak_atlas_pages": peakAtlasPages,
+      "glyph_residency": residency,
     ]
   }
 }

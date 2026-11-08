@@ -129,7 +129,10 @@ enum FontCatalog {
     }
     let completed =
       pane.geometryReport()["completed_snapshot_revision"] as? UInt64 ?? 0
-    if completed >= revision {
+    let metrics = RendererMetrics.report()
+    let residency = metrics["glyph_residency"] as? [String: Any]
+    let quiescent = residency?["quiescent"] as? Bool ?? false
+    if completed >= revision && quiescent {
       pageRevision = nil
       pageDeadline = nil
       pageRedrawRequested = false
@@ -153,10 +156,11 @@ enum FontCatalog {
     points = FontCatalog.codepoints[offset..<min(offset + pageSize, FontCatalog.codepoints.count)]
     let style = ["0", "1", "3", "1;3"][page / pages]
     if pressure, let pane = window.panes.first {
-      // Twenty cells exceed the pressure atlas width, exercising the direct
-      // fallback on the IME/preedit path as well as ordinary grid glyphs.
+      // This exceeds the 1024-pixel shared mask page at normal cell metrics.
+      // The async residency path must choose direct exact texture or a bounded
+      // visible substitute according to the shared GPU budget.
       pane.setMarkedText(
-        String(repeating: "W", count: 20), selectedRange: NSRange(location: 0, length: 0),
+        String(repeating: "W", count: 160), selectedRange: NSRange(location: 0, length: 0),
         replacementRange: NSRange(location: NSNotFound, length: 0))
     }
     var output = "\u{1b}[2J\u{1b}[H\u{1b}[0mObel Mono + Nerd Font: page \(page + 1)/\(pages * styles)\r\n\u{1b}[\(style)m"
@@ -178,19 +182,18 @@ enum FontCatalog {
     let metrics = RendererMetrics.report()
     let expected = pressure ? min(pageSize, FontCatalog.codepoints.count) : FontCatalog.codepoints.count * 4
     let visibleDrops = metrics["visible_glyph_drops"] as? UInt64 ?? 0
-    let exactFallbacks = metrics["exact_glyph_fallbacks"] as? UInt64 ?? 0
     let substitutions = metrics["substitute_glyph_fallbacks"] as? UInt64 ?? 0
-    let oversized = metrics["oversized_glyph_fallbacks"] as? UInt64 ?? 0
     let droppedBuffers = metrics["dropped_quad_buffers"] as? UInt64 ?? 0
-    let peakBytes = metrics["peak_glyph_fallback_bytes"] as? UInt64 ?? 0
-    let peakCount = metrics["peak_glyph_fallback_count"] as? UInt64 ?? 0
+    let residency = metrics["glyph_residency"] as? [String: Any] ?? [:]
+    let directBytes = residency["direct_bytes"] as? Int ?? 0
+    let denied = residency["denied_allocations"] as? UInt64 ?? 0
+    let quiescent = residency["quiescent"] as? Bool ?? false
     let pressurePassed = !pressure || (budgetPressure
-      ? substitutions > 0 && oversized > 0
-      : exactFallbacks > 0 && substitutions == 0 && oversized > 0
-        && peakBytes <= UInt64(8 * 1024 * 1024) && peakCount <= 1024)
+      ? substitutions > 0 && denied > 0 && directBytes == 0
+      : directBytes > 0 && substitutions == 0 && denied == 0)
     let result: [String: Any] = ["passed": failures.isEmpty && verified == expected
       && metrics["command_errors"] as? Int == 0
-      && visibleDrops == 0 && droppedBuffers == 0 && pressurePassed, "failures": failures,
+      && visibleDrops == 0 && droppedBuffers == 0 && pressurePassed && quiescent, "failures": failures,
       "unique_codepoints": FontCatalog.codepoints.count, "style_codepoints_verified": verified,
       "rendered_pages": renderedPages, "atlas_pressure": pressure, "metal": metrics,
       "note": pressure
