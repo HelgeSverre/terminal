@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <libproc.h>
+#include <mach/mach_time.h>
 #include <math.h>
 #include <poll.h>
 #include <signal.h>
@@ -26,6 +27,9 @@ static bool completed;
 static char failure_reason[512] = "Benchmark did not complete; inspect its launch log.";
 static bool resource_available = true;
 static int resource_error;
+static mach_timebase_info_data_t cpu_timebase;
+static bool cpu_timebase_attempted;
+static bool cpu_timebase_available;
 static volatile sig_atomic_t interrupted;
 static double clock_seconds(void) {
     struct timespec ts;
@@ -101,7 +105,22 @@ static double barrier(void) {
     fail("ordered DSR drain");
     return 0;
 }
+static bool load_cpu_timebase(void) {
+    if (cpu_timebase_attempted) return cpu_timebase_available;
+    cpu_timebase_attempted = true;
+    if (mach_timebase_info(&cpu_timebase) != KERN_SUCCESS || cpu_timebase.denom == 0) {
+        resource_available = false;
+        resource_error = EIO;
+        return false;
+    }
+    cpu_timebase_available = true;
+    return true;
+}
 static double cpu(pid_t pid, uint64_t *footprint) {
+    if (!load_cpu_timebase()) {
+        *footprint = 0;
+        return 0;
+    }
     struct rusage_info_v4 usage = {0};
     if (proc_pid_rusage(pid, RUSAGE_INFO_V4, (rusage_info_t *)&usage) != 0) {
         resource_available = false;
@@ -110,7 +129,8 @@ static double cpu(pid_t pid, uint64_t *footprint) {
         return 0;
     }
     *footprint = usage.ri_phys_footprint;
-    return (double)(usage.ri_user_time + usage.ri_system_time) / 1e9;
+    const long double ticks = (long double)usage.ri_user_time + (long double)usage.ri_system_time;
+    return (double)(ticks * cpu_timebase.numer / cpu_timebase.denom / 1000000000.0L);
 }
 static int compare(const void *a, const void *b) {
     double x = *(const double *)a, y = *(const double *)b;
@@ -156,7 +176,7 @@ int main(int argc, char **argv) {
         case 'b': bytes = number(optarg); break; case 'r': runs = number(optarg); break;
         case 'c': columns = number(optarg); break; case 'l': rows = number(optarg); break;
         case 'i': idle = number(optarg); break;
-        case 'h': help(); return 0; case 'v': puts("terminal-bench 0.1.0"); return 0;
+        case 'h': help(); return 0; case 'v': puts("terminal-bench 0.2.0"); return 0;
         default: return 2;
         }
     }
@@ -213,11 +233,15 @@ int main(int argc, char **argv) {
     while (nanosleep(&delay, &delay) && errno == EINTR && !interrupted) {}
     double idle_elapsed = clock_seconds() - idle_start;
     double idle_percent = (cpu(terminal, &footprint) - idle_cpu) / idle_elapsed * 100;
-    fprintf(report, "{\"schema\":1,\"terminal\":\"%s\",\"terminal_pid\":%d,"
+    fprintf(report, "{\"schema\":2,\"driver_version\":\"0.2.0\",\"terminal\":\"%s\",\"terminal_pid\":%d,"
             "\"columns\":%u,\"rows\":%u,\"pixel_width\":%u,\"pixel_height\":%u,"
             "\"output_post_processing\":%s,\"idle_seconds\":%.6f,", name, terminal,
             size.ws_col, size.ws_row, size.ws_xpixel, size.ws_ypixel,
             (mode.c_oflag & OPOST) ? "true" : "false", idle_elapsed);
+    if (cpu_timebase_available)
+        fprintf(report, "\"cpu_timebase\":{\"numer\":%u,\"denom\":%u},",
+                cpu_timebase.numer, cpu_timebase.denom);
+    else fputs("\"cpu_timebase\":null,", report);
     fprintf(report, "\"resource_usage_available\":%s,\"resource_usage_errno\":%d,",
             resource_available ? "true" : "false", resource_error);
     if (resource_available)
