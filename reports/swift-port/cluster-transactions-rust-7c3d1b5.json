@@ -1,0 +1,28 @@
+{
+  "implementation": "rust",
+  "source_commit": "7c3d1b5045e4f316d2938ac5cd3f6e9a704bd58e",
+  "archive_sha256": "0b6c5832ef698595ba5edde302486e75c62d1042647070c259a03078a4efadca",
+  "test_source_sha256": "c0f80f8539039c81b564a3c399a4d3e3e2b29fc5dedd9b3aee9375b48c87e915",
+  "executable_sha256": "518bcd7181bd2cd9c5a3992b7c9b069dbd4a70ef7818b8ad85153ed6c433f1f4",
+  "checks": [
+    {
+      "case": "width",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary width"
+    },
+    {
+      "case": "rep",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary rep"
+    },
+    {
+      "case": "movement",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary movement"
+    }
+  ],
+  "passed": true
+}

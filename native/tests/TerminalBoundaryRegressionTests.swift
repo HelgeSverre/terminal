@@ -174,11 +174,52 @@ import Foundation
       try expect(leads.count == 1, "cluster occupies multiple leading cells")
     }
   }
+  static func continuationWidth() throws {
+    let terminal = terminal_create(16, 2)!
+    defer { terminal_destroy(terminal) }
+    try feed(terminal, "\u{600}猫")
+    let joined = try snapshot(terminal)
+    let output = cells(joined)
+    try expect(output[0]["text"] as? String == "\u{600}猫", "wide continuation text")
+    try expect(output[0]["kind"] as? String == "Lead2" && output[1]["kind"] as? String == "Continuation", "wide continuation did not repair occupancy")
+    try expect((joined["cursor"] as! [String: Any])["col"] as? Int == 2, "wide continuation did not advance cursor")
+    try feed(terminal, "X")
+    try expect(cells(try snapshot(terminal))[2]["text"] as? String == "X", "next glyph overlaps widened cluster")
+  }
+  static func repeatClusters() throws {
+    for (cluster, width) in [("e\u{301}", 1), ("🇳🇴", 2), ("\u{1100}\u{1161}\u{11a8}", 2)] {
+      let terminal = terminal_create(20, 2)!
+      defer { terminal_destroy(terminal) }
+      try feed(terminal, cluster + "\u{1b}[2b")
+      let value = try snapshot(terminal)
+      let output = cells(value)
+      for index in 0..<3 {
+        try expect(output[index * width]["text"] as? String == cluster, "REP lost or merged cluster \(cluster.debugDescription), copy\(index)")
+      }
+      try expect((value["cursor"] as! [String: Any])["col"] as? Int == width * 3, "REP cluster occupancy")
+    }
+  }
+  static func combiningAfterMovement() throws {
+    for (prefix, row, column) in [
+      ("A\n", 1, 1), ("A\t", 0, 8), ("A\u{1b}[H", 0, 0),
+      ("A\u{1b}[?1049h", 0, 0)
+    ] {
+      let terminal = terminal_create(20, 3)!
+      defer { terminal_destroy(terminal) }
+      try feed(terminal, prefix + "\u{301}X")
+      let value = try snapshot(terminal)
+      let output = cells(value, row: row)
+      try expect(output[column]["text"] as? String == "\u{301}" && output[column]["kind"] as? String == "Lead1", "orphan combining placement after \(prefix.debugDescription)")
+      try expect(output[column + 1]["text"] as? String == "X", "orphan combining was overwritten after movement")
+      try expect((value["cursor"] as! [String: Any])["col"] as? Int == column + 2, "orphan combining cursor")
+    }
+  }
   static func main() {
     var cases: [(String, () throws -> Void)] = [
       ("utf8", utf8), ("strings", stringCaps), ("anchor", survivingAnchor),
       ("retention", resizeRetention), ("readiness", readiness),
-      ("cap", cappedClusters), ("segmenter", segmenterIntegration)
+      ("cap", cappedClusters), ("segmenter", segmenterIntegration),
+      ("width", continuationWidth), ("rep", repeatClusters), ("movement", combiningAfterMovement)
     ]
     #if !RUST_BASELINE
     cases.append(("byte-retention", resizeByteRetention))
