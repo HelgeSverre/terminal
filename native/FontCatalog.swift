@@ -160,7 +160,9 @@ enum FontCatalog {
       && visibleDrops == 0 && droppedBuffers == 0 && pressurePassed, "failures": failures,
       "unique_codepoints": FontCatalog.codepoints.count, "style_codepoints_verified": verified,
       "rendered_pages": renderedPages, "atlas_pressure": pressure, "metal": metrics,
-      "note": "Every mapped printable symbol passed through a raw cat PTY and the native grid in all four styles, with a Metal submission per page. Pixel coverage is checked separately by the shared rasterizer catalog."]
+      "note": pressure
+        ? "A bounded symbol fixture and oversized preedit exercised the raw cat PTY, native grid, and Metal fallback paths. Counters verify admission and draw preparation; pixel coverage is checked separately by the shared rasterizer catalog."
+        : "Every mapped printable symbol passed through a raw cat PTY and the native grid in all four styles, with a Metal submission per page. Pixel coverage is checked separately by the shared rasterizer catalog."]
     do { try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
       .write(to: URL(fileURLWithPath: path), options: .atomic) }
     catch { NSLog("Glyph report failed: %@", String(describing: error)) }
