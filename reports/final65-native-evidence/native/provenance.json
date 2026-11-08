@@ -1,0 +1,31 @@
+[
+  {
+    "name": "native",
+    "executable_sha256": "d17a2f958ecfd1787bc2f39b745016ed0b4db03c5510d19c3558498e8a52db03",
+    "passed": true,
+    "pid": 23363,
+    "cleanup_survivors": []
+  },
+  {
+    "name": "editing",
+    "executable_sha256": "d17a2f958ecfd1787bc2f39b745016ed0b4db03c5510d19c3558498e8a52db03",
+    "passed": true,
+    "pid": 23672,
+    "cleanup_survivors": []
+  },
+  {
+    "name": "glyph",
+    "executable_sha256": "d17a2f958ecfd1787bc2f39b745016ed0b4db03c5510d19c3558498e8a52db03",
+    "passed": true,
+    "pid": 23825,
+    "cleanup_survivors": []
+  },
+  {
+    "name": "atlas-budget",
+    "executable_sha256": "d17a2f958ecfd1787bc2f39b745016ed0b4db03c5510d19c3558498e8a52db03",
+    "passed": false,
+    "pid": 23961,
+    "failure": "RuntimeError: fixture assertions failed",
+    "cleanup_survivors": []
+  }
+]

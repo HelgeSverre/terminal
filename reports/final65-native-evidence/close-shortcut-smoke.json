@@ -1,0 +1,9 @@
+{
+  "app_pid": 27135,
+  "child_pid": 27137,
+  "trigger": "cmd+q",
+  "passed": true,
+  "app_exited": true,
+  "child_exited": true,
+  "bundle_path": "/Users/helge/code/terminal-swift-experiment/target/frozen-65cb446-release.app"
+}

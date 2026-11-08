@@ -1,0 +1,37 @@
+{
+  "checks" : {
+    "completed" : true,
+    "fresh_erased_cursor" : true,
+    "fresh_no_stuck_cd" : true,
+    "fresh_starship_cursor_alignment" : true,
+    "fresh_typed_cursor" : true,
+    "round_0_erased_cursor" : true,
+    "round_0_no_stuck_cd" : true,
+    "round_0_typed_cursor" : true,
+    "round_0_zsh_buffer_empty" : true,
+    "round_1_erased_cursor" : true,
+    "round_1_no_stuck_cd" : true,
+    "round_1_typed_cursor" : true,
+    "round_1_zsh_buffer_empty" : true,
+    "startup_input_ready" : true
+  },
+  "measurements" : {
+    "fresh_erased_col" : 2,
+    "fresh_initial_col" : 2,
+    "fresh_typed_col" : 4,
+    "round_0_buffer" : "HT_EDIT_BUFFER_1:<>:0",
+    "round_0_erased_col" : 2,
+    "round_0_initial_col" : 2,
+    "round_0_typed_col" : 4,
+    "round_1_buffer" : "HT_EDIT_BUFFER_2:<>:0",
+    "round_1_erased_col" : 2,
+    "round_1_initial_col" : 2,
+    "round_1_typed_col" : 5,
+    "startup_input_ready_snapshot_count" : 1,
+    "startup_prompt_snapshot_count" : 2,
+    "startup_snapshot_count" : 4,
+    "startup_timeout_phase" : 4
+  },
+  "note" : "Synthetic AppKit events, current zsh configuration, existing history and ZLE buffer probe. This does not test physical keyboard delivery. No history suggestions recorded.",
+  "passed" : true
+}
