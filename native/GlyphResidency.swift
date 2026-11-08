@@ -61,6 +61,9 @@ final class GlyphResidency: @unchecked Sendable {
   private var entries: [GlyphRasterRecipe: Entry] = [:]
   private var pending: Set<GlyphRasterRecipe> = []
   private var failed: Set<GlyphRasterRecipe> = []
+  private var failedOrder: [GlyphRasterRecipe] = []
+  private let failedLimit = 1024
+  private var capacityWait = false
   // Results wait until the next safe frame boundary: an async CPU replace
   // must never overwrite a page sampled by the sole submitted command buffer.
   private struct QueuedUpload {
@@ -92,7 +95,10 @@ final class GlyphResidency: @unchecked Sendable {
     preparedPins.removeAll(keepingCapacity: true)
     let uploads = uploadQueue
     uploadQueue.removeAll(keepingCapacity: true)
-    for upload in uploads { install(upload.result); upload.release() }
+    for upload in uploads {
+      if install(upload.result) { upload.release() }
+      else { uploadQueue.append(upload) }
+    }
   }
 
   func setOnReady(_ callback: @escaping @Sendable () -> Void) { onReady = callback }
@@ -132,7 +138,7 @@ final class GlyphResidency: @unchecked Sendable {
     // A raster failure remains a miss: the visible fallback is retained and a
     // future request may retry instead of caching a blank texture.
     guard let result, !result.pixels.isEmpty, !result.glyphIDs.contains(0) else {
-      failed.insert(recipe)
+      rememberFailure(recipe)
       release()
       onReady()
       return
@@ -143,15 +149,15 @@ final class GlyphResidency: @unchecked Sendable {
 
   // Called only by beginFrame, after the preceding one-in-flight submission
   // has completed and released its pins.
-  private func install(_ result: GlyphRasterResult) {
+  @discardableResult
+  private func install(_ result: GlyphRasterResult) -> Bool {
     let recipe = result.recipe
     let kind: PageKind = result.kind == .mask ? .mask : .color
     guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height) else {
-      // Capacity pressure uses the allocation-free outline this frame. A new
-      // font/device recipe is a new key and can retry; this key does not spin
-      // an idle terminal with identical raster work.
-      failed.insert(recipe)
-      return
+      // Keep the bounded worker staging token/result until a page becomes
+      // reclaimable. Capacity pressure is not a permanent raster failure.
+      capacityWait = true
+      return false
     }
     var pixels = result.pixels
     if kind == .mask {
@@ -173,6 +179,7 @@ final class GlyphResidency: @unchecked Sendable {
       kind: kind == .mask ? .mask : .color, allocation: placement.page.id,
       allocationGeneration: placement.page.generation)
     entries[recipe] = Entry(lease: lease, page: placement.page.id, bytes: recipe.width * recipe.height)
+    return true
   }
 
   func fallbackGlyph(width: Int, height: Int) -> GlyphLease? {
@@ -208,6 +215,10 @@ final class GlyphResidency: @unchecked Sendable {
       pages[id] = page
     }
     submittedPins.removeAll(keepingCapacity: true)
+    if capacityWait {
+      capacityWait = false
+      onReady()
+    }
   }
 
   func diagnostics() -> Diagnostics {
@@ -328,6 +339,14 @@ final class GlyphResidency: @unchecked Sendable {
       }
     }
     pages[id] = page
+  }
+
+  private func rememberFailure(_ recipe: GlyphRasterRecipe) {
+    guard failed.insert(recipe).inserted else { return }
+    failedOrder.append(recipe)
+    if failedOrder.count > failedLimit {
+      failed.remove(failedOrder.removeFirst())
+    }
   }
 
   private func convertPremultipliedSRGBToLinear(_ pixels: inout [UInt8]) {
