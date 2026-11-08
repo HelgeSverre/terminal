@@ -10,8 +10,12 @@ require 'set'
 class NativeSmokeProcess
   attr_reader :pid, :status
 
-  def initialize(command)
-    @pid = Process.spawn(*command)
+  def initialize(command, log: nil)
+    @pid = if log
+      File.open(log, 'wx') { |output| Process.spawn(*command, out: output, err: output) }
+    else
+      Process.spawn(*command)
+    end
     @owned = {}
     @status = nil
   end
