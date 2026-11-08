@@ -1,0 +1,378 @@
+{
+  "probe_source_commit": "53bb3b9",
+  "base_commit": "b4f95b0",
+  "artifact_root": "/Users/helge/.codex/artifacts/terminal-rendering-proof-v2",
+  "capture_configuration": {
+    "filter": "ScreenCaptureKit desktopIndependentWindow",
+    "requested_fps": 60,
+    "width": 2600,
+    "height": 1800,
+    "audio": false,
+    "microphone": false,
+    "scalesToFit": false,
+    "preservesAspectRatio": true
+  },
+  "capture_binary_sha256": "60fd3128e9f6317b40a95fa4304f1f70a4a79e61c927f37209c5ae7fb9cdbe68",
+  "reviewed_oracle_binary_sha256": "638143f86aefa02cc979c26159feba586156ecf775bf45566d2f253386a3da64",
+  "native_drag_binary_sha256": "ffd735d175b558c2419d85c0eaa036bc8782fa9e05b573931b021202d70cc16d",
+  "linked_core_sha256": "095b89b29af39b2c33fb48afaa3348119208285d82c17effca428f3ffb47ef8b",
+  "shader_library_sha256": "a0bf4b4defd47b679111022c1f94b72e22da4e01566b748e950c32ac4e832221",
+  "background_load": "Other agents ran headless builds/tests during capture; this was not a quiet performance benchmark.",
+  "runs": {
+    "scale-native": {
+      "identity": {
+        "executable": "/Users/helge/code/terminal-rendering-proof/dist/RenderingProof.app/Contents/MacOS/Terminal",
+        "expected_panes": [
+          0,
+          1,
+          2
+        ],
+        "mode": "SCALE CONTROL",
+        "pid": 87902,
+        "window": 22183,
+        "sha256": "00d34275e516b1ccd81fcb05f8cddbfaee5882ee6ff2e38d14fc0fd171334fd0",
+        "base_commit": "b4f95b0"
+      },
+      "capture_summary": {
+        "complete_frames": 603,
+        "correct_frames": 485,
+        "failure_frames": 114,
+        "inconclusive_complete_frames": 4,
+        "recording_finished": true,
+        "samples": 812,
+        "scope": "Three pane-specific absolute dimensions and native-reference offsets in examined complete frames; gaps and other statuses are not passes.",
+        "statuses": {
+          "0": 603,
+          "1": 209
+        },
+        "timestamp_gaps": 54
+      },
+      "classification_source": "frames-reviewed.jsonl",
+      "reviewed_classifications": {
+        "correct": 486,
+        "inconclusive_noncomplete_status": 209,
+        "failure": 113,
+        "inconclusive": 4,
+        "capture_error": 2
+      },
+      "capture_errors": [
+        {
+          "stream_error": "Stream was stopped by the system"
+        },
+        {
+          "stop_error": "Failed to stop a stream that is already stopped or does not exist"
+        }
+      ],
+      "native_phase_pixel_coverage": {
+        "divider": true,
+        "resize": true
+      },
+      "validated_final_generation_gate": true,
+      "final_generations": [
+        {
+          "pane": 0,
+          "expected_generation": 640,
+          "presented": true,
+          "captured_after_final_expectation": true,
+          "presented_time": 280811.1059112084,
+          "capture_sample": 749,
+          "capture_latency_after_final_resize": 0.030721666640602052
+        },
+        {
+          "pane": 1,
+          "expected_generation": 529,
+          "presented": true,
+          "captured_after_final_expectation": true,
+          "presented_time": 280811.1059112084,
+          "capture_sample": 749,
+          "capture_latency_after_final_resize": 0.030721666640602052
+        },
+        {
+          "pane": 2,
+          "expected_generation": 629,
+          "presented": true,
+          "captured_after_final_expectation": true,
+          "presented_time": 280811.1059112084,
+          "capture_sample": 749,
+          "capture_latency_after_final_resize": 0.030721666640602052
+        }
+      ],
+      "native_divider_tracking_verified": true,
+      "native_divider_geometry_events": 348,
+      "native_window_tracking_verified": true,
+      "native_live_resize_geometry_events": 666,
+      "native_window_drag_geometry_events": 318,
+      "native_input_capture_classifications": {
+        "divider": {
+          "inconclusive_noncomplete_status": 7,
+          "correct": 127,
+          "failure": 3
+        },
+        "resize": {
+          "inconclusive_noncomplete_status": 20,
+          "correct": 121
+        }
+      },
+      "per_pane": {
+        "0": {
+          "correct": 498,
+          "failure": 104,
+          "inconclusive": 1
+        },
+        "1": {
+          "correct": 539,
+          "failure": 60,
+          "inconclusive": 4
+        },
+        "2": {
+          "correct": 497,
+          "failure": 106
+        }
+      },
+      "failure_reasons": {
+        "absolute_dimensions": 269,
+        "pane_local_offset": 1
+      },
+      "inconclusive_reasons": {
+        "native_reference_missing_or_ambiguous": 5
+      },
+      "sha256": {
+        "app-events.jsonl": "52d90c07a2f37cee5c62c243cad314e085332c7ced6f252a20e2d03e50eabd9f",
+        "frames.jsonl": "ba51018dbeaa37b21bf37467124f63badefee8c980c2c1c0eac1819ae7424d7e",
+        "capture.mp4": "e2d2d9a4dc8db0e18581c616a12f81427f64470d36926437a0e100d9a055f580",
+        "analysis.json": "84c5623a9014f8a3f3ba0585cd7c860455ac3039450945c51de90f1619d0b6d0",
+        "frames-reviewed.jsonl": "92c83a5ac4a51a28dfdf3e87e72fd7e47c909c87aeac96efd0a01e571085c6cf"
+      }
+    },
+    "candidate-native": {
+      "identity": {
+        "executable": "/Users/helge/code/terminal-rendering-proof/dist/RenderingProof.app/Contents/MacOS/Terminal",
+        "expected_panes": [
+          0,
+          1,
+          2
+        ],
+        "mode": "NATIVE PLACEMENT",
+        "pid": 88464,
+        "window": 22195,
+        "sha256": "00d34275e516b1ccd81fcb05f8cddbfaee5882ee6ff2e38d14fc0fd171334fd0",
+        "base_commit": "b4f95b0"
+      },
+      "capture_summary": {
+        "complete_frames": 377,
+        "correct_frames": 377,
+        "failure_frames": 0,
+        "inconclusive_complete_frames": 0,
+        "recording_finished": true,
+        "samples": 455,
+        "scope": "Three pane-specific absolute dimensions and native-reference offsets in examined complete frames; gaps and other statuses are not passes.",
+        "statuses": {
+          "0": 377,
+          "1": 78
+        },
+        "timestamp_gaps": 10
+      },
+      "capture_errors": [
+        {
+          "stream_error": "Stream was stopped by the system"
+        },
+        {
+          "stop_error": "Failed to stop a stream that is already stopped or does not exist"
+        }
+      ],
+      "native_phase_pixel_coverage": {
+        "divider": false,
+        "resize": false
+      },
+      "validated_final_generation_gate": false,
+      "final_generations": [
+        {
+          "pane": 0,
+          "expected_generation": 640,
+          "presented": true,
+          "captured_after_final_expectation": false,
+          "presented_time": 280836.0685151251,
+          "capture_sample": null,
+          "capture_latency_after_final_resize": null
+        },
+        {
+          "pane": 1,
+          "expected_generation": 529,
+          "presented": true,
+          "captured_after_final_expectation": false,
+          "presented_time": 280836.0685151251,
+          "capture_sample": null,
+          "capture_latency_after_final_resize": null
+        },
+        {
+          "pane": 2,
+          "expected_generation": 629,
+          "presented": true,
+          "captured_after_final_expectation": false,
+          "presented_time": 280836.0685151251,
+          "capture_sample": null,
+          "capture_latency_after_final_resize": null
+        }
+      ],
+      "native_divider_tracking_verified": true,
+      "native_divider_geometry_events": 348,
+      "native_window_tracking_verified": true,
+      "native_live_resize_geometry_events": 666,
+      "native_window_drag_geometry_events": 318,
+      "native_input_capture_classifications": {
+        "divider": {},
+        "resize": {}
+      },
+      "per_pane": {
+        "0": {
+          "correct": 377
+        },
+        "1": {
+          "correct": 377
+        },
+        "2": {
+          "correct": 377
+        }
+      },
+      "failure_reasons": {},
+      "inconclusive_reasons": {},
+      "sha256": {
+        "app-events.jsonl": "83d145460b4f4c198fb82cff01cff61b751f2ac36eae3b64fdef55ca9918a389",
+        "frames.jsonl": "cdbc91c9d453a2ddc161e1b695deb799df8f9d7f521d4e019cd65deab8f4ec81",
+        "capture.mp4": "3f920b43fc322c842c9f2dc5ab70e4e18fae08d76c28a87f206f6bf652f95db9",
+        "analysis.json": "082f63e2e9f009f2e45a92318887709d706e05cd43a6998703ffb52c0ece13c9"
+      }
+    },
+    "candidate-native-v2": {
+      "identity": {
+        "executable": "/Users/helge/code/terminal-rendering-proof/dist/RenderingProof.app/Contents/MacOS/Terminal",
+        "expected_panes": [
+          0,
+          1,
+          2
+        ],
+        "mode": "NATIVE PLACEMENT",
+        "pid": 89620,
+        "window": 22208,
+        "sha256": "00d34275e516b1ccd81fcb05f8cddbfaee5882ee6ff2e38d14fc0fd171334fd0",
+        "base_commit": "b4f95b0"
+      },
+      "capture_summary": {
+        "complete_frames": 660,
+        "correct_frames": 658,
+        "failure_frames": 0,
+        "inconclusive_complete_frames": 2,
+        "recording_finished": true,
+        "samples": 1239,
+        "scope": "Three pane-specific absolute dimensions and native-reference offsets in examined complete frames; gaps and other statuses are not passes.",
+        "statuses": {
+          "0": 660,
+          "1": 579
+        },
+        "timestamp_gaps": 12
+      },
+      "classification_source": "frames-reviewed.jsonl",
+      "reviewed_classifications": {
+        "correct": 658,
+        "inconclusive_noncomplete_status": 579,
+        "inconclusive": 2
+      },
+      "capture_errors": [],
+      "native_phase_pixel_coverage": {
+        "divider": true,
+        "resize": true
+      },
+      "validated_final_generation_gate": true,
+      "final_generations": [
+        {
+          "pane": 0,
+          "expected_generation": 640,
+          "presented": true,
+          "captured_after_final_expectation": true,
+          "presented_time": 280914.1771426667,
+          "capture_sample": 764,
+          "capture_latency_after_final_resize": 0.014004041615407914
+        },
+        {
+          "pane": 1,
+          "expected_generation": 529,
+          "presented": true,
+          "captured_after_final_expectation": true,
+          "presented_time": 280914.1771426667,
+          "capture_sample": 764,
+          "capture_latency_after_final_resize": 0.014004041615407914
+        },
+        {
+          "pane": 2,
+          "expected_generation": 629,
+          "presented": true,
+          "captured_after_final_expectation": true,
+          "presented_time": 280914.1771426667,
+          "capture_sample": 764,
+          "capture_latency_after_final_resize": 0.014004041615407914
+        }
+      ],
+      "native_divider_tracking_verified": true,
+      "native_divider_geometry_events": 348,
+      "native_window_tracking_verified": true,
+      "native_live_resize_geometry_events": 666,
+      "native_window_drag_geometry_events": 318,
+      "native_input_capture_classifications": {
+        "divider": {
+          "inconclusive_noncomplete_status": 6,
+          "correct": 130
+        },
+        "resize": {
+          "correct": 121
+        }
+      },
+      "per_pane": {
+        "0": {
+          "correct": 659,
+          "inconclusive": 1
+        },
+        "1": {
+          "correct": 658,
+          "inconclusive": 2
+        },
+        "2": {
+          "correct": 660
+        }
+      },
+      "failure_reasons": {},
+      "inconclusive_reasons": {
+        "native_reference_missing_or_ambiguous": 3
+      },
+      "sha256": {
+        "app-events.jsonl": "3b56366394b5165ed892f168a5178e656d1bbc178a3dec14bb2d43d9879e980e",
+        "frames.jsonl": "47907404dc2e1c4b846d140366cbe3a51b82447ed0cf78ad6f1b456b766c3b12",
+        "capture.mp4": "c15ca1dee8f83e3cc537e22de640039f6eea6582acba61fc3f1648b700b9f08b",
+        "analysis.json": "ec5d5f50081e8d10cef26075bceafe5594ca2c268f6887aedec26e2721d73dc6",
+        "frames-reviewed.jsonl": "1a453027a1aa6d3e44937ca7119c39cc60af3d9d543d0251c150bc4b7613e1b4"
+      }
+    }
+  },
+  "review_note": "Original capture oracle included an unrelated same-color titlebar component once. Reviewed ROI oracle replays preserved raw components, excludes fully non-pane components, and changes scale-native failure count114to113. Raw frames and original classifications are retained. Candidate pixels unchanged.",
+  "limits": "Two candidate complete frames were inconclusive;12timestampgaps and579idle samples were notpasses. First candidate capture stopped bysystem before native tracking and is incomplete. Final candidate run verifies sampled programmatic/native tracking phases and eventual exactgeometry; it does not certify every physical display frame.",
+  "control_capture_termination": {
+    "scope": "The control retained both native-input phases and the final-generation gate before its stream-stop errors. Error records have no own timestamp; the following establishes their order in the persisted record, not an exact stop instant.",
+    "divider_input_time_range": [
+      280806.0133305,
+      280808.443496
+    ],
+    "window_input_time_range": [
+      280808.643724375,
+      280811.07755270833
+    ],
+    "final_gate_sample": 749,
+    "final_gate_pts": 280811.111675,
+    "last_sample_before_error_records": 811,
+    "last_sample_pts": 280812.4981235,
+    "error_records_follow_sample_811": true,
+    "retained_errors": [
+      "Stream was stopped by the system",
+      "Failed to stop a stream that is already stopped or does not exist"
+    ],
+    "candidate_native_v2_capture_errors": []
+  }
+}
