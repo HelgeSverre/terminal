@@ -21,7 +21,7 @@ private func decSpecialGraphics(_ text: String) -> String {
   return mapping[scalar.value] ?? text
 }
 
-private enum SwiftParserState { case ground, escape, charset(Int), csi, osc, apc, discardString(escaped: Bool, osc: Bool) }
+private enum SwiftParserState { case ground, escape, charset(Int), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool) }
 
 private final class SwiftCoreSearchToken {
   let query: String
@@ -233,8 +233,20 @@ private final class SwiftTerminalCore {
         else if byte == 0x1b, sequence.utf8.count < 65_536 { sequence.append("\u{1b}") }
         else if byte == 0x1b { parser = .discardString(escaped: true, osc: true); sequence = "" }
         else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
+        else if sequence == "52;c;" { var decoder = OSC52Decoder(); _ = decoder.push(byte); parser = .osc52(decoder, escaped: false); sequence = "" }
         else if sequence.utf8.count < 65_536 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
         else { parser = .discardString(escaped: false, osc: true); sequence = "" }
+      case .osc52(var decoder, let escaped):
+        if byte == 0x18 || byte == 0x1a { parser = .ground }
+        else if byte == 0x07 || (escaped && byte == 0x5c) {
+          if let data = decoder.finish() { enqueueClipboard(data) }
+          parser = .ground
+        } else if byte == 0x1b { parser = .osc52(decoder, escaped: true) }
+        else {
+          if escaped { _ = decoder.push(0x1b) }
+          _ = decoder.push(byte)
+          parser = .osc52(decoder, escaped: false)
+        }
       case .apc:
         if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
         else if byte == 0x1b, sequence.utf8.count < 65_536 { sequence.append("\u{1b}") }
@@ -637,6 +649,13 @@ private final class SwiftTerminalCore {
       screen = moved
     }
   }
+  private func enqueueClipboard(_ data: Data) {
+    guard data.count <= OSC52Decoder.maximumDecodedBytes else { return }
+    let requestID = nextClipboardRequestID
+    nextClipboardRequestID &+= 1
+    pendingClipboardRequests.insert(requestID)
+    clipboardRequests.append((requestID, data))
+  }
   func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool {
     guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows), nextColumns <= 1_048_576 / nextRows else { return false }
     if nextColumns == columns && nextRows == rowCount { return true }
@@ -770,7 +789,11 @@ private final class SwiftTerminalCore {
   func completeClipboardRequest(_ requestID: UInt64) -> Bool {
     pendingClipboardRequests.remove(requestID) != nil
   }
-  func finish() { flushText(final: true) }
+  func finish() {
+    flushText(final: true)
+    if case .osc52(var decoder, escaped: _) = parser, let data = decoder.finish() { enqueueClipboard(data) }
+    parser = .ground
+  }
   var hasPendingWork: Bool { repeatRemaining > 0 }
   var publicationGated: Bool { syncDeadline != nil }
   func snapshot(now: UInt64) -> Data? { tick(now); return publicationGated ? nil : snapshotJSON(view: true) }

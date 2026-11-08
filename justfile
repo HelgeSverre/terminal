@@ -237,6 +237,13 @@ swift-input-encoder:
     xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_input_encoder) -framework Foundation -o target/native/swift-input-encoder-tests
     target/native/swift-input-encoder-tests
 
+[group('check')]
+osc52-protocol:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print osc52_protocol) -framework Foundation -o target/native/osc52-protocol-tests
+    target/native/osc52-protocol-tests
+
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
 [group('check')]
 smoke: build (_native-smoke "normal")
