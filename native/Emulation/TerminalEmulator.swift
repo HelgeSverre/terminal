@@ -1117,7 +1117,7 @@ private final class TerminalEmulator {
     return action.rawValue
   }
   func input(_ text: String, key: UInt32, modifiers: UInt32, event: UInt32,
-             metadata: TerminalInputEncoder.KeyMetadata = .init()) -> Data? {
+             metadata: TerminalInputEncoder.KeyMetadata? = nil) -> Data? {
     let modes = TerminalInputEncoder.Modes(
       applicationCursor: applicationCursor, applicationKeypad: applicationKeypad, newline: newlineMode,
       bracketedPaste: bracketedPaste, focusReporting: focusReporting, kittyFlags: screen.keyboardFlags)
@@ -1143,12 +1143,12 @@ private final class TerminalEmulator {
     if let value = navigation[code] { return value }
     if (100...111).contains(code) { return .function(Int(code - 99)) }
     if (300...317).contains(code), let keypad = TerminalInputEncoder.KeypadKey(rawValue: Int(code - 300)) {
-      return .keypad(keypad, nativeText: text.first)
+      return .keypad(keypad, nativeText: text.unicodeScalars.first.map(Character.init))
     }
     if (400...411).contains(code) { return .modifier(57441 + code - 400) }
     if code == 412 { return .modifier(57358) }
     if code >= 50_000 { return .modifier(code) }
-    if code == 0 || code == 200 { return text.first.map { .character($0) } }
+    if code == 0 || code == 200 { return text.unicodeScalars.first.map { .character(Character($0)) } }
     return nil
   }
   func takeReplies() -> Data { defer { replies.removeAll(keepingCapacity: true) }; return replies }
@@ -1532,9 +1532,13 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
 @_cdecl("terminal_complete_clipboard_request") func swift_terminal_complete_clipboard_request(_ pointer: OpaquePointer?, _ requestID: UInt64) -> Bool { core(pointer)?.completeClipboardRequest(requestID) ?? false }
 @_cdecl("terminal_input") func swift_terminal_input(_ pointer: OpaquePointer?, _ text: UnsafePointer<CChar>?, _ key: UInt32, _ modifiers: UInt32, _ event: UInt32, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool { guard let value = core(pointer)?.input(text.map { String(cString: $0) } ?? "", key: key, modifiers: modifiers, event: event) else { return false }; if let callback, !value.isEmpty { value.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, value.count) } }; return true }
 @_cdecl("terminal_input_with_metadata") func swift_terminal_input_with_metadata(_ pointer: OpaquePointer?, _ text: UnsafePointer<CChar>?, _ key: UInt32, _ modifiers: UInt32, _ event: UInt32, _ associated: UnsafePointer<CChar>?, _ legacy: UnsafePointer<CChar>?, _ shifted: UInt32, _ baseLayout: UInt32, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool {
+  func optionalText(_ pointer: UnsafePointer<CChar>?) -> String? {
+    guard let pointer, pointer.pointee != 0 else { return nil }
+    return String(cString: pointer)
+  }
   let metadata = TerminalInputEncoder.KeyMetadata(
     shifted: inputCharacter(shifted), baseLayout: inputCharacter(baseLayout),
-    associatedText: associated.map { String(cString: $0) }, legacyText: legacy.map { String(cString: $0) })
+    associatedText: optionalText(associated), legacyText: optionalText(legacy))
   guard let value = core(pointer)?.input(text.map { String(cString: $0) } ?? "", key: key,
                                          modifiers: modifiers, event: event, metadata: metadata) else { return false }
   if let callback, !value.isEmpty { value.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, value.count) } }

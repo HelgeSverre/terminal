@@ -87,7 +87,25 @@ enum TerminalInputEncoder {
 
   /// Empty output means a negotiated release is intentionally suppressed.
   static func key(_ key: Key, modifiers: Modifiers = .init(), event: Event = .press,
-                  modes: Modes, metadata: KeyMetadata = .init()) -> Data {
+                  modes: Modes, metadata suppliedMetadata: KeyMetadata? = nil) -> Data {
+    // Convenience callers supply a semantic key; explicit metadata callers
+    // can independently report that no committed text accompanied that key.
+    let metadata: KeyMetadata
+    if let suppliedMetadata { metadata = suppliedMetadata }
+    else {
+      let associated: String?
+      let shifted: Character?
+      switch key {
+      case .character(let value):
+        associated = String(value)
+        shifted = modifiers.shift ? value : nil
+      case .keypad(let keypad, let native) where keypad != .enter:
+        associated = String(keypadSymbol(keypad, native))
+        shifted = nil
+      default: associated = nil; shifted = nil
+      }
+      metadata = KeyMetadata(shifted: shifted, associatedText: associated)
+    }
     let flags = modes.kittyFlags
     // Physical modifier presses are meaningful only in Kitty's full keyboard
     // reporting mode.  The report-events flag alone must never leak CSI=u
@@ -143,12 +161,20 @@ enum TerminalInputEncoder {
       {
         output = Data([scalar == "?" ? 127 : UInt8(scalar.properties.uppercaseMapping.unicodeScalars.first?.value ?? scalar.value) & 31])
       } else {
-        // Legacy terminals receive the event's committed text for ordinary
-        // typing, but modifier chords preserve the logical/physical key.
-        let committed = modifiers.option || modifiers.command
-          ? (metadata.legacyText ?? String(character))
-          : (metadata.legacyText ?? metadata.associatedText ?? String(character))
-        output = Data(committed.utf8)
+        // Ordinary typing uses committed text; Option-as-Escape uses text
+        // with Option removed. Other chords retain the logical character.
+        let candidate: String?
+        if !modifiers.control && !modifiers.option && !modifiers.command {
+          candidate = metadata.associatedText
+        } else if modifiers.option && !modifiers.control {
+          candidate = metadata.legacyText
+        } else {
+          candidate = nil
+        }
+        let committed = candidate.flatMap { text in
+          text.unicodeScalars.contains { $0.properties.generalCategory == .control } ? nil : text
+        }
+        output = Data((committed ?? String(character)).utf8)
       }
     default: output = Data()
     }
@@ -181,27 +207,33 @@ enum TerminalInputEncoder {
       return Data("\u{1b}[\(number);\(modifier)\(eventSuffix)\(final)".utf8)
     }
     let code: UInt32
-    let text: Character?
     switch key {
     case .character(let value):
-      code = normalizedCode(value); text = value
-    case .modifier(let value): code = value; text = nil
-    case .enter: code = 13; text = nil
-    case .tab: code = 9; text = nil
-    case .backspace: code = 127; text = nil
-    case .escape: code = 27; text = nil
-    case .keypad(let keypad, let native): code = keypad.kitty; text = keypad == .enter ? nil : keypadSymbol(keypad, native)
+      code = normalizedCode(value)
+    case .modifier(let value): code = value
+    case .enter: code = 13
+    case .tab: code = 9
+    case .backspace: code = 127
+    case .escape: code = 27
+    case .keypad(let keypad, _): code = keypad.kitty
     default: return Data()
     }
     let alternate: String
     if flags & 4 != 0, case .character = key {
-      let shifted = metadata.shifted.flatMap(singleScalar).map { String($0.value) } ?? ""
-      let base = metadata.baseLayout.flatMap(singleScalar).map { String($0.value) } ?? ""
-      alternate = shifted.isEmpty && base.isEmpty ? "" : ":\(shifted):\(base)"
+      let shifted = metadata.shifted.flatMap(singleScalar).flatMap {
+        modifiers.shift && $0.value != code ? $0.value : nil
+      }
+      let base = metadata.baseLayout.flatMap(singleScalar).map(\.value)
+      switch (shifted, base) {
+      case (.some(let shifted), .some(let base)): alternate = ":\(shifted):\(base)"
+      case (.some(let shifted), nil): alternate = ":\(shifted)"
+      case (nil, .some(let base)): alternate = "::\(base)"
+      case (nil, nil): alternate = ""
+      }
     } else { alternate = "" }
     let associated: String
     if flags & 16 != 0, event != .release, !modifiers.control, !modifiers.command,
-       let associatedText = metadata.associatedText ?? text.map(String.init),
+       let associatedText = metadata.associatedText,
        let codepoints = associatedCodepoints(associatedText) {
       associated = ";\(codepoints)"
     } else { associated = "" }

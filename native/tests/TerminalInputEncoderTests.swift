@@ -12,6 +12,7 @@ import Foundation
     precondition(Encoder.key(.tab, modifiers: .init(shift: true), modes: modes) == bytes("\u{1b}[Z"))
     precondition(Encoder.key(.character("c"), modifiers: .init(control: true), modes: modes) == Data([3]))
     precondition(Encoder.key(.character("x"), modifiers: .init(option: true), modes: modes) == bytes("\u{1b}x"))
+    legacyTextSelection()
 
     modes.applicationKeypad = true
     precondition(Encoder.key(.keypad(.digit1, nativeText: nil), modes: modes) == bytes("\u{1b}Oq"))
@@ -35,8 +36,21 @@ import Foundation
     precondition(Encoder.key(.character("x"), event: .release, modes: modes).isEmpty)
     modes.kittyFlags = 10
     precondition(Encoder.key(.character("x"), event: .release, modes: modes) == bytes("\u{1b}[120;1:3u"))
+    modes.kittyFlags = 12
+    precondition(Encoder.key(.character("A"), modifiers: .init(shift: true), modes: modes)
+      == bytes("\u{1b}[97:65;2u"))
+    precondition(Encoder.key(.character("A"), modifiers: .init(shift: true), modes: modes,
+      metadata: Encoder.KeyMetadata()) == bytes("\u{1b}[97;2u"))
+    precondition(Encoder.key(.character("a"), modes: modes, metadata: .init(shifted: "A"))
+      == bytes("\u{1b}[97;1u"))
+    precondition(Encoder.key(.character("a"), modifiers: .init(shift: true), modes: modes,
+      metadata: .init(shifted: "a", baseLayout: "q")) == bytes("\u{1b}[97::113;2u"))
     modes.kittyFlags = 24
     precondition(Encoder.key(.character("X"), modes: modes) == bytes("\u{1b}[120;1;88u"))
+    precondition(Encoder.key(.character("X"), modes: modes, metadata: Encoder.KeyMetadata())
+      == bytes("\u{1b}[120;1u"))
+    precondition(Encoder.key(.character("X"), modes: modes, metadata: .init(associatedText: ""))
+      == bytes("\u{1b}[120;1u"))
     let multiScalar = Encoder.KeyMetadata(associatedText: "👨‍💻")
     precondition(Encoder.key(.character("x"), modes: modes, metadata: multiScalar)
       == bytes("\u{1b}[120;1;128104:8205:128187u"))
@@ -48,5 +62,41 @@ import Foundation
     modes.kittyFlags = 10
     precondition(Encoder.key(.modifier(57_442), modes: modes) == bytes("\u{1b}[57442;1:1u"))
     print("PASS Swift input encoder: legacy, application keypad, paste/focus, Kitty events")
+  }
+
+  static func legacyTextSelection() {
+    let modes = Encoder.Modes()
+    func check(_ logical: Character, _ associated: String?, _ legacy: String?,
+               _ modifiers: Encoder.Modifiers = .init(), _ expected: String,
+               file: StaticString = #fileID, line: UInt = #line) {
+      let actual = Encoder.key(.character(logical), modifiers: modifiers, modes: modes,
+        metadata: .init(associatedText: associated, legacyText: legacy))
+      guard actual == bytes(expected) else {
+        FileHandle.standardError.write(Data("FAIL text selection at \(file):\(line): expected \(Array(expected.utf8)), got \(Array(actual))\n".utf8))
+        Foundation.exit(1)
+      }
+    }
+    check(".", ",", ".", .init(), ",")
+    check("a", "A", "a", .init(shift: true), "A")
+    check("a", nil, "legacy", .init(), "a")
+    // Typed metadata distinguishes present-empty from absent; the public C ABI
+    // normalizes its empty strings to absent before reaching this encoder.
+    check("a", "", "legacy", .init(), "")
+    check("a", "👨‍💻", "legacy", .init(), "👨‍💻")
+    check("a", "\u{200d}\u{200e}", "legacy", .init(), "\u{200d}\u{200e}")
+    for control in ["\u{0}", "\u{1b}", "\u{7f}", "\u{85}"] {
+      check("a", "x\(control)y", "legacy", .init(), "a")
+      check("a", "committed", "x\(control)y", .init(option: true), "\u{1b}a")
+    }
+    check("a", "æ", "A", .init(option: true), "\u{1b}A")
+    check("a", "æ", nil, .init(option: true), "\u{1b}a")
+    check("a", "æ", "", .init(option: true), "\u{1b}")
+    check("a", "æ", "👨‍💻", .init(option: true), "\u{1b}👨‍💻")
+    check("c", "ç", "legacy", .init(control: true), "\u{3}")
+    check("c", "ç", "legacy", .init(option: true, control: true), "\u{1b}\u{3}")
+    check("1", "committed", "legacy", .init(control: true), "1")
+    check("å", "committed", "legacy", .init(option: true, control: true), "\u{1b}å")
+    precondition(Encoder.key(.keypad(.decimal, nativeText: ","), modes: modes,
+      metadata: .init(associatedText: ",", legacyText: ".")) == bytes(","))
   }
 }
