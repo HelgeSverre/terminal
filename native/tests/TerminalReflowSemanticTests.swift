@@ -2,7 +2,7 @@ import Foundation
 
 @main enum TerminalReflowSemanticTests {
   static func feed(_ t: OpaquePointer, _ text: String) { let d = Data(text.utf8); _ = d.withUnsafeBytes { terminal_feed(t, $0.bindMemory(to: UInt8.self).baseAddress, d.count, 0) } }
-  static func snapshot(_ t: OpaquePointer) -> [String: Any] { let p = terminal_snapshot(t, Int.max, 0)!; defer { terminal_string_free(p) }; return try! JSONSerialization.jsonObject(with: Data(String(cString: p).utf8)) as! [String: Any] }
+  static func snapshot(_ t: OpaquePointer) -> [String: Any] { TerminalSnapshotTestSupport.ownerSnapshot(t)! }
   static func text(_ s: [String: Any]) -> String { (s["rows"] as! [[String: Any]]).map { ($0["cells"] as! [[String: Any]]).map { $0["text"] as! String }.joined() }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) }
   static func main() {
     let inactive = terminal_create(8, 3)!; defer { terminal_destroy(inactive) }

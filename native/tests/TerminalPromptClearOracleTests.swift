@@ -10,9 +10,7 @@ import Foundation
     while terminal_has_work(terminal) { _ = terminal_feed(terminal, nil, 0, 0) }
   }
   static func snapshot(_ terminal: OpaquePointer) -> [String: Any] {
-    let pointer = terminal_snapshot(terminal, Int.max, 0)!
-    defer { terminal_string_free(pointer) }
-    return try! JSONSerialization.jsonObject(with: Data(String(cString: pointer).utf8)) as! [String: Any]
+    TerminalSnapshotTestSupport.ownerSnapshot(terminal)!
   }
   static func replies(_ terminal: OpaquePointer) -> Data {
     final class Box { var value = Data() }

@@ -13,9 +13,8 @@ import Foundation
     _ = bytes.withUnsafeBytes { terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0) }
   }
   static func snapshot(_ terminal: OpaquePointer) -> [String: Any] {
-    guard let pointer = terminal_snapshot(terminal, Int.max, 0) else { fatalError("snapshot") }
-    defer { terminal_string_free(pointer) }
-    return try! JSONSerialization.jsonObject(with: Data(String(cString: pointer).utf8)) as! [String: Any]
+    guard let snapshot = TerminalSnapshotTestSupport.ownerSnapshot(terminal) else { fatalError("snapshot") }
+    return snapshot
   }
   static func replies(_ terminal: OpaquePointer) -> Data {
     final class Box { var bytes = Data() }
