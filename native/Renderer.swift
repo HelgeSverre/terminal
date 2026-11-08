@@ -49,7 +49,7 @@ private struct Glyph {
   let texture: MTLTexture?
   let kind: GlyphLease.Kind
   let heap: MTLHeap?
-  let legacyBytes: Int
+  let legacyID: UUID?
 }
 private struct SurfaceImageKey: Hashable {
   let surface: UUID
@@ -532,7 +532,7 @@ final class TerminalRendering: @unchecked Sendable {
     let texture = allocation.texture
     let allocatedBytes = Int(texture.allocatedSize)
     guard !limited || directGlyphBytes + allocatedBytes <= directGlyphBudget else {
-      glyphResidency.releaseLegacyTexture(allocation.capacity)
+      glyphResidency.releaseLegacyTexture(allocation.id)
       directGlyphExhausted = true
       return nil
     }
@@ -541,7 +541,7 @@ final class TerminalRendering: @unchecked Sendable {
     pixels.withUnsafeBytes { texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width * 4) }
     if limited { directGlyphBytes += allocatedBytes; directGlyphCount += 1; RendererMetrics.recordExactGlyphFallback() }
     return Glyph(uv: SIMD4(0, 0, 1, 1), width: width, atlasPage: nil, texture: texture, kind: kind,
-                 heap: allocation.heap, legacyBytes: allocation.capacity)
+                 heap: allocation.heap, legacyID: allocation.id)
   }
   private func glyph(_ key: GlyphKey, cells: Int, request: RenderRequest) -> Glyph? {
     let recipe = GlyphRasterRecipe(text: key.text, width: request.cellWidth * cells,
@@ -549,7 +549,7 @@ final class TerminalRendering: @unchecked Sendable {
       fontIdentity: key.fontIdentity, backingScale: 1)
     if let resident = glyphResidency.resolve(recipe) {
       return Glyph(uv: resident.uv, width: resident.width, atlasPage: nil, texture: resident.texture, kind: resident.kind,
-                   heap: nil, legacyBytes: 0)
+                   heap: nil, legacyID: nil)
     }
     if let value = glyphs[key] { if let page = value.atlasPage { frameAtlasPages.insert(page) }; return value }
     let width = request.cellWidth * cells; let height = request.cellHeight
@@ -564,7 +564,7 @@ final class TerminalRendering: @unchecked Sendable {
     let pixels = glyphPixels(key, width: width, height: height)
     let kind = glyphKind(pixels)
     pixels.withUnsafeBytes { atlases[placement.page].replace(region: MTLRegionMake2D(placement.x, placement.y, width, height), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width * 4) }
-    let value = Glyph(uv: SIMD4(Float(placement.x) / Float(atlasSize), Float(placement.y) / Float(atlasSize), Float(width) / Float(atlasSize), Float(height) / Float(atlasSize)), width: width, atlasPage: placement.page, texture: nil, kind: kind, heap: nil, legacyBytes: 0)
+    let value = Glyph(uv: SIMD4(Float(placement.x) / Float(atlasSize), Float(placement.y) / Float(atlasSize), Float(width) / Float(atlasSize), Float(height) / Float(atlasSize)), width: width, atlasPage: placement.page, texture: nil, kind: kind, heap: nil, legacyID: nil)
     frameAtlasPages.insert(placement.page); glyphs[key] = value; return value
   }
   private func draw(
@@ -588,7 +588,7 @@ final class TerminalRendering: @unchecked Sendable {
     var quads: [Quad] = []
     var backgrounds: [Quad] = []
     var glyphQuads = Array(repeating: [Quad](), count: atlases.count)
-    var directGlyphQuads: [(quad: Quad, texture: MTLTexture, heap: MTLHeap?)] = []
+    var directGlyphQuads: [(quad: Quad, texture: MTLTexture, heap: MTLHeap?, legacyID: UUID?)] = []
     let snap = request.snapshot
     let searchRows = Dictionary(snap.search.map { ($0.row, $0) }, uniquingKeysWith: { first, _ in first })
     let baseBackground = SIMD4<Float>(
@@ -606,7 +606,7 @@ final class TerminalRendering: @unchecked Sendable {
         while glyphQuads.count <= page { glyphQuads.append([]) }
         glyphQuads[page].append(quad)
       } else if let texture = glyph.texture {
-        directGlyphQuads.append((quad, texture, glyph.heap))
+        directGlyphQuads.append((quad, texture, glyph.heap, glyph.legacyID))
       }
     }
     var needsReset = false
@@ -873,11 +873,14 @@ final class TerminalRendering: @unchecked Sendable {
       textDirectGlyphQuads.map(\.texture) + overlayDirectGlyphQuads.map(\.texture)
     let retainedFallbackHeaps =
       textDirectGlyphQuads.compactMap(\.heap) + overlayDirectGlyphQuads.compactMap(\.heap)
+    let retiredFallbackIDs = Set(textDirectGlyphQuads.compactMap(\.legacyID)
+      + overlayDirectGlyphQuads.compactMap(\.legacyID))
     let completedRevision = snap.revision
     glyphResidency.submitted()
     residencySubmitted = true
-    command.addCompletedHandler { [weak self, retainedFallbackTextures, retainedFallbackHeaps, surface] command in
+    command.addCompletedHandler { [weak self, retainedFallbackTextures, retainedFallbackHeaps, retiredFallbackIDs, surface] command in
       self?.executor.async {
+        retiredFallbackIDs.forEach { self?.glyphResidency.releaseLegacyTexture($0) }
         self?.glyphResidency.completedSubmission()
         self?.completed(
           surface: surface, generation: generation, revision: completedRevision, command: command)

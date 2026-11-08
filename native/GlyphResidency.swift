@@ -16,6 +16,7 @@ struct GlyphLease {
 
 final class GlyphResidency: @unchecked Sendable {
   struct LegacyTexture {
+    let id: UUID
     let heap: MTLHeap
     let texture: MTLTexture
     let capacity: Int
@@ -71,6 +72,7 @@ final class GlyphResidency: @unchecked Sendable {
   private var directFallbackBytes = 0
   private var transientReplacementBytes = 0
   private var legacyBridgeBytes = 0
+  private var activeLegacy: [UUID: Int] = [:]
   private var deniedAllocations: UInt64 = 0
   private var fallback: GlyphLease?
 
@@ -217,11 +219,15 @@ final class GlyphResidency: @unchecked Sendable {
     else { deniedAllocations &+= 1; return nil }
     residentBytes += actual
     legacyBridgeBytes += actual
-    return LegacyTexture(heap: heap, texture: texture, capacity: actual)
+    let id = UUID()
+    activeLegacy[id] = actual
+    return LegacyTexture(id: id, heap: heap, texture: texture, capacity: actual)
   }
 
-  func releaseLegacyTexture(_ bytes: Int) {
-    guard bytes > 0 else { return }
+  // Idempotent by design: a replacement glyph can appear in several quads in
+  // one command buffer, but its heap capacity is retired exactly once.
+  func releaseLegacyTexture(_ id: UUID) {
+    guard let bytes = activeLegacy.removeValue(forKey: id), bytes > 0 else { return }
     residentBytes = max(0, residentBytes - bytes)
     legacyBridgeBytes = max(0, legacyBridgeBytes - bytes)
   }
