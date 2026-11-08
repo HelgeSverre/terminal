@@ -1,14 +1,15 @@
 {
-  "cancel_to_reap_seconds" : 0.0013980865478515625,
+  "cancel_to_reap_seconds" : 0.012498974800109863,
   "checks" : {
-    "accepted_input_during_rep" : true,
     "cancel_close_under_three_seconds" : true,
     "closed_focus_and_key_releases_are_quiet" : true,
     "closed_text_input_is_reported" : true,
     "finished_pty_refuses_text" : true,
     "finished_pty_retains_search" : true,
     "focus_release_preserves_viewport" : true,
-    "input_before_mode_suffix" : true,
+    "input_admitted_for_ordered_output" : true,
+    "input_after_accepted_output_is_bracketed" : true,
+    "input_before_mode_suffix_is_unbracketed" : true,
     "large_paste_accepted" : true,
     "ordered_mode_encoding_after_rep" : true,
     "ordinary_ingress_busy" : true,

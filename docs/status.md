@@ -65,10 +65,15 @@ Implemented and locally exercised:
 - Final-window closure quits the app and reaps PTY children; closed sessions
   silently reject late focus/key releases. PTY EOF closes input admission while
   leaving the final screen and history searchable.
+- Project-owned terminfo source and compiled bundle database, with exact `tput`
+  expansion checks and real parser replay. The entry omits unrendered blink and
+  unsupported private extensions; the shell keeps the documented
+  `xterm-256color` fallback for remote compatibility. DEC Special Graphics now
+  maps the entire 32-character set, including scan lines and control pictures.
 
 Current automated evidence:
 
-- `just test`: 41 core semantic/property-style fixtures, 9 margin fixtures,
+- `just test`: 42 core semantic/property-style fixtures, 9 margin fixtures,
   3 keypad fixtures, 7 viewport fixtures, 7 search fixtures, 13 graphics fixtures,
   and the full official Unicode 18 break suite; strict Clippy;
   native build; ten real PTY scenarios including bash/fish/Neovim/tmux/fzf output
@@ -123,7 +128,8 @@ Required work remaining before the requested completion gate:
   the authorized coding session completes the real dump tests. No broad disk
   permission was changed; `reports/downloads-access-probe.json` records this limit.
 - Full command/capability audit, complete kitty alternate/base-layout/modifier
-  metadata and modifier-only events, plus custom terminfo.
+  metadata and modifier-only events. The bundled custom terminfo is available;
+  switching the default identity still needs local/remote compatibility evidence.
 - Resumable reflow work quanta and fallible temporary-memory allowances. REP now yields in bounded quanta; actor/input ordering during REP is tested.
 - Complete typed epoch/anchor lifetimes and owner-confined, eviction-aware selection;
   richer search navigation/options and broader live-edit validation coverage.
