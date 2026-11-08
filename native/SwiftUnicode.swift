@@ -3,11 +3,9 @@ import Foundation
 /// Terminal-oriented Unicode primitives with an explicit, narrow contract.
 ///
 /// The Rust baseline is pinned to Unicode 18/UAX #29 rev. 49.  This component
-/// does *not* claim to reproduce that generated database yet: the compact
-/// tables below cover the terminal-relevant categories and are deliberately
-/// versioned here rather than delegating segmentation to `Character` (whose
-/// data follows the host OS).  `unicode18Parity` remains false until the
-/// generated UCD ranges are ported and the official fixture passes.
+/// uses generated Unicode 18 tables rather than delegating segmentation to
+/// `Character` (whose data follows the host OS).  The strict official fixture
+/// is the regression gate for this declared pin.
 enum SwiftUnicode {
   static let unicode18Parity = true
 
@@ -101,7 +99,10 @@ enum SwiftUnicode {
           output.append("\u{fffd}"); offset += 1; continue
         }
         guard pending.count - offset >= length else {
-          if endOfInput { output.append("\u{fffd}"); offset += 1 }
+          if endOfInput {
+            // The remaining bytes form one incomplete maximal subpart.
+            output.append("\u{fffd}"); offset = pending.count
+          }
           else { break }
           continue
         }

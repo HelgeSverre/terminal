@@ -27,6 +27,10 @@ uint32_t terminal_clear_display(Terminal *);
 void terminal_string_free(char *);
 void terminal_replies(Terminal *,void *,void (*)(void *,const uint8_t *,size_t));
 bool terminal_input(Terminal *,const char *,uint32_t,uint32_t,uint32_t,void *,void (*)(void *,const uint8_t *,size_t));
+/* Extended keyboard adapter for hosts that retain layout and committed-text
+ * metadata. Zero shifted/base-layout values mean absent; strings are copied
+ * synchronously before the callback returns. */
+bool terminal_input_with_metadata(Terminal *,const char *,uint32_t,uint32_t,uint32_t,const char *,const char *,uint32_t,uint32_t,void *,void (*)(void *,const uint8_t *,size_t));
 typedef struct SearchTask TerminalSearch;
 /* Exclusive task ownership migrates owner -> worker -> owner. No terminal
  * access on worker. Status: 0=work,1=page,2=done,3=changed,4=limit; accept 5=hit. */
@@ -41,6 +45,7 @@ TerminalProcess terminal_spawn_args(const char *,const char *,const char *,uint1
 bool terminal_validate(Terminal *);
 bool terminal_has_work(Terminal *);
 void terminal_set_history_limit(Terminal *,uint32_t);
+void terminal_set_history_byte_limit(Terminal *,uint64_t);
 bool terminal_image_rgba(Terminal *,uint32_t,uint64_t,void *,void (*)(void *,const uint8_t *,size_t));
 bool terminal_resize_pixels(Terminal *,uint32_t,uint32_t,uint32_t,uint32_t);
 uint64_t terminal_history_bytes(Terminal *);

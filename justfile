@@ -185,6 +185,13 @@ terminal-semantic-regression:
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_semantic_regression) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-semantic-regression
     target/native/terminal-semantic-regression
 
+[group('check')]
+swift-unicode18-corpus:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_unicode18_corpus) -framework Foundation -o target/native/swift-unicode18-corpus
+    target/native/swift-unicode18-corpus "$PWD" --strict
+
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
 [group('check')]
 smoke: build (_native-smoke "normal")

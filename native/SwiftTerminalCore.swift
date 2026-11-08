@@ -10,7 +10,18 @@ private typealias SwiftCell = TerminalCell
 private typealias SwiftRow = TerminalRow
 private typealias SwiftScreen = TerminalScreen
 
-private enum SwiftParserState { case ground, escape, csi, osc, apc }
+private func decSpecialGraphics(_ text: String) -> String {
+  guard text.unicodeScalars.count == 1, let scalar = text.unicodeScalars.first else { return text }
+  let mapping: [UInt32: String] = [
+    0x5f: "\u{00a0}", 0x60: "◆", 0x61: "▒", 0x62: "␉", 0x63: "␌", 0x64: "␍", 0x65: "␊",
+    0x66: "°", 0x67: "±", 0x68: "␤", 0x69: "␋", 0x6a: "┘", 0x6b: "┐", 0x6c: "┌", 0x6d: "└",
+    0x6e: "┼", 0x6f: "⎺", 0x70: "⎻", 0x71: "─", 0x72: "⎼", 0x73: "⎽", 0x74: "├", 0x75: "┤",
+    0x76: "┴", 0x77: "┬", 0x78: "│", 0x79: "≤", 0x7a: "≥", 0x7b: "π", 0x7c: "≠", 0x7d: "£", 0x7e: "·",
+  ]
+  return mapping[scalar.value] ?? text
+}
+
+private enum SwiftParserState { case ground, escape, charset(Int), csi, osc, apc, discardString(Bool) }
 
 private final class SwiftCoreSearchToken {
   let query: String
@@ -43,6 +54,7 @@ private final class SwiftTerminalCore {
   private var usingAlternate = false
   private var history: [SwiftRow] { get { document.history } set { document.history = newValue } }
   private var historyLimit = 10_000
+  private var historyByteLimit = Int.max
   private var viewOffset = 0
   // Nil means follow-tail. A retained row identity keeps a viewport stable as
   // output appends history and is remapped during document reflow.
@@ -85,6 +97,15 @@ private final class SwiftTerminalCore {
   private var lastPrintedLink: String?
   private var lastPrintedFlags: UInt8 = 0
   private var repeatRemaining = 0
+  private var charsetSpecial = [false, false]
+  private var charsetSlot = 0
+  // A terminal cell is intentionally bounded even while a grapheme is being
+  // decoded incrementally.  The cap is observable through cell_flags (bit 2)
+  // and prevents an untrusted combining-mark stream from growing one cell
+  // without limit.  A capped ZWJ still consumes its following pictograph as
+  // part of the discarded cluster, rather than making it a new grid glyph.
+  private var cappedCluster = false
+  private var cappedClusterJoinsNextPictograph = false
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
@@ -118,9 +139,9 @@ private final class SwiftTerminalCore {
     if geometry { geometryEpoch &+= 1 }
   }
   private func flushText(final: Bool = false) {
-    if final {
-      for scalar in utf8.finish() { put(String(scalar)) }
-    }
+    // Escape/control input interrupts an incomplete UTF-8 sequence. Emit its
+    // maximal invalid prefix now so that the control byte is still parsed.
+    for scalar in utf8.finish() { put(String(scalar)) }
   }
   private func tick(_ now: UInt64) {
     clock = now
@@ -157,8 +178,13 @@ private final class SwiftTerminalCore {
         case 0x09: flushText(); tab()
         case 0x0a, 0x0b, 0x0c: flushText(); lineFeed()
         case 0x0d: flushText(); carriageReturn()
+        case 0x0e: flushText(); charsetSlot = 1
+        case 0x0f: flushText(); charsetSlot = 0
         default:
-          for scalar in utf8.push(byte) { put(String(scalar)) }
+          for scalar in utf8.push(byte) {
+            let text = String(scalar)
+            put(charsetSpecial[charsetSlot] ? decSpecialGraphics(text) : text)
+          }
         }
       case .escape:
         parser = .ground
@@ -166,6 +192,8 @@ private final class SwiftTerminalCore {
         case 0x5b: sequence = ""; parser = .csi
         case 0x5d: sequence = ""; parser = .osc
         case 0x5f: sequence = ""; parser = .apc
+        case 0x28: parser = .charset(0)
+        case 0x29: parser = .charset(1)
         case 0x37: saveCursor()
         case 0x38: restoreCursor()
         case 0x44: lineFeed()
@@ -176,6 +204,10 @@ private final class SwiftTerminalCore {
         case 0x3e: applicationKeypad = false
         default: break
         }
+      case .charset(let slot):
+        parser = .ground
+        if byte == 0x30 { charsetSpecial[slot] = true }
+        else if byte == 0x42 { charsetSpecial[slot] = false }
       case .csi:
         if (0x40...0x7e).contains(byte) {
           handleCSI(sequence, final: Character(UnicodeScalar(byte))); parser = .ground
@@ -183,19 +215,29 @@ private final class SwiftTerminalCore {
         }
         else if sequence.utf8.count < 16_384 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
         else { parser = .ground; sequence = "" }
-      case .osc, .apc:
+      case .osc:
         if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
-        else if parser == .osc && byte == 0x07 { finishString(); parser = .ground }
+        else if byte == 0x07 { finishString(); parser = .ground }
         // String Terminator is the two-byte ESC \\ sequence. Keep parser
         // ownership in the string state until the following byte decides it;
         // switching to generic Escape would lose APC/OSC context.
         else if byte == 0x1b { sequence.append("\u{1b}") }
         else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
-        else if sequence.utf8.count < 1_048_576 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
-        else { parser = .ground; sequence = "" }
+        else if sequence.utf8.count < 65_536 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
+        else { parser = .discardString(false); sequence = "" }
+      case .apc:
+        if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
+        else if byte == 0x1b { sequence.append("\u{1b}") }
+        else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
+        else if sequence.utf8.count < 65_536 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
+        else { parser = .discardString(false); sequence = "" }
+      case .discardString(let escaped):
+        if byte == 0x18 || byte == 0x1a { parser = .ground }
+        else if escaped && byte == 0x5c { parser = .ground }
+        else { parser = .discardString(byte == 0x1b) }
       }
     }
-    return count
+    return limit
   }
   private func put(_ text: String) {
     var s = screen
@@ -208,13 +250,43 @@ private final class SwiftTerminalCore {
         }
       }) { return }
       if s.cursorColumn > 0 {
-        let attachmentColumn = s.pendingWrap ? s.cursorColumn : s.cursorColumn - 1
+        var attachmentColumn = s.pendingWrap ? s.cursorColumn : s.cursorColumn - 1
+        if !s.pendingWrap, s.rows[s.cursorRow].cells[attachmentColumn].kind == 0,
+           s.cursorColumn < columns { attachmentColumn = s.cursorColumn }
         let owner = document.repairedCellOwner(in: s.rows[s.cursorRow], at: attachmentColumn)
-        s.rows[s.cursorRow].cells[owner].text.append(text)
+        let scalarCount = s.rows[s.cursorRow].cells[owner].text.unicodeScalars.count
+        if cappedCluster || scalarCount + text.unicodeScalars.count > 64 {
+          cappedCluster = true
+          cappedClusterJoinsNextPictograph = cappedClusterJoinsNextPictograph || text.unicodeScalars.contains { $0.value == 0x200d }
+          s.rows[s.cursorRow].cells[owner].flags |= 4
+        } else {
+          s.rows[s.cursorRow].cells[owner].text.append(text)
+        }
       }
       screen = s; changed(); return
     }
     let width = min(2, max(1, measuredWidth))
+    // A ZWJ emoji continuation (and a paired regional indicator) extends the
+    // already placed cluster without consuming a second cell span. The rich
+    // cell retains the complete grapheme while its original width stays put.
+    if s.cursorColumn > 0, let scalar = text.unicodeScalars.first {
+      if cappedClusterJoinsNextPictograph && SwiftUnicode.category(of: scalar) == .extendedPictographic {
+        cappedCluster = false
+        cappedClusterJoinsNextPictograph = false
+        return
+      }
+      cappedCluster = false
+      cappedClusterJoinsNextPictograph = false
+      let owner = document.repairedCellOwner(in: s.rows[s.cursorRow], at: s.cursorColumn - 1)
+      let existing = s.rows[s.cursorRow].cells[owner].text.unicodeScalars
+      let joinsZWJ = existing.last?.value == 0x200d && SwiftUnicode.category(of: scalar) == .extendedPictographic
+      let joinsRI = SwiftUnicode.category(of: scalar) == .regionalIndicator &&
+        existing.count == 1 && existing.first.map { SwiftUnicode.category(of: $0) == .regionalIndicator } == true
+      if joinsZWJ || joinsRI {
+        s.rows[s.cursorRow].cells[owner].text.append(text)
+        screen = s; changed(); return
+      }
+    }
     if s.pendingWrap && autoWrap { wrap(&s) }
     let bounds = writeBounds(s.cursorColumn)
     if width == 2 && s.cursorColumn + 2 > bounds.right + 1 && bounds.right > bounds.left && autoWrap {
@@ -259,11 +331,27 @@ private final class SwiftTerminalCore {
   private func lineFeed() { var s = screen; s.pendingWrap = false; index(&s, reverse: false, allowHistory: true); screen = s; changed(history: !usingAlternate) }
   private func carriageReturn() { var s = screen; let left = horizontalMargins.left; s.cursorColumn = s.cursorColumn >= left ? left : 0; s.pendingWrap = false; screen = s; changed() }
   private func backspace() { var s = screen; let left = horizontalMargins.left; s.cursorColumn = max(s.cursorColumn >= left ? left : 0, s.cursorColumn - 1); s.pendingWrap = false; screen = s; changed() }
-  private func tab(_ reverse: Bool = false, count: Int = 1) { var s = screen; let margins = horizontalMargins; let left = s.cursorColumn >= margins.left ? margins.left : 0; let right = writeBounds(s.cursorColumn).right; for _ in 0..<min(count, columns) { if reverse { s.cursorColumn = stride(from: s.cursorColumn - 1, through: left, by: -1).first(where: { $0 > 0 && $0 % 8 == 0 }) ?? left } else { s.cursorColumn = ((s.cursorColumn + 1)...right).first(where: { $0 > 0 && $0 % 8 == 0 }) ?? right } }; s.pendingWrap = false; screen = s; changed() }
+  private func tab(_ reverse: Bool = false, count: Int = 1) {
+    var s = screen; let margins = horizontalMargins
+    let left = s.cursorColumn >= margins.left ? margins.left : 0
+    let right = writeBounds(s.cursorColumn).right
+    for _ in 0..<min(count, columns) {
+      if reverse {
+        guard s.cursorColumn > left else { s.cursorColumn = left; continue }
+        s.cursorColumn = stride(from: s.cursorColumn - 1, through: left, by: -1)
+          .first(where: { $0 > 0 && $0 % 8 == 0 }) ?? left
+      } else {
+        guard s.cursorColumn < right else { s.cursorColumn = right; continue }
+        s.cursorColumn = ((s.cursorColumn + 1)...right)
+          .first(where: { $0 > 0 && $0 % 8 == 0 }) ?? right
+      }
+    }
+    s.pendingWrap = false; screen = s; changed()
+  }
   private func reverseIndex() { var s = screen; s.pendingWrap = false; index(&s, reverse: true, allowHistory: false); screen = s; changed() }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
-  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; changed(history: true) }
+  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; cappedCluster = false; cappedClusterJoinsNextPictograph = false; changed(history: true) }
   private func parameters(_ raw: String) -> [Int] { raw.split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 } }
   private func handleCSI(_ raw: String, final: Character) {
     // VT parameters are bounded unsigned values. Treat an overflowing field
@@ -306,7 +394,7 @@ private final class SwiftTerminalCore {
       else { s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedOrigin = originMode }
     case "u":
       clearsPending = false
-      if raw.first == ">" { s.keyboardFlags = UInt32(max(0, parameters(String(raw.dropFirst())).first ?? 0)) & 31 }
+      if raw.first == ">" || raw.first == "=" { s.keyboardFlags = UInt32(max(0, parameters(String(raw.dropFirst())).first ?? 0)) & 31 }
       else if raw.first == "?" { replies.append(contentsOf: "\u{1b}[?\(s.keyboardFlags)u".utf8) }
       else { originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false }
     case "n": clearsPending = false; if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = s.cursorRow + 1 - (originMode ? s.topMargin : 0); let column = s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0); replies.append(contentsOf: "\u{1b}[\(row);\(column)R".utf8) }
@@ -364,7 +452,7 @@ private final class SwiftTerminalCore {
       if up && allowHistory && !usingAlternate && top == 0 && bottom == rowCount - 1 {
         history.append(removed)
         if viewAnchor != nil { viewOffset += 1 }
-        if history.count > historyLimit { history.removeFirst(history.count - historyLimit); clampViewportAfterEviction() }
+        enforceHistoryLimits()
         historyEpoch &+= 1
       }
     }
@@ -476,7 +564,7 @@ private final class SwiftTerminalCore {
   }
   private func finishString() {
     let payload = sequence; sequence = ""
-    if parser == .osc {
+    if case .osc = parser {
       let parts = payload.split(separator: ";", omittingEmptySubsequences: false)
       guard let command = parts.first else { return }
       if command == "0" || command == "2" { title = parts.dropFirst().joined(separator: ";") }
@@ -500,7 +588,7 @@ private final class SwiftTerminalCore {
       }
       return
     }
-    guard parser == .apc else { return }
+    guard case .apc = parser else { return }
     let s = screen
     let outcome = graphics.consume(Data(payload.utf8), context: KittyGraphicsContext(
       alternate: usingAlternate, row: s.cursorRow, column: s.cursorColumn,
@@ -562,7 +650,13 @@ private final class SwiftTerminalCore {
     guard viewAnchor != nil else { return }
     if let row = history.first ?? primary.rows.first { viewAnchor = row.id; viewOffset = history.first == nil ? 0 : history.count; if !viewportWasClamped { viewportClampRevision &+= 1; viewportWasClamped = true } }
   }
-  func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); if history.count > historyLimit { history.removeFirst(history.count - historyLimit); historyEpoch &+= 1; clampViewportAfterEviction() }; _ = resolveViewportAnchor(clamp: true) }
+  private func enforceHistoryLimits() {
+    if history.count > historyLimit { history.removeFirst(history.count - historyLimit) }
+    while historyBytes() > UInt64(historyByteLimit), !history.isEmpty { history.removeFirst() }
+    clampViewportAfterEviction()
+  }
+  func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
+  func setHistoryByteLimit(_ value: Int) { historyByteLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
   func clearDisplay() -> UInt32 {
     guard !usingAlternate else { return 0 }
     var current = primary
@@ -588,7 +682,8 @@ private final class SwiftTerminalCore {
     changed(history: true, document: action != 1)
     return action
   }
-  func input(_ text: String, key: UInt32, modifiers: UInt32, event: UInt32) -> Data? {
+  func input(_ text: String, key: UInt32, modifiers: UInt32, event: UInt32,
+             metadata: SwiftInputEncoder.KeyMetadata = .init()) -> Data? {
     let modes = SwiftInputEncoder.Modes(
       applicationCursor: applicationCursor, applicationKeypad: applicationKeypad,
       bracketedPaste: bracketedPaste, focusReporting: focusReporting, kittyFlags: screen.keyboardFlags)
@@ -596,10 +691,11 @@ private final class SwiftTerminalCore {
     if key == 2 { return SwiftInputEncoder.focus(event == 1, modes: modes) }
     let modifier = SwiftInputEncoder.Modifiers(
       shift: modifiers & 1 != 0, option: modifiers & 2 != 0,
-      control: modifiers & 4 != 0, command: modifiers & 8 != 0)
+      control: modifiers & 4 != 0, command: modifiers & 8 != 0,
+      capsLock: modifiers & 16 != 0, numLock: modifiers & 32 != 0)
     let phase: SwiftInputEncoder.Event = event == 1 ? .repeatKey : event == 2 ? .release : .press
     guard let semantic = inputKey(key, text: text) else { return Data() }
-    return SwiftInputEncoder.key(semantic, modifiers: modifier, event: phase, modes: modes)
+    return SwiftInputEncoder.key(semantic, modifiers: modifier, event: phase, modes: modes, metadata: metadata)
   }
   private func inputKey(_ code: UInt32, text: String) -> SwiftInputEncoder.Key? {
     let navigation: [UInt32: SwiftInputEncoder.Key] = [
@@ -611,6 +707,7 @@ private final class SwiftTerminalCore {
     if (300...317).contains(code), let keypad = SwiftInputEncoder.KeypadKey(rawValue: Int(code - 300)) {
       return .keypad(keypad, nativeText: text.first)
     }
+    if code >= 50_000 { return .modifier(code) }
     if code == 0 || code == 200 { return text.first.map { .character($0) } }
     return nil
   }
@@ -623,7 +720,11 @@ private final class SwiftTerminalCore {
     document.hasValidInvariants(primary) && document.hasValidInvariants(alternate) &&
       history.allSatisfy { $0.cells.count == columns }
   }
-  func historyBytes() -> UInt64 { UInt64(history.reduce(0) { $0 + $1.cells.reduce(0) { $0 + $1.text.utf8.count } }) }
+  func historyBytes() -> UInt64 {
+    // Retention is bounded by cell storage, not merely printable payload:
+    // blank physical cells still retain a row identity/style slot.
+    UInt64(history.reduce(0) { total, row in total + row.cells.count + row.cells.reduce(0) { $0 + $1.text.utf8.count } })
+  }
   func imageRGBA(id: UInt32, generation: UInt64) -> Data? { graphics.imageRGBA(id: id, generation: generation) }
   func startSearch(_ task: SwiftCoreSearchToken) -> UInt32 {
     searchHighlights.removeAll()
@@ -716,6 +817,10 @@ private final class SwiftTerminalCore {
 // replacement of the static Rust archive while all native call sites stay stable.
 
 private func core(_ pointer: OpaquePointer?) -> SwiftTerminalCore? { pointer.map { Unmanaged<SwiftTerminalCore>.fromOpaque(UnsafeMutableRawPointer($0)).takeUnretainedValue() } }
+private func inputCharacter(_ scalar: UInt32) -> Character? {
+  guard scalar != 0, let value = UnicodeScalar(scalar) else { return nil }
+  return Character(String(value))
+}
 typealias BytesCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void
 typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int, UnsafePointer<TerminalCellView>?, Int, UnsafePointer<UInt8>?, Int) -> Void
 
@@ -729,6 +834,7 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
 @_cdecl("terminal_validate") func swift_terminal_validate(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.isValid() ?? false }
 @_cdecl("terminal_has_work") func swift_terminal_has_work(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.hasPendingWork ?? false }
 @_cdecl("terminal_set_history_limit") func swift_terminal_set_history_limit(_ pointer: OpaquePointer?, _ limit: UInt32) { core(pointer)?.setHistoryLimit(Int(limit)) }
+@_cdecl("terminal_set_history_byte_limit") func swift_terminal_set_history_byte_limit(_ pointer: OpaquePointer?, _ limit: UInt64) { core(pointer)?.setHistoryByteLimit(limit > UInt64(Int.max) ? Int.max : Int(limit)) }
 @_cdecl("terminal_history_bytes") func swift_terminal_history_bytes(_ pointer: OpaquePointer?) -> UInt64 { core(pointer)?.historyBytes() ?? 0 }
 @_cdecl("terminal_snapshot") func swift_terminal_snapshot(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64) -> UnsafeMutablePointer<CChar>? { guard let snapshot = core(pointer)?.snapshot(now: now) else { return nil }; return strdup(String(data: snapshot, encoding: .utf8) ?? "{}") }
 @_cdecl("terminal_string_free") func swift_terminal_string_free(_ value: UnsafeMutablePointer<CChar>?) { if let value { free(value) } }
@@ -739,6 +845,15 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
 @_cdecl("terminal_clear_display") func swift_terminal_clear_display(_ pointer: OpaquePointer?) -> UInt32 { core(pointer)?.clearDisplay() ?? 0 }
 @_cdecl("terminal_replies") func swift_terminal_replies(_ pointer: OpaquePointer?, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) { guard let callback, let data = core(pointer)?.takeReplies(), !data.isEmpty else { return }; data.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, data.count) } }
 @_cdecl("terminal_input") func swift_terminal_input(_ pointer: OpaquePointer?, _ text: UnsafePointer<CChar>?, _ key: UInt32, _ modifiers: UInt32, _ event: UInt32, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool { guard let value = core(pointer)?.input(text.map { String(cString: $0) } ?? "", key: key, modifiers: modifiers, event: event) else { return false }; if let callback, !value.isEmpty { value.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, value.count) } }; return true }
+@_cdecl("terminal_input_with_metadata") func swift_terminal_input_with_metadata(_ pointer: OpaquePointer?, _ text: UnsafePointer<CChar>?, _ key: UInt32, _ modifiers: UInt32, _ event: UInt32, _ associated: UnsafePointer<CChar>?, _ legacy: UnsafePointer<CChar>?, _ shifted: UInt32, _ baseLayout: UInt32, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool {
+  let metadata = SwiftInputEncoder.KeyMetadata(
+    shifted: inputCharacter(shifted), baseLayout: inputCharacter(baseLayout),
+    associatedText: associated.map { String(cString: $0) }, legacyText: legacy.map { String(cString: $0) })
+  guard let value = core(pointer)?.input(text.map { String(cString: $0) } ?? "", key: key,
+                                         modifiers: modifiers, event: event, metadata: metadata) else { return false }
+  if let callback, !value.isEmpty { value.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, value.count) } }
+  return true
+}
 @_cdecl("terminal_image_rgba") func swift_terminal_image_rgba(_ pointer: OpaquePointer?, _ image: UInt32, _ generation: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool { guard let callback, let pixels = core(pointer)?.imageRGBA(id: image, generation: generation) else { return false }; pixels.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, pixels.count) }; return true }
 @_cdecl("terminal_search_create") func swift_terminal_search_create(_ pointer: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ count: Int) -> OpaquePointer? { guard let bytes, count > 0, let query = String(bytes: UnsafeBufferPointer(start: bytes, count: count), encoding: .utf8) else { return nil }; return OpaquePointer(Unmanaged.passRetained(SwiftCoreSearchToken(query)).toOpaque()) }
 @_cdecl("terminal_search_destroy") func swift_terminal_search_destroy(_ pointer: OpaquePointer?) { if let pointer { Unmanaged<SwiftCoreSearchToken>.fromOpaque(UnsafeMutableRawPointer(pointer)).release() } }

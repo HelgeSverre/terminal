@@ -19,16 +19,44 @@ enum SwiftInputEncoder {
     var option = false
     var control = false
     var command = false
+    var capsLock = false
+    var numLock = false
 
-    init(shift: Bool = false, option: Bool = false, control: Bool = false, command: Bool = false) {
+    init(shift: Bool = false, option: Bool = false, control: Bool = false, command: Bool = false,
+         capsLock: Bool = false, numLock: Bool = false) {
       self.shift = shift
       self.option = option
       self.control = control
       self.command = command
+      self.capsLock = capsLock
+      self.numLock = numLock
     }
 
     fileprivate var kitty: UInt32 {
-      1 + (shift ? 1 : 0) + (option ? 2 : 0) + (control ? 4 : 0) + (command ? 8 : 0)
+      var value: UInt32 = 1
+      if shift { value += 1 }; if option { value += 2 }; if control { value += 4 }
+      if command { value += 8 }; if capsLock { value += 64 }; if numLock { value += 128 }
+      return value
+    }
+    fileprivate var legacyKitty: UInt32 {
+      var value: UInt32 = 1
+      if shift { value += 1 }; if option { value += 2 }; if control { value += 4 }
+      if command { value += 8 }
+      return value
+    }
+  }
+
+  struct KeyMetadata: Equatable {
+    var shifted: Character?
+    var baseLayout: Character?
+    var associatedText: String?
+    var legacyText: String?
+    init(shifted: Character? = nil, baseLayout: Character? = nil,
+         associatedText: String? = nil, legacyText: String? = nil) {
+      self.shifted = shifted
+      self.baseLayout = baseLayout
+      self.associatedText = associatedText
+      self.legacyText = legacyText
     }
   }
 
@@ -53,10 +81,12 @@ enum SwiftInputEncoder {
     case function(Int)
     case character(Character)
     case keypad(KeypadKey, nativeText: Character?)
+    case modifier(UInt32)
   }
 
   /// Empty output means a negotiated release is intentionally suppressed.
-  static func key(_ key: Key, modifiers: Modifiers = .init(), event: Event = .press, modes: Modes) -> Data {
+  static func key(_ key: Key, modifiers: Modifiers = .init(), event: Event = .press,
+                  modes: Modes, metadata: KeyMetadata = .init()) -> Data {
     let flags = modes.kittyFlags
     if event == .release && flags & 2 == 0 { return Data() }
     let protectedLegacy: Bool
@@ -75,7 +105,7 @@ enum SwiftInputEncoder {
       || (!protectedLegacy && flags & 2 != 0 && !plainText)
       || (flags & 1 != 0 && (modifiers.control || modifiers.option || isEscapeOrKeypad(key)))
       || modifiers.command
-    if enhanced { return kitty(key, modifiers: modifiers, event: event, flags: flags) }
+    if enhanced { return kitty(key, modifiers: modifiers, event: event, flags: flags, metadata: metadata) }
     if event == .release { return Data() }
     if case .keypad(let keypad, let native) = key {
       if modes.applicationKeypad {
@@ -83,9 +113,9 @@ enum SwiftInputEncoder {
         if modifiers.option { output.insert(27, at: 0) }
         return output
       }
-      return self.key(keypad == .enter ? .enter : .character(keypadSymbol(keypad, native)), modifiers: modifiers, modes: modes)
+      return self.key(keypad == .enter ? .enter : .character(keypadSymbol(keypad, native)), modifiers: modifiers, modes: modes, metadata: metadata)
     }
-    let modifier = modifiers.kitty
+    let modifier = modifiers.legacyKitty
     let cursorPrefix = modes.applicationCursor ? "\u{1b}O" : "\u{1b}["
     if let final = arrowFinal(key) {
       return Data((modifier == 1 ? "\(cursorPrefix)\(final)" : "\u{1b}[1;\(modifier)\(final)").utf8)
@@ -108,7 +138,12 @@ enum SwiftInputEncoder {
       {
         output = Data([scalar == "?" ? 127 : UInt8(scalar.properties.uppercaseMapping.unicodeScalars.first?.value ?? scalar.value) & 31])
       } else {
-        output = Data(String(character).utf8)
+        // Legacy terminals receive the event's committed text for ordinary
+        // typing, but modifier chords preserve the logical/physical key.
+        let committed = modifiers.option || modifiers.command
+          ? (metadata.legacyText ?? String(character))
+          : (metadata.legacyText ?? metadata.associatedText ?? String(character))
+        output = Data(committed.utf8)
       }
     default: output = Data()
     }
@@ -131,7 +166,8 @@ enum SwiftInputEncoder {
     return Data((focused ? "\u{1b}[I" : "\u{1b}[O").utf8)
   }
 
-  private static func kitty(_ key: Key, modifiers: Modifiers, event: Event, flags: UInt32) -> Data {
+  private static func kitty(_ key: Key, modifiers: Modifiers, event: Event, flags: UInt32,
+                            metadata: KeyMetadata) -> Data {
     let eventSuffix: String
     if flags & 2 == 0 { eventSuffix = "" }
     else { eventSuffix = event == .press ? ":1" : event == .repeatKey ? ":2" : ":3" }
@@ -144,6 +180,7 @@ enum SwiftInputEncoder {
     switch key {
     case .character(let value):
       code = normalizedCode(value); text = value
+    case .modifier(let value): code = value; text = nil
     case .enter: code = 13; text = nil
     case .tab: code = 9; text = nil
     case .backspace: code = 127; text = nil
@@ -152,12 +189,16 @@ enum SwiftInputEncoder {
     default: return Data()
     }
     let alternate: String
-    if flags & 4 != 0, modifiers.shift, case .character(let value) = key, UInt32(singleScalar(value)?.value ?? 0) != code {
-      alternate = ":\(singleScalar(value)?.value ?? 0)"
+    if flags & 4 != 0, case .character = key {
+      let shifted = metadata.shifted.flatMap(singleScalar).map { String($0.value) } ?? ""
+      let base = metadata.baseLayout.flatMap(singleScalar).map { String($0.value) } ?? ""
+      alternate = shifted.isEmpty && base.isEmpty ? "" : ":\(shifted):\(base)"
     } else { alternate = "" }
     let associated: String
-    if flags & 16 != 0, event != .release, !modifiers.control, !modifiers.command, let text {
-      associated = ";\(singleScalar(text)?.value ?? 0)"
+    if flags & 16 != 0, event != .release, !modifiers.control, !modifiers.command,
+       let associatedText = metadata.associatedText ?? text.map(String.init),
+       let scalar = associatedText.unicodeScalars.first, !associatedText.isEmpty {
+      associated = ";\(scalar.value)"
     } else { associated = "" }
     return Data("\u{1b}[\(code)\(alternate);\(modifier)\(eventSuffix)\(associated)u".utf8)
   }

@@ -22,7 +22,7 @@ import Foundation
     for byte in malformed { replacements += invalid.push(byte) }
     replacements += invalid.finish()
     precondition(replacements.filter { $0.value == 0xfffd }.count >= 1)
-    precondition(!SwiftUnicode.unicode18Parity)
-    print("PASS Swift Unicode smoke: clusters, widths, chunked UTF-8 and declared parity boundary")
+    precondition(SwiftUnicode.unicode18Parity)
+    print("PASS Swift Unicode smoke: clusters, widths, chunked UTF-8 and Unicode 18 pin")
   }
 }

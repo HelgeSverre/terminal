@@ -106,6 +106,9 @@
       "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift",
       "SwiftUnicode.swift", "SwiftInputEncoder.swift", "SwiftGraphics.swift",
       "SwiftTerminalCore.swift", "tests/TerminalSemanticRegressionTests.swift"
+    ],
+    "swift_unicode18_corpus": [
+      "SwiftUnicode18Tables.swift", "SwiftUnicode.swift", "tests/SwiftUnicode18CorpusTests.swift"
     ]
   }
 }

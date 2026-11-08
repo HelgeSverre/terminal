@@ -3,6 +3,11 @@ import Foundation
 // Observable a9b3c98 semantics.rs cases that are not already owned by the
 // margin, viewport, reflow, prompt/clear, input, or scheduler ABI oracles.
 @main enum TerminalSemanticRegressionTests {
+  private final class Bytes { var value = Data() }
+  private static let collect: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void = { context, bytes, count in
+    guard let context, let bytes, count > 0 else { return }
+    Unmanaged<Bytes>.fromOpaque(context).takeUnretainedValue().value.append(bytes, count: count)
+  }
   static func make(_ columns: UInt32 = 8, _ rows: UInt32 = 3) -> OpaquePointer { terminal_create(columns, rows)! }
   static func feed(_ terminal: OpaquePointer, _ data: Data, now: UInt64 = 0) {
     var offset = 0
@@ -26,6 +31,31 @@ import Foundation
   }
   static func cell(_ snapshot: [String: Any], _ row: Int, _ column: Int) -> [String: Any] {
     ((snapshot["rows"] as! [[String: Any]])[row]["cells"] as! [[String: Any]])[column]
+  }
+  static func stable(_ value: Any) -> Any {
+    if var object = value as? [String: Any] {
+      ["id", "revision", "geometry_epoch", "document_epoch", "history_epoch", "screen_epoch", "viewport_clamp_revision"].forEach { object.removeValue(forKey: $0) }
+      for (key, child) in object { object[key] = stable(child) }
+      return object
+    }
+    if let values = value as? [Any] { return values.map(stable) }
+    return value
+  }
+  static func input(_ terminal: OpaquePointer, text: String, key: UInt32, modifiers: UInt32 = 0,
+                    event: UInt32 = 0, associated: String? = nil, legacy: String? = nil,
+                    shifted: UInt32 = 0, baseLayout: UInt32 = 0) -> Data {
+    let capture = Bytes()
+    return text.withCString { textPointer in
+      (associated ?? "").withCString { associatedPointer in
+        (legacy ?? "").withCString { legacyPointer in
+          precondition(terminal_input_with_metadata(
+            terminal, textPointer, key, modifiers, event,
+            associated == nil ? nil : associatedPointer, legacy == nil ? nil : legacyPointer,
+            shifted, baseLayout, Unmanaged.passUnretained(capture).toOpaque(), collect))
+          return capture.value
+        }
+      }
+    }
   }
 
   static func deferredWrapLFAndUTF8() {
@@ -83,8 +113,167 @@ import Foundation
     precondition(repaired["kind"] as? String == "Lead2" && ((repaired["flags"] as! Int) & 1) == 0)
   }
 
+  static func decCharsetPartitionsAndHistoryBounds() {
+    let source = "_`abcdefghijklmnopqrstuvwxyz{|}~"
+    let expected = "\u{a0}◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·"
+    for designation in ["\u{1b}(0", "\u{1b})0\u{0e}"] {
+      let bytes = Data("\(designation)\(source)\u{0f}\u{1b}(B\(source)".utf8)
+      for split in [0, 1, bytes.count / 2, bytes.count] {
+        let terminal = make(64, 2); defer { terminal_destroy(terminal) }
+        feed(terminal, bytes.prefix(split)); feed(terminal, bytes.suffix(bytes.count - split))
+        let cells = ((snapshot(terminal)["rows"] as! [[String: Any]])[0]["cells"] as! [[String: Any]])
+        precondition(cells[0..<32].map { $0["text"] as! String }.joined() == expected)
+        precondition(cells[32..<64].map { $0["text"] as! String }.joined() == source)
+      }
+    }
+    let history = make(4, 2); defer { terminal_destroy(history) }
+    terminal_set_history_limit(history, 3); feed(history, "a\r\nb\r\nc\r\nd\r\ne\r\nf")
+    precondition(snapshot(history)["history_rows"] as! Int == 3)
+    terminal_set_history_byte_limit(history, 1)
+    precondition(snapshot(history)["history_rows"] as! Int == 0)
+  }
+
+  static func utf8EOFEditingAndResetSemantics() {
+    for bytes in [[UInt8](arrayLiteral: 0xe0, 0x80, 0x80), [0xed, 0xa0, 0x80], [0xf4, 0x90, 0x80, 0x80], [0xc2, 0x41, 0xf0, 0x9f]] {
+      let terminal = make(40, 2); defer { terminal_destroy(terminal) }; feed(terminal, Data(bytes)); terminal_finish(terminal)
+      let rendered = line(snapshot(terminal), 0).trimmingCharacters(in: .whitespaces)
+      guard rendered == String(decoding: bytes, as: UTF8.self) else { fatalError("utf8 \(bytes): \(rendered.debugDescription) != \(String(decoding: bytes, as: UTF8.self).debugDescription)") }
+    }
+    let eof = make(); defer { terminal_destroy(eof) }
+    feed(eof, "a\u{1b}[12;"); terminal_finish(eof); precondition(line(snapshot(eof), 0).hasPrefix("a"))
+    let edit = make(4, 3); defer { terminal_destroy(edit) }
+    feed(edit, "abcdef\u{1b}[1;2HZ"); precondition(((snapshot(edit)["rows"] as! [[String: Any]])[0]["soft_wrapped"] as! Bool))
+    let reset = make(); defer { terminal_destroy(reset) }
+    feed(reset, "\u{1b}[?25l\u{1b}[?1049h\u{1b}[5 q\u{1b}c\u{1b}[?47h")
+    let cursor = snapshot(reset)["cursor"] as! [String: Any]
+    precondition(cursor["visible"] as? Bool == true && cursor["shape"] as? Int == 0)
+  }
+
+  static func displayClusterAndMalformedOSC() {
+    let display = make(4, 2); defer { terminal_destroy(display) }
+    feed(display, "ab\u{1b}[S\u{301}")
+    precondition(cell(snapshot(display), 0, 2)["text"] as? String == "\u{301}")
+    let osc = make(); defer { terminal_destroy(osc) }
+    feed(osc, "\u{1b}]10;#aéabc\u{1b}\\X"); precondition(line(snapshot(osc), 0).hasPrefix("X"))
+    let ed = make(4, 2); defer { terminal_destroy(ed) }
+    feed(ed, "a\r\nb\r\nc"); let before = snapshot(ed)["history_rows"] as! Int
+    feed(ed, "\u{1b}[2J"); precondition(snapshot(ed)["history_rows"] as! Int == before)
+    feed(ed, "\u{1b}[3J"); precondition(snapshot(ed)["history_rows"] as! Int == 0)
+    let edge = make(4, 2); defer { terminal_destroy(edge) }
+    feed(edge, "abc猫"); precondition(cell(snapshot(edge), 0, 3)["kind"] as? String == "WrapSpacer")
+  }
+
+  static func bytePartitionsAgree() {
+    let fixtures = [
+      "a\u{1b}[38:2::12:34:56m猫👩🏽‍💻e\u{301}\u{1b}]8;;https://example.com\u{1b}\\X\u{1b}]8;;\u{1b}\\\u{1b}[6n",
+      "abcd\u{1b}[?1049hhello\u{1b}[?1049h!\u{1b}[?1049lZ",
+      "a\u{1b}Pstuff\u{1b}[31mignored\u{1b}\\b\u{1b}_unsupported\u{7}garbage\u{1b}\\c",
+      "\u{1b}]2;title\u{1b}\\abcd\r\n猫猫cat\u{1b}[2;3HX\u{1b}[0J",
+    ]
+    for fixture in fixtures {
+      let bytes = Data(fixture.utf8)
+      let baseline = make(8, 4); defer { terminal_destroy(baseline) }; feed(baseline, bytes)
+      let expected = stable(snapshot(baseline)) as! NSDictionary
+      for split in 0...bytes.count {
+        let terminal = make(8, 4); defer { terminal_destroy(terminal) }
+        feed(terminal, Data(bytes.prefix(split))); feed(terminal, Data(bytes.suffix(bytes.count - split)))
+        precondition(expected.isEqual(stable(snapshot(terminal))))
+      }
+      let terminal = make(8, 4); defer { terminal_destroy(terminal) }
+      for byte in bytes { feed(terminal, Data([byte])) }
+      precondition(expected.isEqual(stable(snapshot(terminal))))
+    }
+  }
+
+  static func clustersAndDiscardBound() {
+    for text in ["👩🏽‍💻", "🇳🇴", "e\u{301}", "가", "猫"] {
+      let terminal = make(); defer { terminal_destroy(terminal) }; feed(terminal, text)
+      precondition(cell(snapshot(terminal), 0, 0)["text"] as? String == text)
+    }
+    let strings = make(); defer { terminal_destroy(strings) }
+    var payload = Data("a\u{1b}]2;".utf8)
+    payload.append(Data(repeating: UInt8(ascii: "x"), count: 70_000))
+    payload.append(Data("\u{1b}[2J\u{1b}\\b".utf8))
+    feed(strings, payload)
+    guard line(snapshot(strings), 0).hasPrefix("ab") else { fatalError("discard \(line(snapshot(strings), 0).debugDescription)") }
+  }
+
+  static func cappedGraphemeKeepsIncrementalBoundaryState() {
+    let terminal = make(); defer { terminal_destroy(terminal) }
+    feed(terminal, "👩" + String(repeating: "\u{301}", count: 100) + "\u{200d}👩X")
+    let value = snapshot(terminal)
+    precondition(cell(value, 0, 2)["text"] as? String == "X")
+    precondition((cell(value, 0, 0)["text"] as! String).unicodeScalars.count == 64)
+    precondition(((cell(value, 0, 0)["flags"] as! Int) & 4) != 0)
+  }
+
+  static func physicalKeyMetadataUsesABI() {
+    let compatibility = make(); defer { terminal_destroy(compatibility) }
+    precondition(input(compatibility, text: "", key: 57_442).isEmpty)
+    precondition(input(compatibility, text: "", key: 10, modifiers: 16 | 32) == Data("\u{1b}[A".utf8))
+
+    let enhanced = make(); defer { terminal_destroy(enhanced) }
+    feed(enhanced, "\u{1b}[=31u")
+    precondition(input(enhanced, text: "с", key: 200, modifiers: 4, associated: "с", baseLayout: 99) == Data("\u{1b}[1089::99;5:1u".utf8))
+    precondition(input(enhanced, text: "=", key: 200, modifiers: 1, associated: "+", shifted: 43, baseLayout: 61) == Data("\u{1b}[61:43:61;2:1;43u".utf8))
+    precondition(input(enhanced, text: "x", key: 200, associated: "") == Data("\u{1b}[120;1:1u".utf8))
+    precondition(input(enhanced, text: "", key: 57_442, modifiers: 4 | 16) == Data("\u{1b}[57442;69:1u".utf8))
+    precondition(input(enhanced, text: "", key: 57_442, modifiers: 16, event: 2) == Data("\u{1b}[57442;65:3u".utf8))
+    precondition(input(enhanced, text: "", key: 57_358, modifiers: 16) == Data("\u{1b}[57358;65:1u".utf8))
+
+    let legacy = make(); defer { terminal_destroy(legacy) }
+    precondition(input(legacy, text: "a", key: 200, modifiers: 1, associated: "A") == Data("A".utf8))
+    precondition(input(legacy, text: "1", key: 200, modifiers: 1, associated: "!") == Data("!".utf8))
+    precondition(input(legacy, text: "a", key: 200, associated: "æ") == Data("æ".utf8))
+    precondition(input(legacy, text: "å", key: 200, modifiers: 16, associated: "Å") == Data("Å".utf8))
+    precondition(input(legacy, text: "1", key: 200, modifiers: 1 | 8, associated: "!") == Data("\u{1b}[49;10u".utf8))
+    precondition(input(legacy, text: "c", key: 200, modifiers: 4, associated: "ç") == Data([3]))
+    precondition(input(legacy, text: "a", key: 200, modifiers: 2, associated: "æ") == Data("\u{1b}a".utf8))
+    precondition(input(legacy, text: "1", key: 200, modifiers: 1 | 2, associated: "¡", legacy: "!", shifted: 33) == Data("\u{1b}!".utf8))
+    precondition(input(legacy, text: "a", key: 200, modifiers: 2 | 16, associated: "å", legacy: "A") == Data("\u{1b}A".utf8))
+  }
+
+  static func snapshotsAreImmutableAndIngressIsPartitionIndependent() {
+    let immutable = make(); defer { terminal_destroy(immutable) }
+    feed(immutable, "abc")
+    let before = snapshot(immutable)
+    feed(immutable, "\rX")
+    precondition(line(before, 0).hasPrefix("abc"))
+    precondition(line(snapshot(immutable), 0).hasPrefix("Xbc"))
+
+    for fixture in [
+      "abcd\u{1b}[31me fghi\r\n0123456789012345",
+      "abc猫e\u{301} xyz\u{1b}[2G!!!\u{1b}[?7lmore than a row\u{1b}[?7hwrap now",
+      "\u{600}xyz\u{1b}[4hINSERT\u{1b}[4lfast\u{1b}[?1049hALT\r\ntext\u{1b}[?1049lback",
+    ] {
+      let bulk = make(4, 3); defer { terminal_destroy(bulk) }; feed(bulk, fixture)
+      let scalar = make(4, 3); defer { terminal_destroy(scalar) }
+      for character in fixture { feed(scalar, String(character)) }
+      precondition((stable(snapshot(bulk)) as! NSDictionary).isEqual(stable(snapshot(scalar))))
+    }
+  }
+
+  static func randomPartitionsRetainInvariants() {
+    var seed: UInt64 = 0x55aa
+    var bytes = Data(); bytes.reserveCapacity(20_000)
+    for _ in 0..<20_000 { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; bytes.append(UInt8(truncatingIfNeeded: seed)) }
+    let baseline = make(40, 10); defer { terminal_destroy(baseline) }; feed(baseline, bytes); terminal_finish(baseline)
+    let expected = stable(snapshot(baseline)) as! NSDictionary
+    let terminal = make(40, 10); defer { terminal_destroy(terminal) }
+    for offset in stride(from: 0, to: bytes.count, by: 37) { feed(terminal, Data(bytes[offset..<min(bytes.count, offset + 37)])); precondition(terminal_validate(terminal)) }
+    terminal_finish(terminal)
+    precondition(expected.isEqual(stable(snapshot(terminal))))
+  }
+
   static func main() {
     deferredWrapLFAndUTF8(); renditionSaveEraseAndOverflow(); alternateAndStringSafety(); cursorAppearanceAndClippedWideRepair()
+    decCharsetPartitionsAndHistoryBounds(); utf8EOFEditingAndResetSemantics(); displayClusterAndMalformedOSC()
+    bytePartitionsAgree()
+    clustersAndDiscardBound()
+    cappedGraphemeKeepsIncrementalBoundaryState()
+    physicalKeyMetadataUsesABI()
+    snapshotsAreImmutableAndIngressIsPartitionIndependent()
+    randomPartitionsRetainInvariants()
     print("PASS Terminal semantic regression oracle: wrap, UTF-8, rendition, alternates, strings, cursor, wide repair")
   }
 }
