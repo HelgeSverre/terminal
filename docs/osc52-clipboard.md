@@ -36,5 +36,9 @@ deny, stale-session suppression, prompt bounds, malformed and oversized core
 input, and a real PTY query/reply proving that OSC 52 reads receive the empty
 denial response without consulting a pasteboard.
 
-The current parser buffers a bounded encoded OSC string before decoding it.
-The specification's separate streaming base64 path remains implementation work.
+The parser recognizes selection `c` before streaming base64 payload chunks to a
+decoder with four bytes of carry. Encoded input is capped at 1,398,104 bytes and
+decoded output at 1 MiB, with fallible growth and canonical RFC 4648 padding.
+Parser callbacks are individually bounded to 64 KiB even for larger caller
+slices. Truncated, aborted and oversized requests never become host writes.
+When the outstanding-request cap is full, decoding retains no output payload.

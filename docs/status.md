@@ -74,6 +74,13 @@ Implemented and locally exercised:
   sheet, bounded requests and a one-second prompt cooldown. Reads return an empty
   denial reply without consulting the pasteboard. Late decisions after close/EOF
   cannot write, and denial suppresses subsequent prompts for that session.
+  Base64 decoding streams with constant carry, fallible output growth, decoded
+  and encoded caps, strict padding checks and bounded parser callback spans.
+  A full outstanding-request queue discards payloads without allocating decoded data.
+- Kitty keyboard logical/shifted/base-layout and associated-text metadata,
+  modifier-only events in all-keys mode, and legacy Shift/Option compatibility.
+  Modifier presses preserve selections and anchored history. Typed events account
+  for all retained strings and reject impossible write bounds before admission.
 - Final-window closure quits the app and reaps PTY children; closed sessions
   silently reject late focus/key releases. PTY EOF closes input admission while
   leaving the final screen and history searchable.
@@ -85,16 +92,20 @@ Implemented and locally exercised:
 
 Current automated evidence:
 
-- `just test`: 52 core semantic/property-style fixtures, 6 display-clear fixtures,
+- `just test`: 54 core semantic/property-style fixtures, 6 display-clear fixtures,
   9 margin fixtures,
   3 keypad fixtures, 7 viewport fixtures, 7 search fixtures, 13 graphics fixtures,
-  3 clipboard fixtures and the full official Unicode 18 break suite; strict Clippy;
+  6 clipboard fixtures and the full official Unicode 18 break suite; strict Clippy;
   native build; ten real PTY scenarios including bash/fish/Neovim/tmux/fzf output
   replayed through the core with invariant checks and ordered protocol replies.
 - Native clipboard tests use private named pasteboards for allow/deny, queued
   cancellation, stale/closed callbacks, prompt bounds and a real PTY read-denial
   exchange. An explicit child handshake makes the pending-request EOF case
   deterministic, and the fixture waits for every child to be reaped.
+- Native smoke sets a real Canvas accessibility selection and injects synthetic
+  AppKit Shift/Command events in legacy and Kitty all-keys modes. Separate real
+  Session/PTY tests verify anchored history, legacy shifted bytes, typed metadata
+  admission and write bounds. These are not hardware keyboard-layout tests.
 - `reports/native-smoke.json`: actual macOS 15.6 text input, PTY, Unicode/SGR,
   marked-text callback commit, guarded preedit cancellation on resize/focus,
   resize, split and Metal submission checks. Session tests exercise native
@@ -105,8 +116,11 @@ Current automated evidence:
   sequence, all detected markers in 536 captured candidate frames stayed 60×60;
   the scaling control distorted 61 of 536 frames. The report records scope and
   provenance in `docs/rendering-second-review.md`; this is separate from shell
-  prompt-redraw correctness. Astra's follow-up identified detector and live
-  mouse-tracking coverage gaps; the remaining visual report is still open.
+  prompt-redraw correctness. The strengthened follow-up covers actual divider
+  dragging and window live resize: 658 correct candidate frames, zero failures,
+  and two explicitly inconclusive frames; the scaling control has 113 failures.
+  All three final pane generations were presented and captured. See
+  `docs/rendering-proof-followup.md` for source/binary identity and capture limits.
 - `reports/atlas-budget-smoke.json`: a zero exact-fallback budget exercises visible
   replacement glyphs without omitted glyph quads or Metal command errors. The
   test waits for the target pane revision's GPU completion; it does not capture
@@ -146,19 +160,24 @@ Current automated evidence:
 
 Required work remaining before the requested completion gate:
 
+- Diagnose an intermittent native-smoke startup stall: one combined-build run
+  timed out at its first scripted command, while an unchanged rerun passed.
+  The failed count-only report is retained in the worktree-cleanup artifact archive.
+  Prompt readiness and scripted input ordering need investigation before this
+  development milestone can be called stable.
 - Broaden rapid nested-resize validation. The marked prompt-boundary fix passes
   focused prefix/wrap/eviction/alternate-screen regressions and the controlled
   Starship/ZLE fixture. The latter uses a fixture-owned WINCH redraw hook; broader
   natural shell redraw behavior and live mouse resize still need coverage.
-  Continue investigating the remaining visual stretch report with stronger
-  per-pane compositor assertions, independently of prompt reflow.
+  The native placement correction passes the strengthened per-pane compositor
+  fixture; broader display/scale and arbitrary shell cases remain separate gates.
 - Resolve the host's Downloads authorization stall for Launch Services launches:
   a read/discard probe blocks in `open` without a visible permission alert, despite
   a valid ad-hoc signature and Downloads usage description. Direct launch from
   the authorized coding session completes the real dump tests. No broad disk
   permission was changed; `reports/downloads-access-probe.json` records this limit.
-- Full command/capability audit, complete kitty alternate/base-layout/modifier
-  metadata and modifier-only events. The bundled custom terminfo is available;
+- Full command/capability audit and hardware keyboard/layout validation.
+  The bundled custom terminfo is available;
   switching the default identity still needs local/remote compatibility evidence.
 - Resumable reflow work quanta and fallible temporary-memory allowances. REP now yields in bounded quanta; actor/input ordering during REP is tested.
 - Complete typed epoch/anchor lifetimes and owner-confined, eviction-aware selection;
@@ -169,8 +188,6 @@ Required work remaining before the requested completion gate:
 - Shared reactor/owner lanes, complete end-to-end admission accounting, global
   memory budgets and broader queue-race tests. Transactional paste cancellation
   with bracket closure is implemented and tested at every partial-write offset.
-  OSC 52 still needs its separate streaming base64 decoder; current accepted
-  payloads are bounded but the encoded string is buffered before decoding.
 - Retained row snapshot ABI/revision reuse, row/run shaping caches, asynchronous raster service,
   ligatures, complete geometric glyph coverage, global GPU budgets and GPU recovery testing.
 - Additional accessibility history fetching/style attributes and real VoiceOver
