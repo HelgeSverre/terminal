@@ -107,29 +107,43 @@ import Darwin
   private func runCommand() {
     guard let pane = controller.panes.first else { return }
     pane.insertText(
-      "printf '\\033[2J\\033[H\\033[31mRED\\033[0m Unicode: 猫 é 👩🏽‍💻 🇳🇴\\nSTARTUP_PWD=%s\\nSMOKE_SENTINEL\\n' \"$PWD\"",
+      #"printf '\033[2J\033[H\033[31mRED\033[0m Unicode: 猫 é 👩🏽‍💻 🇳🇴\nSTARTUP_PWD=%s\nSMOKE_SENTINEL\n' "$PWD""#,
       replacementRange: NSRange(location: NSNotFound, length: 0))
-    if let down = NSEvent.keyEvent(
-      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
-      windowNumber: pane.window?.windowNumber ?? 0, context: nil, characters: "\r",
-      charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 76),
+    pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+  }
+  private func startKeypadProbe() {
+    guard let pane = controller.panes.first else { return }
+    pane.insertText(
+      #"printf '\033>\033[=0u'; stty raw -echo min 0 time 10; printf 'KEYPAD_READY\n'; bytes=$(dd bs=1 count=64 2>/dev/null | od -An -tx1 | tr -d ' \n'); stty sane; printf 'KEYPAD_BYTES_%s\n' "$bytes""#,
+      replacementRange: NSRange(location: NSNotFound, length: 0))
+    pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+  }
+  private func deliverKeypadEnter() -> Bool {
+    guard let pane = controller.panes.first,
+      let down = NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: pane.window?.windowNumber ?? 0, context: nil, characters: "\r",
+        charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 76),
       let up = NSEvent.keyEvent(
         with: .keyUp, location: .zero, modifierFlags: [], timestamp: 0,
         windowNumber: pane.window?.windowNumber ?? 0, context: nil, characters: "",
         charactersIgnoringModifiers: "", isARepeat: false, keyCode: 76)
-    {
-      pane.keyDown(with: down)
-      pane.keyUp(with: up)
-      checks["native_keypad_enter"] = true
-    }
+    else { return false }
+    pane.keyDown(with: down)
+    pane.keyUp(with: up)
+    return true
   }
   func observe(_ snapshot: TerminalSnapshot) {
     if phase == -1 {
       startupSnapshots += 1
       if snapshot.at_prompt { startupPromptSnapshots += 1 }
       if snapshot.input_ready == true { startupReadySnapshots += 1 }
-      guard snapshot.input_ready == true && snapshot.modes.bracketed_paste else { return }
+      guard snapshot.input_ready == true && snapshot.at_prompt && snapshot.modes.bracketed_paste else {
+        return
+      }
       checks["startup_input_ready"] = true
+      measurements["startup_gate_at_prompt"] = snapshot.at_prompt
+      measurements["startup_gate_bracketed_paste"] = snapshot.modes.bracketed_paste
       if let pane = controller.panes.first {
         checks["modifier_keys_preserve_selection"] = modifierKeysPreserveSelection(pane)
       }
@@ -155,6 +169,20 @@ import Darwin
       checks["sgr_red"] = snapshot.rows.flatMap { $0.cells }.contains {
         $0.text == "R" && $0.style.foreground.index == 1
       }
+      phase = -3
+      startKeypadProbe()
+    } else if phase == -3,
+      lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "KEYPAD_READY" })
+    {
+      phase = -2
+      measurements["native_keypad_dispatch_accepted"] = deliverKeypadEnter()
+    } else if phase == -2,
+      let line = lines.first(where: { $0.hasPrefix("KEYPAD_BYTES_") })
+    {
+      let bytes = String(line.dropFirst("KEYPAD_BYTES_".count))
+      measurements["native_keypad_bytes"] = bytes
+      measurements["native_keypad_expected_bytes"] = "0d"
+      checks["native_keypad_enter"] = bytes == "0d"
       phase = 1
       if let pane = controller.panes.first {
         pane.setMarkedText(
@@ -224,6 +252,13 @@ import Darwin
         snapshot.rows[hit.row].cells[hit.start..<hit.end].map { $0.text }.joined() == "SMOKE_SENTINEL"
       }
       phase = 5
+    }
+    if phase == 5 {
+      measurements["navigation_prompt_at_prompt"] = snapshot.at_prompt
+      measurements["navigation_prompt_input_ready"] = snapshot.input_ready == true
+      measurements["navigation_prompt_bracketed_paste"] = snapshot.modes.bracketed_paste
+      guard snapshot.at_prompt && snapshot.input_ready == true && snapshot.modes.bracketed_paste else { return }
+      phase = 6
       DispatchQueue.main.async { [self] in testCommandNavigation() }
     } else if phase == 6 && lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "CMD_LEFT_OK" }) {
       checks["command_left_begins_line"] = true
@@ -309,18 +344,28 @@ import Darwin
     resize(0)
   }
   private func testCommandNavigation() {
-    guard let pane = controller.panes.first else { return }
-    controller.window?.makeFirstResponder(pane)
+    guard let pane = controller.panes.first, let window = controller.window else { return }
+    NSApp.activate(ignoringOtherApps: true)
+    window.makeKeyAndOrderFront(nil)
+    window.makeFirstResponder(pane)
     controller.panes.forEach { $0.updateFocus() }
-    measurements["navigation_app_active"] = NSApp.isActive
-    measurements["navigation_key_window"] = controller.window?.isKeyWindow == true
-    measurements["navigation_app_key_window"] = NSApp.keyWindow === controller.window
-    measurements["navigation_first_responder"] = controller.window?.firstResponder === pane
-    phase = 6
-    pane.insertText(" : ", replacementRange: NSRange(location: NSNotFound, length: 0))
-    deliverCommandArrow(left: true)
-    pane.insertText("printf 'CMD_LEFT_OK\\n';", replacementRange: NSRange(location: NSNotFound, length: 0))
-    pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+    DispatchQueue.main.async { [self] in
+      measurements["navigation_app_active"] = NSApp.isActive
+      measurements["navigation_key_window"] = window.isKeyWindow
+      measurements["navigation_app_key_window"] = NSApp.keyWindow === window
+      measurements["navigation_first_responder"] = window.firstResponder === pane
+      let ready = NSApp.isActive && window.isKeyWindow && NSApp.keyWindow === window
+        && window.firstResponder === pane
+      measurements["navigation_route_ready"] = ready
+      guard ready else {
+        finish(timedOut: true)
+        return
+      }
+      pane.insertText(" : ", replacementRange: NSRange(location: NSNotFound, length: 0))
+      deliverCommandArrow(left: true)
+      pane.insertText("printf 'CMD_LEFT_OK\\n';", replacementRange: NSRange(location: NSNotFound, length: 0))
+      pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+    }
   }
   private func hasClearScreenShortcut() -> Bool {
     func containsShortcut(in menu: NSMenu) -> Bool {
