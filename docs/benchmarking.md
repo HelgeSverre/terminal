@@ -155,8 +155,8 @@ ownership and clean process shutdown must pass alongside performance.
 
 Helge lowered the performance threshold from 90% to 70% on 2026-11-08.
 80% per workload is a stretch target where practical, not an acceptance
-requirement. The last Rust implementation will remain on a snapshot branch
-before the Swift replacement is promoted.
+requirement. The Rust implementation is preserved on
+`archive/rust-2026-11-08` before the Swift replacement is promoted.
 Archived reports retain the criterion used when they were generated; their
 measured ratios remain available for comparison with the current threshold.
 
@@ -180,6 +180,18 @@ hashes and background activity; an isolated short passing pilot is insufficient.
 The shared replay/semantic gates must also remain green. Full-app throughput
 and headless engine measurements stay separate.
 
+For example, run two independent trials in opposite orders, using the same
+immutable bundles and a new output directory for each:
+
+```sh
+BENCH_BYTES=16777216 BENCH_RUNS=10 BENCH_FIRST=rust just benchmark-apps /absolute/path/to/Rust.app /absolute/path/to/Swift.app reports/acceptance-rust-first
+BENCH_BYTES=16777216 BENCH_RUNS=10 BENCH_FIRST=swift just benchmark-apps /absolute/path/to/Rust.app /absolute/path/to/Swift.app reports/acceptance-swift-first
+```
+
+`BENCH_FIRST` defaults to `rust`; each report records its actual order. Both
+trials must clear the per-workload gate. Compile and profile outside the timing
+window, and keep the installed user session out of the test process tree.
+
 The [snapshot optimization report](../reports/swift-app-comparison-ca252d0/summary.md)
 records a measured 3.7–3.9× app improvement after removing the full-grid JSON
 round trip. Its four Swift/Rust ratios remain below the replacement target.
@@ -190,11 +202,13 @@ respectively. This improves the batched incremental build, but all four
 ratios remain below 90%. Compiler mode, source changes and workload changes
 are measured separately.
 
-The [latest fused WMO comparison](../reports/swift-app-comparison-f10acc2-wmo/summary.md)
+The [earlier fused WMO comparison](../reports/swift-app-comparison-f10acc2-wmo/summary.md)
 measures Swift at 16.61/20.12/10.32/12.12 MiB/s. It improves ANSI throughput
 2.244× relative to the preceding fused pilot, while the other workloads change
 by only one to two percent. Its four Swift/Rust ratios remain below 90%, so it
-does not meet the replacement target.
+did not meet the replacement target used for that report. Later measurements
+and the current criterion are recorded in the
+[performance research findings](swift-performance-research/synthesis.md).
 
 For the next diagnostic stack capture, use:
 
