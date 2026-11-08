@@ -44,6 +44,8 @@ private final class SwiftTerminalCore {
   private var history: [SwiftRow] { get { document.history } set { document.history = newValue } }
   private var historyLimit = 10_000
   private var viewOffset = 0
+  private var topMargin = 0
+  private var bottomMargin: Int { rowCount - 1 }
   private var parser = SwiftParserState.ground
   private var utf8 = SwiftUnicode.UTF8Decoder()
   private var sequence = ""
@@ -201,6 +203,10 @@ private final class SwiftTerminalCore {
     case "H", "f": s.cursorRow = min(rowCount - 1, max(0, (params.first ?? 1) - 1)); s.cursorColumn = min(columns - 1, max(0, (params.dropFirst().first ?? 1) - 1))
     case "J": eraseDisplay(params.first ?? 0)
     case "K": eraseLine(params.first ?? 0)
+    case "@": insertCharacters(n)
+    case "P": deleteCharacters(n)
+    case "L": insertLines(n)
+    case "M": deleteLines(n)
     case "b": repeatRemaining = min(1_000_000, max(0, params.first ?? 1))
     case "m": applySGR(params)
     case "s": saveCursor()
@@ -221,6 +227,28 @@ private final class SwiftTerminalCore {
   }
   private func eraseDisplay(_ mode: Int) { var s = screen; switch mode { case 2, 3: s.rows = Array(repeating: SwiftRow(columns: columns), count: rowCount); if mode == 3 && !usingAlternate { history.removeAll(); historyEpoch &+= 1 }; case 1: for r in 0...s.cursorRow { let end = r == s.cursorRow ? s.cursorColumn : columns - 1; for c in 0...end { s.rows[r].cells[c] = SwiftCell() } }; default: for r in s.cursorRow..<rowCount { let start = r == s.cursorRow ? s.cursorColumn : 0; for c in start..<columns { s.rows[r].cells[c] = SwiftCell() } } }; screen = s }
   private func eraseLine(_ mode: Int) { var s = screen; let range: Range<Int>; switch mode { case 1: range = 0..<(s.cursorColumn + 1); case 2: range = 0..<columns; default: range = s.cursorColumn..<columns }; for c in range { s.rows[s.cursorRow].cells[c] = SwiftCell() }; screen = s }
+  private func insertCharacters(_ count: Int) {
+    var s = screen; let row = s.cursorRow; let column = s.cursorColumn; let amount = min(count, columns - column)
+    guard amount > 0 else { return }
+    for index in stride(from: columns - 1, through: column + amount, by: -1) { s.rows[row].cells[index] = s.rows[row].cells[index - amount] }
+    for index in column..<(column + amount) { s.rows[row].cells[index] = SwiftCell() }
+    s.rows[row].revision &+= 1; screen = s
+  }
+  private func deleteCharacters(_ count: Int) {
+    var s = screen; let row = s.cursorRow; let column = s.cursorColumn; let amount = min(count, columns - column)
+    guard amount > 0 else { return }
+    for index in column..<(columns - amount) { s.rows[row].cells[index] = s.rows[row].cells[index + amount] }
+    for index in (columns - amount)..<columns { s.rows[row].cells[index] = SwiftCell() }
+    s.rows[row].revision &+= 1; screen = s
+  }
+  private func insertLines(_ count: Int) { scrollLines(count, up: false) }
+  private func deleteLines(_ count: Int) { scrollLines(count, up: true) }
+  private func scrollLines(_ count: Int, up: Bool) {
+    var s = screen; guard s.cursorRow >= topMargin else { return }; let amount = min(count, bottomMargin - s.cursorRow + 1); guard amount > 0 else { return }
+    if up { for row in s.cursorRow...(bottomMargin - amount) { s.rows[row] = s.rows[row + amount] }; for row in (bottomMargin - amount + 1)...bottomMargin { s.rows[row] = document.blankRow() } }
+    else { for row in stride(from: bottomMargin, through: s.cursorRow + amount, by: -1) { s.rows[row] = s.rows[row - amount] }; for row in s.cursorRow..<(s.cursorRow + amount) { s.rows[row] = document.blankRow() } }
+    screen = s
+  }
   private func applySGR(_ p: [Int]) {
     let values = p.isEmpty ? [0] : p
     var i = 0
