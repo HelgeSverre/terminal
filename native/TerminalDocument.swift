@@ -315,28 +315,34 @@ struct PromptAnchor: Equatable {
   var pendingWrap: Bool
 }
 struct TerminalHistory: RandomAccessCollection, Equatable {
-  private(set) var rows: [TerminalRow] = []
+  private struct Entry: Equatable { let row: TerminalRow; let chargedBytes: UInt64 }
+  private var entries: [Entry?] = []
+  private var head = 0
   private(set) var byteCount: UInt64 = 0
-  var count: Int { rows.count }
-  var startIndex: Int { rows.startIndex }
-  var endIndex: Int { rows.endIndex }
-  var isEmpty: Bool { rows.isEmpty }
-  subscript(_ index: Int) -> TerminalRow { rows[index] }
-  mutating func append(_ row: TerminalRow) { rows.append(row); byteCount &+= row.retainedStorageCost }
+  var count: Int { entries.count - head }
+  var startIndex: Int { 0 }
+  var endIndex: Int { count }
+  var isEmpty: Bool { count == 0 }
+  subscript(_ index: Int) -> TerminalRow { entries[head + index]!.row }
+  var rows: [TerminalRow] { Array(self) }
+  mutating func append(_ row: TerminalRow) { let cost = row.retainedStorageCost; entries.append(Entry(row: row, chargedBytes: cost)); byteCount &+= cost }
   mutating func append(contentsOf values: [TerminalRow]) { for row in values { append(row) } }
-  mutating func removeAll() { rows.removeAll(); byteCount = 0 }
-  mutating func replace(_ values: [TerminalRow]) { rows = values; byteCount = values.reduce(0) { $0 + $1.retainedStorageCost } }
+  mutating func removeAll() { entries.removeAll(); head = 0; byteCount = 0 }
+  mutating func replace(_ values: [TerminalRow]) { removeAll(); append(contentsOf: values) }
   mutating func trim(rows limit: Int, bytes: Int) -> Int {
     var remove = 0; let cap = UInt64(Swift.max(0, bytes)); var total = byteCount
     let rowLimit = Swift.max(0, limit)
-    while rows.count - remove > rowLimit || (total > cap && remove < rows.count) {
-      total &-= rows[remove].retainedStorageCost; remove += 1
+    while count - remove > rowLimit || (total > cap && remove < count) {
+      total &-= entries[head + remove]!.chargedBytes; remove += 1
     }
-    if remove > 0 { rows.removeFirst(remove); byteCount = total }
+    if remove > 0 { for index in head..<(head + remove) { entries[index] = nil }; head += remove; byteCount = total
+      if head == entries.count { entries.removeAll(); head = 0 }
+      else if head >= count && head >= 256 { entries.removeFirst(head); head = 0 }
+    }
     return remove
   }
   static func == (lhs: TerminalHistory, rhs: TerminalHistory) -> Bool {
-    lhs.rows == rhs.rows && lhs.byteCount == rhs.byteCount
+    lhs.count == rhs.count && lhs.byteCount == rhs.byteCount && lhs.elementsEqual(rhs)
   }
 }
 struct TerminalScreen: Equatable {

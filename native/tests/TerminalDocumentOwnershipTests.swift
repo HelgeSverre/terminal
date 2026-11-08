@@ -612,6 +612,20 @@ import Foundation
     precondition(exact.trim(rows: 10, bytes: Int(total)) == 0)
     precondition(exact.trim(rows: 10, bytes: Int(total - 1)) == 1)
     precondition(exact.rows == [rich] && exact.byteCount == richCost)
+
+    var fifo = TerminalHistory()
+    for id in 1...600 {
+      var row = plain; row.id = UInt64(id); fifo.append(row)
+    }
+    let snapshot = fifo
+    precondition(fifo.trim(rows: 300, bytes: Int.max) == 300)
+    precondition(fifo.count == 300 && fifo.byteCount == plainCost * 300)
+    precondition(snapshot.count == 600 && snapshot.byteCount == plainCost * 600)
+    precondition(fifo[0].id == 301 && fifo[299].id == 600 && snapshot[0].id == 1 && snapshot[599].id == 600)
+    var appended = plain; appended.id = 601; fifo.append(appended)
+    precondition(fifo.count == 301 && fifo[300].id == 601 && snapshot.count == 600 && snapshot[599].id == 600)
+    fifo.removeAll(); precondition(fifo.isEmpty && fifo.byteCount == 0)
+    fifo.replace([rich, plain]); precondition(fifo.rows == [rich, plain] && fifo.byteCount == richCost + plainCost)
   }
 
   static func sparsePayloadsBoundStorageAndKeepLogicalBudget() {

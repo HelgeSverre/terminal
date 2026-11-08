@@ -78,7 +78,7 @@ private final class SwiftTerminalCore {
   private var primary: SwiftScreen { get { document.primary } set { document.primary = newValue } }
   private var alternate: SwiftScreen { get { document.alternate } set { document.alternate = newValue } }
   private var usingAlternate = false
-  private var history: [SwiftRow] { document.history.rows }
+  private var history: TerminalHistory { document.history }
   private var historyLimit = 50_000
   private var historyByteLimit = 64 * 1024 * 1024
   private var viewOffset = 0
