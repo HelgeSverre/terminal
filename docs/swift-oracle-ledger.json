@@ -324,8 +324,8 @@
     },
     {
       "rust_test": "reflow_roundtrip_text",
-      "status": "unported",
-      "evidence": null
+      "status": "swift-emulator-replayed",
+      "evidence": "native/tests/TerminalReflowSemanticTests.swift"
     },
     {
       "rust_test": "rep_yields_without_consuming_later_bytes",
@@ -334,8 +334,8 @@
     },
     {
       "rust_test": "resize_inactive_primary",
-      "status": "unported",
-      "evidence": null
+      "status": "swift-emulator-replayed",
+      "evidence": "native/tests/TerminalReflowSemanticTests.swift"
     },
     {
       "rust_test": "ris_resets_both_cursor_appearances",

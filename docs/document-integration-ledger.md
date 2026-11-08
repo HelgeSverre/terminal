@@ -23,7 +23,7 @@ document must replay before this area can be marked green.
 | `height_growth_clamps_to_legal_top_and_anchor_can_move_back_to_history` | resize remaps legal viewport top | green: `TerminalViewportOracleTests.heightGrowthAndEpochs` |
 | `history_clear_and_reset_publish_distinct_identities_and_initial_colors` | reset/clear identity and palette transition | green: `TerminalViewportOracleTests.heightGrowthAndEpochs` |
 | `publication_gate_does_not_rebase_anchor_and_invalid_resize_is_atomic` | failed resize leaves document/anchor intact | green: `TerminalViewportOracleTests.publicationGateAndAtomicInvalidResize` |
-| `reflow_roundtrip_text` | rich reflow preserves logical text | red |
+| `reflow_roundtrip_text` | rich reflow preserves logical text | green: `TerminalReflowSemanticTests` |
 | `interior_edit_preserves_wrap_chain` | edit keeps soft-wrap chain validity | red |
 
 `SwiftMarginGrid` and `SwiftReflow` are preparatory algorithms only. They may

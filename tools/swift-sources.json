@@ -86,6 +86,11 @@
       "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift",
       "SwiftUnicode.swift", "SwiftInputEncoder.swift", "SwiftGraphics.swift",
       "SwiftTerminalCore.swift", "tests/TerminalViewportOracleTests.swift"
+    ],
+    "terminal_reflow_semantics": [
+      "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift",
+      "SwiftUnicode.swift", "SwiftInputEncoder.swift", "SwiftGraphics.swift",
+      "SwiftTerminalCore.swift", "tests/TerminalReflowSemanticTests.swift"
     ]
   }
 }

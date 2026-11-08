@@ -17,6 +17,11 @@ extension TerminalDocument {
     let oldHistoryCount = history.count
     let oldPrimary = primary
     let input = history + primary.rows
+    let cursorSource = oldHistoryCount + oldPrimary.cursorRow
+    let savedSource = oldHistoryCount + oldPrimary.savedRow
+    let lastRelevant = input.indices.last(where: { index in
+      index <= cursorSource || index <= savedSource || input[index].cells.contains { $0.kind != 0 || $0.style.background != 0 }
+    }) ?? 0
     // New physical rows are born at the replacement width while `input`
     // retains its old-width value copy for atom traversal.
     setSize(columns: nextColumns, rows: nextRows)
@@ -44,7 +49,7 @@ extension TerminalDocument {
       }
     }
 
-    for (sourceIndex, source) in input.enumerated() {
+    for (sourceIndex, source) in input.prefix(lastRelevant + 1).enumerated() {
       let soft = source.softWrapped
       var end = source.cells.lastIndex { cell in
         cell.kind != 0 || cell.style.background != 0
