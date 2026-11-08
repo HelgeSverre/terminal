@@ -1,25 +1,73 @@
 # Deeper Swift port: ownership, names, and migration
 
-Proposed on 2026-11-08 from experiment `74ff431` and production `eb0293e`. This is an executable migration plan, not a claim that the target design or parity already exists. Active port work can supersede individual observations below; update the acceptance evidence when it does. The plan changes only this experiment until its release gates pass.
+Originally proposed on 2026-11-08 from experiment `74ff431` and production `eb0293e`; the assessment below now reflects the frozen Swift checkpoint `ef3b625`. This is an executable migration plan, not a claim that the target design or parity already exists. The plan changes only this experiment until its release gates pass.
 
-The next useful semantic step is to consolidate terminal behavior around one rich cell/document representation, then integrate the already-written algorithms through that representation. A rename-only pass would leave multiple competing models with better labels. Keep mechanical moves separate from semantic changes, remove the C emulation round trip after integration, and retain the existing ordered session scheduler.
+The rich document representation and reflow integration now exist. The next ownership step is to make that document the only writer of its screens, history, anchors and placement state. Keep mechanical moves separate from semantic changes, remove the C emulation round trip after integration, and retain the existing ordered session scheduler.
 
 ## What the code actually does today
 
 | Evidence in the experiment | Architectural consequence |
 | --- | --- |
-| `native/SwiftTerminalCore.swift` holds parser state, two grids, history, modes, input mapping, search, graphics integration, JSON creation, borrowed allocation, and C exports. | Extract coherent ownership, rather than splitting each type into its own file. |
-| `SwiftReflow.Cell` has text/width/continuation; `SwiftCell` additionally has style/link/flags; `SwiftSearchCell` has a third kind model. | A single rich cell representation must survive reflow and feed search. Converting through text-only cells is not acceptable integration. |
-| `SwiftMarginGrid<Value>` edits a generic rectangular array and delegates blank creation; it has no knowledge of grapheme pairs, protection, or history. It is absent from the app's source list. | Merge its algorithms into document editing with actual terminal cells. A generic grid interface does not earn its place here. |
-| The app compiles `SwiftReflow.swift` and `SwiftSearchViewport.swift`, but `resize` copies/truncates rows; C search `fill` and `step` return `2`, and acceptance scans the document synchronously. | Compiled standalone code is not integrated behavior. Resize and search must pass through the app's real semantic path in tests. |
+| `TerminalDocument.swift` and `DocumentReflow.swift` own real rich rows/cells and reflow; emulation still gets, copies and sets mutable screens/history through proxies. | Deepen this existing module; do not introduce another document representation. Placement and retention should mutate private stored state directly. |
+| `put` creates `var s = screen`, edits nested value arrays, then assigns it back. Every ordinary glyph calls `erase`, whose wide-pair repair scans the whole row. | Inspect copying/allocation and row-repair cost in the profiler. Fix ownership and bounded repair independently so each change can be measured. |
+| The pinned Segmenter now drives placement, with capped retained text, width repair, orphan marks and full-cluster REP scenarios. | Keep placement and extension as one document transaction. Cursor, erase, screen replacement, resize and clear must invalidate its private placement state; callers should not maintain invalidation lists. |
+| Rich reflow and rectangle operations run through the actual document, while older generic `SwiftMarginGrid`, `SwiftReflow` and search cell models remain in the tree. | Remove superseded implementations after checking remaining callers/tests. Preserve one rich representation when integrating search; do not round-trip through text-only rows. |
+| C search `fill` and `step` still return `2`; acceptance scans the document synchronously. | The standalone bounded matcher remains unintegrated. Implement the real immutable-page owner/worker seam and stale-result proofs. |
 | `publishBinary` makes a full JSON snapshot, parses it into a dictionary, removes rows, serializes metadata, and separately allocates C cell strings. `Session.publish` decodes and copies again. | Direct immutable Swift snapshots remove a material ownership and allocation problem, not merely FFI syntax. |
 | `SwiftSnapshotBridge.swift` defines a competing JSON `SnapshotBridge`, but the app compiles the original `SnapshotBridge.swift`. | Delete the unused replacement after checking all source manifests; keep one compatibility decoder until the host switches. |
 | `Session.swift` owns PTY events, admission, bounded reads/writes, paste cancellation, lifecycle, search dispatch, image caching, and all snapshot type declarations. | Keep session ordering together. Move data definitions and image-resource ownership to emulation; extract lifecycle only with a coherent PTY interface. |
-| `SwiftTerminalCore.feed` ignores the ABI clock; graphics gets `now: 0`. Geometry checks each axis but omits Rust's total-cell limit. `terminal_validate` only checks handle presence. | Typed time, validated geometry, and real invariant checks are semantic work, not cleanup. Do not delete clock parameters just because the incomplete port currently ignores them. |
-| The normal recipe and `SwiftIncrementalBuild.swift` have separate handwritten source lists. They already disagree about reflow/search. | Establish a single build source graph before more files arrive. |
-| Production includes AppleScript automation, PTY-end admission handling, and stale-frame rejection that this experiment's base may lack. | Final comparison requires the same host revision and resources on both implementations. Preserve these fixes during integration. |
+| ABI time now drives synchronized-output deadlines; geometry rejects an excessive total-cell count and invariant validation checks both rich screens/history. | Preserve the injected clock and atomic geometry rejection. Graphics expiry and remaining protocol clocks still need their own integration evidence. |
+| `tools/swift-sources.json` supplies the app/test source graph and normal build recipes use the incremental driver. | Keep new modules and tests in that graph and mandatory recipes; a standalone passing executable is not an aggregate gate. |
+| Production AppleScript, clipboard policy and resize-fixture host files were ported in `307f609`; the private-pasteboard test passes. The first custom AppleScript command currently times out in both current builds and an isolated signed older release. | Investigate the owned-fixture timeout before claiming automation parity. Static dictionary/class equality does not prove working AppleEvent dispatch. |
+| Segmentation passes the strict Unicode 18 corpus, but cell width still uses broad ranges and treats every Extended_Pictographic scalar as double-width. | Port the locked Unicode 18 width tables and sequence rules. Segmentation evidence does not prove width parity. |
+| The clipboard queue/Session seam is real; OSC 52 still passes through ordinary 65 KiB string accumulation at this frozen checkpoint. | Complete strict bounded streaming decoding before claiming the production 1 MiB clipboard capability. |
 
-Recorded evidence remains limited: native Session 20/20, native C PTY 10/10, initial differential smoke 5/5. The pinned Unicode corpus was 715/853 when inspected. Neither those counts nor standalone graphics/reflow tests replace all 86 original behavioral cases. `docs/swift-port-parity.md` is the status ledger; this document describes the destination.
+The source-locked 54-case semantics mapping is supplemented by direct ABI
+regressions. `reports/swift-port/boundary-binary-view-df9cc6e.json` records eight
+frozen boundary checks; `cluster-transactions-rust-7c3d1b5.json` records the Rust
+expectations for the later width, REP and movement checks, which pass through
+Swift at `ef3b625`. The strict segmentation corpus passes 853/853. These are
+specific gates, not proof of complete application, graphics, search, width or
+automation parity. `docs/semantics-a9b3c98-ledger.md` records the semantics
+mapping; retain scope and source identity when updating evidence.
+
+## Profile before changing the hot path
+
+The paired comparison freezes `ef3b625` against production `b5a9fea`. Its
+published ASCII/mixed workloads exercise the same headless ABI, reply drain,
+final invariant validation and snapshot serialization. They do not measure the
+renderer, PTY throughput or full application latency. Keep its uninstrumented
+results separate from profiling, and record concurrent desktop load.
+
+After that run, sample one optimized Swift replay for 5–10 seconds and make a
+separate small allocation observation. Check array uniqueness/copying, cell
+retain/release, `erase`/wide-pair repair, history front removal and Unicode/string
+work. The source observations above are hypotheses until samples establish
+their cost. Do not justify a language conclusion from an unoptimized prototype.
+
+Use separate patches for the following steps:
+
+1. Move printing and cluster extension into `TerminalDocument` and mutate its
+   private stored screen/rows in place. One print operation owns placement,
+   continuation, width repair, cursor movement and last-printed state. Retain
+   value rows: immutable snapshots can share backing storage, with the next
+   edit detaching only the affected storage. Merely making the document a class
+   leaves the temporary screen copies; a public mutable-grid callback leaves
+   terminal invariants with callers.
+2. Repair only the touched cell span and crossing wide-cell neighbours during
+   ordinary edits. Keep full invariant scans in correctness tests; do not
+   perform a whole-row scan for every ordinary ASCII glyph.
+3. Change history storage or add ASCII runs only if subsequent samples justify
+   them. The first ASCII scalar must still consult an open Prepend/grapheme
+   state. Preserve charset, insertion, margins, deferred wrap and ordered work
+   limits; never benchmark a path that skips semantic updates or final drain.
+
+For each patch, retain old snapshots across mutation/destruction, rerun the
+mandatory semantic/viewport/reflow/prompt/input/Unicode/boundary gates, and then
+repeat the same uninstrumented workload. Complete width, streaming clipboard,
+bounded search and direct typed snapshots as their own changes. Perform domain
+renames/file moves after these ownership changes pass; do not mix them with a
+performance patch.
 
 ## Target ownership and source tree
 
