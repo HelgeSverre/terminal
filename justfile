@@ -130,6 +130,7 @@ swift-host-build-test: build
 @test: lint build
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     ruby tools/native_smoke_test.rb
+    ruby tools/compare_terminal_apps_test.rb
     ruby tools/profile_terminal_test.rb
     xcrun clang -Wall -Wextra -Werror -O2 native/benchmarks/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
     target/native/terminal-bench-clock-test

@@ -101,10 +101,7 @@ class TerminalAppComparison
       expected = %w[ascii_short_lines ascii_long_lines ansi_truecolor unicode]
       raise "#{label} workload mismatch" unless workloads.map { |item| item.fetch('name') } == expected
       workloads.each do |item|
-        rates = item.fetch('mib_per_second')
-        raise "#{label} incomplete workload" unless item.fetch('source_bytes_per_run') == @bytes && rates.fetch('samples') == @runs
-        median = rates.fetch('p50')
-        raise "#{label} invalid throughput" unless median.is_a?(Numeric) && median.finite? && median.positive?
+        validate_workload(item, label)
       end
       record['report'] = File.basename(report)
       @reports[label] = data
@@ -113,6 +110,42 @@ class TerminalAppComparison
         record['cleanup_survivors'] = process.cleanup
         raise "#{label} cleanup left processes: #{record['cleanup_survivors'].join(', ')}" unless record['cleanup_survivors'].empty?
       end
+    end
+  end
+
+  # The aggregate count alone cannot prove that all requested runs happened.
+  # Keep observations paired and verify the distributions used by the gate.
+  def validate_workload(item, label)
+    samples = item.fetch('run_samples')
+    unless item.fetch('source_bytes_per_run') == @bytes && samples.is_a?(Array) &&
+        samples.length == @runs && samples.map { |sample| sample.fetch('run') } == (1..@runs).to_a
+      raise "#{label} incomplete or unordered workload observations"
+    end
+    %w[mib_per_second elapsed_seconds terminal_cpu_seconds].each do |metric|
+      values = samples.map { |sample| sample.fetch(metric) }
+      summary = item.fetch(metric)
+      next if metric == 'terminal_cpu_seconds' && summary.nil? && values.all?(&:nil?)
+      unless values.all? { |value| value.is_a?(Numeric) && value.finite? &&
+          (metric == 'terminal_cpu_seconds' ? value >= 0 : value.positive?) }
+        raise "#{label} invalid #{metric} observations"
+      end
+      sorted = values.sort
+      expected = { 'p50' => sorted[(@runs - 1) / 2], 'p95' => sorted[(@runs - 1) * 95 / 100],
+                   'p99' => sorted[(@runs - 1) * 99 / 100], 'max' => sorted.last }
+      unless summary.is_a?(Hash) && summary.fetch('samples') == @runs &&
+          expected.all? { |key, value| summary.fetch(key) == value }
+        raise "#{label} #{metric} distribution does not match observations"
+      end
+    end
+    samples.each do |sample|
+      rate = sample.fetch('mib_per_second')
+      elapsed = sample.fetch('elapsed_seconds')
+      # Both fields are printed to six decimal places by the C driver. Their
+      # rounding intervals must overlap for the exact requested byte count.
+      seconds_from_rate = @bytes / 1_048_576.0 / rate
+      tolerance = 0.500001e-6 + seconds_from_rate * 0.500001e-6 / (rate - 0.5e-6)
+      raise "#{label} unpaired throughput/time observations" unless
+        (elapsed - seconds_from_rate).abs <= tolerance
     end
   end
 end
