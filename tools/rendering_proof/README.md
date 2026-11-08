@@ -71,8 +71,10 @@ selection and absent, unfinished, failed or empty recording evidence.
 
 The exercise creates right and nested-below splits, drags both native dividers,
 drags the owned window's resize corner, performs programmatic window resizes, then
-leaves static output. After clicking pane0 it waits for that pane's actual AXFocused
-value before sending the second split key, avoiding cross-delivery ordering between
+leaves static output. After clicking pane0 it waits until the app's AXFocusedUIElement
+has that pane's exact AX identifier before sending the second split key. It logs
+both that identifier and the pane's separate AXFocused value/status, making any
+NSView default mapping discrepancy observable. This avoids cross-delivery ordering between
 HID mouse and PID-targeted keyboard events. It verifies pane0-above-pane2-left and
 pane1-full-right adjacency before deriving either divider point; the observed
 wrong-side nesting is a headless rejection fixture. Both native divider phases

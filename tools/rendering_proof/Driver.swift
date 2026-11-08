@@ -202,15 +202,29 @@ func matchWindow(_ infos: [[String: Any]], pid: pid_t, axFrame: CGRect) throws -
     repeat {
       try foreground()
       let target = try pane(id)
+      guard let targetIdentifier = attribute(target, kAXIdentifierAttribute) as? String else {
+        throw Failure.invalid("Target pane has no AX identifier")
+      }
       var value: CFTypeRef?
       let status = AXUIElementCopyAttributeValue(target, kAXFocusedAttribute as CFString, &value)
       let focused = value as? Bool
-      note("await_pane_focus", ["pane": id, "ax_error": status.rawValue, "focused": focused as Any? ?? NSNull()])
-      if status == .success && focused == true { return }
+      var focusedElement: CFTypeRef?
+      let appStatus = AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+      var focusedIdentifier: String?
+      if appStatus == .success, let focusedElement, CFGetTypeID(focusedElement) == AXUIElementGetTypeID() {
+        focusedIdentifier = attribute(focusedElement as! AXUIElement, kAXIdentifierAttribute) as? String
+      }
+      note("await_pane_focus", ["pane": id, "ax_error": status.rawValue, "focused": focused as Any? ?? NSNull(),
+        "expected_pane_identifier": targetIdentifier, "app_focus_ax_error": appStatus.rawValue,
+        "app_focused_identifier": focusedIdentifier as Any? ?? NSNull()])
+      // The app's focused element identifies the actual first responder. Retain
+      // the pane's AXFocused mapping independently rather than assuming NSView
+      // defaults expose both attributes identically.
+      if appStatus == .success && focusedIdentifier == targetIdentifier { return }
       guard ProcessInfo.processInfo.systemUptime < deadline else { break }
       Thread.sleep(forTimeInterval: 0.02)
     } while true
-    throw Failure.invalid("Clicked pane \(id) did not report AXFocused before split")
+    throw Failure.invalid("App AXFocusedUIElement did not identify clicked pane \(id) before split")
   }
   func verifiedNestedLayout() throws -> NestedDividers {
     let top = try frame(pane(0)), right = try frame(pane(1)), bottom = try frame(pane(2))
