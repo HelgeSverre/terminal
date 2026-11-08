@@ -1,0 +1,53 @@
+{
+  "verified_at": "2026-11-08T00:47:37Z",
+  "source_commit": "20a5d582c9b3e0c7cc2584d97b750fe0db8f781f",
+  "bundle_identifier": "no.helgesverre.terminal",
+  "version": "0.1.2",
+  "build": "3",
+  "signing_team": "9Z2L5FBZS3",
+  "notarized_app": {
+    "status": "Accepted",
+    "id": "e09ce01a-13e7-40ca-aee5-33d96786f7f6",
+    "message": "Processing complete"
+  },
+  "notarized_pkg": {
+    "status": "Accepted",
+    "id": "bbbdf6d7-932f-466c-869e-2b2fdbf2a60c",
+    "message": "Processing complete"
+  },
+  "release_pipeline_exit": 0,
+  "app_stapler_validated_in_pipeline": true,
+  "pkg_stapler_validated": true,
+  "app_gatekeeper_accepted": true,
+  "pkg_gatekeeper_accepted": true,
+  "app_stapling_retries": 1,
+  "app_executable_sha256": "cea2cf880397c7a99046a371f50a942fe897f767e89255e4283a605e968fa0b1",
+  "pkg_sha256": "79ad6d52b344c24a6a1da22be04e38fcb8097940fe3e288d70b506007b4397d2",
+  "zip_sha256": "f6a9409808d832e133a017c79c3bc0400d015264b168ac75acffa40484e1f91d",
+  "ci_run": "https://github.com/HelgeSverre/terminal/actions/runs/42431024996",
+  "ci_conclusion": "success",
+  "release_window_close": {
+    "app_pid": 5569,
+    "child_pid": 5581,
+    "trigger": "last-window-close",
+    "app_exited": true,
+    "child_exited": true,
+    "passed": true,
+    "version": "0.1.2",
+    "source_commit": "20a5d582c9b3e0c7cc2584d97b750fe0db8f781f"
+  },
+  "release_command_q": {
+    "app_pid": 5652,
+    "child_pid": 5657,
+    "trigger": "cmd+q",
+    "app_exited": true,
+    "child_exited": true,
+    "passed": true,
+    "version": "0.1.2",
+    "source_commit": "20a5d582c9b3e0c7cc2584d97b750fe0db8f781f"
+  },
+  "subsequent_app_stapler_recheck": "Two later validate calls returned EX_NOHOST (68) with NSURLErrorDomain -1005 from the Apple CloudKit ticket lookup. The complete release pipeline had already validated both artifacts successfully; subsequent Gatekeeper checks and PKG validation still pass.",
+  "note": "Notarized development milestone, not completion of the terminal specification. Signed app closure and Command-Q tests reaped their resistant PTY children. The running installed 0.1.1 instance was preserved.",
+  "installed": false,
+  "installation_blocked_by": "Installed Helge Terminal has running sessions; normal install guard refused replacement."
+}

@@ -1,0 +1,10 @@
+{
+  "app_pid": 5652,
+  "child_pid": 5657,
+  "trigger": "cmd+q",
+  "app_exited": true,
+  "child_exited": true,
+  "passed": true,
+  "version": "0.1.2",
+  "source_commit": "20a5d582c9b3e0c7cc2584d97b750fe0db8f781f"
+}
