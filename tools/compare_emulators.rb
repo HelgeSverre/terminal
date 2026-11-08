@@ -196,7 +196,7 @@ def hardware
     "model" => command_optional("/usr/sbin/sysctl", "-n", "hw.model"),
     "cpu" => command_optional("/usr/sbin/sysctl", "-n", "machdep.cpu.brand_string"),
     "logical_cpus" => command_optional("/usr/sbin/sysctl", "-n", "hw.logicalcpu"),
-    "power" => command_optional("/usr/sbin/system_profiler", "SPPowerDataType", "-detailLevel", "mini")
+    "power" => command_optional("/usr/bin/pmset", "-g", "batt")
   }
 end
 
@@ -274,6 +274,7 @@ implementations = {
 }
 result = {
   "protocol" => 1,
+  "orchestrator_sha256" => sha256(__FILE__),
   "started_at_utc" => Time.now.utc.iso8601,
   "contract" => {
     "geometry" => [160, 50], "history_rows" => 0, "workloads" => WORKLOADS,
