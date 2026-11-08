@@ -38,7 +38,7 @@ import Darwin
       "ime_commit_once", "resize_epoch", "split_panes", "metal_submitted",
       "split_resize_frames_match_drawables",
       "split_resize_drops_stale_frames",
-      "split_resize_layer_gravity_configured",
+      "split_resize_layer_placement_configured",
       "completed_without_timeout", "accessibility_text_ranges",
       "native_keypad_enter",
       "pane_focus_consistent", "settings_window",
@@ -165,8 +165,8 @@ import Darwin
             controller.window?.isKeyWindow == true && controller.window?.firstResponder === pane
           return pane.geometryReport()["focused"] as? Bool == expected
         }
-        checks["split_resize_layer_gravity_configured"] = controller.panes.allSatisfy {
-          $0.geometryReport()["contents_gravity"] as? String == CALayerContentsGravity.topLeft.rawValue
+        checks["split_resize_layer_placement_configured"] = controller.panes.allSatisfy {
+          $0.layerContentsPlacement == .topLeft
         }
         exerciseSplitResizeStress { [self] in
           let mismatches = RendererMetrics.report()["mismatched_drawables"] as? UInt64 ?? 0
