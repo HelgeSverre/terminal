@@ -63,6 +63,12 @@ import Foundation
   static func cells(_ snapshot: [String: Any], _ row: Int) -> [[String: Any]] {
     ((snapshot["rows"] as! [[String: Any]])[row]["cells"] as! [[String: Any]])
   }
+  static func lines(_ snapshot: [String: Any]) -> [String] {
+    (snapshot["rows"] as! [[String: Any]]).map { row in
+      (row["cells"] as! [[String: Any]]).map { $0["text"] as! String }.joined()
+        .trimmingCharacters(in: .whitespaces)
+    }
+  }
   static func stableSnapshot(_ core: OpaquePointer) -> Data {
     try! JSONSerialization.data(withJSONObject: snapshot(core), options: [.sortedKeys])
   }
@@ -173,9 +179,33 @@ import Foundation
       precondition(replies(bytewise) == reply && replies(irregular) == reply)
     }
   }
+  static func indexHistoryUsesMutatedPrimaryForViewportClamp() {
+    for budget in ["count", "bytes-zero", "bytes-one"] {
+      let core = terminal_create(4, 2)!
+      defer { terminal_destroy(core) }
+      feed(core, "A\r\nB\r\nC")
+      terminal_view_scroll(core, 1) // Pin the row identity for A.
+      precondition(terminal_resize(core, 4, 3)) // A becomes primary, not history.
+      switch budget {
+      case "count": terminal_set_history_limit(core, 0)
+      case "bytes-zero": terminal_set_history_byte_limit(core, 0)
+      default: terminal_set_history_byte_limit(core, 1)
+      }
+      // No retained row exists to evict yet, so the anchor remains live.
+      let before = snapshot(core)
+      let revision = before["viewport_clamp_revision"] as! Int
+      feed(core, "\r\nD") // Appends old primary A, then immediately evicts it.
+      let after = snapshot(core)
+      precondition(after["viewport_clamp_revision"] as! Int == revision + 1, budget)
+      precondition(after["following_tail"] as? Bool == false && after["scroll_offset"] as? Int == 0, budget)
+      precondition(after["history_rows"] as? Int == 0 && lines(after) == ["B", "C", "D"], budget)
+      precondition((snapshot(core)["viewport_clamp_revision"] as! Int) == after["viewport_clamp_revision"] as! Int, budget)
+    }
+  }
   static func main() {
     nativeModifierWire()
     decodedBatchEquivalence()
+    indexHistoryUsesMutatedPrimaryForViewportClamp()
     guard let core = terminal_create(8, 3) else { fatalError("create") }
     defer { terminal_destroy(core) }
     feed(core, "one\ntwo")

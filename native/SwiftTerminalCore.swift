@@ -179,12 +179,7 @@ private final class SwiftTerminalCore {
   }
   private func apply(_ effect: TerminalDocument.PrintEffect, mutations: Int = 1) {
     guard mutations > 0 else { return }
-    if !effect.appendedHistory.isEmpty {
-      for row in effect.appendedHistory { historyByteCount &+= row.retainedStorageCost }
-      if viewAnchor != nil { viewOffset += effect.appendedHistory.count }
-      enforceHistoryLimits()
-      historyEpoch &+= 1
-    }
+    applyAppendedHistory(effect.appendedHistory)
     if let printed = effect.lastPrinted {
       lastPrinted = printed
       let attributes = effect.repeatAttributes ?? TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)
@@ -192,6 +187,13 @@ private final class SwiftTerminalCore {
       lastPrintedFlags = attributes.protected ? 2 : 0
     }
     revision &+= UInt64(mutations); documentEpoch &+= UInt64(mutations); screenEpoch &+= UInt64(mutations)
+  }
+  private func applyAppendedHistory(_ rows: [SwiftRow]) {
+    guard !rows.isEmpty else { return }
+    for row in rows { historyByteCount &+= row.retainedStorageCost }
+    if viewAnchor != nil { viewOffset += rows.count }
+    enforceHistoryLimits()
+    historyEpoch &+= 1
   }
   private func resetClusterBoundary() { document.resetPrintCluster() }
   private func tick(_ now: UInt64) {
@@ -332,17 +334,13 @@ private final class SwiftTerminalCore {
     apply(effect)
   }
 
-  private func index(_ s: inout SwiftScreen, reverse: Bool, allowHistory: Bool) {
-    let vertical = (s.topMargin, s.bottomMargin), horizontal = horizontalMargins
-    let inside = (horizontal.left...horizontal.right).contains(s.cursorColumn)
-    if reverse {
-      if s.cursorRow == vertical.0 && inside { scroll(&s, top: vertical.0, bottom: vertical.1, count: 1, up: false, allowHistory: false) }
-      else { s.cursorRow = max(0, s.cursorRow - 1) }
-    } else if s.cursorRow == vertical.1 && inside {
-      scroll(&s, top: vertical.0, bottom: vertical.1, count: 1, up: true, allowHistory: allowHistory)
-    } else { s.cursorRow = min(rowCount - 1, s.cursorRow + 1) }
+  private func index(reverse: Bool) {
+    let rows = document.index(usingAlternate: usingAlternate, reverse: reverse,
+                              leftRightMargins: leftRightMargins, eraseStyle: eraseStyle())
+    applyAppendedHistory(rows)
+    changed(history: !reverse && !usingAlternate)
   }
-  private func lineFeed() { resetClusterBoundary(); var s = screen; s.pendingWrap = false; index(&s, reverse: false, allowHistory: true); screen = s; changed(history: !usingAlternate) }
+  private func lineFeed() { resetClusterBoundary(); index(reverse: false) }
   private func carriageReturn() { resetClusterBoundary(); var s = screen; let left = horizontalMargins.left; s.cursorColumn = s.cursorColumn >= left ? left : 0; s.pendingWrap = false; screen = s; changed() }
   private func backspace() { resetClusterBoundary(); var s = screen; let left = horizontalMargins.left; s.cursorColumn = max(s.cursorColumn >= left ? left : 0, s.cursorColumn - 1); s.pendingWrap = false; screen = s; changed() }
   private func tab(_ reverse: Bool = false, count: Int = 1) {
@@ -363,7 +361,7 @@ private final class SwiftTerminalCore {
     }
     s.pendingWrap = false; screen = s; changed()
   }
-  private func reverseIndex() { var s = screen; s.pendingWrap = false; index(&s, reverse: true, allowHistory: false); screen = s; changed() }
+  private func reverseIndex() { index(reverse: true) }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
   private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); historyByteCount = 0; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }

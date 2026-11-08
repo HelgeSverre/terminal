@@ -118,6 +118,65 @@ struct TerminalDocument {
     printState.reset()
   }
 
+  // LF/IND/RI select and mutate their screen here so callers do not need to
+  // materialize a whole screen value merely to alter its cursor or rows.
+  // The returned row is the only one eligible for primary history retention.
+  mutating func index(usingAlternate: Bool, reverse: Bool,
+                      leftRightMargins: Bool, eraseStyle: TerminalStyle) -> [TerminalRow] {
+    if usingAlternate {
+      _ = Self.index(&alternate, columns: columns, reverse: reverse,
+                     leftRightMargins: leftRightMargins, eraseStyle: eraseStyle,
+                     nextRowID: &nextRowID)
+      return []
+    }
+    guard let removed = Self.index(&primary, columns: columns, reverse: reverse,
+                                   leftRightMargins: leftRightMargins, eraseStyle: eraseStyle,
+                                   nextRowID: &nextRowID) else { return [] }
+    history.append(removed)
+    return [removed]
+  }
+
+  private static func index(_ screen: inout TerminalScreen, columns: Int,
+                            reverse: Bool, leftRightMargins: Bool,
+                            eraseStyle: TerminalStyle, nextRowID: inout UInt64) -> TerminalRow? {
+    let horizontal = leftRightMargins ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
+    let inside = (horizontal.0...horizontal.1).contains(screen.cursorColumn)
+    screen.pendingWrap = false
+    if reverse {
+      if screen.cursorRow == screen.topMargin && inside {
+        _ = scrollForIndex(&screen, columns: columns, top: screen.topMargin, bottom: screen.bottomMargin,
+                           left: horizontal.0, right: horizontal.1, up: false, eraseStyle: eraseStyle,
+                           nextRowID: &nextRowID)
+      } else {
+        screen.cursorRow = max(0, screen.cursorRow - 1)
+      }
+    } else if screen.cursorRow == screen.bottomMargin && inside {
+      return scrollForIndex(&screen, columns: columns, top: screen.topMargin, bottom: screen.bottomMargin,
+                            left: horizontal.0, right: horizontal.1, up: true, eraseStyle: eraseStyle,
+                            nextRowID: &nextRowID)
+    } else {
+      screen.cursorRow = min(screen.rows.count - 1, screen.cursorRow + 1)
+    }
+    return nil
+  }
+
+  private static func scrollForIndex(_ screen: inout TerminalScreen, columns: Int,
+                                     top: Int, bottom: Int, left: Int, right: Int, up: Bool,
+                                     eraseStyle: TerminalStyle, nextRowID: inout UInt64) -> TerminalRow? {
+    guard top >= 0, bottom < screen.rows.count, top <= bottom else { return nil }
+    if left != 0 || right != columns - 1 {
+      scrollRectangleInPlace(&screen, columns: columns, top: top, bottom: bottom,
+                             left: left, right: right, count: 1, up: up, eraseStyle: eraseStyle)
+      return nil
+    }
+    let removed = screen.rows.remove(at: up ? top : bottom)
+    let replacement = TerminalRow(id: nextRowID,
+                                  cells: Array(repeating: .erased(eraseStyle), count: columns))
+    nextRowID &+= 1
+    screen.rows.insert(replacement, at: up ? bottom : top)
+    return up && top == 0 && bottom == screen.rows.count - 1 ? removed : nil
+  }
+
   // This is the document's scalar-print transaction. It is intentionally a
   // terminal operation rather than a generic mutable-grid callback: callers
   // provide parser/mode facts, while this module owns segmentation, cells,

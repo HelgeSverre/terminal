@@ -216,6 +216,40 @@ import Foundation
     precondition(variation.hasValidInvariants(variation.primary))
   }
 
+  static func documentOwnsIndexTransactions() {
+    let attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(foreground: 7), link: nil, protected: false)
+    var document = TerminalDocument(columns: 4, rows: 2)
+    _ = document.print("A".unicodeScalars.first!, usingAlternate: false,
+                       leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+    document.primary.cursorRow = 1; document.primary.cursorColumn = 0; document.primary.pendingWrap = true
+    let removedID = document.primary.rows[0].id
+    let forward = document.index(usingAlternate: false, reverse: false,
+                                 leftRightMargins: false, eraseStyle: TerminalStyle(background: 9))
+    precondition(!document.primary.pendingWrap && forward.count == 1 && document.history.count == 1)
+    precondition(document.history[0].id == removedID && document.history[0].cells[0].text == "A")
+    precondition(document.primary.rows[1].id != removedID && document.primary.rows[1].cells.allSatisfy { $0.style.background == 9 })
+
+    let alternateBefore = document.alternate
+    document.alternate.cursorRow = 1; document.alternate.cursorColumn = 0
+    let alternate = document.index(usingAlternate: true, reverse: false,
+                                   leftRightMargins: false, eraseStyle: TerminalStyle())
+    precondition(alternate.isEmpty && document.history.count == 1)
+    precondition(alternateBefore.rows[0].id != document.alternate.rows[1].id)
+
+    document.primary.cursorRow = 0; document.primary.cursorColumn = 0
+    let reverse = document.index(usingAlternate: false, reverse: true,
+                                 leftRightMargins: false, eraseStyle: TerminalStyle())
+    precondition(reverse.isEmpty && document.history.count == 1)
+    precondition(document.hasValidInvariants(document.primary) && document.hasValidInvariants(document.alternate))
+
+    document.primary.leftMargin = 1; document.primary.rightMargin = 2
+    document.primary.cursorRow = 1; document.primary.cursorColumn = 1
+    let partial = document.index(usingAlternate: false, reverse: false,
+                                 leftRightMargins: true, eraseStyle: TerminalStyle(background: 3))
+    precondition(partial.isEmpty && document.history.count == 1)
+    precondition(document.primary.rows[1].cells[1].style.background == 3 && document.primary.rows[1].cells[2].style.background == 3)
+  }
+
   static func documentOwnsSegmentationAndOrphans() {
     var document = TerminalDocument(columns: 6, rows: 1)
     // Prepend must survive through the document-owned segmenter and join the
@@ -448,6 +482,7 @@ import Foundation
     populatedSnapshotsRemainImmutable()
     rangeLocalWidePairRepairPreservesSnapshots()
     printedReplacementKeepsRichPairBoundaries()
+    documentOwnsIndexTransactions()
     documentOwnsSegmentationAndOrphans()
     batchWriterMatchesScalarTransactions()
     asciiSpanMatchesScalarTransactions()
