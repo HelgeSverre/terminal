@@ -458,9 +458,9 @@ struct TerminalDocument {
     return batch.mutationCount == 0 ? nil : batch.effect
   }
 
-  // Bounded text transaction for the ordinary decoder path. It deliberately
-  // stops after a row replacement: IDs/history must become visible to Core
-  // before the next scalar can scroll again.
+  // Bounded text transaction for the ordinary decoder path. History admission
+  // remains a Core boundary; replacement IDs are document-owned and can be
+  // assigned immediately without yielding when no history was appended.
   mutating func print<C: Collection>(_ scalars: C, usingAlternate: Bool,
                       leftRightMargins: Bool, autoWrap: Bool, insertMode: Bool,
                       attributes: borrowing PrintAttributes) -> PrintBatchEffect where C.Element == Unicode.Scalar {
@@ -517,10 +517,13 @@ struct TerminalDocument {
                  attributes: attributes, history: &appended, replacementRows: &replacements,
                  retainHistory: retainHistory, state: &state, effect: &effect)
       mutations += 1
-      // A replacement has no identity while the row is being edited. Install
-      // it before Core can admit a further scalar (which may scroll again).
-      if !replacements.isEmpty || !appended.isEmpty {
+      // Install document-owned row IDs immediately. Only a primary-history
+      // append yields: Core must enforce budgets/clamps before another scroll.
+      if !replacements.isEmpty {
         assignRowIDs(&screen, at: replacements, nextRowID: &nextRowID)
+        replacements.removeAll(keepingCapacity: true)
+      }
+      if !appended.isEmpty {
         if retainHistory { history.append(contentsOf: appended) }
         effect.appendedHistory = appended
         return PrintBatchEffect(effect: effect, consumedScalarCount: consumed, mutationCount: mutations)

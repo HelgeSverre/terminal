@@ -477,6 +477,28 @@ import Foundation
     precondition(history.history[0].cells[0].text == "A" && history.history[0].cells[1].text == "B")
   }
 
+  static func alternateMultiwrapBatchDoesNotYieldForReplacements() {
+    let attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(foreground: 3),
+                                                      link: "https://example.test/alternate", protected: true)
+    let offered = Array((String(repeating: "abcdef", count: 5) + "界e\u{301}XYZ").unicodeScalars)
+    var batch = TerminalDocument(columns: 3, rows: 2)
+    var scalar = TerminalDocument(columns: 3, rows: 2)
+    let retained = batch.alternate
+    let retainedCells = batch.alternate.rows[0].cells
+    let effect = batch.print(offered, usingAlternate: true, leftRightMargins: false,
+                             autoWrap: true, insertMode: false, attributes: attributes)
+    for value in offered {
+      _ = scalar.print(value, usingAlternate: true, leftRightMargins: false,
+                       autoWrap: true, insertMode: false, attributes: attributes)
+    }
+    precondition(effect.consumedScalarCount == offered.count && effect.mutationCount == offered.count)
+    precondition(effect.effect.appendedHistory.isEmpty && batch.history.isEmpty)
+    precondition(batch.alternate == scalar.alternate)
+    precondition(batch.alternate.rows.allSatisfy { $0.id != 0 })
+    precondition(retained.rows.allSatisfy { $0.cells.allSatisfy { $0.kind == 0 } })
+    precondition(retainedCells.allSatisfy { $0.kind == 0 })
+  }
+
   static func sparsePayloadsBoundStorageAndKeepLogicalBudget() {
     var row = TerminalRow(columns: 3)
     // Scalar text has no retained String payload; only the exceptional link
@@ -586,6 +608,7 @@ import Foundation
     documentOwnsSegmentationAndOrphans()
     batchWriterMatchesScalarTransactions()
     asciiSpanMatchesScalarTransactions()
+    alternateMultiwrapBatchDoesNotYieldForReplacements()
     sparsePayloadsBoundStorageAndKeepLogicalBudget()
     logicalCapacityMatchesFormerRichArray()
     richPayloadMovesAndProjectionsRemainIndependent()
