@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Metal
 import simd
@@ -17,17 +18,31 @@ final class RendererMetrics {
 
 @main enum GlyphResidencyTests {
   static func main() {
-    guard let device = MTLCreateSystemDefaultDevice() else { fatalError("Metal unavailable") }
+    func checkpoint(_ name: String) {
+      fputs("GLYPH_RESIDENCY_CHECKPOINT=\(name)\n", stderr)
+      fflush(stderr)
+    }
+    checkpoint("before_mtl_create_system_default_device")
+    guard let device = MTLCreateSystemDefaultDevice() else {
+      fputs("GLYPH_RESIDENCY_DEVICE=unavailable\n", stderr)
+      fflush(stderr)
+      exit(2)
+    }
+    fputs("GLYPH_RESIDENCY_DEVICE=name=\(device.name) registry_id=\(device.registryID) unified=\(device.hasUnifiedMemory) low_power=\(device.isLowPower) headless=\(device.isHeadless) max_buffer=\(device.maxBufferLength)\n", stderr)
+    fflush(stderr)
+    checkpoint("before_heap_texture_size_and_align")
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
       width: 1024, height: 1024, mipmapped: false)
     descriptor.storageMode = .shared; descriptor.usage = .shaderRead
     let onePage = Int(device.heapTextureSizeAndAlign(descriptor: descriptor).size)
+    checkpoint("after_heap_texture_size_and_align")
     // Permit exactly one page plus alignment slack, forcing reclaim rather
     // than second-page growth.
     let budget = onePage + max(4096, onePage / 16)
     func makeResidency() -> GlyphResidency {
       GlyphResidency(device: device, owner: DispatchQueue(label: "glyph-residency-test"), budget: budget) {}
     }
+    checkpoint("before_sync_residency_scenarios")
     precondition(makeResidency().testingRecycleAndGeneration())
     precondition(makeResidency().testingPinnedPageBlocksReclaim())
     precondition(makeResidency().testingLegacyReleaseExactlyOnce())
@@ -36,7 +51,9 @@ final class RendererMetrics {
     precondition(makeResidency().testingNegativeCacheIsBoundedAndRecipeScoped())
     precondition(makeResidency().testingTwoGlyphWorkingSetSettles())
     precondition(makeResidency().testingOversizeExactResident())
+    checkpoint("before_async_residency_scenarios")
     runAsyncResidencyScenarios(device: device)
+    checkpoint("after_async_residency_scenarios")
     // Real raster-worker → owner-queue delivery, with an empty frame boundary
     // before B completes. This catches the old permit-reset race.
     let callbackOwner = DispatchQueue(label: "glyph-residency-async-test")
@@ -54,6 +71,7 @@ final class RendererMetrics {
       callbackResidency.beginFrame()
       precondition(callbackResidency.testingHasResident(delayedB), "delayed B recovers")
     }
+    checkpoint("before_mask_texture_readback")
     let maskDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
       width: 3, height: 1, mipmapped: false)
     maskDescriptor.storageMode = .shared
@@ -64,6 +82,8 @@ final class RendererMetrics {
     var readCoverage = [UInt8](repeating: 0, count: 3)
     mask.getBytes(&readCoverage, bytesPerRow: 3, from: MTLRegionMake2D(0, 0, 3, 1), mipmapLevel: 0)
     precondition(readCoverage == coverage)
+    checkpoint("after_mask_texture_readback")
+    checkpoint("before_color_texture_readback")
     let colorDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
       width: 1, height: 1, mipmapped: false)
     colorDescriptor.storageMode = .shared
@@ -74,6 +94,8 @@ final class RendererMetrics {
     var readRGBA = [UInt8](repeating: 0, count: 4)
     color.getBytes(&readRGBA, bytesPerRow: 4, from: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0)
     precondition(readRGBA == rgba)
+    checkpoint("after_color_texture_readback")
+    checkpoint("before_production_metallib")
     // Execute the production terminal vertex/fragment pair into an sRGB
     // attachment. The R8 texture deliberately covers 0, .5 and 1 coverage.
     let libraryURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -82,6 +104,8 @@ final class RendererMetrics {
       let vertex = library.makeFunction(name: "terminal_vertex"),
       let fragment = library.makeFunction(name: "terminal_fragment")
     else { fatalError("production metallib unavailable") }
+    checkpoint("after_production_metallib")
+    checkpoint("before_offscreen_r8_pipeline")
     let targetDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm_srgb,
       width: 3, height: 1, mipmapped: false)
     targetDescriptor.storageMode = .shared; targetDescriptor.usage = [.renderTarget, .shaderRead]
@@ -115,6 +139,7 @@ final class RendererMetrics {
     encoder.setFragmentTexture(mask, index: 0)
     encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: 3)
     encoder.endEncoding(); command.commit(); command.waitUntilCompleted()
+    checkpoint("after_offscreen_r8_submit")
     var rendered = [UInt8](repeating: 0, count: 12)
     target.getBytes(&rendered, bytesPerRow: 12, from: MTLRegionMake2D(0, 0, 3, 1), mipmapLevel: 0)
     // Attachment bytes are BGRA sRGB.  Linear 0/.5/1 coverage becomes
@@ -123,6 +148,7 @@ final class RendererMetrics {
       let value = Int(rendered[index * 4])
       precondition(abs(value - expected) <= 1, "R8 shader coverage \(index): \(value)")
     }
+    checkpoint("after_offscreen_r8_readback")
     func renderColor(background: Double, tintAlpha: Float) -> [UInt8] {
       let oneDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm_srgb,
         width: 1, height: 1, mipmapped: false)
@@ -158,9 +184,11 @@ final class RendererMetrics {
     }
     // `rgba` is premultiplied *linear* color. These cases catch both treating
     // it as coverage and accidental double sRGB conversion.
+    checkpoint("before_offscreen_rgba_fixtures")
     expect(renderColor(background: 0, tintAlpha: 1), [71, 99, 137, 255], "RGBA dark")
     expect(renderColor(background: 1, tintAlpha: 1), [197, 207, 225, 255], "RGBA light")
     expect(renderColor(background: 0, tintAlpha: 0.5), [50, 71, 99, 255], "RGBA tint alpha")
+    checkpoint("after_offscreen_rgba_fixtures")
     print("PASS glyph residency: tiny-budget churn, stable two-glyph working set, pins, stale generation, bounded negatives, exactly-once release, production R8/RGBA shader fixtures")
   }
 }

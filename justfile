@@ -177,7 +177,7 @@ rust-oracle-lint:
     target/native/geometry-tests
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print statistics) -o target/native/statistics-tests
     target/native/statistics-tests
-    just glyph-rendering-tests
+    just _glyph-rendering-tests
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print preferences) -o target/native/preferences-tests
     target/native/preferences-tests
     xcrun swiftc -D SNAPSHOT_ABI_DIAGNOSTICS -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print snapshot_bridge) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/snapshot-bridge-tests
@@ -233,7 +233,10 @@ window-stress-motion-test:
 
 # Headless residency/worker checks; run after build for the production Metal library.
 [group('check')]
-glyph-rendering-tests:
+glyph-rendering-tests: build _glyph-rendering-tests
+
+[private]
+_glyph-rendering-tests:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print glyph_raster_worker) -framework AppKit -framework CoreText -o target/native/glyph-raster-worker-tests
