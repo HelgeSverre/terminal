@@ -43,6 +43,8 @@ jobs:
             target
           key: macos-arm64-swift-${{ hashFiles('native/**', 'tools/SwiftIncrementalBuild.swift', 'tools/swift-sources.json', 'justfile') }}
       - name: Run Swift native tests
+        env:
+          TERMINAL_CI_GPU_POLICY: paravirtual
         run: |
           mkdir -p reports
           set -o pipefail
@@ -62,3 +64,4 @@ jobs:
             reports/ci-tests.txt
             reports/session-tests.json
             reports/crash-reports
+            reports/gpu-policy
