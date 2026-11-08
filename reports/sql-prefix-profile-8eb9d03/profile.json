@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "executable_sha256": "f6910e2ef8d6dab507c622d6dd6496ff7aaf78e3d35270cdc37cfb5329b895c7",
+  "prefix_bytes": 67108864,
+  "scope": "64 MiB SQL prefix for primary-history profiling, not full-file acceptance.",
+  "pid": 58749,
+  "sample_sha256": "ef107babf9341070a404cf7964e85f3450c5487eb565c46ae202f2d7fd375c09",
+  "sampler_survivors": [],
+  "app_survivors": []
+}
