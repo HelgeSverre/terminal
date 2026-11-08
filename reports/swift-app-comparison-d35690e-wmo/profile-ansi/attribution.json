@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "kind": "sample_profile_attribution",
+  "revision": "d35690e",
+  "workload": "ansi_truecolor",
+  "evidence": {
+    "sample": {"path": "sample.txt", "sha256": "b883f8dd1404d5879ff0fa86905d56215db058c14b7875bc1cfb514ed503d2d9"},
+    "profile_gate": {"path": "profile.json", "sha256": "ea8a0c9b14c0e4cc25ac689be5775e4dfdc9b3c3bbbd8e47ffba15635b487f0d", "passed": true},
+    "app_executable_sha256": "13c386c13b9c958597b22d26422433d2672f5b14cdeeba96b5e7034e60509c2e",
+    "lifecycle": "profile.json records natural exit 0 for app and sampler, without forced cleanup or survivors"
+  },
+  "counts": [
+    {"scope": "owner queue", "samples": 3604, "kind": "inclusive", "sample_line": 617},
+    {"scope": "Session.pump Data.withUnsafeBytes wrapper containing feed", "samples": 2995, "kind": "inclusive", "sample_line": 628},
+    {"scope": "feed itself", "samples": 241, "kind": "exclusive owner call site", "sample_line": 1367},
+    {"scope": "parseCSIParameters call from feed", "samples": 755, "kind": "inclusive", "sample_line": 629},
+    {"scope": "four sibling parse call sites dominated by parameter-array growth/allocation/destruction", "samples": 451, "components": [152, 129, 88, 82], "kind": "inclusive sum of disjoint sibling call sites within parse", "sample_lines": [630, 707, 789, 843]},
+    {"scope": "colon detection inside parse", "samples": 90, "kind": "inclusive within parse", "sample_line": 781},
+    {"scope": "text flush call site from feed", "samples": 541, "kind": "inclusive", "sample_line": 928},
+    {"scope": "Document printing within that flush", "samples": 367, "kind": "inclusive nested child", "sample_line": 929},
+    {"scope": "line-feed/index call site", "samples": 289, "kind": "inclusive", "sample_line": 1163},
+    {"scope": "CSI String.UnicodeScalarView append call site", "samples": 256, "kind": "inclusive", "sample_line": 1349},
+    {"scope": "applySGR call site", "samples": 240, "kind": "inclusive", "sample_line": 1368},
+    {"scope": "two colon-search call sites inside applySGR", "samples": 163, "components": [88, 75], "kind": "inclusive sum of disjoint sibling call sites within applySGR", "sample_lines": [1369, 1381]}
+  ],
+  "interpretation": {
+    "measured": "CSI parameter-array churn and repeated colon scans are stronger immediate targets than the separately observed per-byte String append cost.",
+    "source_basis": "Frozen d35690e native/SwiftTerminalCore.swift:443 creates a fresh numeric array per parse; :510 scans UTF8 for colons; :623 and :736 repeat colon detection in applySGR; :313 appends CSI bytes through UnicodeScalarView.",
+    "next_candidate": "Reuse bounded numeric scratch with ordinary Array value semantics, and compute/pass hasColon once. Preserve existing raw-run and filtered UInt32 validation, keyboard flags, defaults, colon-SGR ordering and malformed-input behavior.",
+    "ownership": "Packets are synchronous values consumed by handleCSI. Do not retain a permanent second scratch alias or overwrite an outer borrowed parameter view during rare recursive colon-SGR parsing. COW for genuinely live outer values remains required.",
+    "limits": [
+      "Inclusive parent and child counts overlap; do not add parse to its array-growth or colon-search children, or applySGR to its searches.",
+      "The 451 figure covers whole allocation-dominated call sites, not 451 samples exclusively executing the allocator.",
+      "The sample flat table combines all threads; these selected inclusive counts come from the owner subtree.",
+      "Sampling under load is attribution evidence, not comparison timing or a predicted speedup. profile.json explicitly marks concurrent-sampler driver timing diagnostic-only.",
+      "The profile does not establish full semantic parity or satisfaction of the performance acceptance gate."
+    ]
+  }
+}
