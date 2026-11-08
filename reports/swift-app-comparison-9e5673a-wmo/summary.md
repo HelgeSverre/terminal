@@ -29,6 +29,13 @@ sampler and no surviving children. Its wall and CPU values are diagnostic-only
 because sampling perturbs the run. [profile-long-ascii/profile.json](profile-long-ascii/profile.json)
 records its app, driver, runner, and raw-sample hashes.
 
+The owner queue contributed 3,756 samples. Within `feed`, `flush` accounted
+for 2,562 inclusive samples. The `printBatch` wrap branch had 1,270, including
+634 in wrapping and 430 in `Array.init(repeating:)`; its span branch had 1,058,
+including 386 in unchecked UTF-8 string work, 320 destroying old cells, and
+175 copying attributes. These parent and child counts overlap and must not be
+added. They identify a next diagnostic target, not a comparison result.
+
 `raw-evidence.tar.gz` retains raw driver and launcher evidence, the core test,
 and the complete long-ASCII profile tree. Compact measurement and provenance
 files remain beside this summary. The frozen bundle is preserved outside the
