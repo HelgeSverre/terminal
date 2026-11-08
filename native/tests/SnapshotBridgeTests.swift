@@ -98,6 +98,17 @@ import AppKit
     precondition(linked.accessibilityRole() == .link)
     precondition((linked.accessibilityParent() as? NSView) === parent)
     precondition(!linked.isAccessibilityEnabled() && !linked.accessibilityPerformPress())
+    // A remote AX client receives a weak element reference after this query's
+    // attributed string has been released. The projection must own the link.
+    var linkProjection: AccessibilityProjection? = AccessibilityProjection(snapshot: styled)
+    weak var exportedLink: AccessibleTerminalLink?
+    autoreleasepool {
+      let transient = linkProjection!.attributedString(in: allText, fontSize: 14, parent: parent)!
+      exportedLink = transient.attribute(.accessibilityLink, at: 0, effectiveRange: nil) as? AccessibleTerminalLink
+    }
+    precondition(exportedLink != nil && exportedLink?.accessibilityRole() == .link)
+    linkProjection = nil
+    precondition(exportedLink == nil)
     let concealedForeground = attributes[.accessibilityForegroundColor] as! CGColor
     let concealedBackground = attributes[.accessibilityBackgroundColor] as! CGColor
     precondition(concealedForeground == concealedBackground)

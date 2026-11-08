@@ -24,6 +24,7 @@ struct AccessibilityProjection {
   private let palette: CellPalette
   private let styles: [StyledRange]
   private let characters: NSString
+  private let links = Links()
   var length: Int { characters.length }
   init(snapshot: TerminalSnapshot, limit: Int = 262_144) {
     columns = snapshot.cols
@@ -164,14 +165,31 @@ struct AccessibilityProjection {
         attributes[.accessibilityStrikethroughColor] = Self.color(foreground)
       }
       if let url = AccessibleTerminalLink.url(run.link) {
-        attributes[.accessibilityLink] = AccessibleTerminalLink(
-          url: url, range: run.range,
-          label: characters.substring(with: run.range), parent: parent)
+        attributes[.accessibilityLink] = links.element(
+          url: url, range: run.range, label: characters.substring(with: run.range), parent: parent)
       }
       result.addAttributes(attributes, range: NSRange(
         location: overlap.location - range.location, length: overlap.length))
     }
     return result.copy() as? NSAttributedString
+  }
+  /// AppKit exports weak AX references. Keep virtual links alive for the
+  /// projection's lifetime, including after the attributed query is returned.
+  @MainActor private final class Links {
+    private weak var parent: NSView?
+    private var elements: [Int: AccessibleTerminalLink] = [:]
+    nonisolated init() {}
+
+    func element(url: URL, range: NSRange, label: String, parent: NSView) -> AccessibleTerminalLink {
+      if self.parent !== parent {
+        elements.removeAll()
+        self.parent = parent
+      }
+      if let element = elements[range.location] { return element }
+      let element = AccessibleTerminalLink(url: url, range: range, label: label, parent: parent)
+      elements[range.location] = element
+      return element
+    }
   }
   private static func color(_ value: SIMD4<Float>) -> CGColor {
     CGColor(colorSpace: CGColorSpace(name: CGColorSpace.linearSRGB)!,

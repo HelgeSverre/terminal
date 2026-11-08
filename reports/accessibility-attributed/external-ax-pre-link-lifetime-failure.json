@@ -1,0 +1,278 @@
+{
+  "accessibility_trusted" : true,
+  "assertions" : {
+    "ax_value_read_only" : true,
+    "cgcolor_attributes_returned" : true,
+    "font_dictionary_returned" : true,
+    "link_ax_element_returned" : true,
+    "link_geometry_returned" : false,
+    "link_press_action_returned" : false,
+    "link_role_returned" : false,
+    "link_url_returned" : false,
+    "plain_matches_attributed" : true,
+    "style_range_for_each_queried_utf16_index" : true,
+    "utf16_length_matches" : true
+  },
+  "identifier" : "no.helgesverre.terminal.pane.",
+  "pane" : {
+    "actions" : [
+
+    ],
+    "AXDescription" : "Terminal pane",
+    "AXIdentifier" : "no.helgesverre.terminal.pane.EEF6937A-0262-4DFE-80D7-164849D322CB",
+    "AXPosition" : {
+      "x" : 460,
+      "y" : 140
+    },
+    "AXRole" : "AXTextArea",
+    "AXSize" : {
+      "height" : 448,
+      "width" : 656
+    },
+    "frame" : {
+      "height" : 448,
+      "width" : 656,
+      "x" : 460,
+      "y" : 140
+    },
+    "kind" : "AXUIElement",
+    "pid" : 9995
+  },
+  "passed" : false,
+  "permission_prompt_requested" : false,
+  "pid" : 9995,
+  "probe" : "external-accessibility-attributed",
+  "range_query" : {
+    "attributed_string" : {
+      "runs" : [
+        {
+          "attributes" : {
+            "AXBackgroundColor" : {
+              "color_space" : "kCGColorSpaceGenericRGB",
+              "components" : [
+                0.11697067320346832,
+                0.37626221776008606,
+                0.95597350597381592,
+                1
+              ],
+              "kind" : "CGColor"
+            },
+            "AXFont" : {
+              "AXFontFamily" : "Obel Mono",
+              "AXFontName" : "ObelMono-Bold",
+              "AXFontSize" : 12,
+              "AXVisibleName" : "Obel Mono Bold"
+            },
+            "AXForegroundColor" : {
+              "color_space" : "kCGColorSpaceGenericRGB",
+              "components" : [
+                0.86315727233886719,
+                0.057805433869361877,
+                0.057805433869361877,
+                1
+              ],
+              "kind" : "CGColor"
+            },
+            "AXUnderline" : 1,
+            "AXUnderlineColor" : {
+              "color_space" : "kCGColorSpaceGenericRGB",
+              "components" : [
+                0.86315727233886719,
+                0.057805433869361877,
+                0.057805433869361877,
+                1
+              ],
+              "kind" : "CGColor"
+            }
+          },
+          "range" : {
+            "length" : 5,
+            "location" : 0
+          }
+        },
+        {
+          "attributes" : {
+            "AXBackgroundColor" : {
+              "color_space" : "kCGColorSpaceGenericRGB",
+              "components" : [
+                0.0030352699104696512,
+                0.0030352699104696512,
+                0.0033465356100350618,
+                1
+              ],
+              "kind" : "CGColor"
+            },
+            "AXFont" : {
+              "AXFontFamily" : "Obel Mono",
+              "AXFontName" : "ObelMono-Regular",
+              "AXFontSize" : 12,
+              "AXVisibleName" : "Obel Mono Regular"
+            },
+            "AXForegroundColor" : {
+              "color_space" : "kCGColorSpaceGenericRGB",
+              "components" : [
+                0.7912980318069458,
+                0.7912980318069458,
+                0.7912980318069458,
+                1
+              ],
+              "kind" : "CGColor"
+            }
+          },
+          "range" : {
+            "length" : 1,
+            "location" : 5
+          }
+        },
+        {
+          "attributes" : {
+            "AXBackgroundColor" : {
+              "color_space" : "kCGColorSpaceGenericRGB",
+              "components" : [
+                0.0030352699104696512,
+                0.0030352699104696512,
+                0.0033465356100350618,
+                1
+              ],
+              "kind" : "CGColor"
+            },
+            "AXFont" : {
+              "AXFontFamily" : "Obel Mono",
+              "AXFontName" : "ObelMono-Regular",
+              "AXFontSize" : 12,
+              "AXVisibleName" : "Obel Mono Regular"
+            },
+            "AXForegroundColor" : {
+              "color_space" : "kCGColorSpaceGenericRGB",
+              "components" : [
+                0.7912980318069458,
+                0.7912980318069458,
+                0.7912980318069458,
+                1
+              ],
+              "kind" : "CGColor"
+            },
+            "AXLink" : {
+              "action_names_error" : "AXError(rawValue: -25202)",
+              "kind" : "AXUIElement",
+              "pid" : 9995
+            }
+          },
+          "range" : {
+            "length" : 4,
+            "location" : 6
+          }
+        },
+        {
+          "attributes" : {
+
+          },
+          "range" : {
+            "length" : 1,
+            "location" : 10
+          }
+        },
+        {
+          "attributes" : {
+            "AXBackgroundColor" : {
+              "color_space" : "kCGColorSpaceGenericRGB",
+              "components" : [
+                0.0030352699104696512,
+                0.0030352699104696512,
+                0.0033465356100350618,
+                1
+              ],
+              "kind" : "CGColor"
+            },
+            "AXFont" : {
+              "AXFontFamily" : "Obel Mono",
+              "AXFontName" : "ObelMono-Regular",
+              "AXFontSize" : 12,
+              "AXVisibleName" : "Obel Mono Regular"
+            },
+            "AXForegroundColor" : {
+              "color_space" : "kCGColorSpaceGenericRGB",
+              "components" : [
+                0.7912980318069458,
+                0.7912980318069458,
+                0.7912980318069458,
+                1
+              ],
+              "kind" : "CGColor"
+            }
+          },
+          "range" : {
+            "length" : 2,
+            "location" : 11
+          }
+        },
+        {
+          "attributes" : {
+
+          },
+          "range" : {
+            "length" : 22,
+            "location" : 13
+          }
+        }
+      ],
+      "string" : "AXé🐈 link\nst\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+      "utf16_length" : 35
+    },
+    "plain_string" : "AXé🐈 link\nst\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "range" : {
+      "length" : 35,
+      "location" : 0
+    }
+  },
+  "style_range_index_query_count" : 35,
+  "style_ranges" : [
+    {
+      "index" : 0,
+      "range" : {
+        "length" : 5,
+        "location" : 0
+      }
+    },
+    {
+      "index" : 5,
+      "range" : {
+        "length" : 1,
+        "location" : 5
+      }
+    },
+    {
+      "index" : 6,
+      "range" : {
+        "length" : 4,
+        "location" : 6
+      }
+    },
+    {
+      "index" : 10,
+      "range" : {
+        "length" : 1,
+        "location" : 10
+      }
+    },
+    {
+      "index" : 11,
+      "range" : {
+        "length" : 2,
+        "location" : 11
+      }
+    },
+    {
+      "index" : 13,
+      "range" : {
+        "length" : 22,
+        "location" : 13
+      }
+    }
+  ],
+  "value" : {
+    "settable" : false,
+    "text" : "AXé🐈 link\nst\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+    "utf16_length" : 35
+  }
+}

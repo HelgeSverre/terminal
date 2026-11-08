@@ -1,0 +1,46 @@
+{
+  "base_commit": "1abb728013ed450a2a65542b8ef17ad225e477ef",
+  "source_sha256": {
+    "native/AccessibilityProjection.swift": "df872d6f043ba025c507b869630ed84a98f875fc84bf1c5b4d26b96041f4e52e",
+    "native/tests/SnapshotBridgeTests.swift": "8998d6265afea55cd4209e64cc4072b5a81d62b2f036cfeaaadb8a36cca34477",
+    "tools/AccessibilityProbe.swift": "545b2fe8f3768aa61805da70a78e47337861b1566975688b5870a5e9d8465e67",
+    "tools/accessibility_smoke.rb": "bf5d15c5c508344cd90444df7598d54236938f64908e6230e0ac2852438ad77d",
+    "tools/native_smoke.rb": "191c85da079a930134c1ff0f36160047145ae1277fbf4c77c8ea1abb25a19754"
+  },
+  "regression": {
+    "before": "external-ax-pre-link-lifetime-failure.json",
+    "after": "external-ax.json",
+    "cause": "Per-query virtual links lost their last strong reference when AppKit released the attributed-string reply; the external AX element became invalid (-25202).",
+    "fix": "Projection owns bounded link elements; elements weakly reference their view."
+  },
+  "checks": {
+    "snapshot_bridge": {
+      "exit": 0,
+      "scope": "Link survives temporary attributed-string release, then releases with projection"
+    },
+    "external_client": {
+      "command": "ruby tools/accessibility_smoke.rb",
+      "exit": 0,
+      "assertions": {
+        "ax_value_read_only": true,
+        "cgcolor_attributes_returned": true,
+        "font_dictionary_returned": true,
+        "link_ax_element_returned": true,
+        "link_geometry_returned": true,
+        "link_press_action_returned": true,
+        "link_role_returned": true,
+        "link_url_returned": true,
+        "plain_matches_attributed": true,
+        "style_range_for_each_queried_utf16_index": true,
+        "utf16_length_matches": true
+      },
+      "report_sha256": "c478d90622a531ed37c443b1a73c182dcea73cd4b30dc89b77e5f44190d6ddc0",
+      "provenance_sha256": "92bd1f9a7fa1801279451541055919dec69a6c28f19094985b3b576496257581"
+    }
+  },
+  "limits": [
+    "Press action is discovered without opening a browser",
+    "VoiceOver and asynchronous history fetching remain separate gates",
+    "Native full-smoke startup/navigation investigation remains active"
+  ]
+}

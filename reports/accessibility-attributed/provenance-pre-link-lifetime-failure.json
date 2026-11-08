@@ -1,0 +1,36 @@
+{
+  "runner": "accessibility_smoke.rb",
+  "source_bundle": "/Users/helge/code/terminal/dist/Terminal.app",
+  "source_file_sha256": "545b2fe8f3768aa61805da70a78e47337861b1566975688b5870a5e9d8465e67",
+  "permission_prompt_requested": false,
+  "private_fixture_bundle": "/var/folders/xr/z75qc4354_v3lm18m65xkz580000gn/T/terminal-accessibility-attributed-20261108-9974-su4vv5/Terminal.app",
+  "fixture_executable_sha256": "3c725671ef9201f1003707b5f454f60f54a4a063de7978be927fd9f432275af2",
+  "probe_binary_sha256": "e944b25e6e4888f93f02d39adaa98fa3809f6e52012670d1711c97ce2b3f794a",
+  "command": [
+    "/var/folders/xr/z75qc4354_v3lm18m65xkz580000gn/T/terminal-accessibility-attributed-20261108-9974-su4vv5/Terminal.app/Contents/MacOS/Terminal",
+    "--columns",
+    "80",
+    "--rows",
+    "24",
+    "--execute",
+    "/bin/sh",
+    "-c",
+    "printf '\\033[31;44;1;4mAXé🐈\\033[0m \\033]8;;https://example.test/ax\\033\\\\link\\033]8;;\\033\\\\\\n'; printf '%s\\n' \"$$\" > /var/folders/xr/z75qc4354_v3lm18m65xkz580000gn/T/terminal-accessibility-attributed-20261108-9974-su4vv5/controlled-child.pid; exec /bin/sleep 30"
+  ],
+  "controlled_child_pid_file": "controlled-child.pid",
+  "owned_app_pid": 9995,
+  "controlled_child_pid": 9998,
+  "owned_pids_before_cleanup": [
+    9995
+  ],
+  "owned_pids_after_cleanup": [],
+  "cleanup_survivors": [],
+  "app_exit_status": {
+    "observed": true,
+    "exited": false,
+    "exit_status": null,
+    "signaled": true,
+    "signal": 15
+  },
+  "controlled_child_exited": true
+}

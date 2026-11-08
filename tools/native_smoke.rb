@@ -7,6 +7,8 @@ require 'set'
 # Direct bundle-executable launch is deliberate for diagnostics: it gives this
 # runner a waitable process, even when the app crashes or never writes a report.
 class NativeSmokeProcess
+  attr_reader :pid, :status
+
   def initialize(command)
     @pid = Process.spawn(*command)
     @owned = {}
@@ -39,7 +41,7 @@ class NativeSmokeProcess
       sleep 0.05 if @status
     end
     signal(survivors, 'KILL')
-    Process.wait(@pid) unless @status
+    @status = Process.waitpid2(@pid)[1] unless @status
     deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 2
     sleep 0.05 until survivors.empty? || Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
     survivors

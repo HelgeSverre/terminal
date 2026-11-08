@@ -68,6 +68,13 @@ These use AppKit's [accessibility attributed-string interface](https://developer
 and [AX text attributes](https://developer.apple.com/documentation/appkit/text-attributed-string-attributes-and-constants),
 including AX font dictionaries, CGColor values and link element references.
 
+`just accessibility-smoke` checks these attributes from a separate AX client
+against a private copied app and controlled Unicode/SGR/OSC 8 output. It verifies
+the exported link's URL, frame and Press action without opening the URL, then
+reaps the app and PTY child. It requires Accessibility permission for the client
+and never requests that permission automatically. This exercises the external
+AX interface; it does not replace a VoiceOver reading/selection check.
+
 ## Fixture check
 
 Run `just automation-smoke`. It builds the app, copies it into a fresh

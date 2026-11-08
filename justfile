@@ -156,6 +156,11 @@ swift-host-build-test: build
 [group('check')]
 smoke: build (_native-smoke "normal")
 
+# Query styled text and links from an external AX client against an owned fixture.
+[group('check')]
+accessibility-smoke: build
+    ruby tools/accessibility_smoke.rb
+
 # Reproduce native cd/autosuggestion/Backspace editing against the actual ZLE buffer
 [group('check')]
 editing-smoke: build (_native-smoke "editing")
