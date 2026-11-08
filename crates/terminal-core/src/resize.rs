@@ -213,7 +213,9 @@ impl Terminal {
         }
         self.history = output.drain(..start.min(output.len())).collect();
         for row in &mut self.history {
-            Arc::make_mut(row).compact_resources();
+            if row.has_stale_resources() {
+                Arc::make_mut(row).compact_resources();
+            }
         }
         output.truncate(height);
         while output.len() < height {
@@ -277,5 +279,76 @@ impl Terminal {
         self.geometry_epoch += 1;
         self.revision += 1;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn terminal_retaining(row: Arc<Row>) -> Terminal {
+        let mut terminal = Terminal::new(2, 2).unwrap();
+        terminal.history_bytes = row.accounted_bytes();
+        terminal.history.push_back(row);
+        terminal
+    }
+
+    #[test]
+    fn height_only_resize_preserves_compact_history_sharing_and_compacts_dirty_rows() {
+        let compact = Arc::new(Row::new(1, 2, &Style::default()));
+        let compact_bytes = compact.accounted_bytes();
+        let mut terminal = terminal_retaining(compact.clone());
+
+        terminal.resize(2, 1).unwrap();
+
+        assert!(Arc::ptr_eq(&compact, terminal.history.front().unwrap()));
+        assert_eq!(terminal.history_bytes, compact_bytes);
+
+        let mut dirty = Row::new(2, 2, &Style::default());
+        let first_style = Style {
+            foreground: Color::Indexed(1),
+            ..Style::default()
+        };
+        let second_style = Style {
+            foreground: Color::Indexed(2),
+            ..Style::default()
+        };
+        dirty.write(
+            0,
+            "a\u{301}",
+            CellWidth {
+                occupied: 1,
+                nominal: 1,
+            },
+            &first_style,
+            Some("https://first.example"),
+            0,
+        );
+        dirty.write(
+            0,
+            "b\u{301}",
+            CellWidth {
+                occupied: 1,
+                nominal: 1,
+            },
+            &second_style,
+            Some("https://second.example"),
+            0,
+        );
+        assert!(dirty.has_stale_resources());
+        let dirty = Arc::new(dirty);
+        let dirty_bytes = dirty.accounted_bytes();
+        let dirty_text = dirty.copy_text();
+        let mut terminal = terminal_retaining(dirty.clone());
+
+        terminal.resize(2, 1).unwrap();
+
+        let compacted = terminal.history.front().unwrap();
+        assert!(!Arc::ptr_eq(&dirty, compacted));
+        assert_eq!(dirty.accounted_bytes(), dirty_bytes);
+        assert_eq!(dirty.copy_text(), dirty_text);
+        assert_eq!(compacted.copy_text(), dirty_text);
+        assert!(compacted.accounted_bytes() < dirty_bytes);
+        assert_eq!(terminal.history_bytes, compacted.accounted_bytes());
     }
 }

@@ -368,6 +368,25 @@ impl Row {
         self.links
             .retain(|id, _| self.cells.iter().any(|c| c.link == *id));
     }
+    /// Reports whether compaction would discard any row-local resource.
+    ///
+    /// History ownership uses copy-on-write rows, so callers can avoid cloning
+    /// a shared row merely to confirm that its resources are already compact.
+    pub(crate) fn has_stale_resources(&self) -> bool {
+        self.texts.keys().any(|id| {
+            !self
+                .cells
+                .iter()
+                .any(|cell| cell.text == (*id | 0x8000_0000))
+        }) || self
+            .styles
+            .keys()
+            .any(|id| !self.cells.iter().any(|cell| cell.style == *id))
+            || self
+                .links
+                .keys()
+                .any(|id| !self.cells.iter().any(|cell| cell.link == *id))
+    }
     pub fn copy_text(&self) -> String {
         let end = self
             .cells

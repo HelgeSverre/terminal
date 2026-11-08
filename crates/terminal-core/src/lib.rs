@@ -591,7 +591,10 @@ impl Terminal {
                 && bottom == self.height - 1
                 && let Some(mut row) = removed
             {
-                if self.history_limit > 0 && self.history_byte_limit > 0 {
+                if self.history_limit > 0
+                    && self.history_byte_limit > 0
+                    && row.has_stale_resources()
+                {
                     Arc::make_mut(&mut row).compact_resources();
                 }
                 self.history_bytes += row.accounted_bytes();
