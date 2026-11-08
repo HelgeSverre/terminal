@@ -5,10 +5,10 @@
 [![CI](https://github.com/HelgeSverre/terminal/actions/workflows/ci.yml/badge.svg)](https://github.com/HelgeSverre/terminal/actions/workflows/ci.yml)
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-111113)
 ![Apple Silicon](https://img.shields.io/badge/Apple-Silicon-facc15)
-![Rust + Swift](https://img.shields.io/badge/Rust_%2B_Swift-Metal-222326)
+![Swift](https://img.shields.io/badge/Swift-Metal-222326)
 
 A native Apple Silicon terminal for macOS 15 or later. The terminal state and VT
-parser are written in Rust; AppKit owns windows and native text input, and Metal
+parser are written in Swift; AppKit owns windows and native text input, and Metal
 draws terminal cells through a CoreText glyph atlas. The default font is Obel
 Mono, bundled with regular/bold/italic faces under the SIL Open Font License.
 Bundled Symbols Nerd Font Mono supplies missing icon glyphs without changing
@@ -31,15 +31,17 @@ show rendering behavior; they do not establish performance.
 
 ## Build and run
 
-Requires Xcode (including the Metal compiler), rustup and `just`. The pinned Rust
-1.99.0 toolchain is installed automatically by rustup when needed.
+Requires Xcode (including the Metal compiler) and `just`. Build, test, Unicode
+data generation and distribution require no Rust toolchain or Cargo cache.
 
 ```sh
 just dev
 ```
 
 Run `just` to list the available workflows. The development bundle is
-`dist/Terminal.app`. `just build` builds without launching; `just verify` checks
+`dist/Terminal.app`. `just build` uses incremental compilation; `just release-build`
+uses whole-module optimization, as do install/package/release. Both build without
+launching. `just verify` checks
 the bundle and signature; `just debug` and `just logs` support diagnosis.
 The project Run action uses `just dev`. Development bundles are ad-hoc signed;
 Developer ID signing and notarization use the release workflow below.
@@ -57,7 +59,7 @@ running installed app requires closing it first, so its shells are preserved.
 A failed build keeps the installed copy. Only this app's bundle identifier is
 eligible for replacement or removal.
 When a matching notarized build exists, installation uses it automatically;
-otherwise it installs the development build.
+otherwise it installs the locally built optimized bundle.
 
 ## Packaging
 
@@ -101,13 +103,18 @@ new shells fall back to home. `just dev --working-directory /tmp` overrides it
 for that launch. The font-size number field supports Up/Down and native stepper
 buttons, bounded to 8–40 pt. Closing the last window quits the application and
 shuts down its terminal sessions. `TERM=xterm-256color` remains an explicit
-bring-up compatibility fallback. Clipboard control through OSC 52 is denied.
+bring-up compatibility fallback. OSC 52 clipboard reads are denied; writes require native permission and are bounded.
 
 ## Verify
 
 The native integration corpus also needs fish, Neovim, tmux and fzf:
 `brew install just fish neovim tmux fzf`. GitHub CI installs these and runs the
-Rust checks, native build, PTY/session/bridge tests and bundle verification.
+Swift syntax/source-graph checks, native build, PTY/session/bridge tests and bundle
+verification. `just fmt` formats hand-written Swift only; generated Unicode tables
+are excluded. `just lint` checks graph completeness and Swift/Ruby syntax without
+requiring a repository-wide formatting migration. Hosted Apple Paravirtual driver
+failures have a narrow recorded GPU skip; CPU glyph tests still run, and local
+real-GPU validation remains required.
 
 ```sh
 just test
@@ -117,7 +124,7 @@ just glyph-smoke   # Every Nerd Font glyph through all four styles and Metal
 just glyphs        # Print the full labeled glyph catalog for inspection
 just close-smoke   # Last-window close and Cmd+Q; app and PTY child must exit
 just idle
-just benchmark-core
+just terminfo-test # Bundled capabilities and parser behavior, including ACS
 just check       # Tests plus the real native smoke
 ```
 
@@ -130,8 +137,15 @@ Headless replay accepts arbitrary byte streams on stdin and outputs a semantic
 JSON snapshot, with replies on stderr:
 
 ```sh
-printf '\033[31mhello\033[0m\r\n' | cargo run --locked -p terminal-tools --bin terminal-tools -- 80 24
+printf '\033[31mhello\033[0m\r\n' | just replay 80 24
 ```
+
+The last Rust implementation is preserved on
+[`archive/rust-2026-11-08`](https://github.com/HelgeSverre/terminal/tree/archive/rust-2026-11-08)
+at `a7076261ad216658c6fd89d8dab5d756f75de5ca`. Historical comparisons can consume
+explicit frozen binaries; the active repository contains no Rust implementation.
+Pinned Unicode data, licenses and reproduction commands live in
+[tools/unicode](tools/unicode/README.md).
 
 See [the original spec](docs/spec.md), [platform decisions](docs/decisions.md),
 and [implementation status](docs/status.md). Reports contain actual local test

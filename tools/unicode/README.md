@@ -7,7 +7,8 @@ search lowercase deliberately retains the Rust baseline's Unicode17 policy.
 ## Unicode18 graphemes and terminal widths
 
 - `GraphemeBreakTest-18.0.0.txt` is a byte-for-byte copy of the existing 853-case
-  fixture, including its Unicode copyright and terms-of-use notice. SHA-256:
+  fixture, including its Unicode copyright and terms-of-use notice. Its license
+  is retained in `LICENSE-UNICODE`. SHA-256:
   `b0cf047ee94485bbdc846de2b902f5f8a815f6b674f9d04223cddadd91c9df31`.
 - `grapheme-ranges-18.0.0.txt` contains 1,626 ordered `lower;upper;category`
   records (hexadecimal scalar bounds) extracted from the pinned
