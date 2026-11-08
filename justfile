@@ -144,6 +144,7 @@ lint:
     just terminal-semantic-regression
     just terminal-boundary-regression
     just swift-unicode18-corpus
+    just terminal-width
     just swift-input-encoder
     just osc52-protocol
     xcrun clang -Wall -Wextra -Werror -I native -c native/tests/pty.c -o target/native/swift-pty-tests.o
@@ -242,8 +243,15 @@ swift-input-encoder:
 osc52-protocol:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print osc52_protocol) -framework Foundation -o target/native/osc52-protocol-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print osc52_protocol) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/osc52-protocol-tests
     target/native/osc52-protocol-tests
+
+[group('check')]
+terminal-width:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_width) -framework Foundation -o target/native/terminal-width-tests
+    target/native/terminal-width-tests
 
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
 [group('check')]

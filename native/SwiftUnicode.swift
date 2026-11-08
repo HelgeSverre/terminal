@@ -161,14 +161,20 @@ enum SwiftUnicode {
   /// Cell width for an already formed cluster. The terminal will clamp a
   /// non-empty printable cluster to at least one cell when placing it.
   static func cellWidth(of cluster: String) -> Int {
-    var width = 0
-    for scalar in cluster.unicodeScalars {
-      switch category(of: scalar) {
-      case .control, .cr, .lf, .extend, .zwj: continue
-      default: width = max(width, isWide(scalar) || category(of: scalar) == .extendedPictographic ? 2 : 1)
-      }
+    TerminalWidth.width(of: cluster)
+  }
+
+  // Mirrors the narrow no-base path in terminal-core::print. These scalars
+  // are intentionally consumed rather than made visible orphan cells; other
+  // zero-width scalars (notably combining marks and Prepend) remain placeable.
+  static func isDefaultIgnorable(_ scalar: Unicode.Scalar) -> Bool {
+    switch scalar.value {
+    case 0x200b...0x200f, 0x202a...0x202e, 0x2060...0x206f,
+         0xfe00...0xfe0f, 0xe0100...0xe01ef:
+      return true
+    default:
+      return false
     }
-    return width
   }
 
   static func category(of scalar: Unicode.Scalar) -> Category {

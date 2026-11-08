@@ -67,6 +67,7 @@ private final class SwiftTerminalCore {
   private var originMode = false
   private var leftRightMargins = false
   private var autoWrap = true
+  private var insertMode = false
   private var protectedOutput = false
   private var syncDeadline: UInt64?
   private var clock: UInt64 = 0
@@ -196,23 +197,7 @@ private final class SwiftTerminalCore {
           }
         }
       case .escape:
-        parser = .ground
-        switch byte {
-        case 0x5b: sequence = ""; parser = .csi
-        case 0x5d: sequence = ""; parser = .osc
-        case 0x5f: sequence = ""; parser = .apc
-        case 0x28: parser = .charset(0)
-        case 0x29: parser = .charset(1)
-        case 0x37: saveCursor()
-        case 0x38: restoreCursor()
-        case 0x44: lineFeed()
-        case 0x4d: reverseIndex()
-        case 0x45: carriageReturn(); lineFeed()
-        case 0x63: reset()
-        case 0x3d: applicationKeypad = true
-        case 0x3e: applicationKeypad = false
-        default: break
-        }
+        handleEscapedByte(byte)
       case .charset(let slot):
         parser = .ground
         if byte == 0x30 { charsetSpecial[slot] = true }
@@ -233,17 +218,32 @@ private final class SwiftTerminalCore {
         else if byte == 0x1b, sequence.utf8.count < 65_536 { sequence.append("\u{1b}") }
         else if byte == 0x1b { parser = .discardString(escaped: true, osc: true); sequence = "" }
         else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
-        else if sequence == "52;c;" { var decoder = OSC52Decoder(); _ = decoder.push(byte); parser = .osc52(decoder, escaped: false); sequence = "" }
-        else if sequence.utf8.count < 65_536 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
+        else if sequence.utf8.count < 65_536 {
+          sequence.unicodeScalars.append(UnicodeScalar(byte))
+          if sequence == "52;c;" {
+            parser = .osc52(OSC52Decoder(acceptingWrites: pendingClipboardRequests.count < 4), escaped: false)
+            sequence = ""
+          }
+        }
         else { parser = .discardString(escaped: false, osc: true); sequence = "" }
-      case .osc52(var decoder, let escaped):
+      case .osc52(let decoder, let escaped):
         if byte == 0x18 || byte == 0x1a { parser = .ground }
         else if byte == 0x07 || (escaped && byte == 0x5c) {
-          if let data = decoder.finish() { enqueueClipboard(data) }
+          switch decoder.finish() {
+          case .write(let data): enqueueClipboard(data)
+          case .query: replies.append(Data("\u{1b}]52;c;\u{1b}\\".utf8))
+          case .reject: break
+          }
           parser = .ground
         } else if byte == 0x1b { parser = .osc52(decoder, escaped: true) }
+        else if escaped {
+          // An ESC that is not ST abandons OSC 52. The following byte is the
+          // first byte of a fresh escape sequence, matching the streaming
+          // parser rather than treating it as encoded payload.
+          parser = .escape
+          handleEscapedByte(byte)
+        }
         else {
-          if escaped { _ = decoder.push(0x1b) }
           _ = decoder.push(byte)
           parser = .osc52(decoder, escaped: false)
         }
@@ -263,9 +263,33 @@ private final class SwiftTerminalCore {
     }
     return limit
   }
+  private func handleEscapedByte(_ byte: UInt8) {
+    parser = .ground
+    switch byte {
+    case 0x5b: sequence = ""; parser = .csi
+    case 0x5d: sequence = ""; parser = .osc
+    case 0x5f: sequence = ""; parser = .apc
+    case 0x28: parser = .charset(0)
+    case 0x29: parser = .charset(1)
+    case 0x37: saveCursor()
+    case 0x38: restoreCursor()
+    case 0x44: lineFeed()
+    case 0x4d: reverseIndex()
+    case 0x45: carriageReturn(); lineFeed()
+    case 0x63: reset()
+    case 0x3d: applicationKeypad = true
+    case 0x3e: applicationKeypad = false
+    case 0x1b: parser = .escape
+    default: break
+    }
+  }
   private func put(_ text: String) {
     var s = screen
     guard let scalar = text.unicodeScalars.first else { return }
+    switch SwiftUnicode.category(of: scalar) {
+    case .control, .cr, .lf: return
+    default: break
+    }
     let startsCluster = segmenter.push(scalar)
     if !startsCluster, let owner = clusterOwner, owner.row == s.cursorRow,
        s.rows[owner.row].cells.indices.contains(owner.column) {
@@ -275,10 +299,39 @@ private final class SwiftTerminalCore {
       } else {
         s.rows[owner.row].cells[owner.column].text.append(text)
         let combined = s.rows[owner.row].cells[owner.column].text
-        if SwiftUnicode.cellWidth(of: combined) == 2, cell.kind == 1, owner.column + 1 < columns {
-          s.rows[owner.row].cells[owner.column].kind = 2
-          s.rows[owner.row].cells[owner.column + 1] = SwiftCell(text: "", kind: 3, style: cell.style, link: cell.link, flags: cell.flags, protected: cell.protected)
-          if s.cursorColumn == owner.column + 1 { s.cursorColumn += 1 }
+        let nominal = min(2, max(1, SwiftUnicode.cellWidth(of: combined)))
+        let oldWidth = cell.kind == 2 ? 2 : 1
+        let right = writeBounds(owner.column).right
+        if nominal > oldWidth && owner.column + nominal > right + 1 && autoWrap {
+          document.erase(&s, row: owner.row, columns: owner.column..<(owner.column + oldWidth), style: cell.style.erased())
+          if writeBounds(owner.column).left == 0 && right == columns - 1 {
+            s.rows[owner.row].cells[owner.column].kind = 4
+          }
+          s.cursorRow = owner.row; s.cursorColumn = owner.column; s.pendingWrap = true
+          wrap(&s)
+          let row = s.cursorRow, column = s.cursorColumn
+          let newRight = writeBounds(column).right
+          let occupied = min(nominal, newRight + 1 - column)
+          document.erase(&s, row: row, columns: column..<(column + occupied), style: cell.style.erased())
+          s.rows[row].cells[column] = SwiftCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1, style: cell.style, link: cell.link, flags: cell.flags | (nominal > occupied ? 1 : 0), protected: cell.protected)
+          if nominal == 2 && occupied == 2 { s.rows[row].cells[column + 1] = SwiftCell(text: "", kind: 3, style: cell.style, link: cell.link, flags: cell.flags, protected: cell.protected) }
+          clusterOwner = (row, column)
+          let reachesPastRight = column + occupied > newRight
+          s.cursorColumn = min(newRight, column + occupied); s.pendingWrap = reachesPastRight && autoWrap
+        } else {
+          let occupied = min(nominal, right + 1 - owner.column)
+          if occupied > oldWidth && insertMode {
+            let margins = horizontalMargins
+            if (margins.left...margins.right).contains(owner.column) {
+              document.shift(&s, row: owner.row, column: owner.column + oldWidth, right: margins.right,
+                             count: occupied - oldWidth, inserting: true, eraseStyle: cell.style.erased())
+            }
+          }
+          document.erase(&s, row: owner.row, columns: owner.column..<(owner.column + max(oldWidth, occupied)), style: cell.style.erased())
+          s.rows[owner.row].cells[owner.column] = SwiftCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1, style: cell.style, link: cell.link, flags: cell.flags | (nominal > occupied ? 1 : 0), protected: cell.protected)
+          if nominal == 2 && occupied == 2 { s.rows[owner.row].cells[owner.column + 1] = SwiftCell(text: "", kind: 3, style: cell.style, link: cell.link, flags: cell.flags, protected: cell.protected) }
+          let reachesPastRight = owner.column + occupied > right
+          s.cursorRow = owner.row; s.cursorColumn = min(right, owner.column + occupied); s.pendingWrap = reachesPastRight && autoWrap
         }
         lastPrinted = combined
       }
@@ -287,12 +340,7 @@ private final class SwiftTerminalCore {
     clusterOwner = nil
     let measuredWidth = SwiftUnicode.cellWidth(of: text)
     if measuredWidth == 0 {
-      if text.unicodeScalars.allSatisfy({ scalar in
-        switch SwiftUnicode.category(of: scalar) {
-        case .control, .cr, .lf: return true
-        default: return false
-        }
-      }) { return }
+      if SwiftUnicode.isDefaultIgnorable(scalar) { resetClusterBoundary(); return }
       if startsCluster {
         // An orphan combining/default-ignorable scalar is a visible one-cell
         // terminal glyph after a movement boundary.
@@ -326,6 +374,13 @@ private final class SwiftTerminalCore {
     let right = writeBounds(s.cursorColumn).right
     let occupied = min(width, right + 1 - s.cursorColumn)
     if occupied <= 0 { return }
+    if insertMode {
+      let margins = horizontalMargins
+      if (margins.left...margins.right).contains(s.cursorColumn) {
+        document.shift(&s, row: s.cursorRow, column: s.cursorColumn, right: margins.right,
+                       count: occupied, inserting: true, eraseStyle: eraseStyle())
+      }
+    }
     document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<(s.cursorColumn + occupied), style: eraseStyle())
     let truncatedWide = width == 2 && occupied < width
     let placedColumn = s.cursorColumn
@@ -382,7 +437,7 @@ private final class SwiftTerminalCore {
   private func reverseIndex() { var s = screen; s.pendingWrap = false; index(&s, reverse: true, allowHistory: false); screen = s; changed() }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
-  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); historyByteCount = 0; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
+  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); historyByteCount = 0; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
   private func parameters(_ raw: String) -> [Int] { raw.split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 } }
   private func handleCSI(_ raw: String, final: Character) {
     if !["m", "n", "c", "u"].contains(final) { resetClusterBoundary() }
@@ -515,10 +570,14 @@ private final class SwiftTerminalCore {
       case 7: pen.flags |= 8
       case 8: pen.flags |= 16
       case 9: pen.flags |= 32
+      case 53: pen.flags |= 64
       case 22: pen.flags &= ~UInt16(3)
       case 23: pen.flags &= ~UInt16(4)
       case 24: pen.underlineKind = 0
       case 27: pen.flags &= ~UInt16(8)
+      case 25: pen.flags &= ~UInt16(128)
+      case 29: pen.flags &= ~UInt16(32)
+      case 55: pen.flags &= ~UInt16(64)
       case 30...37: pen.foreground = 0x0100_0000 | UInt32(code - 30)
       case 39: pen.foreground = 0
       case 40...47: pen.background = 0x0100_0000 | UInt32(code - 40)
@@ -562,6 +621,7 @@ private final class SwiftTerminalCore {
   }
   private func setMode(_ params: [Int], enabled: Bool, privateMode: Bool) -> Bool {
     var changedActiveScreen = false
+    if !privateMode && params.contains(4) { insertMode = enabled }
     for mode in params where privateMode {
       switch mode {
       case 1: applicationCursor = enabled
@@ -591,7 +651,7 @@ private final class SwiftTerminalCore {
     return changedActiveScreen
   }
   private func softReset() {
-    originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false
+    originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false
     pen = SwiftStyle(); currentLink = nil; applicationCursor = false; applicationKeypad = false
     bracketedPaste = false; focusReporting = false; syncDeadline = nil
     var s = screen; s.topMargin = 0; s.bottomMargin = rowCount - 1; s.cursorRow = 0; s.cursorColumn = 0; s.pendingWrap = false; screen = s
@@ -604,16 +664,6 @@ private final class SwiftTerminalCore {
       guard let command = parts.first else { return }
       if command == "0" || command == "2" { title = parts.dropFirst().joined(separator: ";") }
       else if command == "8" { currentLink = parts.count > 2 ? String(parts.dropFirst(2).joined(separator: ";")) : nil }
-      else if command == "52", parts.count >= 3 {
-        let encoded = parts.dropFirst(2).joined(separator: ";")
-        if encoded != "?", let data = Data(base64Encoded: encoded),
-           String(data: data, encoding: .utf8) != nil, data.count <= 1_048_576 {
-          let requestID = nextClipboardRequestID
-          nextClipboardRequestID &+= 1
-          pendingClipboardRequests.insert(requestID)
-          clipboardRequests.append((requestID, data))
-        }
-      }
       else if command == "133" {
         let marker = parts.dropFirst().first
         var current = screen
@@ -650,9 +700,14 @@ private final class SwiftTerminalCore {
     }
   }
   private func enqueueClipboard(_ data: Data) {
-    guard data.count <= OSC52Decoder.maximumDecodedBytes else { return }
-    let requestID = nextClipboardRequestID
-    nextClipboardRequestID &+= 1
+    guard data.count <= OSC52Decoder.maximumDecodedBytes, pendingClipboardRequests.count < 4 else { return }
+    var requestID = nextClipboardRequestID
+    repeat {
+      nextClipboardRequestID &+= 1
+      if nextClipboardRequestID == 0 { nextClipboardRequestID = 1 }
+      if requestID != 0 && !pendingClipboardRequests.contains(requestID) { break }
+      requestID = nextClipboardRequestID
+    } while true
     pendingClipboardRequests.insert(requestID)
     clipboardRequests.append((requestID, data))
   }
@@ -791,7 +846,8 @@ private final class SwiftTerminalCore {
   }
   func finish() {
     flushText(final: true)
-    if case .osc52(var decoder, escaped: _) = parser, let data = decoder.finish() { enqueueClipboard(data) }
+    // OSC 52 writes require BEL/ST framing. EOF is an abort, never an
+    // implicit successful terminator.
     parser = .ground
   }
   var hasPendingWork: Bool { repeatRemaining > 0 }
@@ -884,7 +940,7 @@ private final class SwiftTerminalCore {
     let cursor = screen
     let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(cell.style.foreground), "background": colorJSON(cell.style.background), "underline_color": colorJSON(cell.style.underline), "underline": Int(cell.style.underlineKind), "bold": cell.style.flags & 1 != 0, "faint": cell.style.flags & 2 != 0, "italic": cell.style.flags & 4 != 0, "inverse": cell.style.flags & 8 != 0, "conceal": cell.style.flags & 16 != 0, "strike": cell.style.flags & 32 != 0, "overline": cell.style.flags & 64 != 0, "blink": cell.style.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
     let images = graphics.visible(alternate: usingAlternate).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
-    let data: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":usingAlternate || viewAnchor == nil,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":Int(cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":false,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
+    let data: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":searchHighlights,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":usingAlternate || viewAnchor == nil,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"rows":rows,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursorVisible,"shape":Int(cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":0,"newline":false,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":false],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette(),"default_fg":[230,230,230],"default_bg":[10,10,11]]
     return (try? JSONSerialization.data(withJSONObject: data)) ?? Data("{}".utf8)
   }
   private func colorJSON(_ color: UInt32) -> Any { if color >> 24 == 1 { return ["Indexed": Int(color & 255)] }; if color >> 24 == 2 { return ["Rgb": [Int((color >> 16) & 255), Int((color >> 8) & 255), Int(color & 255)]] }; return "Default" }
@@ -925,7 +981,15 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
 @_cdecl("terminal_take_clipboard_requests") func swift_terminal_take_clipboard_requests(_ pointer: OpaquePointer?, _ context: UnsafeMutableRawPointer?, _ callback: ClipboardCallback?) {
   guard let callback else { return }
   for (requestID, data) in core(pointer)?.takeClipboardRequests() ?? [] {
-    data.withUnsafeBytes { callback(context, requestID, $0.bindMemory(to: UInt8.self).baseAddress, data.count) }
+    if data.isEmpty {
+      // Rust's Vec::as_ptr is non-null even for an empty write. Preserve that
+      // ABI convenience for hosts whose callback validates the pointer before
+      // observing the zero length.
+      var sentinel: UInt8 = 0
+      withUnsafePointer(to: &sentinel) { callback(context, requestID, $0, 0) }
+    } else {
+      data.withUnsafeBytes { callback(context, requestID, $0.bindMemory(to: UInt8.self).baseAddress, data.count) }
+    }
   }
 }
 @_cdecl("terminal_complete_clipboard_request") func swift_terminal_complete_clipboard_request(_ pointer: OpaquePointer?, _ requestID: UInt64) -> Bool { core(pointer)?.completeClipboardRequest(requestID) ?? false }
