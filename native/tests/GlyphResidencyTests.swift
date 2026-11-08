@@ -28,7 +28,7 @@ final class RendererMetrics {
       fflush(stderr)
       exit(2)
     }
-    fputs("GLYPH_RESIDENCY_DEVICE=name=\(device.name) registry_id=\(device.registryID) unified=\(device.hasUnifiedMemory) low_power=\(device.isLowPower) headless=\(device.isHeadless) max_buffer=\(device.maxBufferLength)\n", stderr)
+    fputs("GLYPH_RESIDENCY_DEVICE=name=\(device.name) registry_id=\(device.registryID) unified=\(device.hasUnifiedMemory) low_power=\(device.isLowPower) headless=\(device.isHeadless) max_buffer=\(device.maxBufferLength) apple2=\(device.supportsFamily(.apple2)) mac2=\(device.supportsFamily(.mac2)) metal3=\(device.supportsFamily(.metal3))\n", stderr)
     fflush(stderr)
     checkpoint("before_heap_texture_size_and_align")
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
@@ -36,6 +36,15 @@ final class RendererMetrics {
     descriptor.storageMode = .shared; descriptor.usage = .shaderRead
     let onePage = Int(device.heapTextureSizeAndAlign(descriptor: descriptor).size)
     checkpoint("after_heap_texture_size_and_align")
+    let capabilityHeap = MTLHeapDescriptor()
+    capabilityHeap.storageMode = .shared
+    capabilityHeap.size = onePage
+    checkpoint("before_probe_make_heap")
+    guard let heap = device.makeHeap(descriptor: capabilityHeap) else { fatalError("probe heap unavailable") }
+    checkpoint("after_probe_make_heap")
+    checkpoint("before_probe_make_heap_texture")
+    guard heap.makeTexture(descriptor: descriptor) != nil else { fatalError("probe heap texture unavailable") }
+    checkpoint("after_probe_make_heap_texture")
     // Permit exactly one page plus alignment slack, forcing reclaim rather
     // than second-page growth.
     let budget = onePage + max(4096, onePage / 16)
