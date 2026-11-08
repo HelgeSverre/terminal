@@ -36,6 +36,9 @@ Implemented and locally exercised:
   boundary. Width reflow clears only the marked prompt suffix before the shell
   redraws, preserving earlier output; unmarked prompts and inactive primary
   contents remain intact. Command–K rebases the prompt boundary.
+  Screen-local prompt phase distinguishes drawing (A) from input readiness (B),
+  while preserving existing prompt-region semantics. Both snapshot paths expose
+  the derived readiness value; missing legacy metadata remains unknown.
 - AppKit text-input callbacks, selection/copy, paste, mouse/focus, local history,
   basic literal search, windows/tabs/nested splits and font size controls.
 - Minimal pane-only content with Obel Mono; geometric block and common box glyphs.
@@ -106,6 +109,10 @@ Current automated evidence:
   AppKit Shift/Command events in legacy and Kitty all-keys modes. Separate real
   Session/PTY tests verify anchored history, legacy shifted bytes, typed metadata
   admission and write bounds. These are not hardware keyboard-layout tests.
+- Startup automation waits for the OSC 133 B marker rather than prompt drawing
+  or a fixed startup delay. A private-ZDOTDIR real Zsh fixture uses a nonblocking
+  FIFO handshake to hold A, then release B and verify exact executed output.
+  Editing smoke also waits for the visible prompt before recording its cursor.
 - `reports/native-smoke.json`: actual macOS 15.6 text input, PTY, Unicode/SGR,
   marked-text callback commit, guarded preedit cancellation on resize/focus,
   resize, split and Metal submission checks. Session tests exercise native
@@ -160,11 +167,11 @@ Current automated evidence:
 
 Required work remaining before the requested completion gate:
 
-- Diagnose an intermittent native-smoke startup stall: one combined-build run
-  timed out at its first scripted command, while an unchanged rerun passed.
-  The failed count-only report is retained in the worktree-cleanup artifact archive.
-  Prompt readiness and scripted input ordering need investigation before this
-  development milestone can be called stable.
+- Broaden startup stability testing. One earlier combined-build native smoke
+  timed out at its first command and an unchanged rerun passed. The former A/B
+  readiness ambiguity is now removed and the controlled handshake plus native
+  smoke pass; the original timeout's exact cause remains unproven. Its failed
+  count-only report remains in the worktree-cleanup artifact archive.
 - Broaden rapid nested-resize validation. The marked prompt-boundary fix passes
   focused prefix/wrap/eviction/alternate-screen regressions and the controlled
   Starship/ZLE fixture. The latter uses a fixture-owned WINCH redraw hook; broader

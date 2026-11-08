@@ -743,7 +743,8 @@ impl Terminal {
         };
         let images = self.image_placements(scroll);
         Some(Snapshot {
-            at_prompt: self.screen().at_prompt,
+            at_prompt: self.screen().prompt_phase.at_prompt(),
+            input_ready: self.screen().prompt_phase.input_ready(),
             search: self.search_highlights(scroll),
             images,
             revision: self.revision,

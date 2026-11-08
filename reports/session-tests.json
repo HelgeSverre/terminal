@@ -1,5 +1,5 @@
 {
-  "cancel_to_reap_seconds" : 0.0020430088043212891,
+  "cancel_to_reap_seconds" : 0.00052392482757568359,
   "checks" : {
     "cancel_close_under_three_seconds" : true,
     "closed_focus_and_key_releases_are_quiet" : true,
@@ -29,7 +29,9 @@
     "typed_legacy_metadata_rejected" : true,
     "typed_metadata_rejected" : true,
     "typing_follows_tail" : true,
-    "viewport_scroll_anchored" : true
+    "viewport_scroll_anchored" : true,
+    "zsh_startup_gate_blocks_a" : true,
+    "zsh_startup_input_admitted_after_b" : true
   },
   "passed" : true,
   "statuses" : [

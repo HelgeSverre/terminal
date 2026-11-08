@@ -422,6 +422,7 @@ fn packed_color(color: crate::model::Color) -> u32 {
 #[derive(serde::Serialize)]
 struct SnapshotHeader<'a> {
     at_prompt: bool,
+    input_ready: bool,
     search: &'a [crate::search::SearchHighlight],
     images: &'a [crate::graphics::ImagePlacement],
     revision: u64,
@@ -532,6 +533,7 @@ fn publish_snapshot(
 ) -> bool {
     let header = SnapshotHeader {
         at_prompt: snapshot.at_prompt,
+        input_ready: snapshot.input_ready,
         search: &snapshot.search,
         images: &snapshot.images,
         revision: snapshot.revision,

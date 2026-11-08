@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 @main struct SessionTests {
@@ -8,10 +9,16 @@ import Foundation
         executable: "/bin/sh", arguments: ["/bin/sh", "-c", script], cwd: "/tmp",
         launcher: root + "/dist/Terminal.app/Contents/MacOS/TerminalLauncher")
     }
+    func zshSpec() -> LaunchSpec {
+      LaunchSpec(
+        executable: "/bin/zsh", arguments: ["/bin/zsh", "-l"], cwd: "/tmp",
+        launcher: root + "/dist/Terminal.app/Contents/MacOS/TerminalLauncher")
+    }
     var checks = Dictionary(
       uniqueKeysWithValues: [
         "input_admitted_for_ordered_output", "input_before_mode_suffix_is_unbracketed",
         "input_after_accepted_output_is_bracketed", "ordered_mode_encoding_after_rep",
+        "zsh_startup_gate_blocks_a", "zsh_startup_input_admitted_after_b",
         "physical_key_reaches_pty",
         "modifier_keys_preserve_anchored_viewport",
         "typed_metadata_rejected", "typed_legacy_metadata_rejected", "expanded_key_write_rejected",
@@ -86,6 +93,85 @@ import Foundation
     while !done && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
     checks["rep_completed"] = done
     ordered.close()
+    // The launcher wraps this normal login zsh in its bundled integration. A
+    // private FIFO blocks only its first line-init, making the real A -> B
+    // transition observable without sleeping or reading user configuration.
+    let privateZdotdir = FileManager.default.temporaryDirectory
+      .appendingPathComponent("terminal-zsh-ready-\(UUID().uuidString)", isDirectory: true)
+    let releaseFIFO = privateZdotdir.appendingPathComponent("line-init-release")
+    let previousZdotdir = ProcessInfo.processInfo.environment["ZDOTDIR"]
+    try! FileManager.default.createDirectory(at: privateZdotdir, withIntermediateDirectories: true)
+    precondition(mkfifo(releaseFIFO.path, 0o600) == 0)
+    let fifo = open(releaseFIFO.path, O_RDWR | O_NONBLOCK)
+    precondition(fifo >= 0)
+    let quotedFIFO = "'" + releaseFIFO.path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    try! """
+      HISTFILE=/dev/null
+      HISTSIZE=0
+      SAVEHIST=0
+      PROMPT='READY> '
+      autoload -Uz add-zle-hook-widget
+      typeset -g _terminal_ready_fifo=\(quotedFIFO)
+      typeset -g _terminal_ready_fixture_waited=0
+      function _terminal_ready_fixture_gate() {
+        if (( ! _terminal_ready_fixture_waited )); then
+          _terminal_ready_fixture_waited=1
+          IFS= read -r _terminal_ready_release < "$_terminal_ready_fifo"
+        fi
+      }
+      add-zle-hook-widget line-init _terminal_ready_fixture_gate
+      """.write(to: privateZdotdir.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8)
+    setenv("ZDOTDIR", privateZdotdir.path, 1)
+    defer {
+      close(fifo)
+      if let previousZdotdir { setenv("ZDOTDIR", previousZdotdir, 1) }
+      else { unsetenv("ZDOTDIR") }
+      try? FileManager.default.removeItem(at: privateZdotdir)
+    }
+    let readyShell = Session(launch: zshSpec())
+    var sawDrawing = false
+    var sawReady = false
+    var startupCommandAttempts = 0
+    var admittedAtA = false
+    var releaseSent = false
+    var startupDone = false
+    let outputMarker = "ZSH_STARTUP_GATE_OK"
+    func admitStartupCommand(after snapshot: TerminalSnapshot) -> Bool {
+      guard snapshot.input_ready == true else { return false }
+      startupCommandAttempts += 1
+      return readyShell.input("printf '%s%s\\n' ZSH_STARTUP_GATE_ OK\r")
+    }
+    readyShell.onSnapshot = { snapshot in
+      if snapshot.at_prompt && snapshot.input_ready != true {
+        sawDrawing = true
+        // The startup gate observes A but admits nothing until the later B.
+        admittedAtA = admitStartupCommand(after: snapshot)
+        if !releaseSent {
+          let release = Array("go\n".utf8)
+          releaseSent = release.withUnsafeBytes {
+            Darwin.write(fifo, $0.baseAddress, $0.count) == release.count
+          }
+        }
+      }
+      if snapshot.input_ready == true && releaseSent {
+        sawReady = true
+        if startupCommandAttempts == 0 {
+          checks["zsh_startup_input_admitted_after_b"] = admitStartupCommand(after: snapshot)
+        }
+      }
+      startupDone = snapshot.rows.map { row in
+        row.cells.map { $0.text }.joined().trimmingCharacters(in: .whitespaces)
+      }.contains(outputMarker)
+    }
+    let zshDeadline = Date().addingTimeInterval(5)
+    while !startupDone && Date() < zshDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["zsh_startup_input_admitted_after_b"] =
+      checks["zsh_startup_input_admitted_after_b"] == true && startupDone
+    checks["zsh_startup_gate_blocks_a"] =
+      sawDrawing && releaseSent && sawReady && !admittedAtA && startupCommandAttempts == 1
+    readyShell.close()
     // Exercise the full typed physical-key queue and PTY write path. Mapping
     // tests alone cannot detect accidentally sending the unshifted logical key
     // to a legacy program.

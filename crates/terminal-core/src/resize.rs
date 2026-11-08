@@ -50,7 +50,7 @@ impl Terminal {
         let prompt_start_source = prompt_start.map(|(row, col)| (old_start + row, col));
         if !self.is_alternate
             && cols != old_cols
-            && self.primary.at_prompt
+            && self.primary.prompt_phase.at_prompt()
             && self.primary.prompt_redraw
             && let Some((prompt_start, prompt_col)) = prompt_start
         {

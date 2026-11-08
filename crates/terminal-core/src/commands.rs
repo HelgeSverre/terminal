@@ -436,7 +436,7 @@ impl Terminal {
         }
     }
     fn clear_active(&mut self) {
-        self.screen_mut().at_prompt = false;
+        self.screen_mut().prompt_phase = PromptPhase::Inactive;
         self.screen_mut().prompt_redraw = false;
         self.screen_mut().prompt_start = None;
         self.screen_epoch += 1;
@@ -466,6 +466,9 @@ impl Terminal {
         s.cursor.pending_wrap = false;
         s.cursor.shape = 0;
         for s in [&mut self.primary, &mut self.alternate] {
+            s.prompt_phase = PromptPhase::Inactive;
+            s.prompt_redraw = false;
+            s.prompt_start = None;
             s.horizontal_margins = (0, cols - 1);
             s.keyboard.clear();
             s.keyboard_flags = 0;
@@ -637,7 +640,7 @@ impl Terminal {
             "133" => match value.split(';').next() {
                 Some("A") => {
                     let screen = self.screen_mut();
-                    screen.at_prompt = true;
+                    screen.prompt_phase = PromptPhase::Drawing;
                     screen.prompt_redraw =
                         value.split(';').skip(1).any(|option| option == "redraw=1");
                     screen.prompt_start =
@@ -647,9 +650,9 @@ impl Terminal {
                             pending_wrap: screen.cursor.pending_wrap,
                         });
                 }
-                Some("B") => self.screen_mut().at_prompt = true,
+                Some("B") => self.screen_mut().prompt_phase = PromptPhase::InputReady,
                 Some("C" | "D") => {
-                    self.screen_mut().at_prompt = false;
+                    self.screen_mut().prompt_phase = PromptPhase::Inactive;
                     self.screen_mut().prompt_redraw = false;
                     self.screen_mut().prompt_start = None;
                 }

@@ -25,7 +25,7 @@ impl Terminal {
         self.search_hit = None;
         self.viewport = Viewport::FollowTail;
         self.graphics.clear_from_host(false);
-        let prompt = self.primary.at_prompt;
+        let prompt = self.primary.prompt_phase.at_prompt();
         if prompt {
             for index in 0..self.height {
                 let row = self.blank();

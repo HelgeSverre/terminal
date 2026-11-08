@@ -90,11 +90,14 @@ final class ImagePixels: @unchecked Sendable {
 private final class ImageCapture { var data: Data? }
 struct TerminalSnapshot: Decodable {
   let at_prompt: Bool
+  // Older experimental snapshot metadata did not include this field. A missing
+  // value is unknown, and therefore must not admit scripted startup input.
+  let input_ready: Bool?
   let search: [SearchHighlight]
   let images: [ImagePlacementSnapshot]
   var imagePixels: [ImageKey: ImagePixels] = [:]
   enum CodingKeys: String, CodingKey {
-    case at_prompt, search, images, revision, geometry_epoch, document_epoch, history_epoch, screen_epoch,
+    case at_prompt, input_ready, search, images, revision, geometry_epoch, document_epoch, history_epoch, screen_epoch,
       scroll_offset, following_tail, viewport_clamp_revision, cols, rows, cursor, modes, alternate, title,
       history_rows, palette, default_fg, default_bg
   }

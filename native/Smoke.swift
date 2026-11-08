@@ -40,6 +40,7 @@ import Darwin
       "split_resize_drops_stale_frames",
       "split_resize_layer_placement_configured",
       "completed_without_timeout", "accessibility_text_ranges",
+      "startup_input_ready",
       "native_keypad_enter",
       "pane_focus_consistent", "settings_window",
       "preedit_cancelled_on_resize", "preedit_cancelled_on_focus", "cancel_did_not_commit_preedit",
@@ -59,6 +60,9 @@ import Darwin
   var geometryMismatchedPresents: UInt64 = 0
   var geometryMismatchedDrawables: UInt64 = 0
   var geometryDroppedStaleFrames: UInt64 = 0
+  var startupSnapshots = 0
+  var startupPromptSnapshots = 0
+  var startupReadySnapshots = 0
   init(window: TerminalWindow, path: String) {
     controller = window
     self.path = path
@@ -66,7 +70,7 @@ import Darwin
   static func start(window: TerminalWindow, path: String) {
     let test = NativeSmokeTest(window: window, path: path)
     active = test
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { test.run() }
+    DispatchQueue.main.async { test.run() }
     DispatchQueue.main.asyncAfter(deadline: .now() + (test.idle ? 80 : 12)) {
       if active != nil { test.finish(timedOut: true) }
     }
@@ -121,7 +125,11 @@ import Darwin
   }
   func observe(_ snapshot: TerminalSnapshot) {
     if phase == -1 {
-      guard snapshot.at_prompt && snapshot.modes.bracketed_paste else { return }
+      startupSnapshots += 1
+      if snapshot.at_prompt { startupPromptSnapshots += 1 }
+      if snapshot.input_ready == true { startupReadySnapshots += 1 }
+      guard snapshot.input_ready == true && snapshot.modes.bracketed_paste else { return }
+      checks["startup_input_ready"] = true
       if let pane = controller.panes.first {
         checks["modifier_keys_preserve_selection"] = modifierKeysPreserveSelection(pane)
       }
@@ -378,6 +386,10 @@ import Darwin
     // executes the semicolon-terminated command twice and must fail this check.
     checks["ime_commit_once"] = maximumIMEMarkerLines == 1
     measurements["maximum_ime_output_marker_lines"] = maximumIMEMarkerLines
+    measurements["startup_snapshot_count"] = startupSnapshots
+    measurements["startup_prompt_snapshot_count"] = startupPromptSnapshots
+    measurements["startup_input_ready_snapshot_count"] = startupReadySnapshots
+    measurements["startup_timeout_phase"] = phase
     if let pane = controller.panes.first {
       let visible = pane.accessibilityVisibleCharacterRange()
       let first = pane.accessibilityRange(for: 0)

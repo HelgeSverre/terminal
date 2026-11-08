@@ -95,20 +95,30 @@ fn alternate_clear_does_nothing_including_retained_primary_view_and_graphics() {
     assert_eq!(returned.scroll_offset, primary.scroll_offset);
 }
 #[test]
-fn command_markers_leave_prompt_and_reset_clears_prompt_identity() {
+fn osc133_prompt_phase_requires_line_init_and_resets_on_command_or_reset() {
     let mut t = Terminal::new(8, 2).unwrap();
-    for (marker, at_prompt) in [
-        ("A", true),
-        ("B", true),
-        ("C", false),
-        ("D;0", false),
-        ("A;k=v", true),
+    for (marker, at_prompt, input_ready) in [
+        ("A", true, false),
+        ("B", true, true),
+        ("C", false, false),
+        ("A;k=v", true, false),
+        ("B", true, true),
+        ("D;0", false, false),
     ] {
         feed(&mut t, &format!("\x1b]133;{marker}\x07"));
-        assert_eq!(t.snapshot(0).unwrap().at_prompt, at_prompt);
+        let snapshot = t.snapshot(0).unwrap();
+        assert_eq!(snapshot.at_prompt, at_prompt);
+        assert_eq!(snapshot.input_ready, input_ready);
     }
+    feed(&mut t, "\x1b]133;A\x07\x1b]133;B\x07\x1b[?1049h");
+    let alternate = t.snapshot(0).unwrap();
+    assert!(!alternate.at_prompt && !alternate.input_ready);
+    feed(&mut t, "\x1b[?1049l");
+    let primary = t.snapshot(0).unwrap();
+    assert!(primary.at_prompt && primary.input_ready);
     feed(&mut t, "\x1bc");
-    assert!(!t.snapshot(0).unwrap().at_prompt);
+    let reset = t.snapshot(0).unwrap();
+    assert!(!reset.at_prompt && !reset.input_ready);
     assert!(!t.primary.prompt_redraw);
     assert!(t.primary.prompt_start.is_none());
 }

@@ -24,6 +24,7 @@ import Foundation
       }
       precondition(value.rows == legacy.rows, "cell layout/text/color/style/link/wrap mismatch")
       precondition(value.at_prompt == legacy.at_prompt)
+      precondition(value.input_ready == legacy.input_ready)
       precondition(value.search == legacy.search)
       precondition(value.images == legacy.images && value.cursor == legacy.cursor)
       precondition(value.modes == legacy.modes && value.alternate == legacy.alternate)
@@ -39,6 +40,22 @@ import Foundation
       return value
     }
     _ = try check()
+    // Old experimental metadata did not have a readiness field. Preserve that
+    // as unknown so automation cannot mistake an old A-only snapshot for B.
+    feed("\u{1b}]133;A\u{7}")
+    let drawing = try check()
+    precondition(drawing.at_prompt && drawing.input_ready == false)
+    feed("\u{1b}]133;B\u{7}")
+    let inputReady = try check()
+    precondition(inputReady.at_prompt && inputReady.input_ready == true)
+    guard let readyJSON = terminal_snapshot(core, 0, 0) else { fatalError("ready snapshot") }
+    var oldMetadata = try JSONSerialization.jsonObject(
+      with: Data(bytes: readyJSON, count: strlen(readyJSON))) as! [String: Any]
+    terminal_string_free(readyJSON)
+    oldMetadata.removeValue(forKey: "input_ready")
+    let oldSnapshot = try JSONDecoder().decode(
+      TerminalSnapshot.self, from: JSONSerialization.data(withJSONObject: oldMetadata))
+    precondition(oldSnapshot.at_prompt && oldSnapshot.input_ready == nil)
     feed("\u{1b}[1;2;3;4:3;5;7;8;9;53;38;2;12;34;56;48;5;196;58;2;90;80;70m")
     feed("\u{1b}]8;;https://example.test/a\u{1b}\\A👩🏽‍💻é猫")
     let styled = try check()

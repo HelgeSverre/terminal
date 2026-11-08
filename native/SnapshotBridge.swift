@@ -5,6 +5,7 @@ import Foundation
 enum SnapshotBridge {
   private struct Header: Decodable {
     let at_prompt: Bool
+    let input_ready: Bool?
     let search: [SearchHighlight]
     let images: [ImagePlacementSnapshot]
     let revision: UInt64
@@ -97,6 +98,7 @@ enum SnapshotBridge {
         }
         capture.snapshot = TerminalSnapshot(
           at_prompt: header.at_prompt,
+          input_ready: header.input_ready,
           search: header.search,
           images: header.images, revision: header.revision, geometry_epoch: header.geometry_epoch,
           document_epoch: header.document_epoch, history_epoch: header.history_epoch,

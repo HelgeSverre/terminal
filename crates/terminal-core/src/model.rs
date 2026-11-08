@@ -445,9 +445,24 @@ pub struct PromptAnchor {
     /// full row. That boundary must not be confused with the row's last cell.
     pub pending_wrap: bool,
 }
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PromptPhase {
+    #[default]
+    Inactive,
+    Drawing,
+    InputReady,
+}
+impl PromptPhase {
+    pub fn at_prompt(self) -> bool {
+        !matches!(self, Self::Inactive)
+    }
+    pub fn input_ready(self) -> bool {
+        matches!(self, Self::InputReady)
+    }
+}
 #[derive(Debug, Clone)]
 pub struct Screen {
-    pub at_prompt: bool,
+    pub prompt_phase: PromptPhase,
     /// The shell explicitly promised that it redraws its complete prompt after a
     /// width change (OSC 133 `A;redraw=1`). Semantic prompt marks alone are not
     /// enough: they are also emitted by programs that keep their prompt on the
@@ -469,7 +484,7 @@ impl Screen {
             .front()
             .map_or(0, |row| row.cells.len().saturating_sub(1));
         Self {
-            at_prompt: false,
+            prompt_phase: PromptPhase::Inactive,
             prompt_redraw: false,
             prompt_start: None,
             rows,
@@ -608,6 +623,7 @@ impl From<&Row> for RowDump {
 #[derive(Debug, Clone, Serialize)]
 pub struct Snapshot {
     pub at_prompt: bool,
+    pub input_ready: bool,
     pub search: Vec<crate::search::SearchHighlight>,
     pub images: Vec<crate::graphics::ImagePlacement>,
     pub revision: u64,
