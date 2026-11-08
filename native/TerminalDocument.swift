@@ -28,7 +28,9 @@ struct PromptAnchor: Equatable {
 }
 struct TerminalScreen: Equatable {
   var rows: [TerminalRow]; var cursorRow = 0; var cursorColumn = 0; var pendingWrap = false
-  var savedRow = 0; var savedColumn = 0; var savedOrigin = false
+  var savedRow = 0; var savedColumn = 0; var savedPendingWrap = false; var savedOrigin = false
+  var savedStyle = TerminalStyle(); var savedLink: String?
+  var keyboardFlags: UInt32 = 0
   // OSC 133 prompt identity is screen-local and survives resize by row ID.
   var atPrompt = false; var promptRedraw = false
   var promptAnchor: PromptAnchor?
@@ -57,6 +59,28 @@ struct TerminalDocument {
     var row = blankRow(); row.cells = Array(repeating: .erased(style), count: columns); return row
   }
   mutating func setSize(columns: Int, rows: Int) { self.columns = columns; rowCount = rows }
+
+  func hasValidInvariants(_ screen: TerminalScreen) -> Bool {
+    guard columns > 0, rowCount > 0, screen.rows.count == rowCount,
+          (0..<rowCount).contains(screen.cursorRow), (0..<columns).contains(screen.cursorColumn),
+          screen.topMargin >= 0, screen.topMargin <= screen.bottomMargin, screen.bottomMargin < rowCount,
+          screen.leftMargin >= 0, screen.leftMargin <= screen.rightMargin, screen.rightMargin < columns else {
+      return false
+    }
+    return screen.rows.allSatisfy { row in
+      guard row.cells.count == columns else { return false }
+      for index in row.cells.indices {
+        switch row.cells[index].kind {
+        case 2:
+          guard index + 1 < row.cells.count, row.cells[index + 1].kind == 3 else { return false }
+        case 3:
+          guard index > 0, row.cells[index - 1].kind == 2 else { return false }
+        default: break
+        }
+      }
+      return true
+    }
+  }
 
   // The text at a redrawable OSC 133 marker belongs to the shell. Before a
   // width reflow, retain terminal output before the marker and move the cursor

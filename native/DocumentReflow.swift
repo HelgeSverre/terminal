@@ -95,6 +95,7 @@ extension TerminalDocument {
           var copied = sourceCell
           copied.kind = width == 2 ? 2 : 1
           if width < nominal { copied.flags |= 1 }
+          else { copied.flags &= ~UInt8(1) }
           row.cells[column] = copied
           if width == 2 {
             var continuation = source.cells.indices.contains(sourceColumn + 1) ? source.cells[sourceColumn + 1] : TerminalCell()
