@@ -47,6 +47,9 @@ private final class SwiftBorrowedCells {
 }
 
 private final class SwiftTerminalCore {
+  private enum DisplayClearAction: UInt32 {
+    case ignoredAlternate = 0, cleared = 1, redrawPrompt = 2
+  }
   private(set) var columns: Int
   private(set) var rowCount: Int
   private var document: TerminalDocument
@@ -627,17 +630,16 @@ private final class SwiftTerminalCore {
         var current = screen
         switch marker {
         case "A", "B":
-          current.atPrompt = true
           if marker == "A" {
-            current.inputReady = false
+            current.promptPhase = .drawing
             current.promptRedraw = parts.dropFirst(2).contains { $0 == "redraw=1" }
             current.promptAnchor = PromptAnchor(row: current.rows[current.cursorRow].id,
                                                 column: current.cursorColumn,
                                                 pendingWrap: current.pendingWrap)
           } else {
-            current.inputReady = true
+            current.promptPhase = .inputReady
           }
-        case "C", "D": current.atPrompt = false; current.inputReady = false; current.promptRedraw = false; current.promptAnchor = nil
+        case "C", "D": current.promptPhase = .none; current.retirePromptAnchor()
         default: break
         }
         screen = current
@@ -673,7 +675,7 @@ private final class SwiftTerminalCore {
     guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows), nextColumns <= 1_048_576 / nextRows else { return false }
     if nextColumns == columns && nextRows == rowCount { return true }
     resetClusterBoundary()
-    if !usingAlternate && primary.promptRedraw {
+    if !usingAlternate && nextColumns != columns && primary.atPrompt && primary.promptRedraw {
       var promptScreen = primary
       _ = document.clearPromptSuffix(&promptScreen, eraseStyle: eraseStyle())
       primary = promptScreen
@@ -740,19 +742,20 @@ private final class SwiftTerminalCore {
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
   func setHistoryByteLimit(_ value: Int) { historyByteLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
   func clearDisplay() -> UInt32 {
-    guard !usingAlternate else { return 0 }
+    guard !usingAlternate else { return DisplayClearAction.ignoredAlternate.rawValue }
     var current = primary
-    let action: UInt32 = current.atPrompt ? 1 : 2
+    let action: DisplayClearAction = current.atPrompt ? .redrawPrompt : .cleared
     history.removeAll(); historyByteCount = 0
     viewAnchor = nil; viewOffset = 0; viewportWasClamped = false
     if current.atPrompt {
       let margins = (current.topMargin, current.bottomMargin, current.leftMargin, current.rightMargin)
+      let promptPhase = current.promptPhase
+      let promptRedraw = current.promptRedraw
       current = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns)
       current.topMargin = margins.0; current.bottomMargin = margins.1
       current.leftMargin = margins.2; current.rightMargin = margins.3
-      current.atPrompt = true
-      current.inputReady = primary.inputReady
-      current.promptRedraw = primary.promptRedraw
+      current.promptPhase = promptPhase
+      current.promptRedraw = promptRedraw
       current.promptAnchor = PromptAnchor(row: current.rows[0].id, column: 0, pendingWrap: false)
     } else {
       let retained = Array(current.rows.dropFirst(current.cursorRow))
@@ -762,8 +765,8 @@ private final class SwiftTerminalCore {
     primary = current
     graphics.clear(alternate: false, removeResources: true)
     syncDeadline = nil
-    changed(history: true, document: action != 1)
-    return action
+    changed(history: true, document: false)
+    return action.rawValue
   }
   func input(_ text: String, key: UInt32, modifiers: UInt32, event: UInt32,
              metadata: SwiftInputEncoder.KeyMetadata = .init()) -> Data? {

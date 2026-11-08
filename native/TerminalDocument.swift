@@ -27,13 +27,20 @@ struct PromptAnchor: Equatable {
   var pendingWrap: Bool
 }
 struct TerminalScreen: Equatable {
+  enum PromptPhase { case none, drawing, inputReady }
   var rows: [TerminalRow]; var cursorRow = 0; var cursorColumn = 0; var pendingWrap = false
   var savedRow = 0; var savedColumn = 0; var savedPendingWrap = false; var savedOrigin = false
   var savedStyle = TerminalStyle(); var savedLink: String?
   var keyboardFlags: UInt32 = 0
   // OSC 133 prompt identity is screen-local and survives resize by row ID.
-  var atPrompt = false; var inputReady = false; var promptRedraw = false
+  var promptPhase = PromptPhase.none
+  var atPrompt: Bool { promptPhase != .none }
+  var inputReady: Bool { promptPhase == .inputReady }
+  var promptRedraw = false
   var promptAnchor: PromptAnchor?
+  // A geometry-dependent row address can expire while the shell is still
+  // editing the same command. Only OSC 133 changes that semantic phase.
+  mutating func retirePromptAnchor() { promptAnchor = nil; promptRedraw = false }
   var topMargin: Int; var bottomMargin: Int; var leftMargin: Int; var rightMargin: Int
   init(rows: [TerminalRow], columns: Int) {
     self.rows = rows; topMargin = 0; bottomMargin = max(0, rows.count - 1)
@@ -299,7 +306,7 @@ struct TerminalDocument {
   mutating func clearPromptSuffix(_ screen: inout TerminalScreen, eraseStyle: TerminalStyle) -> Bool {
     guard let anchor = screen.promptAnchor,
           let rowIndex = screen.rows.firstIndex(where: { $0.id == anchor.row }) else {
-      screen.promptAnchor = nil; screen.promptRedraw = false; screen.atPrompt = false; screen.inputReady = false
+      screen.retirePromptAnchor()
       return false
     }
     if !anchor.pendingWrap {

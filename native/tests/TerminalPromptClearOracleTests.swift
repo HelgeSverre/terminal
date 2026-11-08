@@ -66,7 +66,10 @@ import Foundation
     precondition(terminal_resize_pixels(pixel, 16, 5, 12, 24)); precondition(text(snapshot(pixel)).contains("PROMPT"))
     let evicted = make(8, 4); defer { terminal_destroy(evicted) }
     feed(evicted, "\u{1b}]133;A;redraw=1\u{7}PROMPT\r\nrow one\r\nrow two\r\nrow three")
-    precondition(terminal_resize(evicted, 8, 2)); precondition(terminal_resize(evicted, 8, 4)); precondition(!(snapshot(evicted)["at_prompt"] as! Bool))
+    precondition(terminal_resize(evicted, 8, 2)); precondition(terminal_resize(evicted, 8, 4))
+    // Geometry can retire a redraw anchor; OSC 133 still owns prompt phase.
+    precondition(snapshot(evicted)["at_prompt"] as! Bool)
+    precondition(!(snapshot(evicted)["input_ready"] as! Bool))
     let command = make(16, 5); defer { terminal_destroy(command) }
     feed(command, "OUTPUT\r\n\u{1b}]133;A;redraw=1\u{7}PROMPT\r\n> BUFFER")
     precondition(terminal_resize(command, 8, 5)); precondition(text(snapshot(command)).contains("OUTPUT") && !text(snapshot(command)).contains("PROMPT"))
@@ -75,7 +78,7 @@ import Foundation
   static func promptClearPreservesModesAndRebasesAnchor() {
     let t = make(8, 3); defer { terminal_destroy(t) }
     feed(t, "old\r\nold\r\nold\r\n\u{1b}]133;A\u{7}prompt>\u{1b}]133;B\u{7}\u{1b}[?2004h\u{1b}[>3u")
-    terminal_view_scroll(t, 1); let before = snapshot(t); precondition(terminal_clear_display(t) == 1); let after = snapshot(t)
+    terminal_view_scroll(t, 1); let before = snapshot(t); precondition(terminal_clear_display(t) == 2); let after = snapshot(t)
     precondition(after["following_tail"] as! Bool && after["at_prompt"] as! Bool && after["history_rows"] as! Int == 0 && cellsEmpty(after))
     let cursor = after["cursor"] as! [String: Any]
     precondition(cursor["row"] as! Int == 0 && cursor["col"] as! Int == 0)
@@ -84,14 +87,14 @@ import Foundation
     precondition(after["history_epoch"] as! Int == (before["history_epoch"] as! Int) + 1)
     precondition(after["screen_epoch"] as! Int > before["screen_epoch"] as! Int && replies(t).isEmpty)
     let redraw = make(64, 12); defer { terminal_destroy(redraw) }
-    feed(redraw, "\u{1b}]133;A;redraw=1\u{7}RESIZE_PROMPT\r\n> RESIZE_BUFFER"); precondition(terminal_clear_display(redraw) == 1)
+    feed(redraw, "\u{1b}]133;A;redraw=1\u{7}RESIZE_PROMPT\r\n> RESIZE_BUFFER"); precondition(terminal_clear_display(redraw) == 2)
     precondition(terminal_resize(redraw, 17, 12)); feed(redraw, "\r\r\u{1b}[A\u{1b}[JRESIZE_PROMPT\r\n> RESIZE_BUFFER")
     precondition(count("RESIZE_PROMPT", snapshot(redraw)) == 1)
   }
   static func unmarkedAlternateAndMarkers() {
     let t = make(8, 4); defer { terminal_destroy(t) }
     feed(t, "old\r\ncurrent\r\nbelow\u{1b}[2;4H"); let currentID = ((snapshot(t)["rows"] as! [[String: Any]])[1]["id"] as! Int)
-    precondition(terminal_clear_display(t) == 2); let clear = snapshot(t)
+    precondition(terminal_clear_display(t) == 1); let clear = snapshot(t)
     precondition(((clear["rows"] as! [[String: Any]])[0]["id"] as! Int) == currentID && text(clear).contains("current") && text(clear).contains("below"))
     let cursor = clear["cursor"] as! [String: Any]
     precondition(cursor["row"] as! Int == 0 && cursor["col"] as! Int == 3 && replies(t).isEmpty)
@@ -121,16 +124,44 @@ import Foundation
     let t = make(8, 3); defer { terminal_destroy(t) }
     feed(t, "\u{1b}_Ga=T,f=24,s=1,v=1,i=1,C=1;AQID\u{1b}\\")
     feed(t, "\u{1b}[?1049h\u{1b}_Ga=T,f=24,s=1,v=1,i=2,C=1;BAUG\u{1b}\\\u{1b}[?1049l")
-    precondition(terminal_clear_display(t) == 2)
+    precondition(terminal_clear_display(t) == 1)
     precondition((snapshot(t)["images"] as! [[String: Any]]).isEmpty)
     feed(t, "\u{1b}_Ga=p,i=1,C=1\u{1b}\\")
     precondition((snapshot(t)["images"] as! [[String: Any]]).isEmpty)
     feed(t, "\u{1b}[?47h")
     precondition(((snapshot(t)["images"] as! [[String: Any]])[0]["image"] as! Int) == 2)
   }
+  static func readinessSurvivesHistoricalPromptAnchor() {
+    let terminal = make(8, 3); defer { terminal_destroy(terminal) }
+    feed(terminal, "\u{1b}[3;1H\u{1b}]133;A;redraw=1\u{7}one\r\ntwo\r\nthree\r\n\u{1b}]133;B\u{7}")
+    let before = snapshot(terminal)
+    precondition(before["history_rows"] as! Int > 0)
+    precondition(before["at_prompt"] as! Bool && before["input_ready"] as! Bool)
+    for (columns, rows) in [(16, 3), (4, 2), (12, 4)] {
+      precondition(terminal_resize(terminal, UInt32(columns), UInt32(rows)))
+      let resized = snapshot(terminal)
+      precondition(resized["at_prompt"] as! Bool && resized["input_ready"] as! Bool)
+    }
+    feed(terminal, "\u{1b}]133;C\u{7}")
+    let executing = snapshot(terminal)
+    precondition(!(executing["at_prompt"] as! Bool) && !(executing["input_ready"] as! Bool))
+  }
+  static func clearActionValuesMatchABI() {
+    let terminal = make(); defer { terminal_destroy(terminal) }
+    feed(terminal, "running output")
+    let document = snapshot(terminal)["document_epoch"] as! Int
+    precondition(terminal_clear_display(terminal) == 1) // Cleared, no shell redraw.
+    precondition(snapshot(terminal)["document_epoch"] as! Int == document)
+    feed(terminal, "\u{1b}]133;A\u{7}prompt\u{1b}]133;B\u{7}")
+    precondition(terminal_clear_display(terminal) == 2) // Ask the shell to redraw.
+    feed(terminal, "\u{1b}[?1049h")
+    precondition(terminal_clear_display(terminal) == 0) // Alternate remains intact.
+  }
   static func main() {
     promptClearsBeforeShellRedraw(); plainPromptAndPrefixSurvive(); fullWidthAndWidePrefixesSurvive()
     alternatePixelEvictionAndCommandBoundaries(); promptClearPreservesModesAndRebasesAnchor(); unmarkedAlternateAndMarkers(); promptPhasePublishesInputReadiness(); clearDropsOnlyPrimaryImages()
-    print("PASS Prompt/reflow and display-clear oracles: 16 Rust scenarios through Swift ABI")
+    readinessSurvivesHistoricalPromptAnchor()
+    clearActionValuesMatchABI()
+    print("PASS Prompt/reflow and display-clear oracles: phase/readiness survives anchor retirement")
   }
 }

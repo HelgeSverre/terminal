@@ -193,7 +193,8 @@ import Darwin
         checks["ime_unmarked_state"] = !pane.hasMarkedText()
         pane.doCommand(by: NSSelectorFromString("insertNewline:"))
       }
-    } else if phase == 1 && maximumIMEMarkerLines == 1 {
+    } else if phase == 1 && maximumIMEMarkerLines == 1
+      && snapshot.at_prompt && snapshot.input_ready == true && snapshot.modes.bracketed_paste {
       checks["ime_commit_once"] = true
       resizeEpoch = snapshot.geometry_epoch
       oldCols = snapshot.cols

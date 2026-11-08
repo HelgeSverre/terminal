@@ -129,14 +129,12 @@ extension TerminalDocument {
     primary.pendingWrap = cursorMap.pending
     primary.savedRow = min(nextRows - 1, max(0, savedMap.row - start))
     primary.savedColumn = min(nextColumns - 1, savedMap.column)
-    primary.atPrompt = oldPrimary.atPrompt
-    primary.inputReady = oldPrimary.inputReady
+    primary.promptPhase = oldPrimary.promptPhase
     primary.promptRedraw = oldPrimary.promptRedraw
-    primary.promptAnchor = promptMap
-    if oldPrimary.promptAnchor != nil && promptMap == nil {
-      primary.atPrompt = false
-      primary.inputReady = false
-      primary.promptRedraw = false
+    if let promptMap, screenRows.contains(where: { $0.id == promptMap.row }) {
+      primary.promptAnchor = promptMap
+    } else {
+      primary.retirePromptAnchor()
     }
     return ReflowMapping(anchor: mappedAnchor, cursor: cursorMap, saved: savedMap)
   }
