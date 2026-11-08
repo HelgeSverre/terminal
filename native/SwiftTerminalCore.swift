@@ -782,7 +782,7 @@ private final class SwiftTerminalCore {
     let modifier = SwiftInputEncoder.Modifiers(
       shift: modifiers & 1 != 0, option: modifiers & 2 != 0,
       control: modifiers & 4 != 0, command: modifiers & 8 != 0,
-      capsLock: modifiers & 16 != 0, numLock: modifiers & 32 != 0)
+      capsLock: modifiers & 64 != 0, numLock: modifiers & 128 != 0)
     let phase: SwiftInputEncoder.Event = event == 1 ? .repeatKey : event == 2 ? .release : .press
     guard let semantic = inputKey(key, text: text) else { return Data() }
     return SwiftInputEncoder.key(semantic, modifiers: modifier, event: phase, modes: modes, metadata: metadata)
@@ -797,6 +797,8 @@ private final class SwiftTerminalCore {
     if (300...317).contains(code), let keypad = SwiftInputEncoder.KeypadKey(rawValue: Int(code - 300)) {
       return .keypad(keypad, nativeText: text.first)
     }
+    if (400...411).contains(code) { return .modifier(57441 + code - 400) }
+    if code == 412 { return .modifier(57358) }
     if code >= 50_000 { return .modifier(code) }
     if code == 0 || code == 200 { return text.first.map { .character($0) } }
     return nil

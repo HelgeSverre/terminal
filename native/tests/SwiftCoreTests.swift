@@ -32,10 +32,39 @@ import Foundation
     terminal_replies(core, Unmanaged.passUnretained(capture).toOpaque(), collect)
     return capture.value
   }
+  static func nativeInput(_ core: OpaquePointer, text: String = "", key: UInt32,
+                          modifiers: UInt32 = 0, event: UInt32 = 0) -> Data {
+    let capture = Bytes()
+    let accepted = text.withCString {
+      terminal_input_with_metadata(core, $0, key, modifiers, event, nil, nil, 0, 0,
+                                   Unmanaged.passUnretained(capture).toOpaque(), collect)
+    }
+    precondition(accepted)
+    return capture.value
+  }
+  static func nativeModifierWire() {
+    let core = terminal_create(8, 2)!
+    defer { terminal_destroy(core) }
+    feed(core, "\u{1b}[>11u") // Full key reporting plus press/repeat/release.
+    for (mask, encoded) in [(UInt32(64), 65), (128, 129), (192, 193)] {
+      let expected = Data("\u{1b}[97;\(encoded):1u".utf8)
+      precondition(nativeInput(core, text: "a", key: 200, modifiers: mask) == expected)
+      precondition(input(core, text: "a", key: 200, modifiers: mask) == expected)
+    }
+    for code: UInt32 in 400...412 {
+      let wireCode = code == 412 ? 57358 : 57441 + code - 400
+      precondition(nativeInput(core, key: code, modifiers: 1) == Data("\u{1b}[\(wireCode);2:1u".utf8))
+      precondition(nativeInput(core, key: code, event: 2) == Data("\u{1b}[\(wireCode);1:3u".utf8))
+    }
+    feed(core, "\u{1b}[<u\u{1b}[>2u")
+    precondition(nativeInput(core, key: 400, modifiers: 1).isEmpty)
+    precondition(nativeInput(core, key: 400, event: 2).isEmpty)
+  }
   static func cells(_ snapshot: [String: Any], _ row: Int) -> [[String: Any]] {
     ((snapshot["rows"] as! [[String: Any]])[row]["cells"] as! [[String: Any]])
   }
   static func main() {
+    nativeModifierWire()
     guard let core = terminal_create(8, 3) else { fatalError("create") }
     defer { terminal_destroy(core) }
     feed(core, "one\ntwo")
