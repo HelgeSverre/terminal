@@ -183,6 +183,12 @@ respectively. This improves the batched incremental build, but all four
 ratios remain below 90%. Compiler mode, source changes and workload changes
 are measured separately.
 
+The [latest fused WMO comparison](../reports/swift-app-comparison-f10acc2-wmo/summary.md)
+measures Swift at 16.61/20.12/10.32/12.12 MiB/s. It improves ANSI throughput
+2.244× relative to the preceding fused pilot, while the other workloads change
+by only one to two percent. Its four Swift/Rust ratios remain below 90%, so it
+does not meet the replacement target.
+
 For the next diagnostic stack capture, use:
 
 ```sh
