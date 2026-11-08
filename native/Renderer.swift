@@ -248,6 +248,7 @@ final class TerminalRendering: @unchecked Sendable {
     surface?.displayLink.invalidate()
     executor.async { [weak self] in
       self?.imageTextures = self?.imageTextures.filter { $0.key.surface != lease.id } ?? [:]
+      self?.glyphResidency.detachSurface(lease.id)
     }
   }
   func surfaceStatus(_ lease: SurfaceLease?, layer: CAMetalLayer?) -> SurfaceStatus {
@@ -570,7 +571,7 @@ final class TerminalRendering: @unchecked Sendable {
     _ request: RenderRequest, drawable: CAMetalDrawable, surface: SurfaceLease, generation: UInt64
   ) -> Bool {
     guard request.width > 0, request.height > 0 else { return false }
-    glyphResidency.beginFrame()
+    glyphResidency.beginFrame(surface: surface.id)
     var residencySubmitted = false
     var frameLegacyIDs: Set<UUID> = []
     defer {

@@ -62,6 +62,8 @@ final class GlyphResidency: @unchecked Sendable {
   private var pending: Set<GlyphRasterRecipe> = []
   private var visibleDemand: Set<GlyphRasterRecipe> = []
   private var currentDemand: Set<GlyphRasterRecipe> = []
+  private var surfaceDemand: [UUID: Set<GlyphRasterRecipe>] = [:]
+  private var activeSurface: UUID?
   private var suppressedForDemand: Set<GlyphRasterRecipe> = []
   private var admissionMayEvict = false
   private var failed: Set<GlyphRasterRecipe> = []
@@ -95,7 +97,8 @@ final class GlyphResidency: @unchecked Sendable {
     self.onReady = onReady
   }
 
-  func beginFrame() {
+  func beginFrame(surface: UUID? = nil) {
+    activeSurface = surface
     currentDemand.removeAll(keepingCapacity: true)
     preparedPins.removeAll(keepingCapacity: true)
     let uploads = uploadQueue
@@ -106,7 +109,6 @@ final class GlyphResidency: @unchecked Sendable {
       case .waitingForPins: uploadQueue.append(upload)
       }
     }
-    admissionMayEvict = false
   }
 
   func setOnReady(_ callback: @escaping @Sendable () -> Void) { onReady = callback }
@@ -144,8 +146,30 @@ final class GlyphResidency: @unchecked Sendable {
   // Internal raster repaint does not change this set; pane/font/close changes
   // do, which makes previously suppressed capacity misses eligible again.
   func finishFrameDemand() {
-    guard currentDemand != visibleDemand else { return }
-    visibleDemand = currentDemand
+    let previousDemand = visibleDemand
+    if let activeSurface { surfaceDemand[activeSurface] = currentDemand }
+    let nextDemand = activeSurface == nil
+      ? currentDemand
+      : surfaceDemand.values.reduce(into: Set<GlyphRasterRecipe>()) { $0.formUnion($1) }
+    guard nextDemand != previousDemand else { return }
+    let hadEstablishedDemand = !previousDemand.isEmpty
+    visibleDemand = nextDemand
+    // Initial discovery of an oversubscribed scene must settle as
+    // resident+outline. A permit is for a later meaningful scene change
+    // (pane close/font change), and remains live until that async result is
+    // actually installed.
+    admissionMayEvict = hadEstablishedDemand
+    if hadEstablishedDemand && !suppressedForDemand.isEmpty {
+      suppressedForDemand.removeAll(keepingCapacity: true)
+      onReady()
+    }
+  }
+
+  func detachSurface(_ id: UUID) {
+    guard surfaceDemand.removeValue(forKey: id) != nil else { return }
+    let nextDemand = surfaceDemand.values.reduce(into: Set<GlyphRasterRecipe>()) { $0.formUnion($1) }
+    guard nextDemand != visibleDemand else { return }
+    visibleDemand = nextDemand
     admissionMayEvict = true
     if !suppressedForDemand.isEmpty {
       suppressedForDemand.removeAll(keepingCapacity: true)
@@ -181,8 +205,9 @@ final class GlyphResidency: @unchecked Sendable {
     // A staged batch represents one unchanged visible demand. Do not evict a
     // peer admitted earlier in that batch: two individually-fitting glyphs
     // must settle on resident+outline, not alternate eviction every frame.
+    let mayEvict = admissionMayEvict
     guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height,
-      allowEviction: admissionMayEvict) else {
+      allowEviction: mayEvict) else {
       guard pages.values.contains(where: { $0.kind == kind && $0.pins > 0 }) else {
         if pages.values.contains(where: { $0.kind == kind }) {
           suppressedForDemand.insert(recipe)
@@ -214,6 +239,7 @@ final class GlyphResidency: @unchecked Sendable {
       kind: kind == .mask ? .mask : .color, allocation: placement.page.id,
       allocationGeneration: placement.page.generation)
     entries[recipe] = Entry(lease: lease, page: placement.page.id, bytes: recipe.width * recipe.height)
+    if mayEvict { admissionMayEvict = false }
     return .installed
   }
 
@@ -529,6 +555,10 @@ final class GlyphResidency: @unchecked Sendable {
     // A close/demand change to B alone clears suppression; a returned B raster
     // can now evict invisible A and become resident.
     currentDemand = [b]; finishFrameDemand()
+    // No upload is ready in the first B-only frame. The eviction permit must
+    // survive this empty beginFrame until the worker's delayed B result is
+    // installed on the following preparation boundary.
+    beginFrame()
     guard install(resultB) == .installed, entries[b] != nil, entries[a] == nil else { return false }
     return true
   }
