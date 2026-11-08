@@ -70,6 +70,10 @@ Implemented and locally exercised:
 - Native AppleScript dictionary with stable pane identifiers, bounded screen reads,
   input, splits/windows/tabs and validated preference changes. The disposable
   automation fixture verifies targeting while Settings is active and child cleanup.
+- Policy-controlled OSC 52 text clipboard writes through a native Allow/Deny
+  sheet, bounded requests and a one-second prompt cooldown. Reads return an empty
+  denial reply without consulting the pasteboard. Late decisions after close/EOF
+  cannot write, and denial suppresses subsequent prompts for that session.
 - Final-window closure quits the app and reaps PTY children; closed sessions
   silently reject late focus/key releases. PTY EOF closes input admission while
   leaving the final screen and history searchable.
@@ -84,9 +88,13 @@ Current automated evidence:
 - `just test`: 52 core semantic/property-style fixtures, 6 display-clear fixtures,
   9 margin fixtures,
   3 keypad fixtures, 7 viewport fixtures, 7 search fixtures, 13 graphics fixtures,
-  and the full official Unicode 18 break suite; strict Clippy;
+  3 clipboard fixtures and the full official Unicode 18 break suite; strict Clippy;
   native build; ten real PTY scenarios including bash/fish/Neovim/tmux/fzf output
   replayed through the core with invariant checks and ordered protocol replies.
+- Native clipboard tests use private named pasteboards for allow/deny, queued
+  cancellation, stale/closed callbacks, prompt bounds and a real PTY read-denial
+  exchange. An explicit child handshake makes the pending-request EOF case
+  deterministic, and the fixture waits for every child to be reaped.
 - `reports/native-smoke.json`: actual macOS 15.6 text input, PTY, Unicode/SGR,
   marked-text callback commit, guarded preedit cancellation on resize/focus,
   resize, split and Metal submission checks. Session tests exercise native
@@ -161,6 +169,8 @@ Required work remaining before the requested completion gate:
 - Shared reactor/owner lanes, complete end-to-end admission accounting, global
   memory budgets and broader queue-race tests. Transactional paste cancellation
   with bracket closure is implemented and tested at every partial-write offset.
+  OSC 52 still needs its separate streaming base64 decoder; current accepted
+  payloads are bounded but the encoded string is buffered before decoding.
 - Retained row snapshot ABI/revision reuse, row/run shaping caches, asynchronous raster service,
   ligatures, complete geometric glyph coverage, global GPU budgets and GPU recovery testing.
 - Additional accessibility history fetching/style attributes and real VoiceOver

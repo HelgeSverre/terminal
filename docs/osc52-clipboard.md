@@ -3,7 +3,7 @@
 The terminal supports a deliberately narrow OSC 52 surface:
 
 - `OSC 52 ; c ; <RFC 4648 base64> ST` is a request to write the macOS general
-  pasteboard. The core decodes at most 1 MiB and has at most four outstanding
+  pasteboard. Accepted decoded payloads are capped at 1 MiB, with at most four outstanding
   requests per session. Only valid UTF-8 is accepted for the text pasteboard.
 - The native default is an **Allow / Deny** sheet. `ClipboardAccess` is the
   only object that presents it or writes `NSPasteboard`; no preference grant is
@@ -35,3 +35,6 @@ Verification uses named private `NSPasteboard` fixtures only. It covers allow,
 deny, stale-session suppression, prompt bounds, malformed and oversized core
 input, and a real PTY query/reply proving that OSC 52 reads receive the empty
 denial response without consulting a pasteboard.
+
+The current parser buffers a bounded encoded OSC string before decoding it.
+The specification's separate streaming base64 path remains implementation work.
