@@ -1,0 +1,24 @@
+{
+  "generators_compile": true,
+  "generated_files_byte_identical": true,
+  "corpus": true,
+  "terminal_width": true,
+  "initial_regeneration_difference": "Existing grapheme generator used a one-line InCB switch and omitted final newline. Template corrected to reproduce existing runtime file; table values and linker cases unchanged.",
+  "commands": [
+    "xcrun swiftc -parse-as-library tools/GenerateUnicode18.swift -o target/native/generate-unicode18",
+    "target/native/generate-unicode18",
+    "xcrun swiftc -parse-as-library tools/GenerateTerminalWidth.swift -o target/native/generate-terminal-width",
+    "target/native/generate-terminal-width",
+    "cmp intended-before regenerated (both files)",
+    "just swift-unicode18-corpus",
+    "just terminal-width"
+  ],
+  "source_sha256": {
+    "tools/GenerateUnicode18.swift": "adbb9f2779a64b1af0937cf98ab33ad02bb6a43d2edfbc809d8a8a619bd596ee",
+    "tools/GenerateTerminalWidth.swift": "55566c43c6df9136f8bf8e4734f7b0741a7f04cbb3857c9e5b34b077a8d202e8",
+    "native/SwiftUnicode18Tables.swift": "556a6561694a9e03036fba4a98401d48ef8ad9436436f4f21f66b0ce0b66867d",
+    "native/TerminalWidthTables.swift": "36395bad13897e282b10c4d2d50e22d69ee35b5e08add688a24b1183dfe5aeb1",
+    "native/tests/SwiftUnicode18CorpusTests.swift": "d153027004e1b2229a4e16ab7d4218127e3b9a0232f3659bfc2a6e0557f420e0",
+    "tools/unicode/unicode18-inputs.json": "6e79f1c064f0f24a18b50173a403085834fb538054c020b64bfa038574b6c6ee"
+  }
+}

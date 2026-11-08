@@ -1,0 +1,17 @@
+{
+  "baseline": "65cb446",
+  "validation": "Ruby byte/value comparison and compiled Swift generators; see gates.json and logs",
+  "corpus_byte_identical": true,
+  "grapheme_ranges_equal_runtime": 1626,
+  "width_arrays_equal_runtime": [
+    "widthRoot",
+    "widthMiddle",
+    "widthLeaves",
+    "emojiPresentationLeaves",
+    "nonTransparentZeroWidths",
+    "textPresentationLeaves",
+    "emojiModifierLeaves"
+  ],
+  "runtime_code_unchanged_except_provenance_comments": true,
+  "input_manifest_sha256": "6e79f1c064f0f24a18b50173a403085834fb538054c020b64bfa038574b6c6ee"
+}

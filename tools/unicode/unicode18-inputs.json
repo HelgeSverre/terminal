@@ -1,0 +1,33 @@
+{
+  "unicode_version": "18.0.0",
+  "sources": [
+    {
+      "path_at_extraction": "vendor/unicode-segmentation/src/tables.rs",
+      "sha256": "32dae6d7238aef0294223bd4be80757093c3e1354925e95dae59a21006e7bfb9",
+      "upstream": "unicode-segmentation 1.13.3 generated Unicode18 grapheme_cat_table",
+      "repository_commit": "f27272bc1a8b15c6a9c55c95b54e0fa6e7797057"
+    },
+    {
+      "upstream": "unicode-width 0.2.3 src/gen/tables.rs",
+      "sha256": "c1bf9694c5547a979b820505f0ffd637b71f2e0c3f2b341419c06e575dae9744"
+    }
+  ],
+  "inputs": [
+    {
+      "path": "GraphemeBreakTest-18.0.0.txt",
+      "sha256": "b0cf047ee94485bbdc846de2b902f5f8a815f6b674f9d04223cddadd91c9df31",
+      "bytes": 137090
+    },
+    {
+      "path": "grapheme-ranges-18.0.0.txt",
+      "sha256": "df81b11f8af22806c3d5f0fecd8ca93537e129d4b8cd7a3270dfb3fc83babec5",
+      "bytes": 28879
+    },
+    {
+      "path": "terminal-width-18.0.0.json",
+      "sha256": "5659728c03da5ff3d09aedf3ee6f54e797efc903650f7724cf76b2b43d9c7ec3",
+      "bytes": 23765
+    }
+  ],
+  "grapheme_ranges": 1626
+}

@@ -1,0 +1,6 @@
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 38 app sources; 30 test groups; 354 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_width) -framework Foundation -o target/native/terminal-width-tests
+target/native/terminal-width-tests
+PASS terminal width: 24 source-exact sequences

@@ -1,5 +1,5 @@
-// Generated from vendor/unicode-segmentation/src/tables.rs (Unicode 18.0.0).
-// Do not edit: run `xcrun swift tools/GenerateUnicode18.swift`.
+// Generated from tools/unicode/grapheme-ranges-18.0.0.txt (Unicode 18.0.0).
+// Do not edit: regeneration commands are in tools/unicode/README.md.
 enum SwiftUnicode18Tables {
   enum Category: UInt8 { case Other, CR, Control, Extend, Extended_Pictographic, InCB_Consonant, L, LF, LV, LVT, Prepend, Regional_Indicator, SpacingMark, T, V, ZWJ }
   static let unicodeVersion = "18.0.0"

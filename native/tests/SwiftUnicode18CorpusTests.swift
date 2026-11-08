@@ -1,11 +1,16 @@
+import CryptoKit
 import Foundation
 
 @main enum SwiftUnicode18CorpusTests {
   static func main() throws {
     let root = CommandLine.arguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
     let fixture = URL(fileURLWithPath: root).appendingPathComponent(
-      "crates/terminal-core/tests/fixtures/GraphemeBreakTest-18.0.0.txt")
-    let data = try String(contentsOf: fixture, encoding: .utf8)
+      "tools/unicode/GraphemeBreakTest-18.0.0.txt")
+    let bytes = try Data(contentsOf: fixture)
+    let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+    precondition(digest == "b0cf047ee94485bbdc846de2b902f5f8a815f6b674f9d04223cddadd91c9df31",
+      "Unicode 18 corpus checksum changed")
+    let data = String(decoding: bytes, as: UTF8.self)
     var cases = 0, failures = 0
     var first: String?
     for (lineNumber, source) in data.split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
