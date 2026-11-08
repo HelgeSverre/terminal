@@ -54,6 +54,7 @@
     "TerminalSnapshot.swift", "SwiftTerminalCore.swift"
   ],
   "tests": {
+    "terminfo_probe": ["TerminalWidth.swift","TerminalWidthTables.swift","SwiftUnicode.swift","SwiftUnicode18Tables.swift","SwiftInputEncoder.swift","ClipboardProtocol.swift","SwiftGraphics.swift","TerminalPalette.swift","UnicodeLowercase.swift","SwiftSearchViewport.swift","TerminalDocument.swift","DocumentReflow.swift","TerminalSnapshot.swift","SwiftTerminalCore.swift","tests/TerminfoProbe.swift"],
     "metal_upload_probe": ["tests/MetalUploadProbe.swift"],
     "terminal_palette": ["TerminalPalette.swift", "tests/TerminalPaletteTests.swift"],
     "terminal_graphics_oracle": [
