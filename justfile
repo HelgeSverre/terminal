@@ -161,6 +161,7 @@ lint:
     just unicode-lowercase
     just terminal-width
     just swift-input-encoder
+    just window-stress-motion-test
     just osc52-protocol
     xcrun clang -Wall -Wextra -Werror -I native -c native/tests/pty.c -o target/native/swift-pty-tests.o
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty) target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
@@ -190,6 +191,13 @@ swift-core-test:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_core) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/swift-core-tests
     target/native/swift-core-tests
+
+[group('check')]
+window-stress-motion-test:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print window_stress_motion) -framework AppKit -framework Foundation -framework CoreGraphics -o target/native/window-stress-motion-tests
+    target/native/window-stress-motion-tests
 
 [group('check')]
 terminal-prompt-clear-oracle:

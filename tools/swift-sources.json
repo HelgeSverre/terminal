@@ -31,6 +31,7 @@
     "KeyMap.swift",
     "Canvas.swift",
     "Automation.swift",
+    "WindowStressMotion.swift",
     "Smoke.swift",
     "EditingSmoke.swift",
     "ResizeSmoke.swift",
@@ -134,6 +135,9 @@
     ],
     "swift_input_encoder": [
       "SwiftInputEncoder.swift", "tests/SwiftInputEncoderTests.swift"
+    ],
+    "window_stress_motion": [
+      "WindowStressMotion.swift", "tests/WindowStressMotionTests.swift"
     ],
     "clipboard_access": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
