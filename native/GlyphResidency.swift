@@ -66,6 +66,7 @@ final class GlyphResidency: @unchecked Sendable {
   private var activeSurface: UUID?
   private var suppressedForDemand: Set<GlyphRasterRecipe> = []
   private var admissionMayEvict = false
+  private var lastReserveEvicted = false
   private var failed: Set<GlyphRasterRecipe> = []
   private var failedOrder: [GlyphRasterRecipe] = []
   private let failedLimit = 1024
@@ -206,6 +207,7 @@ final class GlyphResidency: @unchecked Sendable {
     // peer admitted earlier in that batch: two individually-fitting glyphs
     // must settle on resident+outline, not alternate eviction every frame.
     let mayEvict = admissionMayEvict
+    lastReserveEvicted = false
     guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height,
       allowEviction: mayEvict) else {
       guard pages.values.contains(where: { $0.kind == kind && $0.pins > 0 }) else {
@@ -239,7 +241,7 @@ final class GlyphResidency: @unchecked Sendable {
       kind: kind == .mask ? .mask : .color, allocation: placement.page.id,
       allocationGeneration: placement.page.generation)
     entries[recipe] = Entry(lease: lease, page: placement.page.id, bytes: recipe.width * recipe.height)
-    if mayEvict { admissionMayEvict = false }
+    if mayEvict && lastReserveEvicted { admissionMayEvict = false }
     return .installed
   }
 
@@ -415,6 +417,7 @@ final class GlyphResidency: @unchecked Sendable {
       }
     }
     pages[id] = page
+    lastReserveEvicted = true
   }
 
   private func rememberFailure(_ recipe: GlyphRasterRecipe) {
