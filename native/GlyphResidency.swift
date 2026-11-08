@@ -335,4 +335,47 @@ final class GlyphResidency: @unchecked Sendable {
       }
     }
   }
+
+  #if GLYPH_RESIDENCY_TESTING
+  // Narrow headless probes keep the production API free of allocator knobs
+  // while exercising real MTLHeap admission/reclaim behavior.
+  func testingRecycleAndGeneration() -> Bool {
+    guard let first = createPage(.mask), var page = pages[first.id] else { return false }
+    let recipe = GlyphRasterRecipe(text: "x", width: 8, height: 8, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
+    let stale = GlyphLease(uv: SIMD4(0, 0, 1, 1), width: 8, texture: page.texture,
+      kind: .mask, allocation: page.id, allocationGeneration: page.generation)
+    entries[recipe] = Entry(lease: stale, page: page.id, bytes: 64)
+    page.x = page.kind.side - 1
+    page.y = page.kind.side - 1
+    pages[page.id] = page
+    guard let recycled = reserve(kind: .mask, width: 8, height: 8),
+      recycled.page.id == page.id, recycled.page.generation == page.generation + 1
+    else { return false }
+    return resolve(recipe) == nil
+  }
+
+  func testingPinnedPageBlocksReclaim() -> Bool {
+    guard let first = createPage(.color), var page = pages[first.id] else { return false }
+    page.x = page.kind.side - 1; page.y = page.kind.side - 1
+    pages[page.id] = page
+    preparedPins.insert(page.id); submitted()
+    let blocked = reserve(kind: .color, width: 8, height: 8) == nil
+    completedSubmission()
+    let recovered = reserve(kind: .color, width: 8, height: 8) != nil
+    return blocked && recovered
+  }
+
+  func testingLegacyReleaseExactlyOnce() -> Bool {
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
+      width: 8, height: 8, mipmapped: false)
+    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    guard let allocation = makeLegacyTexture(descriptor) else { return false }
+    let charged = diagnostics().residentBytes
+    releaseLegacyTexture(allocation.id)
+    let released = diagnostics().residentBytes
+    releaseLegacyTexture(allocation.id)
+    return charged > released && diagnostics().residentBytes == released
+  }
+  #endif
 }

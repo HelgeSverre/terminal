@@ -168,6 +168,8 @@ lint:
     target/native/statistics-tests
     xcrun swiftc native/Font.swift native/GlyphRasterWorker.swift native/tests/GlyphRasterWorkerTests.swift -framework AppKit -framework CoreText -o target/native/glyph-raster-worker-tests
     target/native/glyph-raster-worker-tests
+    xcrun swiftc -D GLYPH_RESIDENCY_TESTING native/Font.swift native/GlyphRasterWorker.swift native/GlyphResidency.swift native/tests/GlyphResidencyTests.swift -framework AppKit -framework CoreText -framework Metal -o target/native/glyph-residency-tests
+    target/native/glyph-residency-tests
     xcrun swiftc native/Preferences.swift native/tests/PreferencesTests.swift -o target/native/preferences-tests
     target/native/preferences-tests
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SnapshotBridgeTests.swift target/native/Spawn.o target/release/libterminal_core.a -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/snapshot-bridge-tests
