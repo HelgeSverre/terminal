@@ -594,6 +594,15 @@ import Foundation
     history.removeAll(); precondition(history.count == 0 && history.byteCount == 0)
   }
 
+  static func scalarStorageChargesUTF8WithoutRichText() {
+    for (text, size) in [("A", 1), ("¢", 2), ("猫", 3), ("😀", 4)] {
+      var row = TerminalRow(columns: 1)
+      row.setCell(TerminalCell(text: text, kind: 1), at: 0)
+      precondition(row.payloadCount == 0)
+      precondition(row.retainedStorageCost == 32 + UInt64(row.retainedCellCapacity) * 64 + UInt64(size))
+    }
+  }
+
   static func historyOwnerRetainsSnapshotsAndHeterogeneousBoundaries() {
     var plain = TerminalRow(columns: 2)
     plain.setCell(TerminalCell(text: "A", kind: 1), at: 0)
@@ -741,6 +750,7 @@ import Foundation
     alternateMultiwrapBatchDoesNotYieldForReplacements()
     discardedAlternateReuseRespectsSnapshots()
     historyOwnerChargesAndTrimsOnce()
+    scalarStorageChargesUTF8WithoutRichText()
     historyOwnerRetainsSnapshotsAndHeterogeneousBoundaries()
     sparsePayloadsBoundStorageAndKeepLogicalBudget()
     logicalCapacityMatchesFormerRichArray()

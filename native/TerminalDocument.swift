@@ -267,14 +267,15 @@ struct TerminalRow: Equatable {
   private static let logicalCellCharge: UInt64 = 64
   var retainedStorageCost: UInt64 {
     var bytes = Self.logicalRowCharge + UInt64(storage.logicalCapacity) * Self.logicalCellCharge
-    for index in storage.slots.indices {
-      if let text = storage.payloads[index]?.text { bytes += UInt64(text.utf8.count) }
-      else if storage.slots[index].hasScalar, let scalar = Unicode.Scalar(storage.slots[index].scalar) {
-        bytes += UInt64(String(scalar).utf8.count)
-      }
-      if let link = storage.payloads[index]?.link { bytes += UInt64(link.utf8.count) }
+    for slot in storage.slots where slot.hasScalar { bytes += UInt64(Self.utf8Length(of: slot.scalar)) }
+    for payload in storage.payloads.values {
+      if let text = payload.text { bytes += UInt64(text.utf8.count) }
+      if let link = payload.link { bytes += UInt64(link.utf8.count) }
     }
     return bytes
+  }
+  @inline(__always) private static func utf8Length(of scalar: UInt32) -> Int {
+    scalar <= 0x7f ? 1 : scalar <= 0x7ff ? 2 : scalar <= 0xffff ? 3 : 4
   }
 
   // Called once per document geometry (or by a direct test fixture), never by
