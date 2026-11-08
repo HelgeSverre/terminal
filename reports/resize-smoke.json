@@ -1,0 +1,70 @@
+{
+  "active_phase": "complete",
+  "awaiting_geometry_commit": false,
+  "awaiting_zle_redraw": false,
+  "completed_phase_count": 2,
+  "completed_without_timeout": true,
+  "divider_range_points": [
+    150,
+    849
+  ],
+  "final_target": {
+    "buffer_preserved": true,
+    "cursor_immediately_after_buffer": true,
+    "cursor_on_buffer_row": true,
+    "geometry_epoch": 363,
+    "prompt_markers": 1,
+    "revision": 1609,
+    "right_prompt_markers": 0,
+    "target_columns": 17,
+    "target_rows": 36
+  },
+  "fixture": "private-zdotdir-starship",
+  "fixture_ready": true,
+  "layout": "nested-splits",
+  "note": "Synthetic Starship fixture only; report contains counts and geometry, never user shell data.",
+  "pane_count": 5,
+  "passed": true,
+  "phases": [
+    {
+      "buffer_preserved": true,
+      "cursor_immediately_after_buffer": true,
+      "cursor_on_buffer_row": true,
+      "name": "baseline",
+      "prompt_markers": 1,
+      "right_prompt_markers": 1
+    },
+    {
+      "buffer_preserved": true,
+      "cadence": "geometry-gated-next-main-loop",
+      "cursor_immediately_after_buffer": true,
+      "cursor_on_buffer_row": true,
+      "events": 240,
+      "name": "rapid",
+      "passed": true,
+      "prompt_markers": 1,
+      "right_prompt_markers": 0,
+      "target_columns": 17,
+      "target_rows": 36
+    },
+    {
+      "buffer_preserved": true,
+      "cadence": "geometry-gated-minimum-76ms",
+      "cursor_immediately_after_buffer": true,
+      "cursor_on_buffer_row": true,
+      "events": 120,
+      "name": "reference",
+      "passed": true,
+      "prompt_markers": 1,
+      "right_prompt_markers": 0,
+      "target_columns": 17,
+      "target_rows": 36
+    }
+  ],
+  "resize_events": 360,
+  "provenance": {
+    "source_commit": "cb88fe44bde742b48182e697885e6e4f9de82fdf",
+    "executable_sha256": "cc9d8f78fd79775141098797dbe38c55695e6a6b7601f0fafe8f78646b6ed865",
+    "scope": "Combined main build; private-ZDOTDIR Starship fixture with fixture-owned WINCH redraw; exact cursor row/column/pending-wrap checks; test app and PTY descendants exited."
+  }
+}
