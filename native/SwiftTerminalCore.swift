@@ -144,7 +144,17 @@ private final class SwiftTerminalCore {
   private func flushText(final: Bool = false) {
     // Escape/control input interrupts an incomplete UTF-8 sequence. Emit its
     // maximal invalid prefix now so that the control byte is still parsed.
-    for scalar in utf8.finish() { put(scalar) }
+    emitDecoded(utf8.finish())
+  }
+  @inline(__always)
+  private func emitDecoded(_ emission: SwiftUnicode.UTF8Decoder.Emission) {
+    switch emission {
+    case .none: break
+    case .one(let scalar): put(charsetSpecial[charsetSlot] ? decSpecialGraphics(scalar) : scalar)
+    case .two(let first, let second):
+      put(charsetSpecial[charsetSlot] ? decSpecialGraphics(first) : first)
+      put(charsetSpecial[charsetSlot] ? decSpecialGraphics(second) : second)
+    }
   }
   private func resetClusterBoundary() { segmenter = SwiftUnicode.Segmenter(); document.resetPrintCluster() }
   private func tick(_ now: UInt64) {
@@ -187,9 +197,7 @@ private final class SwiftTerminalCore {
         case 0x0e: flushText(); charsetSlot = 1
         case 0x0f: flushText(); charsetSlot = 0
         default:
-          for scalar in utf8.push(byte) {
-            put(charsetSpecial[charsetSlot] ? decSpecialGraphics(scalar) : scalar)
-          }
+          emitDecoded(utf8.push(byte))
         }
       case .escape:
         handleEscapedByte(byte)

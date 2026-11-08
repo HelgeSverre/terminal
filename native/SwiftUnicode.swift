@@ -64,86 +64,139 @@ enum SwiftUnicode {
 
   /// Incremental UTF-8 decoder.  It never emits an incomplete scalar; callers
   /// can feed arbitrary transport chunks and call `finish()` at EOF.  Invalid
-  /// data is represented as U+FFFD. Full Unicode maximal-subpart parity is a
-  /// tracked gap until differential fixture replay is added.
+  /// data is represented as U+FFFD. Its byte-fed malformed-prefix behavior is
+  /// checked against Swift's UTF-8 decoder; broader fixture replay remains a
+  /// separate parity gate.
   struct UTF8Decoder {
-    private var pending: [UInt8] = []
-
-    mutating func push(_ byte: UInt8) -> [Unicode.Scalar] {
-      pending.append(byte)
-      return drain(endOfInput: false)
+    /// A byte can complete one scalar, or reject a pending prefix and then
+    /// emit the current byte. The decoder therefore needs no heap-backed
+    /// output collection on the hot per-byte path.
+    enum Emission {
+      case none
+      case one(Unicode.Scalar)
+      case two(Unicode.Scalar, Unicode.Scalar)
     }
 
-    mutating func push(_ bytes: UnsafeBufferPointer<UInt8>) -> [Unicode.Scalar] {
-      pending.append(contentsOf: bytes)
-      return drain(endOfInput: false)
-    }
+    // This is always a viable, incomplete UTF-8 prefix. Its fixed capacity is
+    // enough for the longest four-byte scalar and avoids allocating an Array
+    // for every ASCII byte.
+    private var first: UInt8 = 0
+    private var second: UInt8 = 0
+    private var third: UInt8 = 0
+    private var pendingCount = 0
 
-    mutating func finish() -> [Unicode.Scalar] { drain(endOfInput: true) }
+    private static let replacement = Unicode.Scalar(0xfffd)!
 
-    private mutating func drain(endOfInput: Bool) -> [Unicode.Scalar] {
-      var output: [Unicode.Scalar] = []
-      var offset = 0
-      while offset < pending.count {
-        let first = pending[offset]
-        if first < 0x80 {
-          output.append(Unicode.Scalar(first)); offset += 1; continue
+    @inline(__always)
+    mutating func push(_ byte: UInt8) -> Emission {
+      switch pendingCount {
+      case 0:
+        return begin(byte)
+      case 1:
+        guard isViableSecond(byte) else {
+          return rejectPendingThenBegin(byte)
         }
-        let length: Int
-        let minimum: UInt32
-        switch first {
-        case 0xc2...0xdf: length = 2; minimum = 0x80
-        case 0xe0...0xef: length = 3; minimum = 0x800
-        case 0xf0...0xf4: length = 4; minimum = 0x10000
-        default:
-          output.append("\u{fffd}"); offset += 1; continue
+        if sequenceLength == 2 {
+          second = byte
+          return emitComplete(length: 2)
         }
-        guard pending.count - offset >= length else {
-          // A non-continuation (or an impossible second byte) proves the
-          // candidate invalid before its nominal length arrives. Preserve the
-          // following printable byte for the next scalar instead of holding it
-          // until EOF. For an incomplete but viable prefix, maximal-subpart
-          // handling consumes the remaining prefix at EOF.
-          let available = Array(pending[offset..<pending.count])
-          let secondIsPossible = available.count < 2 || {
-            let second = available[1]
-            guard second & 0xc0 == 0x80 else { return false }
-            switch first { case 0xe0: return second >= 0xa0; case 0xed: return second <= 0x9f; case 0xf0: return second >= 0x90; case 0xf4: return second <= 0x8f; default: return true }
-          }()
-          let invalidContinuation = available.indices.dropFirst(2).first { available[$0] & 0xc0 != 0x80 }
-          if !secondIsPossible { output.append("\u{fffd}"); offset += 1; continue }
-          if let invalidContinuation {
-            output.append("\u{fffd}")
-            offset += invalidContinuation
-            continue
-          }
-          if endOfInput {
-            // The remaining bytes form one incomplete maximal subpart.
-            output.append("\u{fffd}"); offset = pending.count
-          }
-          else { break }
-          continue
+        second = byte
+        pendingCount = 2
+        return .none
+      case 2:
+        guard isContinuation(byte) else {
+          return rejectPendingThenBegin(byte)
         }
-        var value = UInt32(first & ((1 << (8 - length - 1)) - 1))
-        var valid = true
-        var invalidIndex: Int?
-        for index in 1..<length {
-          let byte = pending[offset + index]
-          guard byte & 0xc0 == 0x80 else { valid = false; invalidIndex = index; break }
-          value = (value << 6) | UInt32(byte & 0x3f)
+        if sequenceLength == 3 {
+          third = byte
+          return emitComplete(length: 3)
         }
-        if valid, value >= minimum, value <= 0x10ffff, !(0xd800...0xdfff).contains(value), let scalar = Unicode.Scalar(value) {
-          output.append(scalar); offset += length
-        } else {
-          output.append("\u{fffd}")
-          // The maximal invalid subpart includes continuations before the
-          // first non-continuation, leaving that byte to decode normally.
-          offset += invalidIndex ?? 1
+        third = byte
+        pendingCount = 3
+        return .none
+      case 3:
+        guard isContinuation(byte) else {
+          return rejectPendingThenBegin(byte)
         }
+        return emitComplete(length: 4, fourth: byte)
+      default:
+        preconditionFailure("UTF-8 prefix exceeds four bytes")
       }
-      pending.removeFirst(offset)
-      return output
     }
+
+    @inline(__always)
+    mutating func finish() -> Emission {
+      guard pendingCount != 0 else { return .none }
+      // A viable incomplete prefix is one maximal invalid subpart at EOF.
+      pendingCount = 0
+      return .one(Self.replacement)
+    }
+
+    @inline(__always)
+    private mutating func begin(_ byte: UInt8) -> Emission {
+      if byte < 0x80 { return .one(Unicode.Scalar(byte)) }
+      guard Self.sequenceLength(for: byte) != nil else { return .one(Self.replacement) }
+      first = byte
+      pendingCount = 1
+      return .none
+    }
+
+    @inline(__always)
+    private mutating func rejectPendingThenBegin(_ byte: UInt8) -> Emission {
+      pendingCount = 0
+      switch begin(byte) {
+      case .none:
+        return .one(Self.replacement)
+      case .one(let scalar):
+        return .two(Self.replacement, scalar)
+      case .two:
+        preconditionFailure("starting a UTF-8 scalar cannot emit two values")
+      }
+    }
+
+    @inline(__always)
+    private var sequenceLength: Int {
+      // `first` is installed only after `sequenceLength(for:)` accepts it.
+      Self.sequenceLength(for: first)!
+    }
+
+    @inline(__always)
+    private func isViableSecond(_ byte: UInt8) -> Bool {
+      guard isContinuation(byte) else { return false }
+      switch first {
+      case 0xe0: return byte >= 0xa0
+      case 0xed: return byte <= 0x9f
+      case 0xf0: return byte >= 0x90
+      case 0xf4: return byte <= 0x8f
+      default: return true
+      }
+    }
+
+    @inline(__always)
+    private mutating func emitComplete(length: Int, fourth: UInt8 = 0) -> Emission {
+      var value = UInt32(first & ((1 << (8 - length - 1)) - 1))
+      value = (value << 6) | UInt32(second & 0x3f)
+      if length >= 3 { value = (value << 6) | UInt32(third & 0x3f) }
+      if length == 4 { value = (value << 6) | UInt32(fourth & 0x3f) }
+      pendingCount = 0
+      // The lead and second-byte checks rule out overlong, surrogate, and
+      // above-range values before reaching here.
+      return .one(Unicode.Scalar(value)!)
+    }
+
+    @inline(__always)
+    private static func sequenceLength(for byte: UInt8) -> Int? {
+      switch byte {
+      case 0xc2...0xdf: return 2
+      case 0xe0...0xef: return 3
+      case 0xf0...0xf4: return 4
+      default: return nil
+      }
+    }
+
+    @inline(__always)
+    private func isContinuation(_ byte: UInt8) -> Bool { byte & 0xc0 == 0x80 }
+
   }
 
   static func clusters(in text: String) -> [String] {

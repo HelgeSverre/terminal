@@ -2,6 +2,21 @@ import Foundation
 
 @main enum SwiftUnicodeTests {
   static func main() {
+    func append(_ emission: SwiftUnicode.UTF8Decoder.Emission, to output: inout [Unicode.Scalar]) {
+      switch emission {
+      case .none: break
+      case .one(let scalar): output.append(scalar)
+      case .two(let first, let second): output.append(first); output.append(second)
+      }
+    }
+    func decode(_ bytes: [UInt8], finish: Bool = true) -> String {
+      var decoder = SwiftUnicode.UTF8Decoder()
+      var output: [Unicode.Scalar] = []
+      for byte in bytes { append(decoder.push(byte), to: &output) }
+      if finish { append(decoder.finish(), to: &output) }
+      return String(String.UnicodeScalarView(output))
+    }
+
     precondition(SwiftUnicode.clusters(in: "e\u{301}") == ["e\u{301}"])
     precondition(SwiftUnicode.clusters(in: "👩\u{200d}💻") == ["👩\u{200d}💻"])
     precondition(SwiftUnicode.clusters(in: "🇳🇴🇯🇵").count == 2)
@@ -12,17 +27,41 @@ import Foundation
 
     var decoder = SwiftUnicode.UTF8Decoder()
     var output: [Unicode.Scalar] = []
-    for byte in Array("€".utf8) { output += decoder.push(byte) }
-    output += decoder.finish()
+    for byte in Array("€".utf8) { append(decoder.push(byte), to: &output) }
+    append(decoder.finish(), to: &output)
     precondition(String(String.UnicodeScalarView(output)) == "€")
 
-    var invalid = SwiftUnicode.UTF8Decoder()
     let malformed: [UInt8] = [0xe2, 0x28, 0xa1]
-    var replacements: [Unicode.Scalar] = []
-    for byte in malformed { replacements += invalid.push(byte) }
-    replacements += invalid.finish()
-    precondition(replacements.filter { $0.value == 0xfffd }.count >= 1)
+    precondition(decode(malformed) == "\u{fffd}(\u{fffd}")
+    // A malformed prefix and its following printable byte share one push, so
+    // this also guards the bounded two-scalar emission contract.
+    precondition(decode([0xe1, 0x80, 0x41]) == "\u{fffd}A")
+    precondition(decode([0xe0, 0x80]) == "\u{fffd}\u{fffd}")
+    precondition(decode([0xf0, 0x9f, 0x92]) == "\u{fffd}")
+
+    // Exercise every possible two-byte stream byte-by-byte. This keeps the
+    // no-Array emission path aligned with Swift's maximal-subpart decoder.
+    for first in UInt8.min...UInt8.max {
+      for second in UInt8.min...UInt8.max {
+        let bytes = [first, second]
+        precondition(decode(bytes) == String(decoding: bytes, as: UTF8.self))
+      }
+    }
+    // A pending viable prefix followed by one byte can either stay pending,
+    // emit one scalar, or reject the prefix and emit that byte. Cover each
+    // prefix length and each possible continuation/non-continuation.
+    let viablePrefixes: [[UInt8]] = [
+      [0xc2], [0xdf], [0xe0], [0xed], [0xf0], [0xf4],
+      [0xe1, 0x80], [0xe0, 0xa0], [0xed, 0x9f],
+      [0xf1, 0x80, 0x80], [0xf0, 0x90, 0x80], [0xf4, 0x8f, 0xbf],
+    ]
+    for prefix in viablePrefixes {
+      for byte in UInt8.min...UInt8.max {
+        let bytes = prefix + [byte]
+        precondition(decode(bytes) == String(decoding: bytes, as: UTF8.self))
+      }
+    }
     precondition(SwiftUnicode.unicode18Parity)
-    print("PASS Swift Unicode smoke: clusters, widths, chunked UTF-8 and Unicode 18 pin")
+    print("PASS Swift Unicode smoke: clusters, widths, chunked UTF-8, malformed-prefix oracle and Unicode 18 pin")
   }
 }
