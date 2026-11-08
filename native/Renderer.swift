@@ -27,7 +27,11 @@ private struct Quad {
   var rect: SIMD4<Float>
   var uv: SIMD4<Float>
   var color: SIMD4<Float>
+  // x == 0 denotes R8 coverage, x == 1 denotes premultiplied linear RGBA.
+  var material: SIMD4<Float> = SIMD4(1, 0, 0, 0)
 }
+// Transitional drawing record. Residency owns admission and texture lifetime;
+// frame assembly retains only this resolved lease shape.
 private struct GlyphKey: Hashable {
   let text: String
   let cells: Int
@@ -43,6 +47,7 @@ private struct Glyph {
   let width: Int
   let atlasPage: Int?
   let texture: MTLTexture?
+  let kind: GlyphLease.Kind
 }
 private struct SurfaceImageKey: Hashable {
   let surface: UUID
@@ -154,6 +159,7 @@ final class TerminalRendering: @unchecked Sendable {
   private var readySet: Set<UUID> = []
   private var drainScheduled = false
   private var gpuBusy = false
+  private let glyphResidency: GlyphResidency
   private var atlases: [MTLTexture] = []
   private var glyphs: [GlyphKey: Glyph] = [:]
   private var atlasX: [Int] = []
@@ -184,7 +190,6 @@ final class TerminalRendering: @unchecked Sendable {
     let pressureSmoke = CommandLine.arguments.contains("--atlas-pressure-smoke")
     let fallbackBudgetSmoke = CommandLine.arguments.contains("--atlas-fallback-budget-smoke")
     atlasSize = pressureSmoke ? 128 : 2048
-    // Per-renderer ceiling only; a process-wide GPU-memory budget belongs above this renderer.
     atlasPages = pressureSmoke ? 4 : 2
     directGlyphBudget = fallbackBudgetSmoke ? 0 : 8 * 1024 * 1024
     directGlyphLimit = fallbackBudgetSmoke ? 0 : 1024
@@ -203,12 +208,14 @@ final class TerminalRendering: @unchecked Sendable {
     pipeline = try gpu.makeRenderPipelineState(descriptor: descriptor)
     descriptor.fragmentFunction = library.makeFunction(name: "terminal_image_fragment")
     imagePipeline = try gpu.makeRenderPipelineState(descriptor: descriptor)
+    glyphResidency = GlyphResidency(device: gpu, owner: executor) {}
     font = TerminalFont.core(size: 14)
     boldFont = font
     italicFont = font
     boldItalicFont = font
     guard appendAtlasPage() != nil else { throw RendererError.noMemory }
     resetAtlas()
+    glyphResidency.setOnReady { [weak self] in self?.redisplayAfterGlyphReady() }
   }
   enum RendererError: Error { case noDevice, noShaders, noMemory }
   func attach(_ layer: CAMetalLayer) -> SurfaceLease {
@@ -332,6 +339,10 @@ final class TerminalRendering: @unchecked Sendable {
     surfacesLock.unlock()
     executor.async { [weak self] in self?.drainReady() }
   }
+  // Raster completion has no surface-local ownership.  It wakes the same
+  // fair scheduler that accepts display-link drawables; a newer snapshot will
+  // therefore present the resident glyph without a worker-side UI call.
+  private func redisplayAfterGlyphReady() { scheduleDrain() }
   // The display-link callback can arrive on the main run loop. Keep it tiny:
   // ownership validation and Metal encoding remain serialized on executor.
   fileprivate func received(
@@ -415,53 +426,6 @@ final class TerminalRendering: @unchecked Sendable {
     displayLinks.forEach { $0.requestFrame() }
     submit(submission)
   }
-  private func resetAtlas() {
-    glyphs.removeAll(keepingCapacity: true)
-    atlasX = Array(repeating: 4, count: atlases.count)
-    atlasY = Array(repeating: 0, count: atlases.count)
-    shelves = Array(repeating: 0, count: atlases.count)
-    replacementGlyph = nil
-    var white: [UInt8] = [255, 255, 255, 255]
-    for atlas in atlases {
-      white.withUnsafeMutableBytes {
-        atlas.replace(
-          region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!,
-          bytesPerRow: 4)
-      }
-    }
-  }
-  private func appendAtlasPage() -> Int? {
-    guard atlases.count < atlasPages else { return nil }
-    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-      pixelFormat: .rgba8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
-    descriptor.storageMode = .shared
-    descriptor.usage = .shaderRead
-    guard let atlas = device.makeTexture(descriptor: descriptor) else { return nil }
-    atlases.append(atlas)
-    atlasX.append(4)
-    atlasY.append(0)
-    shelves.append(0)
-    var white: [UInt8] = [255, 255, 255, 255]
-    white.withUnsafeMutableBytes {
-      atlas.replace(
-        region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!,
-        bytesPerRow: 4)
-    }
-    RendererMetrics.recordAtlasPages(atlases.count)
-    return atlases.count - 1
-  }
-  private func resetAtlasPage(_ page: Int) {
-    glyphs = glyphs.filter { $0.value.atlasPage != page }
-    atlasX[page] = 4
-    atlasY[page] = 0
-    shelves[page] = 0
-    var white: [UInt8] = [255, 255, 255, 255]
-    white.withUnsafeMutableBytes {
-      atlases[page].replace(
-        region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!,
-        bytesPerRow: 4)
-    }
-  }
   private static func linear(_ s: Float) -> Float {
     s <= 0.04045 ? s / 12.92 : pow((s + 0.055) / 1.055, 2.4)
   }
@@ -473,131 +437,115 @@ final class TerminalRendering: @unchecked Sendable {
       Self.linear(Float(rgb[0]) / 255), Self.linear(Float(rgb[1]) / 255),
       Self.linear(Float(rgb[2]) / 255), 1)
   }
-  private func reserve(_ width: Int, _ height: Int, in page: Int) -> (x: Int, y: Int)? {
-    guard width > 0, height > 0, width + 1 < atlasSize, height + 1 < atlasSize else {
+  private func resetAtlas() {
+    glyphs.removeAll(keepingCapacity: true)
+    atlasX = Array(repeating: 4, count: atlases.count)
+    atlasY = Array(repeating: 0, count: atlases.count)
+    shelves = Array(repeating: 0, count: atlases.count)
+    replacementGlyph = nil
+    var white: [UInt8] = [255, 255, 255, 255]
+    for atlas in atlases { white.withUnsafeMutableBytes {
+      atlas.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: 4)
+    }}
+  }
+  private func appendAtlasPage() -> Int? {
+    guard atlases.count < atlasPages else { return nil }
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
+    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    guard let reservation = glyphResidency.reserveLegacyTexture(descriptor) else { return nil }
+    guard let atlas = device.makeTexture(descriptor: descriptor) else {
+      glyphResidency.cancelLegacyReservation(reservation)
       return nil
     }
-    if atlasX[page] + width + 1 > atlasSize {
-      atlasX[page] = 0
-      atlasY[page] += shelves[page] + 1
-      shelves[page] = 0
-    }
+    atlases.append(atlas); atlasX.append(4); atlasY.append(0); shelves.append(0)
+    var white: [UInt8] = [255, 255, 255, 255]
+    white.withUnsafeMutableBytes { atlas.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: 4) }
+    RendererMetrics.recordAtlasPages(atlases.count)
+    return atlases.count - 1
+  }
+  private func resetAtlasPage(_ page: Int) {
+    glyphs = glyphs.filter { $0.value.atlasPage != page }
+    atlasX[page] = 4; atlasY[page] = 0; shelves[page] = 0
+    var white: [UInt8] = [255, 255, 255, 255]
+    white.withUnsafeMutableBytes { atlases[page].replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: 4) }
+  }
+  private func reserve(_ width: Int, _ height: Int, in page: Int) -> (x: Int, y: Int)? {
+    guard width > 0, height > 0, width + 1 < atlasSize, height + 1 < atlasSize else { return nil }
+    if atlasX[page] + width + 1 > atlasSize { atlasX[page] = 0; atlasY[page] += shelves[page] + 1; shelves[page] = 0 }
     guard atlasY[page] + height + 1 < atlasSize else { return nil }
-    let result = (x: atlasX[page], y: atlasY[page])
-    atlasX[page] += width + 1
-    shelves[page] = max(shelves[page], height)
+    let result = (x: atlasX[page], y: atlasY[page]); atlasX[page] += width + 1; shelves[page] = max(shelves[page], height)
     return result
   }
   private func placement(_ width: Int, _ height: Int) -> (page: Int, x: Int, y: Int)? {
-    guard width > 0, height > 0, width + 1 < atlasSize, height + 1 < atlasSize else {
-      return nil
-    }
-    for page in atlases.indices {
-      if let point = reserve(width, height, in: page) { return (page, point.x, point.y) }
-    }
-    if let page = appendAtlasPage(), let point = reserve(width, height, in: page) {
-      return (page, point.x, point.y)
-    }
-    for page in atlases.indices where !frameAtlasPages.contains(page) {
-      resetAtlasPage(page)
-      if let point = reserve(width, height, in: page) { return (page, point.x, point.y) }
-    }
+    guard width > 0, height > 0, width + 1 < atlasSize, height + 1 < atlasSize else { return nil }
+    for page in atlases.indices { if let point = reserve(width, height, in: page) { return (page, point.x, point.y) } }
+    if let page = appendAtlasPage(), let point = reserve(width, height, in: page) { return (page, point.x, point.y) }
+    for page in atlases.indices where !frameAtlasPages.contains(page) { resetAtlasPage(page); if let point = reserve(width, height, in: page) { return (page, point.x, point.y) } }
     return nil
   }
   private func glyphPixels(_ key: GlyphKey, width: Int, height: Int) -> [UInt8] {
-    let selected =
-      key.bold ? (key.italic ? boldItalicFont : boldFont) : (key.italic ? italicFont : font)
+    let selected = key.bold ? (key.italic ? boldItalicFont : boldFont) : (key.italic ? italicFont : font)
     var pixels = TerminalFont.rasterize(key.text, font: selected, width: width, height: height).pixels
-    // Convert premultiplied sRGB raster output to premultiplied linear RGBA.
-    // White mask glyphs retain coverage; emoji keep their source colors.
     for pixel in stride(from: 0, to: pixels.count, by: 4) {
       let alpha = Float(pixels[pixel + 3]) / 255
-      if alpha > 0 {
-        for component in 0..<3 {
-          let straight = min(1, Float(pixels[pixel + component]) / 255 / alpha)
-          pixels[pixel + component] = UInt8(
-            clamping: Int((Self.linear(straight) * alpha * 255).rounded()))
-        }
-      } else {
-        pixels[pixel] = 0
-        pixels[pixel + 1] = 0
-        pixels[pixel + 2] = 0
-      }
+      if alpha > 0 { for component in 0..<3 { let straight = min(1, Float(pixels[pixel + component]) / 255 / alpha); pixels[pixel + component] = UInt8(clamping: Int((Self.linear(straight) * alpha * 255).rounded())) } }
+      else { pixels[pixel] = 0; pixels[pixel + 1] = 0; pixels[pixel + 2] = 0 }
     }
     return pixels
   }
   private func directGlyph(_ key: GlyphKey, width: Int, height: Int, limited: Bool = true) -> Glyph? {
-    guard !limited || (!directGlyphExhausted && directGlyphCount < directGlyphLimit) else {
+    guard !limited || (!directGlyphExhausted && directGlyphCount < directGlyphLimit) else { return nil }
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    guard let reservation = glyphResidency.reserveLegacyTexture(descriptor) else {
+      if limited { directGlyphExhausted = true }
       return nil
     }
-    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
-      pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
-    descriptor.storageMode = .shared
-    descriptor.usage = .shaderRead
     guard let texture = device.makeTexture(descriptor: descriptor) else {
+      glyphResidency.cancelLegacyReservation(reservation)
       if limited { directGlyphExhausted = true }
       return nil
     }
     let allocatedBytes = Int(texture.allocatedSize)
     guard !limited || directGlyphBytes + allocatedBytes <= directGlyphBudget else {
+      glyphResidency.cancelLegacyReservation(reservation)
       directGlyphExhausted = true
       return nil
     }
     let pixels = glyphPixels(key, width: width, height: height)
-    pixels.withUnsafeBytes {
-      texture.replace(
-        region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
-        withBytes: $0.baseAddress!, bytesPerRow: width * 4)
-    }
-    if limited {
-      directGlyphBytes += allocatedBytes
-      directGlyphCount += 1
-      RendererMetrics.recordExactGlyphFallback()
-    }
-    return Glyph(uv: SIMD4(0, 0, 1, 1), width: width, atlasPage: nil, texture: texture)
+    pixels.withUnsafeBytes { texture.replace(region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width * 4) }
+    if limited { directGlyphBytes += allocatedBytes; directGlyphCount += 1; RendererMetrics.recordExactGlyphFallback() }
+    return Glyph(uv: SIMD4(0, 0, 1, 1), width: width, atlasPage: nil, texture: texture, kind: .mask)
   }
   private func glyph(_ key: GlyphKey, cells: Int, request: RenderRequest) -> Glyph? {
-    if let value = glyphs[key] {
-      if let page = value.atlasPage { frameAtlasPages.insert(page) }
-      return value
+    let recipe = GlyphRasterRecipe(text: key.text, width: request.cellWidth * cells,
+      height: request.cellHeight, pointSize: key.pointSize, bold: key.bold, italic: key.italic,
+      fontIdentity: key.fontIdentity, backingScale: 1)
+    if let resident = glyphResidency.resolve(recipe) {
+      return Glyph(uv: resident.uv, width: resident.width, atlasPage: nil, texture: resident.texture, kind: resident.kind)
     }
-    let width = request.cellWidth * cells
-    let height = request.cellHeight
-    if width + 1 >= atlasSize || height + 1 >= atlasSize {
-      RendererMetrics.recordOversizedGlyphFallback()
-    }
+    if let value = glyphs[key] { if let page = value.atlasPage { frameAtlasPages.insert(page) }; return value }
+    let width = request.cellWidth * cells; let height = request.cellHeight
+    if width + 1 >= atlasSize || height + 1 >= atlasSize { RendererMetrics.recordOversizedGlyphFallback() }
     guard let placement = placement(width, height) else {
       if let glyph = directGlyph(key, width: width, height: height) { return glyph }
-      let replacementKey = GlyphKey(
-        text: "□", cells: 1, bold: false, italic: false, width: request.cellWidth,
-        height: request.cellHeight, pointSize: Int(request.fontSize.rounded()),
-        fontIdentity: CTFontCopyPostScriptName(font) as String)
-      if replacementGlyph == nil {
-        replacementGlyph = directGlyph(
-          replacementKey, width: request.cellWidth, height: request.cellHeight, limited: false)
-      }
+      let replacementKey = GlyphKey(text: "□", cells: 1, bold: false, italic: false, width: request.cellWidth, height: request.cellHeight, pointSize: Int(request.fontSize.rounded()), fontIdentity: CTFontCopyPostScriptName(font) as String)
+      if replacementGlyph == nil { replacementGlyph = directGlyph(replacementKey, width: request.cellWidth, height: request.cellHeight, limited: false) }
       if replacementGlyph != nil { RendererMetrics.recordSubstituteGlyphFallback() }
       return replacementGlyph
     }
     let pixels = glyphPixels(key, width: width, height: height)
-    pixels.withUnsafeBytes {
-      atlases[placement.page].replace(
-        region: MTLRegionMake2D(placement.x, placement.y, width, height), mipmapLevel: 0,
-        withBytes: $0.baseAddress!, bytesPerRow: width * 4)
-    }
-    let value = Glyph(
-      uv: SIMD4(
-        Float(placement.x) / Float(atlasSize), Float(placement.y) / Float(atlasSize),
-        Float(width) / Float(atlasSize), Float(height) / Float(atlasSize)),
-      width: width, atlasPage: placement.page, texture: nil)
-    frameAtlasPages.insert(placement.page)
-    glyphs[key] = value
-    return value
+    pixels.withUnsafeBytes { atlases[placement.page].replace(region: MTLRegionMake2D(placement.x, placement.y, width, height), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: width * 4) }
+    let value = Glyph(uv: SIMD4(Float(placement.x) / Float(atlasSize), Float(placement.y) / Float(atlasSize), Float(width) / Float(atlasSize), Float(height) / Float(atlasSize)), width: width, atlasPage: placement.page, texture: nil, kind: .mask)
+    frameAtlasPages.insert(placement.page); glyphs[key] = value; return value
   }
   private func draw(
     _ request: RenderRequest, drawable: CAMetalDrawable, surface: SurfaceLease, generation: UInt64
   ) -> Bool {
     guard request.width > 0, request.height > 0 else { return false }
+    glyphResidency.beginFrame()
+    var residencySubmitted = false
+    defer { if !residencySubmitted { glyphResidency.abandonedPreparedFrame() } }
     if metrics != SIMD2(request.cellWidth, request.cellHeight) || fontSize != request.fontSize {
       metrics = SIMD2(request.cellWidth, request.cellHeight)
       fontSize = request.fontSize
@@ -624,6 +572,8 @@ final class TerminalRendering: @unchecked Sendable {
         Quad(rect: SIMD4(Float(x), Float(y), Float(w), Float(h)), uv: whiteUV, color: color))
     }
     func appendGlyph(_ quad: Quad, _ glyph: Glyph) {
+      var quad = quad
+      quad.material = SIMD4(glyph.kind == .mask ? 0 : 1, 0, 0, 0)
       if let page = glyph.atlasPage {
         while glyphQuads.count <= page { glyphQuads.append([]) }
         glyphQuads[page].append(quad)
@@ -699,11 +649,10 @@ final class TerminalRendering: @unchecked Sendable {
                   cell.style.bold ? (cell.style.italic ? boldItalicFont : boldFont)
                     : (cell.style.italic ? italicFont : font)) as String)
               if let glyph = glyph(key, cells: cells, request: request) {
-                let emoji = cell.text.unicodeScalars.contains { (0x1f000...0x1faff).contains($0.value) }
                 appendGlyph(
                   Quad(
                     rect: SIMD4(Float(x), Float(y), Float(glyph.width), Float(request.cellHeight)),
-                    uv: glyph.uv, color: emoji ? SIMD4(1, 1, 1, 1) : fg), glyph)
+                    uv: glyph.uv, color: glyph.kind == .color ? SIMD4(1, 1, 1, 1) : fg), glyph)
               } else {
                 needsReset = true
                 if pass == 1 { RendererMetrics.recordVisibleGlyphDrop() }
@@ -888,8 +837,11 @@ final class TerminalRendering: @unchecked Sendable {
     let retainedFallbackTextures =
       textDirectGlyphQuads.map(\.texture) + overlayDirectGlyphQuads.map(\.texture)
     let completedRevision = snap.revision
+    glyphResidency.submitted()
+    residencySubmitted = true
     command.addCompletedHandler { [weak self, retainedFallbackTextures, surface] command in
       self?.executor.async {
+        self?.glyphResidency.completedSubmission()
         self?.completed(
           surface: surface, generation: generation, revision: completedRevision, command: command)
         _ = retainedFallbackTextures

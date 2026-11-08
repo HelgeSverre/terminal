@@ -12,6 +12,9 @@ struct GlyphRasterRecipe: Hashable {
   let bold: Bool
   let italic: Bool
   let fontIdentity: String
+  // The request is deliberately self-contained.  A later font preference
+  // cannot mutate this work item into a glyph for a different face.
+  let backingScale: Int
 }
 
 enum GlyphRasterKind { case mask, color }
@@ -21,6 +24,7 @@ struct GlyphRasterResult {
   let pixels: [UInt8]
   let kind: GlyphRasterKind
   let resolvedFonts: [String]
+  let glyphIDs: [CGGlyph]
 }
 
 // One bounded worker keeps CoreText/CG allocations out of the render owner.
@@ -71,8 +75,14 @@ final class GlyphRasterWorker: @unchecked Sendable {
     lock.unlock()
   }
   private static func rasterize(_ recipe: GlyphRasterRecipe) -> GlyphRasterResult? {
-    let font = TerminalFont.core(
+    // The PostScript face is part of the key.  Reconstructing from that
+    // immutable identity avoids accidentally rasterizing a pending request
+    // using a newly-selected pane font.
+    let fallback = TerminalFont.core(
       size: CGFloat(recipe.pointSize), bold: recipe.bold, italic: recipe.italic)
+    let font = recipe.fontIdentity.isEmpty
+      ? fallback
+      : CTFontCreateWithName(recipe.fontIdentity as CFString, CGFloat(recipe.pointSize), nil)
     let bitmap = TerminalFont.rasterize(recipe.text, font: font, width: recipe.width, height: recipe.height)
     // CoreText's resolved runs are authoritative. Preserve RGBA whenever the
     // result is not plainly white coverage; uncertain data stays color.
@@ -85,8 +95,16 @@ final class GlyphRasterWorker: @unchecked Sendable {
         break
       }
     }
+    let line = CTLineCreateWithAttributedString(NSAttributedString(string: recipe.text, attributes: [
+      .font: font, .ligature: 0,
+    ]))
+    let glyphIDs = (CTLineGetGlyphRuns(line) as! [CTRun]).flatMap { run -> [CGGlyph] in
+      var values = [CGGlyph](repeating: 0, count: CTRunGetGlyphCount(run))
+      CTRunGetGlyphs(run, CFRange(location: 0, length: values.count), &values)
+      return values
+    }
     return GlyphRasterResult(
       recipe: recipe, pixels: bitmap.pixels, kind: mask ? .mask : .color,
-      resolvedFonts: bitmap.fonts)
+      resolvedFonts: bitmap.fonts, glyphIDs: glyphIDs)
   }
 }
