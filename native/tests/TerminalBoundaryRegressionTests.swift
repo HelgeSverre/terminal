@@ -29,12 +29,35 @@ import Foundation
     try expect(terminal_validate(terminal), "document invariants")
   }
   static func feed(_ terminal: OpaquePointer, _ text: String) throws { try feed(terminal, Data(text.utf8)) }
-  static func snapshot(_ terminal: OpaquePointer) throws -> [String: Any] {
-    guard let raw = terminal_snapshot(terminal, Int.max, 0) else { throw Failure("missing snapshot") }
-    defer { terminal_string_free(raw) }
-    guard let result = try JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8)) as? [String: Any] else {
-      throw Failure("snapshot object")
+  private final class Capture {
+    var value: [String: Any]?
+  }
+  private static let receive: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int,
+    UnsafePointer<TerminalCellView>?, Int, UnsafePointer<UInt8>?, Int
+  ) -> Void = { context, metadata, metadataCount, cells, cellCount, wraps, rowCount in
+    guard let context, let metadata, let cells, let wraps,
+      var value = (try? JSONSerialization.jsonObject(with: Data(bytes: metadata, count: metadataCount))) as? [String: Any],
+      let columns = value["cols"] as? Int, columns > 0, columns * rowCount == cellCount else { return }
+    let kinds = ["Empty", "Lead1", "Lead2", "Continuation", "WrapSpacer"]
+    var rows: [[String: Any]] = []
+    for row in 0..<rowCount {
+      var output: [[String: Any]] = []
+      for column in 0..<columns {
+        let cell = cells[row * columns + column]
+        guard Int(cell.kind) < kinds.count else { return }
+        let text = String(decoding: UnsafeBufferPointer(start: cell.text, count: cell.text_len), as: UTF8.self)
+        output.append(["text": text, "kind": kinds[Int(cell.kind)], "flags": Int(cell.cell_flags)])
+      }
+      rows.append(["cells": output, "soft_wrapped": wraps[row] != 0])
     }
+    value["rows"] = rows
+    Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().value = value
+  }
+  static func snapshot(_ terminal: OpaquePointer) throws -> [String: Any] {
+    let capture = Capture()
+    guard terminal_view_snapshot_binary(terminal, 0, Unmanaged.passUnretained(capture).toOpaque(), receive),
+      let result = capture.value else { throw Failure("missing owner-view snapshot") }
     return result
   }
   static func cells(_ snapshot: [String: Any], row: Int = 0) -> [[String: Any]] {
@@ -104,7 +127,11 @@ import Foundation
     try feed(terminal, "abcdefghijklmnop\r\nqrstuvwxyz\r\nlast")
     try expect(terminal_resize(terminal, 2, 2), "narrow resize rejected")
     try expect(((try snapshot(terminal))["history_rows"] as! Int) <= 3, "reflow exceeded row retention")
-
+  }
+  #if !RUST_BASELINE
+  // The Rust production ABI has no byte-limit setter; its internal byte-limit
+  // fixture remains separate. Do not report this Swift adapter case as shared.
+  static func resizeByteRetention() throws {
     let bytesTerminal = terminal_create(8, 2)!
     defer { terminal_destroy(bytesTerminal) }
     try feed(bytesTerminal, "a\r\nb\r\nc\r\nd")
@@ -114,6 +141,7 @@ import Foundation
     try expect(terminal_resize(bytesTerminal, 32, 2), "wide resize rejected")
     try expect(terminal_history_bytes(bytesTerminal) <= limit, "reflow exceeded byte retention")
   }
+  #endif
   static func readiness() throws {
     let terminal = terminal_create(12, 3)!
     defer { terminal_destroy(terminal) }
@@ -147,11 +175,14 @@ import Foundation
     }
   }
   static func main() {
-    let cases: [(String, () throws -> Void)] = [
+    var cases: [(String, () throws -> Void)] = [
       ("utf8", utf8), ("strings", stringCaps), ("anchor", survivingAnchor),
       ("retention", resizeRetention), ("readiness", readiness),
       ("cap", cappedClusters), ("segmenter", segmenterIntegration)
     ]
+    #if !RUST_BASELINE
+    cases.append(("byte-retention", resizeByteRetention))
+    #endif
     do {
       let selected = CommandLine.arguments.dropFirst().first
       if let selected, !cases.contains(where: { $0.0 == selected }) { throw Failure("unknown case \(selected)") }

@@ -1,0 +1,56 @@
+{
+  "implementation": "rust",
+  "inputs": {
+    "source_commit": "7c3d1b5045e4f316d2938ac5cd3f6e9a704bd58e",
+    "archive_sha256": "0b6c5832ef698595ba5edde302486e75c62d1042647070c259a03078a4efadca",
+    "bridge_sha256": "f227bf7ba386a4090a77ec3778aea9ba1a95620a7eb01406cf5c33dcd3638ffd",
+    "tests_sha256": "783c3e831269950c79aca5815d039c5a6112cc91c8b7b99aef79a745243ed1d6",
+    "scope": "Seven shared ABI cases; Swift-only byte-limit setter case excluded explicitly with RUST_BASELINE."
+  },
+  "executable_sha256": "815684334398c900866f9c9f58fede8ec4aa8b90518e7e1c41bac14f14eb5a37",
+  "checks": [
+    {
+      "case": "utf8",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary utf8"
+    },
+    {
+      "case": "strings",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary strings"
+    },
+    {
+      "case": "anchor",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary anchor"
+    },
+    {
+      "case": "retention",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary retention"
+    },
+    {
+      "case": "readiness",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary readiness"
+    },
+    {
+      "case": "cap",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary cap"
+    },
+    {
+      "case": "segmenter",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary segmenter"
+    }
+  ],
+  "passed": true
+}
