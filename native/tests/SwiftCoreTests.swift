@@ -356,12 +356,47 @@ import Foundation
     feed(prefixedMotion, "X\u{1b}[>31CY")
     precondition(cells(snapshot(prefixedMotion), 0)[7]["text"] as? String == "Y")
   }
+  static func csiScratchReuseEquivalence() {
+    let grown = Array(repeating: "1", count: 256).joined(separator: ";")
+    let text = "\u{1b}[" + grown + "mA" +
+      "\u{1b}[1;2;4294967296;3mB" + // invalid after partial scratch values
+      "\u{1b}[2;4H\u{1b}[32mC" +
+      "\u{1b}[38:2::255:1:2;48;5;7;4:3mD" +
+      "\u{1b}[0mE\u{1b}[5n"
+    let payload = Data(text.utf8)
+    let whole = terminal_create(8, 3)!, bytewise = terminal_create(8, 3)!, irregular = terminal_create(8, 3)!
+    defer { terminal_destroy(whole); terminal_destroy(bytewise); terminal_destroy(irregular) }
+    feed(whole, bytes: payload, partitions: [payload.count])
+    feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
+    feed(irregular, bytes: payload, partitions: [5, 63, 2, 127, 17, 3, 71])
+    let expected = stableSnapshot(whole)
+    precondition(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
+    let first = cells(snapshot(whole), 0)[0]
+    precondition(first["text"] as? String == "A")
+    precondition((first["style"] as? [String: Any])?["bold"] as? Bool == true)
+    let second = cells(snapshot(whole), 0)[1]
+    precondition(second["text"] as? String == "B")
+    precondition((second["style"] as? [String: Any])?["bold"] as? Bool == true)
+    let styled = cells(snapshot(whole), 1)
+    precondition(styled[3]["text"] as? String == "C")
+    precondition((styled[3]["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 2])
+    precondition(styled[4]["text"] as? String == "D")
+    let rich = styled[4]["style"] as! [String: Any]
+    precondition(rich["foreground"] as? [String: [Int]] == ["Rgb": [255, 1, 2]])
+    precondition(rich["background"] as? [String: Int] == ["Indexed": 7])
+    precondition(rich["underline"] as? Int == 3)
+    precondition(styled[5]["text"] as? String == "E")
+    precondition((styled[5]["style"] as? [String: Any])?["foreground"] as? String == "Default")
+    let expectedReplies = replies(whole)
+    precondition(replies(bytewise) == expectedReplies && replies(irregular) == expectedReplies)
+  }
   static func main() {
     nativeModifierWire()
     asciiByteAdmission()
     decodedBatchEquivalence()
     indexHistoryUsesMutatedPrimaryForViewportClamp()
     csiASCIIParsing()
+    csiScratchReuseEquivalence()
     guard let core = terminal_create(8, 3) else { fatalError("create") }
     defer { terminal_destroy(core) }
     feed(core, "one\ntwo")

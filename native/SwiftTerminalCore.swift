@@ -131,12 +131,16 @@ private final class SwiftTerminalCore {
   private var decodedScalars: [Unicode.Scalar] = []
   private var decodedScalarStart = 0
   private static let minimumASCIIInputRun = 16
+  // CSI input itself is capped at 16 KiB, so this reusable numeric scratch is
+  // bounded by the parser's existing sequence limit.
+  private var csiParameterScratch: [Int] = []
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
     self.rowCount = max(1, min(4096, rows))
     document = TerminalDocument(columns: self.columns, rows: self.rowCount)
     decodedScalars.reserveCapacity(1024)
+    csiParameterScratch.reserveCapacity(16)
   }
 
   private var screen: SwiftScreen {
@@ -433,6 +437,7 @@ private final class SwiftTerminalCore {
     // before any generic filtering.  Keep that protocol-specific value
     // alongside the ordinary flattened fields.
     var keyboardFlags: UInt32?
+    var hasColon: Bool
   }
   // CSI parameter syntax is ASCII. Scan it once rather than repeatedly
   // traversing Character collections and allocating filtered strings. The
@@ -440,17 +445,19 @@ private final class SwiftTerminalCore {
   // syntax bytes are ignored between digits, while each semicolon creates an
   // empty/defaulted field when needed. Every value consumed by a non-SGR
   // command is bounded to UInt32, matching the wire protocol.
-  private func parseCSIParameters(_ raw: String, final: Character) -> CSIParameterPacket? {
+  private static func parseCSIParameters(_ raw: String, final: Character,
+                                         into parameters: inout [Int]) -> CSIParameterPacket? {
     // The streaming CSI parser stores one input byte per scalar. A non-ASCII
     // scalar cannot be terminal parameter syntax; reject it instead of
     // silently turning a numeric-looking malformed byte into default zero.
-    var parameters: [Int] = []
+    parameters.removeAll(keepingCapacity: true)
     var rawRun: UInt32 = 0
     var rawHasDigits = false
     var filtered: UInt32 = 0
     var filteredHasDigits = false
     let bytes = raw.utf8
-    let preservingColonSGR = final == "m" && containsColon(raw)
+    let hasColon = bytes.contains(0x3a)
+    let preservingColonSGR = final == "m" && hasColon
     let keyboardPrefix = final == "u" && (bytes.first == 0x3e || bytes.first == 0x3d)
     let preservesRawSyntax = preservingColonSGR || keyboardPrefix
     var keyboardValue: UInt32 = 0
@@ -505,12 +512,11 @@ private final class SwiftTerminalCore {
     let keyboardFlags: UInt32? = keyboardPrefix
       ? (keyboardValid && keyboardHasDigits && !keyboardNegative ? keyboardValue : 0)
       : nil
-    return CSIParameterPacket(values: parameters, keyboardFlags: keyboardFlags)
+    return CSIParameterPacket(values: parameters, keyboardFlags: keyboardFlags, hasColon: hasColon)
   }
-  @inline(__always) private func containsColon(_ raw: String) -> Bool { raw.utf8.contains(0x3a) }
   private func handleCSI(_ raw: String, final: Character) {
     if !["m", "n", "c", "u"].contains(final) { resetClusterBoundary() }
-    guard let packet = parseCSIParameters(raw, final: final) else { return }
+    guard let packet = Self.parseCSIParameters(raw, final: final, into: &csiParameterScratch) else { return }
     let params = packet.values
     let first = raw.utf8.first
     let last = raw.utf8.last
@@ -540,7 +546,7 @@ private final class SwiftTerminalCore {
     case "S": resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: false)
     case "T": resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: false, allowHistory: false)
     case "b": repeatRemaining = min(1_000_000, max(0, params.first ?? 1)); clearsPending = false
-    case "m": applySGR(params, colonSyntax: raw); clearsPending = false
+    case "m": applySGR(params, colonSyntax: packet.hasColon ? raw : nil); clearsPending = false
     case "s":
       if leftRightMargins { setHorizontalMargins(params); changedActiveScreen = true }
       else { s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedOrigin = originMode }
@@ -625,7 +631,7 @@ private final class SwiftTerminalCore {
     // parser: removing ':' turns `4:3` into 43. Handle each colon group at
     // the SGR boundary, while delegating ordinary semicolon groups to the
     // established parser so mixed sequences retain their ordering.
-    if let raw, containsColon(raw) {
+    if let raw {
       let groups = raw.split(separator: ";", omittingEmptySubsequences: false)
       var group = 0
       while group < groups.count {
@@ -639,7 +645,8 @@ private final class SwiftTerminalCore {
           {
             let count = mode == 2 ? 5 : mode == 5 ? 3 : 1
             if group + count <= groups.count {
-              if let packet = parseCSIParameters(String(groups[group..<(group + count)].joined(separator: ";")), final: "m") {
+              var nestedParameters: [Int] = []
+              if let packet = Self.parseCSIParameters(String(groups[group..<(group + count)].joined(separator: ";")), final: "m", into: &nestedParameters) {
                 applySGR(packet.values, colonSyntax: nil)
               }
               group += count
@@ -732,7 +739,7 @@ private final class SwiftTerminalCore {
     // ISO 8613-6 colon forms retain empty color-space fields, unlike the
     // semicolon form above. Handle each colon parameter independently so a
     // malformed extended color cannot reinterpret a following command.
-    guard let raw, containsColon(raw) else { return }
+    guard let raw else { return }
     for parameter in raw.split(separator: ";", omittingEmptySubsequences: false) where parameter.utf8.contains(0x3a) {
       let fields = parameter.split(separator: ":", omittingEmptySubsequences: false)
       guard let command = fields.first.flatMap({ Int($0) }), [38, 48, 58].contains(command),
