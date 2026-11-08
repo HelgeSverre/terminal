@@ -126,3 +126,11 @@ headless backend build-wall values reuse existing SDK/compiler caches, so they
 are neither full-app cold/incremental timings nor a matched compile benchmark.
 Read verification.md in that report before quoting its throughput, size, RSS,
 or build figures; it makes no full-product, language-intrinsic, or parity claim.
+
+The [updated ownership comparison](../reports/emulator-comparison-6c601d1-a49a5af/summary.md)
+uses Swift `6c601d1`, after document-owned ASCII placement, and the verified
+archived Rust backend. Three paired 8 MiB runs measured median ASCII throughput
+of 2.53 MiB/s in Swift and 39.60 MiB/s in Rust; mixed text measured 1.28 and
+22.06 MiB/s. Payloads, replies and canonical final snapshots match. This shorter
+run has recorded desktop background load and is separate from sustained
+acceptance, full-app UI and compilation measurements.

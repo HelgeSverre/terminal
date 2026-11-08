@@ -1,0 +1,18 @@
+{
+  "swift_source_commit": "6c601d17b643bdb3651c7a2c992d1bb7f20c506d",
+  "rust_archive_source_commit": "b5a9fea0607f45a9ea891033ee454d0f1e7e4697",
+  "current_rust_main_commit": "a49a5af1774c3b824aade7d4e054dbc1fbc63ce9",
+  "rust_backend_audit": "build-inputs/rust-main-b5a9fea-to-a49a5af-name-status.txt",
+  "temporary_source_snapshots": "removed after result preservation",
+  "timing": {
+    "bytes_per_workload": 8388608,
+    "pairs": 3,
+    "samples_per_turn": 1,
+    "warmups_per_implementation": 1,
+    "geometry": [
+      160,
+      50
+    ],
+    "history_rows": 0
+  }
+}
