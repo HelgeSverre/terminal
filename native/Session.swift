@@ -152,6 +152,18 @@ struct LaunchSpec {
       launcher: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher").path)
   }
 }
+final class ClipboardWriteRequest {
+  let sessionID: UUID
+  let data: Data
+  private let live: () -> Bool
+  private let completion: (Bool, @escaping @MainActor (Bool) -> Void) -> Void
+  init(sessionID: UUID, data: Data, live: @escaping () -> Bool,
+       completion: @escaping (Bool, @escaping @MainActor (Bool) -> Void) -> Void) {
+    self.sessionID = sessionID; self.data = data; self.live = live; self.completion = completion
+  }
+  var isLive: Bool { live() }
+  func resolve(_ allowed: Bool, _ result: @escaping @MainActor (Bool) -> Void) { completion(allowed, result) }
+}
 // The PTY and Rust handle are confined to this queue. Main receives immutable decoded values.
 final class Session: @unchecked Sendable {
   let queue = DispatchQueue(label: "no.helgesverre.terminal.owner", qos: .userInteractive)
@@ -167,6 +179,7 @@ final class Session: @unchecked Sendable {
     case searchAdvance
     case clearDisplay
     case probe(UInt64, @MainActor (Double) -> Void)
+    case clipboardDecision(UInt64, Bool, @MainActor (Bool) -> Void)
     case eof, idle
   }
   private let launchSpec: LaunchSpec?
@@ -209,8 +222,12 @@ final class Session: @unchecked Sendable {
   private var latest: TerminalSnapshot?
   private var deliveryScheduled = false
   private lazy var historySearch = HistorySearch(session: self)
+  private let clipboardSessionID = UUID()
+  private var pendingClipboardIDs = Set<UInt64>()
   var onSnapshot: (@MainActor (TerminalSnapshot) -> Void)?
   var onStatus: (@MainActor (String) -> Void)?
+  var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
+  private var onClipboardClosed: (@MainActor (UUID) -> Void)?
   init(launch: LaunchSpec? = nil) {
     launchSpec = launch
     queue.async { [self] in start() }
@@ -444,6 +461,7 @@ final class Session: @unchecked Sendable {
       bytesParsed += UInt64(used)
       if used > 0 { lastParseNs = DispatchTime.now().uptimeNanoseconds }
       drainReplies()
+      drainClipboardWrites()
       if offset + used < bytes.count || terminal_has_work(core) {
         events[head] = .output(bytes, offset + used)
         complete = false
@@ -463,6 +481,9 @@ final class Session: @unchecked Sendable {
       release(cost)
       if !accepted { report("Input rejected by encoding policy") }
       if accepted && key != 2 && event != 2 && configuration.followTailOnInput { terminal_view_follow_tail(core) }
+    case .clipboardDecision(let requestID, let allowed, let completion):
+      let accepted = !closed && pendingClipboardIDs.remove(requestID) != nil && terminal_complete_clipboard_request(core, requestID)
+      DispatchQueue.main.async { completion(accepted && allowed) }
     case .raw(let bytes, let cost), .shortcut(let bytes, let cost):
       guard writeBytes + bytes.count <= 3 * 1024 * 1024 else { return }
       writeID += 1
@@ -599,6 +620,22 @@ final class Session: @unchecked Sendable {
   private func drainReplies() {
     terminal_replies(core, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
   }
+  private static let collectClipboard: ClipboardCallback = { context, requestID, bytes, count in
+    guard let context, let bytes, count >= 0 else { return }
+    let owner = Unmanaged<Session>.fromOpaque(context).takeUnretainedValue()
+    guard !owner.closed else { return }
+    owner.pendingClipboardIDs.insert(requestID)
+    let request = ClipboardWriteRequest(
+      sessionID: owner.clipboardSessionID, data: Data(bytes: bytes, count: count),
+      live: { [weak owner] in owner?.closed == false },
+      completion: { [weak owner] allowed, completion in
+        guard let owner else { DispatchQueue.main.async { completion(false) }; return }
+        owner.queue.async { owner.enqueue(.clipboardDecision(requestID, allowed, completion)) }
+      })
+    DispatchQueue.main.async { [weak owner] in owner?.onClipboardWrite?(request) }
+  }
+  private func drainClipboardWrites() { terminal_take_clipboard_requests(core, Unmanaged.passUnretained(self).toOpaque(), Self.collectClipboard) }
+  func setClipboardClosedHandler(_ handler: @escaping @MainActor (UUID) -> Void) { onClipboardClosed = handler }
   private func flush() {
     guard !closed, !writeEnded else { return }
     var turn = 0
@@ -823,6 +860,8 @@ final class Session: @unchecked Sendable {
     queue.async { [self] in
       guard !closed else { return }
       closed = true
+      let clipboardID = clipboardSessionID
+      DispatchQueue.main.async { [onClipboardClosed] in onClipboardClosed?(clipboardID) }
       historySearch.cancel()
       for index in head..<events.count {
         switch events[index] {
