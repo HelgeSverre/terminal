@@ -9,10 +9,16 @@ import Foundation
         executable: "/bin/sh", arguments: ["/bin/sh", "-c", script], cwd: "/tmp",
         launcher: root + "/dist/Terminal.app/Contents/MacOS/TerminalLauncher")
     }
+    func zshSpec() -> LaunchSpec {
+      LaunchSpec(
+        executable: "/bin/zsh", arguments: ["/bin/zsh", "-l"], cwd: "/tmp",
+        launcher: root + "/dist/Terminal.app/Contents/MacOS/TerminalLauncher")
+    }
     var checks = Dictionary(
       uniqueKeysWithValues: [
         "input_admitted_for_ordered_output", "input_before_mode_suffix_is_unbracketed",
         "input_after_accepted_output_is_bracketed", "ordered_mode_encoding_after_rep",
+        "zsh_startup_gate_blocks_a", "zsh_startup_input_admitted_after_b",
         "rep_completed", "large_paste_accepted", "oversize_paste_rejected",
         "saturated_cancel_close_reaped", "cancel_close_under_three_seconds",
         "ordinary_ingress_busy", "release_admitted_under_ingress_pressure",
@@ -23,6 +29,8 @@ import Foundation
         "closed_text_input_is_reported", "committed_text_round_trip", "all_owned_children_reaped",
         "finished_pty_refuses_text", "finished_pty_retains_search",
         "physical_key_reaches_pty",
+        "typed_metadata_rejected", "typed_legacy_metadata_rejected", "expanded_key_write_rejected",
+        "typed_key_paths_admitted", "modifier_keys_preserve_anchored_viewport",
       ].map { ($0, false) })
     checks["split_inherits_cwd"] = false
     checks["split_children_reaped"] = false
@@ -157,6 +165,105 @@ import Foundation
     while !done && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
     checks["rep_completed"] = done
     ordered.close()
+    // The bundled zsh integration emits A before its first line-init B. A
+    // private FIFO makes that real boundary deterministic without a timer.
+    zshFixture: do {
+      let privateZdotdir = FileManager.default.temporaryDirectory
+        .appendingPathComponent("terminal-zsh-ready-\(UUID().uuidString)", isDirectory: true)
+      let releaseFIFO = privateZdotdir.appendingPathComponent("line-init-release")
+      let previousZdotdir = ProcessInfo.processInfo.environment["ZDOTDIR"]
+      defer {
+        if let previousZdotdir { setenv("ZDOTDIR", previousZdotdir, 1) }
+        else { unsetenv("ZDOTDIR") }
+        try? FileManager.default.removeItem(at: privateZdotdir)
+      }
+      do {
+        try FileManager.default.createDirectory(at: privateZdotdir, withIntermediateDirectories: true)
+      } catch {
+        expect(false, "could not create private ZDOTDIR fixture: \(error)")
+      }
+      guard mkfifo(releaseFIFO.path, 0o600) == 0 else {
+        expect(false, "could not create startup FIFO: \(String(cString: strerror(errno)))")
+        break zshFixture
+      }
+      let fifo = open(releaseFIFO.path, O_RDWR | O_NONBLOCK)
+      guard fifo >= 0 else {
+        expect(false, "could not open startup FIFO: \(String(cString: strerror(errno)))")
+        break zshFixture
+      }
+      defer { close(fifo) }
+      let quotedFIFO = "'" + releaseFIFO.path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+      do {
+        try """
+          HISTFILE=/dev/null
+          HISTSIZE=0
+          SAVEHIST=0
+          PROMPT='READY> '
+          autoload -Uz add-zle-hook-widget
+          typeset -g _terminal_ready_fifo=\(quotedFIFO)
+          typeset -g _terminal_ready_fixture_waited=0
+          function _terminal_ready_fixture_gate() {
+            if (( ! _terminal_ready_fixture_waited )); then
+              _terminal_ready_fixture_waited=1
+              IFS= read -r _terminal_ready_release < "$_terminal_ready_fifo"
+            fi
+          }
+          add-zle-hook-widget line-init _terminal_ready_fixture_gate
+          """.write(
+            to: privateZdotdir.appendingPathComponent(".zshrc"), atomically: true, encoding: .utf8)
+      } catch {
+        expect(false, "could not write private zsh fixture: \(error)")
+        break zshFixture
+      }
+      setenv("ZDOTDIR", privateZdotdir.path, 1)
+      let readyShell = own(Session(launch: zshSpec()))
+      var sawDrawing = false
+      var sawReady = false
+      var startupCommandAttempts = 0
+      var admittedAtA = false
+      var releaseSent = false
+      var startupDone = false
+      let outputMarker = "ZSH_STARTUP_GATE_OK"
+      func admitStartupCommand(after snapshot: TerminalSnapshot) -> Bool {
+        guard snapshot.input_ready == true else { return false }
+        startupCommandAttempts += 1
+        return readyShell.input("printf '%s%s\\n' ZSH_STARTUP_GATE_ OK\r")
+      }
+      readyShell.onSnapshot = { snapshot in
+        if snapshot.at_prompt && snapshot.input_ready != true {
+          sawDrawing = true
+          admittedAtA = admitStartupCommand(after: snapshot)
+          if !releaseSent {
+            let release = Array("go\n".utf8)
+            releaseSent = release.withUnsafeBytes {
+              Darwin.write(fifo, $0.baseAddress, $0.count) == release.count
+            }
+          }
+        }
+        if snapshot.input_ready == true && releaseSent {
+          sawReady = true
+          if startupCommandAttempts == 0 {
+            checks["zsh_startup_input_admitted_after_b"] = admitStartupCommand(after: snapshot)
+          }
+        }
+        startupDone = snapshot.rows.map { row in
+          row.cells.map { $0.text }.joined().trimmingCharacters(in: .whitespaces)
+        }.contains(outputMarker)
+      }
+      let zshDeadline = Date().addingTimeInterval(5)
+      while !startupDone && Date() < zshDeadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+      }
+      checks["zsh_startup_input_admitted_after_b"] =
+        checks["zsh_startup_input_admitted_after_b"] == true && startupDone
+      checks["zsh_startup_gate_blocks_a"] =
+        sawDrawing && releaseSent && sawReady && !admittedAtA && startupCommandAttempts == 1
+      expect(checks["zsh_startup_gate_blocks_a"] == true,
+        "zsh startup gate did not observe A then B: drawing=\(sawDrawing), released=\(releaseSent), ready=\(sawReady)")
+      expect(checks["zsh_startup_input_admitted_after_b"] == true,
+        "zsh startup command was not executed after B")
+      readyShell.close()
+    }
     // Automation and IME commits use key=0: the C ABI must forward the full
     // committed string rather than silently reducing it to its first scalar.
     let committed = own(Session(launch: spec("stty raw -echo; exec /bin/cat")))
@@ -205,6 +312,83 @@ import Foundation
     }
     checks["physical_key_reaches_pty"] = checks["physical_key_reaches_pty"] == true && physicalDone
     physical.close()
+    // Typed key metadata is retained across the owner queue. Enormous retained
+    // or expanded wire input must be rejected before it can stall the PTY.
+    let bounded = own(Session(launch: spec("sleep 1")))
+    var boundedStatuses: [String] = []
+    bounded.onStatus = { boundedStatuses.append($0) }
+    let oversizedMetadata = TerminalKeyEvent(
+      text: "", logical: String(repeating: "l", count: 2 * 1024 * 1024),
+      shifted: "", baseLayout: "", legacyText: "", key: 200, modifiers: 0, event: 0)
+    let oversizedLegacyMetadata = TerminalKeyEvent(
+      text: "", logical: "", shifted: "", baseLayout: "",
+      legacyText: String(repeating: "l", count: 2 * 1024 * 1024), key: 200, modifiers: 2, event: 0)
+    let impossibleExpansion = TerminalKeyEvent(
+      text: String(repeating: "x", count: 800_000), logical: "x",
+      shifted: "", baseLayout: "x", legacyText: "", key: 200, modifiers: 0, event: 0)
+    let shiftedKey = TerminalKeyEvent(
+      text: "!", logical: "1", shifted: "!", baseLayout: "1", legacyText: "!", key: 200,
+      modifiers: 1, event: 0)
+    let modifierKey = TerminalKeyEvent(
+      text: "", logical: "", shifted: "", baseLayout: "", legacyText: "", key: 400,
+      modifiers: 1, event: 0)
+    checks["typed_metadata_rejected"] = !bounded.input(oversizedMetadata)
+    checks["typed_legacy_metadata_rejected"] = !bounded.input(oversizedLegacyMetadata)
+    checks["expanded_key_write_rejected"] = !bounded.input(impossibleExpansion)
+    checks["typed_key_paths_admitted"] = bounded.input(shiftedKey) && bounded.input(modifierKey)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    checks["typed_metadata_rejected"] =
+      checks["typed_metadata_rejected"] == true && boundedStatuses.contains("Input busy")
+    checks["typed_legacy_metadata_rejected"] =
+      checks["typed_legacy_metadata_rejected"] == true && boundedStatuses.contains("Input busy")
+    checks["expanded_key_write_rejected"] =
+      checks["expanded_key_write_rejected"] == true && boundedStatuses.contains("Key input exceeds write limit")
+    bounded.close()
+    let shiftPress = TerminalKeyEvent(
+      text: "", logical: "", shifted: "", baseLayout: "", legacyText: "", key: 400,
+      modifiers: 1, event: 0)
+    let commandPress = TerminalKeyEvent(
+      text: "", logical: "", shifted: "", baseLayout: "", legacyText: "", key: 403,
+      modifiers: 9, event: 0)
+    expect(!shiftPress.isKeyAction && !commandPress.isKeyAction,
+      "modifier-only key events were classified as typing")
+    func preservesModifierViewport(kitty: Bool) -> Bool {
+      let mode = kitty ? "print \"\\e[=8u\"; " : ""
+      let read = kitty ? 2 : 1
+      let modifierView = own(Session(launch: spec(
+        "stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; \(mode)30.times{|i| print \"modifier#{i}\\r\\n\"}; print \"MODIFIER_READY\"; STDIN.read(\(read)); print \"MODIFIER_TICK\"; sleep 1'")))
+      var phase = 0
+      var revision: UInt64 = 0
+      var rows: [RowSnapshot] = []
+      var passed = false
+      modifierView.onSnapshot = { snapshot in
+        let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
+        switch phase {
+        case 0 where text.contains("MODIFIER_READY"):
+          phase = 1
+          modifierView.scroll(3)
+        case 1 where !snapshot.following_tail:
+          phase = 2
+          revision = snapshot.revision
+          rows = snapshot.rows
+          expect(modifierView.input(shiftPress), "shift modifier input was rejected")
+          expect(modifierView.input(commandPress), "command modifier input was rejected")
+          if !kitty { modifierView.rawInput(Data([0])) }
+        case 2 where snapshot.revision > revision:
+          passed = !snapshot.following_tail && snapshot.scroll_offset == 3 && snapshot.rows == rows
+          phase = 3
+        default: break
+        }
+      }
+      let modifierDeadline = Date().addingTimeInterval(5)
+      while phase != 3 && Date() < modifierDeadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+      }
+      modifierView.close()
+      return phase == 3 && passed
+    }
+    checks["modifier_keys_preserve_anchored_viewport"] =
+      preservesModifierViewport(kitty: false) && preservesModifierViewport(kitty: true)
     // These events pass through the real owner FIFO and typed snapshot bridge.
     // Focus reports and a paired release must not make history jump to the tail.
     let view = own(Session(launch: spec(
