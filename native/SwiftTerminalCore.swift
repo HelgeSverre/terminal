@@ -160,7 +160,9 @@ private final class SwiftTerminalCore {
   private func repeatLastPrinted() {
     let savedPen = pen, savedLink = currentLink, savedProtected = protectedOutput
     pen = lastPrintedStyle; currentLink = lastPrintedLink; protectedOutput = lastPrintedFlags & 2 != 0
-    put(lastPrinted)
+    resetClusterBoundary()
+    for scalar in lastPrinted.unicodeScalars { put(String(scalar)) }
+    resetClusterBoundary()
     pen = savedPen; currentLink = savedLink; protectedOutput = savedProtected
   }
   func feed(_ bytes: UnsafePointer<UInt8>?, count: Int, now: UInt64) -> Int {
@@ -260,6 +262,13 @@ private final class SwiftTerminalCore {
         s.rows[owner.row].cells[owner.column].flags |= 4
       } else {
         s.rows[owner.row].cells[owner.column].text.append(text)
+        let combined = s.rows[owner.row].cells[owner.column].text
+        if SwiftUnicode.cellWidth(of: combined) == 2, cell.kind == 1, owner.column + 1 < columns {
+          s.rows[owner.row].cells[owner.column].kind = 2
+          s.rows[owner.row].cells[owner.column + 1] = SwiftCell(text: "", kind: 3, style: cell.style, link: cell.link, flags: cell.flags, protected: cell.protected)
+          if s.cursorColumn == owner.column + 1 { s.cursorColumn += 1 }
+        }
+        lastPrinted = combined
       }
       screen = s; changed(); return
     }
@@ -272,7 +281,10 @@ private final class SwiftTerminalCore {
         default: return false
         }
       }) { return }
-      if s.cursorColumn > 0 {
+      if startsCluster {
+        // An orphan combining/default-ignorable scalar is a visible one-cell
+        // terminal glyph after a movement boundary.
+      } else if s.cursorColumn > 0 {
         var attachmentColumn = s.pendingWrap ? s.cursorColumn : s.cursorColumn - 1
         if !s.pendingWrap, s.rows[s.cursorRow].cells[attachmentColumn].kind == 0,
            s.cursorColumn < columns { attachmentColumn = s.cursorColumn }
@@ -286,7 +298,7 @@ private final class SwiftTerminalCore {
           s.rows[s.cursorRow].cells[owner].text.append(text)
         }
       }
-      screen = s; changed(); return
+      if !startsCluster { screen = s; changed(); return }
     }
     let width = min(2, max(1, measuredWidth))
     cappedCluster = false
