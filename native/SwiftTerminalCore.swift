@@ -231,7 +231,7 @@ private final class SwiftTerminalCore {
   private func reverseIndex() { var s = screen; s.pendingWrap = false; index(&s, reverse: true, allowHistory: false); screen = s; changed() }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedOrigin = originMode; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false; screen = s; changed() }
-  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false; synchronizedOutput = false; changed(history: true) }
+  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); usingAlternate = false; history.removeAll(); viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; protectedOutput = false; synchronizedOutput = false; cursorVisible = true; changed(history: true) }
   private func parameters(_ raw: String) -> [Int] { raw.split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 } }
   private func handleCSI(_ raw: String, final: Character) {
     let privateMode = raw.first == "?"
