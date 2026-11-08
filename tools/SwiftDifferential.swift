@@ -109,6 +109,9 @@ func firstDifference(_ a: Any, _ b: Any, path: String = "$") -> String? {
 }
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).path
+struct SourceGraph: Decodable { let emulation: [String] }
+let sourceGraph = try JSONDecoder().decode(
+  SourceGraph.self, from: Data(contentsOf: URL(fileURLWithPath: "\(root)/tools/swift-sources.json")))
 let args = Array(CommandLine.arguments.dropFirst())
 func argument(_ name: String, fallback: String) -> String { args.firstIndex(of: name).flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil } ?? fallback }
 let fixturesPath = argument("--fixtures", fallback: "native/tests/differential-fixtures.json")
@@ -158,7 +161,7 @@ defer { try? FileManager.default.removeItem(at: temporary) }
 // top-level executable statements.
 let runnerPath = temporary.appendingPathComponent("main.swift"); try runner.data(using: .utf8)!.write(to: runnerPath)
 let runnerExecutable = temporary.appendingPathComponent("runner")
-let sources = ["native/TerminalDocument.swift", "native/DocumentReflow.swift", "native/SwiftUnicode18Tables.swift", "native/SwiftUnicode.swift", "native/SwiftInputEncoder.swift", "native/SwiftGraphics.swift", "native/SwiftReflow.swift", "native/SwiftSearchViewport.swift", "native/SwiftMargins.swift", "native/SwiftTerminalCore.swift", runnerPath.path]
+let sources = sourceGraph.emulation.map { "\(root)/native/\($0)" } + [runnerPath.path]
 let compile = try process("/usr/bin/xcrun", ["swiftc", "-swift-version", "5", "-O", "-import-objc-header", "native/Bridge.h"] + sources + ["-framework", "Foundation", "-framework", "CoreGraphics", "-framework", "ImageIO", "-o", runnerExecutable.path], cwd: root)
 if !compile.1.isEmpty { fputs(String(decoding: compile.1, as: UTF8.self), stderr) }
 var cases: [[String: Any]] = []

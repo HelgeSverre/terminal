@@ -7,10 +7,8 @@
     "SwiftInputEncoder.swift",
     "ClipboardProtocol.swift",
     "SwiftGraphics.swift",
-    "SwiftReflow.swift",
     "UnicodeLowercase.swift",
     "SwiftSearchViewport.swift",
-    "SwiftMargins.swift",
     "TerminalDocument.swift",
     "DocumentReflow.swift",
     "SwiftTerminalCore.swift",
@@ -47,10 +45,8 @@
     "SwiftInputEncoder.swift",
     "ClipboardProtocol.swift",
     "SwiftGraphics.swift",
-    "SwiftReflow.swift",
     "UnicodeLowercase.swift",
     "SwiftSearchViewport.swift",
-    "SwiftMargins.swift",
     "TerminalDocument.swift",
     "DocumentReflow.swift",
     "SwiftTerminalCore.swift"
@@ -137,6 +133,9 @@
     ],
     "swift_unicode18_corpus": [
       "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift", "tests/SwiftUnicode18CorpusTests.swift"
+    ],
+    "swift_unicode_decoder": [
+      "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift", "tests/SwiftUnicodeTests.swift"
     ],
     "swift_input_encoder": [
       "SwiftInputEncoder.swift", "tests/SwiftInputEncoderTests.swift"

@@ -158,6 +158,7 @@ lint:
     just terminal-semantic-regression
     just terminal-boundary-regression
     just swift-unicode18-corpus
+    just swift-unicode-decoder
     just unicode-lowercase
     just terminal-width
     just swift-input-encoder
@@ -272,6 +273,13 @@ swift-unicode18-corpus:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_unicode18_corpus) -framework Foundation -o target/native/swift-unicode18-corpus
     target/native/swift-unicode18-corpus "$PWD" --strict
+
+[group('check')]
+swift-unicode-decoder:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_unicode_decoder) -framework Foundation -o target/native/swift-unicode-decoder-tests
+    target/native/swift-unicode-decoder-tests
 
 [group('check')]
 swift-input-encoder:
