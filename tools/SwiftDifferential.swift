@@ -119,7 +119,7 @@ defer { try? FileManager.default.removeItem(at: temporary) }
 // top-level executable statements.
 let runnerPath = temporary.appendingPathComponent("main.swift"); try runner.data(using: .utf8)!.write(to: runnerPath)
 let runnerExecutable = temporary.appendingPathComponent("runner")
-let sources = ["native/SwiftUnicode.swift", "native/SwiftInputEncoder.swift", "native/SwiftGraphics.swift", "native/SwiftTerminalCore.swift", runnerPath.path]
+let sources = ["native/TerminalDocument.swift", "native/DocumentReflow.swift", "native/SwiftUnicode18Tables.swift", "native/SwiftUnicode.swift", "native/SwiftInputEncoder.swift", "native/SwiftGraphics.swift", "native/SwiftReflow.swift", "native/SwiftSearchViewport.swift", "native/SwiftMargins.swift", "native/SwiftTerminalCore.swift", runnerPath.path]
 let compile = try process("/usr/bin/xcrun", ["swiftc", "-swift-version", "5", "-O", "-import-objc-header", "native/Bridge.h"] + sources + ["-framework", "Foundation", "-framework", "CoreGraphics", "-framework", "ImageIO", "-o", runnerExecutable.path], cwd: root)
 if !compile.1.isEmpty { fputs(String(decoding: compile.1, as: UTF8.self), stderr) }
 var cases: [[String: Any]] = []
