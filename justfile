@@ -158,6 +158,7 @@ lint:
     just terminal-semantic-regression
     just terminal-boundary-regression
     just terminal-graphics-oracle
+    just terminal-palette
     just swift-unicode18-corpus
     just swift-unicode-decoder
     just unicode-lowercase
@@ -201,6 +202,14 @@ terminal-graphics-oracle:
     mkdir -p target/native
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_graphics_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-graphics-oracle-tests
     target/native/terminal-graphics-oracle-tests
+
+# Direct OSC palette grammar and reset semantics, independent of the parser.
+[group('check')]
+terminal-palette:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_palette) -framework Foundation -o target/native/terminal-palette-tests
+    target/native/terminal-palette-tests
 
 [group('check')]
 window-stress-motion-test:
