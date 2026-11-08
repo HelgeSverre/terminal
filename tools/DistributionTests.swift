@@ -48,8 +48,11 @@ import Darwin
     for status in [65, 66, 73, 77] {
       try scenario(status: status, failures: 10, command: staple, attempts: 1, success: false)
     }
+    let validate = ["xcrun", "stapler", "validate", "fixture.pkg"]
+    try scenario(status: 68, failures: 1, command: validate, attempts: 2, success: true)
+    try scenario(status: 66, failures: 10, command: validate, attempts: 1, success: false)
     try scenario(status: 68, failures: 10,
-      command: ["xcrun", "stapler", "validate", "fixture.pkg"], attempts: 1, success: false)
-    print("PASS distribution: transient ticket retries, bounded exhaustion, permanent failures and validation fail fast")
+      command: ["xcrun", "notarytool", "history"], attempts: 1, success: false)
+    print("PASS distribution: transient staple/validate retries, bounded exhaustion, permanent and unrelated failures fail fast")
   }
 }

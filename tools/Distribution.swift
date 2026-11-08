@@ -27,13 +27,15 @@ struct Distribution {
   func run(_ arguments: [String]) throws -> Data {
     // EX_NOHOST can mean a ticket-service propagation delay even after the
     // matching notarization was accepted (observed for the 0.1.1 installer).
-    // Retry only ticket attachment; invalid/revoked tickets remain fatal.
-    let attachingTicket = arguments.starts(with: ["xcrun", "stapler", "staple"])
+    // Validation also queries that service. Retry only these ticket operations;
+    // invalid/revoked tickets and other commands remain immediately fatal.
+    let ticketCommand = arguments.starts(with: ["xcrun", "stapler"])
+      && arguments.count > 2 && ["staple", "validate"].contains(arguments[2])
     for attempt in 0..<4 {
       do { return try executeCommand(arguments) }
-      catch Failure.command(_, let status) where attachingTicket && status == EX_NOHOST && attempt < 3 {
+      catch Failure.command(_, let status) where ticketCommand && status == EX_NOHOST && attempt < 3 {
         let delay = 1 << attempt
-        print("Ticket service unavailable; retrying stapling in \(delay)s…")
+        print("Ticket service unavailable; retrying \(arguments[2]) in \(delay)s…")
         Thread.sleep(forTimeInterval: Double(delay))
       }
     }
