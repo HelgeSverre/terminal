@@ -100,6 +100,8 @@ if $PROGRAM_NAME == __FILE__
   when 'normal' then ['native-smoke', '--self-test', 20, []]
   when 'editing' then ['editing-smoke', '--editing-smoke', 20, []]
   when 'glyph' then ['glyph-smoke', '--glyph-smoke', 55, ['--columns', '100', '--rows', '36', '--font-size', '14']]
+  when 'atlas' then ['atlas-smoke', '--glyph-smoke', 30, ['--atlas-pressure-smoke', '--columns', '100', '--rows', '36', '--font-size', '14']]
+  when 'atlas-budget' then ['atlas-budget-smoke', '--glyph-smoke', 30, ['--atlas-pressure-smoke', '--atlas-fallback-budget-smoke', '--columns', '100', '--rows', '36', '--font-size', '14']]
   when 'idle' then ['native-idle', '--self-test', 90, ['--idle-test']]
   else abort "Unknown smoke mode: #{mode}"
   end

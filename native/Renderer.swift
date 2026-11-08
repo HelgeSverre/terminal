@@ -37,6 +37,8 @@ private struct GlyphKey: Hashable {
 private struct Glyph {
   let uv: SIMD4<Float>
   let width: Int
+  let atlasPage: Int?
+  let texture: MTLTexture?
 }
 
 final class MetalRenderer: @unchecked Sendable {
@@ -51,12 +53,20 @@ final class MetalRenderer: @unchecked Sendable {
   private var latest: RenderRequest?
   private var scheduled = false
   private let inFlight = DispatchSemaphore(value: 2)
-  private var atlas: MTLTexture
+  private var atlases: [MTLTexture] = []
   private var glyphs: [GlyphKey: Glyph] = [:]
-  private var atlasX = 4
-  private var atlasY = 0
-  private var shelf = 0
-  private let atlasSize = 2048
+  private var atlasX: [Int] = []
+  private var atlasY: [Int] = []
+  private var shelves: [Int] = []
+  private var frameAtlasPages: Set<Int> = []
+  private var directGlyphBytes = 0
+  private var directGlyphCount = 0
+  private var directGlyphExhausted = false
+  private var replacementGlyph: Glyph?
+  private let atlasSize: Int
+  private let atlasPages: Int
+  private let directGlyphBudget: Int
+  private let directGlyphLimit: Int
   private var metrics = SIMD2<Int>(0, 0)
   private var fontSize: CGFloat = 0
   private var font: CTFont
@@ -71,6 +81,12 @@ final class MetalRenderer: @unchecked Sendable {
     self.layer = layer
     device = gpu
     self.commands = commands
+    let pressureSmoke = CommandLine.arguments.contains("--atlas-pressure-smoke")
+    let fallbackBudgetSmoke = CommandLine.arguments.contains("--atlas-fallback-budget-smoke")
+    atlasSize = pressureSmoke ? 128 : 2048
+    atlasPages = pressureSmoke ? 4 : 2
+    directGlyphBudget = fallbackBudgetSmoke ? 0 : 8 * 1024 * 1024
+    directGlyphLimit = fallbackBudgetSmoke ? 0 : 1024
     layer.device = gpu
     layer.pixelFormat = .bgra8Unorm_srgb
     layer.framebufferOnly = true
@@ -94,11 +110,13 @@ final class MetalRenderer: @unchecked Sendable {
     descriptor.fragmentFunction = library.makeFunction(name: "terminal_image_fragment")
     imagePipeline = try gpu.makeRenderPipelineState(descriptor: descriptor)
     let texture = MTLTextureDescriptor.texture2DDescriptor(
-      pixelFormat: .rgba8Unorm, width: 2048, height: 2048, mipmapped: false)
+      pixelFormat: .rgba8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
     texture.storageMode = .shared
     texture.usage = .shaderRead
-    guard let atlas = gpu.makeTexture(descriptor: texture) else { throw RendererError.noMemory }
-    self.atlas = atlas
+    for _ in 0..<atlasPages {
+      guard let atlas = gpu.makeTexture(descriptor: texture) else { throw RendererError.noMemory }
+      atlases.append(atlas)
+    }
     font = TerminalFont.core(size: 14)
     boldFont = font
     italicFont = font
@@ -134,12 +152,27 @@ final class MetalRenderer: @unchecked Sendable {
   }
   private func resetAtlas() {
     glyphs.removeAll(keepingCapacity: true)
-    atlasX = 4
-    atlasY = 0
-    shelf = 0
+    atlasX = Array(repeating: 4, count: atlases.count)
+    atlasY = Array(repeating: 0, count: atlases.count)
+    shelves = Array(repeating: 0, count: atlases.count)
+    replacementGlyph = nil
+    var white: [UInt8] = [255, 255, 255, 255]
+    for atlas in atlases {
+      white.withUnsafeMutableBytes {
+        atlas.replace(
+          region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!,
+          bytesPerRow: 4)
+      }
+    }
+  }
+  private func resetAtlasPage(_ page: Int) {
+    glyphs = glyphs.filter { $0.value.atlasPage != page }
+    atlasX[page] = 4
+    atlasY[page] = 0
+    shelves[page] = 0
     var white: [UInt8] = [255, 255, 255, 255]
     white.withUnsafeMutableBytes {
-      atlas.replace(
+      atlases[page].replace(
         region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!,
         bytesPerRow: 4)
     }
@@ -155,16 +188,32 @@ final class MetalRenderer: @unchecked Sendable {
       Self.linear(Float(rgb[0]) / 255), Self.linear(Float(rgb[1]) / 255),
       Self.linear(Float(rgb[2]) / 255), 1)
   }
-  private func glyph(_ key: GlyphKey, cells: Int, request: RenderRequest) -> Glyph? {
-    if let value = glyphs[key] { return value }
-    let width = request.cellWidth * cells
-    let height = request.cellHeight
-    if atlasX + width + 1 > atlasSize {
-      atlasX = 0
-      atlasY += shelf + 1
-      shelf = 0
+  private func reserve(_ width: Int, _ height: Int, in page: Int) -> (x: Int, y: Int)? {
+    guard width > 0, height > 0, width + 1 < atlasSize, height + 1 < atlasSize else {
+      return nil
     }
-    guard atlasY + height + 1 < atlasSize else { return nil }
+    if atlasX[page] + width + 1 > atlasSize {
+      atlasX[page] = 0
+      atlasY[page] += shelves[page] + 1
+      shelves[page] = 0
+    }
+    guard atlasY[page] + height + 1 < atlasSize else { return nil }
+    let result = (x: atlasX[page], y: atlasY[page])
+    atlasX[page] += width + 1
+    shelves[page] = max(shelves[page], height)
+    return result
+  }
+  private func placement(_ width: Int, _ height: Int) -> (page: Int, x: Int, y: Int)? {
+    for page in atlases.indices {
+      if let point = reserve(width, height, in: page) { return (page, point.x, point.y) }
+    }
+    for page in atlases.indices where !frameAtlasPages.contains(page) {
+      resetAtlasPage(page)
+      if let point = reserve(width, height, in: page) { return (page, point.x, point.y) }
+    }
+    return nil
+  }
+  private func glyphPixels(_ key: GlyphKey, width: Int, height: Int) -> [UInt8] {
     let selected =
       key.bold ? (key.italic ? boldItalicFont : boldFont) : (key.italic ? italicFont : font)
     var pixels = TerminalFont.rasterize(key.text, font: selected, width: width, height: height).pixels
@@ -184,17 +233,69 @@ final class MetalRenderer: @unchecked Sendable {
         pixels[pixel + 2] = 0
       }
     }
+    return pixels
+  }
+  private func directGlyph(_ key: GlyphKey, width: Int, height: Int, limited: Bool = true) -> Glyph? {
+    guard !limited || (!directGlyphExhausted && directGlyphCount < directGlyphLimit) else {
+      return nil
+    }
+    let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+      pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+    descriptor.storageMode = .shared
+    descriptor.usage = .shaderRead
+    guard let texture = device.makeTexture(descriptor: descriptor) else {
+      if limited { directGlyphExhausted = true }
+      return nil
+    }
+    let allocatedBytes = Int(texture.allocatedSize)
+    guard !limited || directGlyphBytes + allocatedBytes <= directGlyphBudget else {
+      directGlyphExhausted = true
+      return nil
+    }
+    let pixels = glyphPixels(key, width: width, height: height)
     pixels.withUnsafeBytes {
-      atlas.replace(
-        region: MTLRegionMake2D(atlasX, atlasY, width, height), mipmapLevel: 0,
+      texture.replace(
+        region: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0,
+        withBytes: $0.baseAddress!, bytesPerRow: width * 4)
+    }
+    if limited {
+      directGlyphBytes += allocatedBytes
+      directGlyphCount += 1
+      RendererMetrics.recordExactGlyphFallback()
+    }
+    return Glyph(uv: SIMD4(0, 0, 1, 1), width: width, atlasPage: nil, texture: texture)
+  }
+  private func glyph(_ key: GlyphKey, cells: Int, request: RenderRequest) -> Glyph? {
+    if let value = glyphs[key] {
+      if let page = value.atlasPage { frameAtlasPages.insert(page) }
+      return value
+    }
+    let width = request.cellWidth * cells
+    let height = request.cellHeight
+    if width + 1 >= atlasSize || height + 1 >= atlasSize {
+      RendererMetrics.recordOversizedGlyphFallback()
+    }
+    guard let placement = placement(width, height) else {
+      if let glyph = directGlyph(key, width: width, height: height) { return glyph }
+      let replacementKey = GlyphKey(text: "□", cells: 1, bold: false, italic: false)
+      if let replacementGlyph { return replacementGlyph }
+      replacementGlyph = directGlyph(
+        replacementKey, width: request.cellWidth, height: request.cellHeight, limited: false)
+      if replacementGlyph != nil { RendererMetrics.recordSubstituteGlyphFallback() }
+      return replacementGlyph
+    }
+    let pixels = glyphPixels(key, width: width, height: height)
+    pixels.withUnsafeBytes {
+      atlases[placement.page].replace(
+        region: MTLRegionMake2D(placement.x, placement.y, width, height), mipmapLevel: 0,
         withBytes: $0.baseAddress!, bytesPerRow: width * 4)
     }
     let value = Glyph(
       uv: SIMD4(
-        Float(atlasX) / 2048, Float(atlasY) / 2048, Float(width) / 2048, Float(height) / 2048),
-      width: width)
-    atlasX += width + 1
-    shelf = max(shelf, height)
+        Float(placement.x) / Float(atlasSize), Float(placement.y) / Float(atlasSize),
+        Float(width) / Float(atlasSize), Float(height) / Float(atlasSize)),
+      width: width, atlasPage: placement.page, texture: nil)
+    frameAtlasPages.insert(placement.page)
     glyphs[key] = value
     return value
   }
@@ -217,20 +318,36 @@ final class MetalRenderer: @unchecked Sendable {
     let preparationStart = DispatchTime.now().uptimeNanoseconds
     var quads: [Quad] = []
     var backgrounds: [Quad] = []
+    var glyphQuads = Array(repeating: [Quad](), count: atlases.count)
+    var directGlyphQuads: [(quad: Quad, texture: MTLTexture)] = []
     let snap = request.snapshot
     let searchRows = Dictionary(snap.search.map { ($0.row, $0) }, uniquingKeysWith: { first, _ in first })
     let baseBackground = SIMD4<Float>(
       Self.linear(Float(snap.default_bg[0]) / 255), Self.linear(Float(snap.default_bg[1]) / 255),
       Self.linear(Float(snap.default_bg[2]) / 255), 1)
-    let whiteUV = SIMD4<Float>(0.5 / 2048, 0.5 / 2048, 0, 0)
+    let whiteUV = SIMD4<Float>(0.5 / Float(atlasSize), 0.5 / Float(atlasSize), 0, 0)
     func rect(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ color: SIMD4<Float>) {
       quads.append(
         Quad(rect: SIMD4(Float(x), Float(y), Float(w), Float(h)), uv: whiteUV, color: color))
+    }
+    func appendGlyph(_ quad: Quad, _ glyph: Glyph) {
+      if let page = glyph.atlasPage {
+        glyphQuads[page].append(quad)
+      } else if let texture = glyph.texture {
+        directGlyphQuads.append((quad, texture))
+      }
     }
     var needsReset = false
     for pass in 0..<2 {
       quads.removeAll(keepingCapacity: true)
       backgrounds.removeAll(keepingCapacity: true)
+      glyphQuads = Array(repeating: [], count: atlases.count)
+      directGlyphQuads.removeAll(keepingCapacity: true)
+      frameAtlasPages = [0]
+      directGlyphBytes = 0
+      directGlyphCount = 0
+      directGlyphExhausted = false
+      replacementGlyph = nil
       needsReset = false
       for (r, row) in snap.rows.enumerated() {
         let search = searchRows[r]
@@ -284,12 +401,13 @@ final class MetalRenderer: @unchecked Sendable {
                 text: displayText, cells: cells, bold: cell.style.bold, italic: cell.style.italic)
               if let glyph = glyph(key, cells: cells, request: request) {
                 let emoji = cell.text.unicodeScalars.contains { (0x1f000...0x1faff).contains($0.value) }
-                quads.append(
+                appendGlyph(
                   Quad(
                     rect: SIMD4(Float(x), Float(y), Float(glyph.width), Float(request.cellHeight)),
-                    uv: glyph.uv, color: emoji ? SIMD4(1, 1, 1, 1) : fg))
+                    uv: glyph.uv, color: emoji ? SIMD4(1, 1, 1, 1) : fg), glyph)
               } else {
                 needsReset = true
+                if pass == 1 { RendererMetrics.recordVisibleGlyphDrop() }
               }
             }
             if cell.style.underline > 0 {
@@ -306,7 +424,11 @@ final class MetalRenderer: @unchecked Sendable {
       resetAtlas()
     }
     let textQuads = quads
+    let textGlyphQuads = glyphQuads
+    let textDirectGlyphQuads = directGlyphQuads
     quads.removeAll(keepingCapacity: true)
+    glyphQuads = Array(repeating: [], count: atlases.count)
+    directGlyphQuads.removeAll(keepingCapacity: true)
     if snap.cursor.visible && !request.scrolled {
       let x = request.inset + snap.cursor.col * request.cellWidth
       let y = request.inset + snap.cursor.row * request.cellHeight
@@ -329,16 +451,21 @@ final class MetalRenderer: @unchecked Sendable {
         rect(
           x, y, cells * request.cellWidth, request.cellHeight,
           TerminalTheme.linear(TerminalTheme.raised))
-        quads.append(
+        appendGlyph(
           Quad(
             rect: SIMD4(Float(x), Float(y), Float(g.width), Float(request.cellHeight)), uv: g.uv,
-            color: SIMD4(1, 1, 1, 1)))
+            color: SIMD4(1, 1, 1, 1)), g)
         rect(
           x, y + request.cellHeight - 2, cells * request.cellWidth, 1,
           TerminalTheme.linear(TerminalTheme.accent))
+      } else {
+        RendererMetrics.recordVisibleGlyphDrop()
       }
     }
     let overlayQuads = quads
+    let overlayGlyphQuads = glyphQuads
+    let overlayDirectGlyphQuads = directGlyphQuads
+    RendererMetrics.recordGlyphFallbackFrame(bytes: directGlyphBytes, count: directGlyphCount)
     let imageKeys = Set(snap.images.map { $0.key })
     imageTextures = imageTextures.filter { imageKeys.contains($0.key) }
     for placement in snap.images where imageTextures[placement.key] == nil {
@@ -395,11 +522,13 @@ final class MetalRenderer: @unchecked Sendable {
     var extent = SIMD2<Float>(Float(drawableWidth), Float(drawableHeight))
     encoder.setVertexBytes(&extent, length: MemoryLayout<SIMD2<Float>>.stride, index: 1)
     func drawQuads(_ items: [Quad], texture: MTLTexture, state: MTLRenderPipelineState) {
-      guard !items.isEmpty,
-        let buffer = device.makeBuffer(
-          bytes: items, length: MemoryLayout<Quad>.stride * items.count, options: .storageModeShared
-        )
-      else { return }
+      guard !items.isEmpty else { return }
+      guard let buffer = device.makeBuffer(
+        bytes: items, length: MemoryLayout<Quad>.stride * items.count, options: .storageModeShared
+      ) else {
+        RendererMetrics.recordQuadBufferDrop(items.count)
+        return
+      }
       encoder.setRenderPipelineState(state)
       encoder.setVertexBuffer(buffer, offset: 0, index: 0)
       encoder.setFragmentTexture(texture, index: 0)
@@ -435,20 +564,27 @@ final class MetalRenderer: @unchecked Sendable {
         MTLScissorRect(x: 0, y: 0, width: drawableWidth, height: drawableHeight))
     }
     drawImages { $0 < -1_073_741_824 }
-    drawQuads(backgrounds, texture: atlas, state: pipeline)
+    drawQuads(backgrounds, texture: atlases[0], state: pipeline)
     drawImages { $0 < 0 && $0 >= -1_073_741_824 }
-    drawQuads(textQuads, texture: atlas, state: pipeline)
+    drawQuads(textQuads, texture: atlases[0], state: pipeline)
+    for page in atlases.indices { drawQuads(textGlyphQuads[page], texture: atlases[page], state: pipeline) }
+    for item in textDirectGlyphQuads { drawQuads([item.quad], texture: item.texture, state: pipeline) }
     drawImages { $0 >= 0 }
-    drawQuads(overlayQuads, texture: atlas, state: pipeline)
+    drawQuads(overlayQuads, texture: atlases[0], state: pipeline)
+    for page in atlases.indices { drawQuads(overlayGlyphQuads[page], texture: atlases[page], state: pipeline) }
+    for item in overlayDirectGlyphQuads { drawQuads([item.quad], texture: item.texture, state: pipeline) }
     encoder.endEncoding()
     RendererMetrics.recordPresentation(
       requestWidth: request.width, requestHeight: request.height,
       drawableWidth: drawableWidth, drawableHeight: drawableHeight)
     command.present(drawable)
     let semaphore = inFlight
-    command.addCompletedHandler { command in
+    let retainedFallbackTextures =
+      textDirectGlyphQuads.map(\.texture) + overlayDirectGlyphQuads.map(\.texture)
+    command.addCompletedHandler { [retainedFallbackTextures] command in
       RendererMetrics.completed(
         gpuMs: (command.gpuEndTime - command.gpuStartTime) * 1000, error: command.error != nil)
+      _ = retainedFallbackTextures
       semaphore.signal()
     }
     command.commit()
@@ -463,6 +599,13 @@ final class RendererMetrics: @unchecked Sendable {
   private static var mismatchedDrawables: UInt64 = 0
   private static var mismatchedPresents: UInt64 = 0
   private static var droppedStaleFrames: UInt64 = 0
+  private static var visibleGlyphDrops: UInt64 = 0
+  private static var exactGlyphFallbacks: UInt64 = 0
+  private static var substituteGlyphFallbacks: UInt64 = 0
+  private static var oversizedGlyphFallbacks: UInt64 = 0
+  private static var peakGlyphFallbackBytes: UInt64 = 0
+  private static var peakGlyphFallbackCount: UInt64 = 0
+  private static var droppedQuadBuffers: UInt64 = 0
   private static var preparation: [Double] = []
   private static var gpu: [Double] = []
   private static var errors = 0
@@ -515,6 +658,37 @@ final class RendererMetrics: @unchecked Sendable {
     defer { lock.unlock() }
     return droppedStaleFrames
   }
+  static func recordVisibleGlyphDrop() {
+    lock.lock()
+    visibleGlyphDrops += 1
+    lock.unlock()
+  }
+  static func recordExactGlyphFallback() {
+    lock.lock()
+    exactGlyphFallbacks += 1
+    lock.unlock()
+  }
+  static func recordSubstituteGlyphFallback() {
+    lock.lock()
+    substituteGlyphFallbacks += 1
+    lock.unlock()
+  }
+  static func recordOversizedGlyphFallback() {
+    lock.lock()
+    oversizedGlyphFallbacks += 1
+    lock.unlock()
+  }
+  static func recordGlyphFallbackFrame(bytes: Int, count: Int) {
+    lock.lock()
+    peakGlyphFallbackBytes = max(peakGlyphFallbackBytes, UInt64(bytes))
+    peakGlyphFallbackCount = max(peakGlyphFallbackCount, UInt64(count))
+    lock.unlock()
+  }
+  static func recordQuadBufferDrop(_ count: Int) {
+    lock.lock()
+    droppedQuadBuffers += UInt64(count)
+    lock.unlock()
+  }
   static func submissions() -> UInt64 {
     lock.lock()
     defer { lock.unlock() }
@@ -530,6 +704,13 @@ final class RendererMetrics: @unchecked Sendable {
       "mismatched_drawables": mismatchedDrawables,
       "mismatched_presents": mismatchedPresents,
       "dropped_stale_frames": droppedStaleFrames,
+      "visible_glyph_drops": visibleGlyphDrops,
+      "exact_glyph_fallbacks": exactGlyphFallbacks,
+      "substitute_glyph_fallbacks": substituteGlyphFallbacks,
+      "oversized_glyph_fallbacks": oversizedGlyphFallbacks,
+      "peak_glyph_fallback_bytes": peakGlyphFallbackBytes,
+      "peak_glyph_fallback_count": peakGlyphFallbackCount,
+      "dropped_quad_buffers": droppedQuadBuffers,
     ]
   }
 }

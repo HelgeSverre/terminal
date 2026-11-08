@@ -70,8 +70,19 @@ enum FontCatalog {
   private var renderedPages = 0
   private var previousSubmissions: UInt64 = 0
   private var failures: [String] = []
-  private let pages = (FontCatalog.codepoints.count + 1023) / 1024
-  init(window: TerminalWindow, path: String) { self.window = window; self.path = path }
+  private let budgetPressure = CommandLine.arguments.contains("--atlas-fallback-budget-smoke")
+  private let pressure: Bool
+  private let pages: Int
+  private let styles: Int
+  private let pageSize: Int
+  init(window: TerminalWindow, path: String) {
+    self.window = window
+    self.path = path
+    pressure = CommandLine.arguments.contains("--atlas-pressure-smoke") || budgetPressure
+    pages = pressure ? 1 : (FontCatalog.codepoints.count + 1023) / 1024
+    styles = pressure ? 1 : 4
+    pageSize = budgetPressure ? 128 : 1024
+  }
   static func start(window: TerminalWindow, path: String) {
     let test = GlyphSmokeTest(window: window, path: path)
     active = test
@@ -103,11 +114,18 @@ enum FontCatalog {
   }
   private func next() {
     page += 1
-    guard page < pages * 4 else { finish(); return }
-    let offset = (page % pages) * 1024
-    points = FontCatalog.codepoints[offset..<min(offset + 1024, FontCatalog.codepoints.count)]
+    guard page < pages * styles else { finish(); return }
+    let offset = (page % pages) * pageSize
+    points = FontCatalog.codepoints[offset..<min(offset + pageSize, FontCatalog.codepoints.count)]
     let style = ["0", "1", "3", "1;3"][page / pages]
-    var output = "\u{1b}[2J\u{1b}[H\u{1b}[0mObel Mono + Nerd Font: page \(page + 1)/\(pages * 4)\r\n\u{1b}[\(style)m"
+    if pressure, let pane = window.panes.first {
+      // Twenty cells exceed the pressure atlas width, exercising the direct
+      // fallback on the IME/preedit path as well as ordinary grid glyphs.
+      pane.setMarkedText(
+        String(repeating: "W", count: 20), selectedRange: NSRange(location: 0, length: 0),
+        replacementRange: NSRange(location: NSNotFound, length: 0))
+    }
+    var output = "\u{1b}[2J\u{1b}[H\u{1b}[0mObel Mono + Nerd Font: page \(page + 1)/\(pages * styles)\r\n\u{1b}[\(style)m"
     for index in stride(from: points.startIndex, to: points.endIndex, by: 32) {
       output += points[index..<min(index + 32, points.endIndex)].map {
         String(Unicode.Scalar($0)!) + " "
@@ -125,10 +143,23 @@ enum FontCatalog {
     Self.active = nil
     window.panes.first?.onObservedSnapshot = nil
     let metrics = RendererMetrics.report()
-    let result: [String: Any] = ["passed": failures.isEmpty && verified == FontCatalog.codepoints.count * 4
-      && metrics["command_errors"] as? Int == 0, "failures": failures,
+    let expected = pressure ? min(pageSize, FontCatalog.codepoints.count) : FontCatalog.codepoints.count * 4
+    let visibleDrops = metrics["visible_glyph_drops"] as? UInt64 ?? 0
+    let exactFallbacks = metrics["exact_glyph_fallbacks"] as? UInt64 ?? 0
+    let substitutions = metrics["substitute_glyph_fallbacks"] as? UInt64 ?? 0
+    let oversized = metrics["oversized_glyph_fallbacks"] as? UInt64 ?? 0
+    let droppedBuffers = metrics["dropped_quad_buffers"] as? UInt64 ?? 0
+    let peakBytes = metrics["peak_glyph_fallback_bytes"] as? UInt64 ?? 0
+    let peakCount = metrics["peak_glyph_fallback_count"] as? UInt64 ?? 0
+    let pressurePassed = !pressure || (budgetPressure
+      ? substitutions > 0 && oversized > 0
+      : exactFallbacks > 0 && substitutions == 0 && oversized > 0
+        && peakBytes <= UInt64(8 * 1024 * 1024) && peakCount <= 1024)
+    let result: [String: Any] = ["passed": failures.isEmpty && verified == expected
+      && metrics["command_errors"] as? Int == 0
+      && visibleDrops == 0 && droppedBuffers == 0 && pressurePassed, "failures": failures,
       "unique_codepoints": FontCatalog.codepoints.count, "style_codepoints_verified": verified,
-      "rendered_pages": renderedPages, "metal": metrics,
+      "rendered_pages": renderedPages, "atlas_pressure": pressure, "metal": metrics,
       "note": "Every mapped printable symbol passed through a raw cat PTY and the native grid in all four styles, with a Metal submission per page. Pixel coverage is checked separately by the shared rasterizer catalog."]
     do { try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
       .write(to: URL(fileURLWithPath: path), options: .atomic) }

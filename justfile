@@ -18,6 +18,14 @@ glyphs: build
 glyph-smoke: build (_native-smoke "glyph")
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
 
+# Force a tiny glyph atlas through the real PTY/grid/Metal path; no glyph may vanish.
+[group('check')]
+atlas-smoke: build (_native-smoke "atlas")
+
+# Exhaust the exact-fallback budget and require a visible substitute, never a blank glyph.
+[group('check')]
+atlas-budget-smoke: build (_native-smoke "atlas-budget")
+
 # Exercise the AppleScript dictionary against a disposable bundle and raw cat PTY.
 [group('check')]
 automation-smoke: build
