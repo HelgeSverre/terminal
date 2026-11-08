@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 @main struct SessionTests {
@@ -10,7 +11,8 @@ import Foundation
     }
     var checks = Dictionary(
       uniqueKeysWithValues: [
-        "accepted_input_during_rep", "input_before_mode_suffix", "ordered_mode_encoding_after_rep",
+        "input_admitted_for_ordered_output", "input_before_mode_suffix_is_unbracketed",
+        "input_after_accepted_output_is_bracketed", "ordered_mode_encoding_after_rep",
         "rep_completed", "large_paste_accepted", "oversize_paste_rejected",
         "saturated_cancel_close_reaped", "cancel_close_under_three_seconds",
         "ordinary_ingress_busy", "release_admitted_under_ingress_pressure",
@@ -18,20 +20,42 @@ import Foundation
         "search_found_and_highlighted", "search_replacement_cancelled",
         "search_latest_query_completed", "search_owner_probe_under_100ms", "search_close_cancelled",
         "closed_focus_and_key_releases_are_quiet",
-        "closed_text_input_is_reported", "committed_text_round_trip",
+        "closed_text_input_is_reported", "committed_text_round_trip", "all_owned_children_reaped",
       ].map { ($0, false) })
     checks["split_inherits_cwd"] = false
     checks["split_children_reaped"] = false
     var statuses: [String] = []
+    let runID = UUID().uuidString
+    let startedAt = ISO8601DateFormatter().string(from: Date())
+    var failures: [String] = []
+    var ownedSessions: [Session] = []
+    func own(_ session: Session) -> Session {
+      ownedSessions.append(session)
+      return session
+    }
+    func expect(_ condition: @autoclosure () -> Bool, _ message: @autoclosure () -> String) {
+      guard !condition() else { return }
+      let failure = message()
+      failures.append(failure)
+      FileHandle.standardError.write(Data("FAIL SessionTests [\(runID)]: \(failure)\n".utf8))
+    }
     let splitFolder = FileManager.default.temporaryDirectory.appendingPathComponent("Terminal split 猫 #% \(UUID().uuidString)")
-    try! FileManager.default.createDirectory(at: splitFolder, withIntermediateDirectories: false)
+    do {
+      try FileManager.default.createDirectory(at: splitFolder, withIntermediateDirectories: false)
+    } catch {
+      expect(false, "could not create split fixture: \(error)")
+    }
     defer { try? FileManager.default.removeItem(at: splitFolder) }
     let splitAlias = splitFolder.appendingPathComponent("logical link")
-    try! FileManager.default.createSymbolicLink(atPath: splitAlias.path, withDestinationPath: splitFolder.path)
+    do {
+      try FileManager.default.createSymbolicLink(atPath: splitAlias.path, withDestinationPath: splitFolder.path)
+    } catch {
+      expect(false, "could not create split alias: \(error)")
+    }
     let splitURL = splitAlias.absoluteString
-    let parent = Session(launch: LaunchSpec(executable: "/bin/sh",
+    let parent = own(Session(launch: LaunchSpec(executable: "/bin/sh",
       arguments: ["/bin/sh", "-c", "stty -echo; cd -- \"$1\"; printf '\\033]7;%s\\007SPLIT_CWD_READY' \"$2\"; IFS= read -r line",
-        "split-fixture", splitAlias.path, splitURL], cwd: "/tmp", launcher: spec("").launcher))
+        "split-fixture", splitAlias.path, splitURL], cwd: "/tmp", launcher: spec("").launcher)))
     var sibling: Session?
     var parentCWD: String?, childText = ""
     var parentEnded = false, siblingEnded = false, siblingMatched = false
@@ -42,10 +66,11 @@ import Foundation
         snapshot.rows.flatMap({ $0.cells }).map({ $0.text }).joined().contains("SPLIT_CWD_READY")
       else { return }
       let launch = parent.siblingLaunch
-      precondition(URL(fileURLWithPath: launch.cwd).resolvingSymlinksInPath().path == splitFolder.resolvingSymlinksInPath().path)
-      let child = Session(launch: LaunchSpec(executable: "/bin/sh",
+      expect(URL(fileURLWithPath: launch.cwd).resolvingSymlinksInPath().path == splitFolder.resolvingSymlinksInPath().path,
+        "split sibling cwd resolved outside fixture: \(launch.cwd)")
+      let child = own(Session(launch: LaunchSpec(executable: "/bin/sh",
         arguments: ["/bin/sh", "-c", "printf 'SPLIT_CHILD_PWD=%s\\n' \"$PWD\""],
-        cwd: launch.cwd, launcher: spec("").launcher))
+        cwd: launch.cwd, launcher: spec("").launcher)))
       sibling = child
       child.onStatus = { if $0 == "Session finished" { siblingEnded = true } }
       child.onSnapshot = { snapshot in
@@ -59,7 +84,7 @@ import Foundation
             actual?[.systemFileNumber] as? NSNumber == expected?[.systemFileNumber] as? NSNumber)
         }
       }
-      precondition(parent.input("\n"))
+      expect(parent.input("\n"), "split parent rejected completion input")
     }
     let splitDeadline = Date().addingTimeInterval(8)
     while !(parentEnded && siblingEnded && siblingMatched) && Date() < splitDeadline {
@@ -68,13 +93,50 @@ import Foundation
     parent.close(); sibling?.close()
     checks["split_inherits_cwd"] = siblingMatched
     checks["split_children_reaped"] = parentEnded && siblingEnded
-    precondition(parentEnded && siblingEnded && siblingMatched,
+    expect(parentEnded && siblingEnded && siblingMatched,
       "split cwd: parent=\(parentEnded), child=\(siblingEnded), match=\(siblingMatched), cwd=\(String(describing: parentCWD)), childText=\(childText)")
-    // The first partial REP snapshot arrives before its suffix sets bracketed paste.
-    // Input admitted at that point must wait for the accepted byte event to finish.
+    // A UI snapshot is deliberately coalesced, so it cannot timestamp parser order.
+    // Check both sides of the resumable packet boundary directly, then exercise
+    // Session's FIFO against a real PTY child below.
+    if let orderingCore = terminal_create(80, 24) {
+      defer { terminal_destroy(orderingCore) }
+      let packet = Data("X\u{1b}[500000b\u{1b}[?2004h".utf8)
+      let capture: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void = {
+        context, bytes, count in
+        guard let context, let bytes, count > 0 else { return }
+        Unmanaged<NSMutableData>.fromOpaque(context).takeUnretainedValue().append(bytes, length: count)
+      }
+      func encodePaste() -> Data {
+        let encoded = NSMutableData()
+        let accepted = "hello\nworld".withCString {
+          terminal_input(orderingCore, $0, 1, 0, 0, Unmanaged.passUnretained(encoded).toOpaque(), capture)
+        }
+        expect(accepted, "ordering core rejected paste input")
+        return encoded as Data
+      }
+      let firstAccepted = packet.withUnsafeBytes {
+        terminal_feed(orderingCore, $0.bindMemory(to: UInt8.self).baseAddress!, packet.count, 0)
+      }
+      expect(firstAccepted < packet.count && terminal_has_work(orderingCore),
+        "REP packet did not yield before its mode suffix")
+      checks["input_before_mode_suffix_is_unbracketed"] =
+        encodePaste() == Data("hello\rworld".utf8)
+      var accepted = firstAccepted
+      packet.withUnsafeBytes { packet in
+        let bytes = packet.bindMemory(to: UInt8.self)
+        while accepted < packet.count || terminal_has_work(orderingCore) {
+          accepted += terminal_feed(orderingCore, bytes.baseAddress!.advanced(by: accepted), packet.count - accepted, 0)
+        }
+      }
+      checks["input_after_accepted_output_is_bracketed"] =
+        encodePaste() == Data("\u{1b}[200~hello\rworld\u{1b}[201~".utf8)
+    } else {
+      expect(false, "could not create ordering core")
+    }
+    // The child validates the final PTY receipt, independent of snapshot cadence.
     let orderedScript =
       "stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; print \"X\\e[500000b\\e[?2004hREADY\"; s=STDIN.read(23); print(s==\"\\e[200~hello\\rworld\\e[201~\" ? \"\\r\\nORDERED_PASTE_OK\" : \"\\r\\nBAD_PASTE\")'"
-    let ordered = Session(launch: spec(orderedScript))
+    let ordered = own(Session(launch: spec(orderedScript)))
     var sent = false
     var done = false
     ordered.onStatus = { statuses.append($0) }
@@ -82,8 +144,7 @@ import Foundation
       let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
       if !sent && text.contains("X") {
         sent = true
-        checks["input_before_mode_suffix"] = !snapshot.modes.bracketed_paste
-        checks["accepted_input_during_rep"] = ordered.input("hello\nworld", key: 1)
+        checks["input_admitted_for_ordered_output"] = ordered.input("hello\nworld", key: 1)
       }
       if text.contains("ORDERED_PASTE_OK") {
         checks["ordered_mode_encoding_after_rep"] = true
@@ -96,13 +157,13 @@ import Foundation
     ordered.close()
     // Automation and IME commits use key=0: the C ABI must forward the full
     // committed string rather than silently reducing it to its first scalar.
-    let committed = Session(launch: spec("stty raw -echo; exec /bin/cat"))
+    let committed = own(Session(launch: spec("stty raw -echo; exec /bin/cat")))
     var committedEchoed = false
     committed.onSnapshot = { snapshot in
       let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
       committedEchoed = committedEchoed || text.contains("AUTOMATION_TEXT")
     }
-    precondition(committed.input("AUTOMATION_TEXT\n"))
+    expect(committed.input("AUTOMATION_TEXT\n"), "committed text input was rejected")
     let committedDeadline = Date().addingTimeInterval(5)
     while !committedEchoed && Date() < committedDeadline {
       RunLoop.main.run(until: Date().addingTimeInterval(0.01))
@@ -111,8 +172,8 @@ import Foundation
     committed.close()
     // These events pass through the real owner FIFO and typed snapshot bridge.
     // Focus reports and a paired release must not make history jump to the tail.
-    let view = Session(launch: spec(
-      #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; 30.times{|i| print "row#{i}\r\n"}; print "VIEW_READY"; STDIN.read(1); print "\r\nVIEW_NEW_OUTPUT"'"#))
+    let view = own(Session(launch: spec(
+      #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; 30.times{|i| print "row#{i}\r\n"}; print "VIEW_READY"; STDIN.read(1); print "\r\nVIEW_NEW_OUTPUT"'"#)))
     var viewPhase = 0
     var capturedRows: [RowSnapshot] = []
     view.onSnapshot = { snapshot in
@@ -125,13 +186,13 @@ import Foundation
         checks["viewport_scroll_anchored"] = snapshot.scroll_offset == 3
         capturedRows = snapshot.rows
         viewPhase = 2
-        precondition(view.input(key: 2, event: 1))
-        precondition(view.input("r", key: 200, event: 2))
+        expect(view.input(key: 2, event: 1), "focus event was rejected")
+        expect(view.input("r", key: 200, event: 2), "key release event was rejected")
       case 2:
         checks["focus_release_preserves_viewport"] =
           !snapshot.following_tail && snapshot.scroll_offset == 3 && snapshot.rows == capturedRows
         viewPhase = 3
-        precondition(view.input("x", key: 200))
+        expect(view.input("x", key: 200), "typing input was rejected")
       case 3 where text.contains("VIEW_NEW_OUTPUT"):
         checks["typing_follows_tail"] = snapshot.following_tail && snapshot.scroll_offset == 0
         viewPhase = 4
@@ -145,15 +206,15 @@ import Foundation
     var shutdownStatuses: [String] = []
     view.onStatus = { shutdownStatuses.append($0) }
     view.close()
-    precondition(!view.input(key: 2, event: 0))
-    precondition(!view.input("r", key: 200, event: 2))
+    expect(!view.input(key: 2, event: 0), "closed session admitted focus event")
+    expect(!view.input("r", key: 200, event: 2), "closed session admitted key release")
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     checks["closed_focus_and_key_releases_are_quiet"] = !shutdownStatuses.contains { $0.hasPrefix("Input") }
-    precondition(!view.input("user text"))
+    expect(!view.input("user text"), "closed session admitted text")
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     checks["closed_text_input_is_reported"] = shutdownStatuses.contains("Input closed")
-    let searchable = Session(launch: spec(
-      #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; 3000.times{|i| print(i==1000 ? "SEARCH_NEEDLE\r\n" : "row#{i}\r\n")}; print "SEARCH_READY"; STDIN.read(1)'"#))
+    let searchable = own(Session(launch: spec(
+      #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; 3000.times{|i| print(i==1000 ? "SEARCH_NEEDLE\r\n" : "row#{i}\r\n")}; print "SEARCH_READY"; STDIN.read(1)'"#)))
     var searchReady = false
     var searchFound = false
     var searchHighlighted = false
@@ -168,7 +229,7 @@ import Foundation
     while !searchReady && Date() < readyDeadline {
       RunLoop.main.run(until: Date().addingTimeInterval(0.01))
     }
-    precondition(searchReady)
+    expect(searchReady, "search fixture never reached ready marker")
     searchable.find("search_needle") { searchFound = $0 == .found }
     let findDeadline = Date().addingTimeInterval(5)
     while !(searchFound && searchHighlighted) && Date() < findDeadline {
@@ -189,8 +250,8 @@ import Foundation
       RunLoop.main.run(until: Date().addingTimeInterval(0.01))
     }
     // Fill a non-reading child's PTY. Urgent cancellation and closure must still run.
-    let blocked = Session(
-      launch: spec(#"stty raw -echo; printf '\033[?2004hBLOCK_READY'; exec /bin/sleep 30"#))
+    let blocked = own(Session(
+      launch: spec(#"stty raw -echo; printf '\033[?2004hBLOCK_READY'; exec /bin/sleep 30"#)))
     var started = false
     var reaped = false
     var cancelTime = Date()
@@ -228,14 +289,67 @@ import Foundation
     let elapsed = Date().timeIntervalSince(cancelTime)
     checks["cancel_close_under_three_seconds"] = reaped && elapsed < 3
     blocked.close()
+    // Every session was explicitly closed at its scenario boundary. Repeat that
+    // cleanup on every terminal path so a failed assertion cannot strand a PTY.
+    ownedSessions.forEach { $0.close() }
+    let cleanupDeadline = Date().addingTimeInterval(2.25)
+    var cleanupStats: [[String: Any]] = []
+    var allChildrenReaped = false
+    repeat {
+      var samples: [[String: Any]] = []
+      for session in ownedSessions {
+        session.statistics { samples.append($0) }
+      }
+      while samples.count < ownedSessions.count && Date() < cleanupDeadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+      }
+      cleanupStats = samples
+      allChildrenReaped = cleanupStats.count == ownedSessions.count
+        && cleanupStats.allSatisfy { $0["child_reaped"] as? Bool == true }
+      if !allChildrenReaped && Date() < cleanupDeadline {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+      }
+    } while !allChildrenReaped && Date() < cleanupDeadline
+    let childReapStates: [[String: Any]] = cleanupStats.enumerated().map { index, statistics in
+      let reaped = (statistics["child_reaped"] as? Bool) ?? false
+      let pid: Int32 = (statistics["child_pid"] as? Int32)
+        ?? ((statistics["child_pid"] as? NSNumber)?.int32Value ?? -1)
+      return ["session": index, "child_reaped": reaped,
+        "child_reaped_reported": statistics["child_reaped"] != nil, "child_pid": pid]
+    }
+    let unreapedPIDs = cleanupStats.compactMap { statistics -> Int32? in
+      guard statistics["child_reaped"] as? Bool != true else { return nil }
+      return (statistics["child_pid"] as? Int32)
+        ?? (statistics["child_pid"] as? NSNumber)?.int32Value
+    }.filter { $0 > 0 }
+    checks["all_owned_children_reaped"] = allChildrenReaped
+    expect(checks["all_owned_children_reaped"] == true,
+      "owned session cleanup incomplete: states=\(childReapStates), unreaped_pids=\(unreapedPIDs)")
+    let passed = failures.isEmpty && checks.values.allSatisfy { $0 }
     let report: [String: Any] = [
-      "checks": checks, "passed": checks.values.allSatisfy { $0 },
+      "run_id": runID, "started_at": startedAt,
+      "finished_at": ISO8601DateFormatter().string(from: Date()),
+      "checks": checks, "passed": passed, "failures": failures,
       "cancel_to_reap_seconds": elapsed, "statuses": statuses,
+      "owned_session_cleanup": ["reported": cleanupStats.count, "expected": ownedSessions.count,
+        "all_children_reaped": allChildrenReaped, "unreaped_pids": unreapedPIDs,
+        "states": childReapStates],
     ]
-    let data = try! JSONSerialization.data(
-      withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
-    try! data.write(to: URL(fileURLWithPath: root + "/reports/session-tests.json"))
-    precondition(checks.values.allSatisfy { $0 }, String(data: data, encoding: .utf8)!)
+    let reportURL = URL(fileURLWithPath: root + "/reports/session-tests.json")
+    var reportWriteFailed = false
+    do {
+      let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+      try data.write(to: reportURL, options: .atomic)
+      print("SESSION_TEST_REPORT=\(reportURL.path) run_id=\(runID) passed=\(passed)")
+      if !passed {
+        let reportText = String(data: data, encoding: .utf8) ?? "unserializable report"
+        FileHandle.standardError.write(Data("FAIL SessionTests [\(runID)]: \(reportText)\n".utf8))
+      }
+    } catch {
+      reportWriteFailed = true
+      FileHandle.standardError.write(Data("FAIL SessionTests [\(runID)]: could not write report at \(reportURL.path): \(error)\n".utf8))
+    }
+    if !passed || reportWriteFailed { exit(1) }
     print(
       "PASS session: REP ordering, lossless admission, live-mode paste encoding, saturation/cancel/close, owned-child reaping"
     )

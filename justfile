@@ -133,18 +133,18 @@ reinstall: install
 @open:
     open "$HOME/Applications/Helge Terminal.app"
 
-# Format sources retained only as the Rust behavioral baseline for differential replay.
+# Format the retained Rust behavioral oracle for differential replay.
 [group('check')]
-fmt:
+rust-oracle-fmt:
     cargo fmt --all
 
-# Check formatting and strict Rust lints
+# Check formatting and strict lints for the retained Rust oracle.
 [group('check')]
-lint:
+rust-oracle-lint:
     cargo fmt --all -- --check
     cargo clippy --locked --workspace --all-targets -- -D warnings
 
-# Run the complete Rust and native transport/session/bridge test suite
+# Run the complete Swift native transport/session/bridge test suite.
 [group('check')]
 @test: build
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
@@ -172,8 +172,7 @@ lint:
     target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print transport) -o target/native/transport-tests
     target/native/transport-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print session) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests
-    target/native/session-tests "$PWD"
+    just _session-test
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print geometry) -o target/native/geometry-tests
     target/native/geometry-tests
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print statistics) -o target/native/statistics-tests
@@ -185,8 +184,21 @@ lint:
     target/native/snapshot-bridge-tests
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print keymap) -framework AppKit -framework CoreText -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/keymap-tests
     target/native/keymap-tests
+
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_document_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-document-oracle-tests
     target/native/terminal-document-oracle-tests
+
+# Compile and exercise Session against the assembled development bundle.
+# Kept separate so CI can diagnose its PTY contract without duplicating commands.
+[group('check')]
+session-test: build _session-test
+
+[private]
+_session-test:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print session) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests
+    target/native/session-tests "$PWD"
 
 # Swift-only terminal-state smoke.  The original Rust suite remains an
 # independent differential oracle under `just parity-baseline`.

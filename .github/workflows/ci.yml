@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      test_target:
+        description: "just recipe to run for an isolated diagnostic"
+        required: false
+        default: test
+        type: choice
+        options:
+          - test
+          - session-test
 
 permissions:
   contents: read
@@ -14,7 +23,7 @@ concurrency:
 
 jobs:
   macos:
-    name: macOS · Rust and native tests
+    name: macOS · Swift native tests
     runs-on: macos-15
     timeout-minutes: 25
     steps:
@@ -29,15 +38,13 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
-            ~/.cargo/registry
-            ~/.cargo/git
             target
-          key: macos-arm64-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
-      - name: Run formatting, Clippy, Rust and native tests
+          key: macos-arm64-swift-${{ hashFiles('native/**', 'tools/SwiftIncrementalBuild.swift', 'tools/swift-sources.json', 'justfile') }}
+      - name: Run Swift native tests
         run: |
           mkdir -p reports
           set -o pipefail
-          just test 2>&1 | tee reports/ci-tests.txt
+          just "${{ github.event.inputs.test_target || 'test' }}" 2>&1 | tee reports/ci-tests.txt
       - name: Verify the application bundle
         run: just verify
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
