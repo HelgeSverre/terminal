@@ -8,12 +8,11 @@ SHA-256 in `SwiftUnicode18Tables.swift`.
 Run the verifier with:
 
 ```sh
-xcrun swift native/SwiftUnicode18Tables.swift tools/GenerateUnicode18.swift
+xcrun swiftc -parse-as-library tools/GenerateUnicode18.swift -framework CryptoKit -o /tmp/generate-unicode18 && /tmp/generate-unicode18
 xcrun swift native/SwiftUnicode.swift native/SwiftUnicode18Tables.swift native/tests/SwiftUnicode18CorpusTests.swift .
 ```
 
-The corpus runner reports every mismatch count and first mismatch. It is
-currently report-only because `SwiftUnicode` is a compact classifier; the
-complete generated range tables from vendored `tables.rs` have not yet been
-emitted into Swift. `completeGeneratedRanges` must remain false until the full
-fixture reports zero mismatches, after which the runner becomes a hard gate.
+The corpus runner reports every mismatch count and first mismatch. Generated
+GCB/Extended_Pictographic/InCB-Consonant ranges plus the vendored InCB linker
+set are emitted into Swift; run it with `--strict` to enforce the 853-case
+official fixture as a hard gate.

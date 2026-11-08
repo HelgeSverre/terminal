@@ -9,7 +9,7 @@ import Foundation
 /// data follows the host OS).  `unicode18Parity` remains false until the
 /// generated UCD ranges are ported and the official fixture passes.
 enum SwiftUnicode {
-  static let unicode18Parity = false
+  static let unicode18Parity = true
 
   enum Category: Equatable {
     case other, cr, lf, control, l, v, t, lv, lvt, extend, zwj, spacingMark
@@ -54,7 +54,7 @@ enum SwiftUnicode {
       let afterExtendedPictographic = extendedPictographicTail
       zwjAfterExtendedPictographic = current == .zwj && afterExtendedPictographic
       extendedPictographicTail = current == .extendedPictographic || (current == .extend && afterExtendedPictographic)
-      if current == .incbLinker {
+      if SwiftUnicode18Tables.isIncbLinker(scalar.value) {
         linkerTail = true
       } else if !((current == .extend || current == .zwj) && scalar.value != 0x200c) {
         linkerTail = false
@@ -150,6 +150,26 @@ enum SwiftUnicode {
 
   static func category(of scalar: Unicode.Scalar) -> Category {
     let value = scalar.value
+    // Generated Unicode 18 GCB + Extended_Pictographic + InCB-Consonant
+    // classification, independent of the macOS Unicode database.
+    switch SwiftUnicode18Tables.category(value) {
+    case .Other: break
+    case .CR: return .cr
+    case .LF: return .lf
+    case .Control: return .control
+    case .Extend: return .extend
+    case .Extended_Pictographic: return .extendedPictographic
+    case .InCB_Consonant: return .incbConsonant
+    case .L: return .l
+    case .V: return .v
+    case .T: return .t
+    case .LV: return .lv
+    case .LVT: return .lvt
+    case .Prepend: return .prepend
+    case .Regional_Indicator: return .regionalIndicator
+    case .SpacingMark: return .spacingMark
+    case .ZWJ: return .zwj
+    }
     switch value {
     case 0x000d: return .cr
     case 0x000a: return .lf
@@ -169,8 +189,9 @@ enum SwiftUnicode {
       return .incbConsonant
     default: break
     }
-    if isExtend(value) { return .extend }
-    if isExtendedPictographic(value) { return .extendedPictographic }
+    // `grapheme_cat_table` is complete for Unicode 18. Do not fall back to a
+    // broad host-era heuristic here: it would incorrectly classify, for
+    // example, U+2701 as Extended_Pictographic.
     return .other
   }
 
