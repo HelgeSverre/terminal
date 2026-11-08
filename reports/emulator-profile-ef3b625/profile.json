@@ -1,0 +1,43 @@
+{
+  "source_commit": "ef3b62564abb9f83128cf9bd75aade814e781d58",
+  "binary_sha256": "d206e4d5c59e5b578e2a5db9ffe99e6ed45aa509ab339d576a23ac9b7bbe7a23",
+  "workload": "ascii",
+  "requested_bytes": 8388608,
+  "sample_seconds": 5,
+  "interval_ms": 1,
+  "sample_exit_status": 0,
+  "child_exit_status": 0,
+  "instrumented": true,
+  "not_a_comparison_timing": true,
+  "sample_sha256": "eab380f606b9123fd3826e12d351989d59a9c40fc04be51b631526e5586d0527",
+  "main_thread_samples": 3878,
+  "observed_call_sites": [
+    {
+      "name": "put to erase",
+      "samples": 1776,
+      "scope": "inclusive"
+    },
+    {
+      "name": "array copy subtree inside erase",
+      "samples": 1198,
+      "scope": "inclusive; overlaps put to erase"
+    },
+    {
+      "name": "separate put cleanup (nested array destruction)",
+      "samples": 1443,
+      "scope": "inclusive; distinct put callsite"
+    },
+    {
+      "name": "repairWidePairs",
+      "samples": 192,
+      "scope": "leaf"
+    },
+    {
+      "name": "Unicode category lookup",
+      "samples": 74,
+      "scope": "leaf"
+    }
+  ],
+  "conclusion": "Nested array copying and destruction dominate sampled ASCII work. Move placement into the document stored screen before changing row repair.",
+  "limits": "Parent/child counts overlap and must not be added. A five-second sample is not a comparison timing or an allocation-rate measurement."
+}

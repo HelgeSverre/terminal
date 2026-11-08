@@ -1,0 +1,1206 @@
+Analysis of sampling emulator-comparison (pid 38698) every 1 millisecond
+Process:         emulator-comparison [38698]
+Path:            /Users/USER/*/emulator-comparison
+Load Address:    0x1007ac000
+Identifier:      emulator-comparison
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  ruby [38690]
+Target Type:     live task
+
+Date/Time:       2026-11-08 06:45:46.867 +0100
+Launch Time:     2026-11-08 06:45:46.595 +0100
+OS Version:      macOS 15.6 (24G84)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         14.9M
+Physical footprint (peak):  14.9M
+Idle exit:                  untracked
+----
+
+Call graph:
+    3878 Thread_24513141   DispatchQueue_1: com.apple.main-thread  (serial)
+      3878 start  (in dyld) + 6076  [0x19a4a6b98]
+        3878 main  (in emulator-comparison) + 756  [0x1007ea058]
+          3878 <deduplicated_symbol>  (in emulator-comparison) + 56  [0x1007e3138]
+            3512 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 6620  [0x1007d27a8]
+            + 1776 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 1780  [0x1007cff68]
+            + ! 1266 TerminalDocument.erase(_:row:columns:style:selective:)  (in emulator-comparison) + 364  [0x1007ca9c8]
+            + ! : 1198 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 232  [0x1007cbf34]
+            + ! : | 922 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 348  [0x1ac35f69c]
+            + ! : | + 651 initializeWithCopy for TerminalCell  (in emulator-comparison) + 76  [0x1007ccc84]
+            + ! : | + ! 236 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4,0  [0x1007eaca4,0x1007eaca0]
+            + ! : | + ! 216 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 8,0  [0x1ac3e4280,0x1ac3e4278]
+            + ! : | + ! 199 swift_retain  (in libswiftCore.dylib) + 4,84,...  [0x1ac37f08c,0x1ac37f0dc,...]
+            + ! : | + 202 initializeWithCopy for TerminalCell  (in emulator-comparison) + 68  [0x1007ccc7c]
+            + ! : | + ! 127 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + ! : | + ! 75 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0,4  [0x1ac3e4278,0x1ac3e427c]
+            + ! : | + 69 initializeWithCopy for TerminalCell  (in emulator-comparison) + 40,52,...  [0x1007ccc60,0x1007ccc6c,...]
+            + ! : | 149 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 348,332,...  [0x1ac35f69c,0x1ac35f68c,...]
+            + ! : | 119 initializeWithCopy for TerminalCell  (in emulator-comparison) + 84  [0x1007ccc8c]
+            + ! : | 4 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 168  [0x1ac35f5e8]
+            + ! : | + 4 swift::TargetMetadata<swift::InProcess>::getTypeContextDescriptor() const  (in libswiftCore.dylib) + 24,4,...  [0x1ac360068,0x1ac360054,...]
+            + ! : | 3 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 220  [0x1ac35f61c]
+            + ! : | + 3 swift::TargetMetadata<swift::InProcess>::getTypeContextDescriptor() const  (in libswiftCore.dylib) + 24,36,...  [0x1ac360068,0x1ac360074,...]
+            + ! : | 1 DYLD-STUB$$swift_arrayInitWithCopy  (in emulator-comparison) + 4  [0x1007eac74]
+            + ! : 46 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 128  [0x1007cbecc]
+            + ! : | 39 _swift_allocObject_  (in libswiftCore.dylib) + 1100  [0x1ac37e054]
+            + ! : | + 23 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 84  [0x1ac37db70]
+            + ! : | + ! 18 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 120  [0x19a647c0c]
+            + ! : | + ! : 10 small_malloc_should_clear  (in libsystem_malloc.dylib) + 176  [0x19a647dc8]
+            + ! : | + ! : | 5 small_malloc_from_free_list  (in libsystem_malloc.dylib) + 68,204,...  [0x19a648434,0x19a6484bc,...]
+            + ! : | + ! : | 3 small_malloc_from_free_list  (in libsystem_malloc.dylib) + 152  [0x19a648488]
+            + ! : | + ! : | + 3 small_free_list_remove_ptr_no_clear  (in libsystem_malloc.dylib) + 60,108,...  [0x19a64ce70,0x19a64cea0,...]
+            + ! : | + ! : | 2 small_malloc_from_free_list  (in libsystem_malloc.dylib) + 512  [0x19a6485f0]
+            + ! : | + ! : |   2 small_free_list_remove_ptr_no_clear  (in libsystem_malloc.dylib) + 152,620  [0x19a64cecc,0x19a64d0a0]
+            + ! : | + ! : 8 small_malloc_should_clear  (in libsystem_malloc.dylib) + 108,44  [0x19a647d84,0x19a647d44]
+            + ! : | + ! 2 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 16,40  [0x19a647ba4,0x19a647bbc]
+            + ! : | + ! 1 DYLD-STUB$$malloc_type_malloc  (in libswiftCore.dylib) + 8  [0x1ac456c2c]
+            + ! : | + ! 1 malloc_type_malloc  (in libsystem_malloc.dylib) + 28  [0x19a663344]
+            + ! : | + ! 1 small_malloc_should_clear  (in libsystem_malloc.dylib) + 256  [0x19a647e18]
+            + ! : | + 13 __isPlatformVersionAtLeast  (in libswiftCore.dylib) + 92  [0x1ac454428]
+            + ! : | + ! 6 _availability_version_check  (in libxpc.dylib) + 40  [0x19a55828c]
+            + ! : | + ! : 5 dyld4::APIs::dyld_get_base_platform(unsigned int)  (in dyld) + 60  [0x19a4d88a4]
+            + ! : | + ! : | 5 mach_o::Platform::value() const  (in dyld) + 16  [0x19a52043c]
+            + ! : | + ! : 1 dyld4::APIs::dyld_get_base_platform(unsigned int)  (in dyld) + 40  [0x19a4d8890]
+            + ! : | + ! :   1 mach_o::Platform::Platform(unsigned int)  (in dyld) + 36  [0x19a52025c]
+            + ! : | + ! 2 _availability_version_check  (in libxpc.dylib) + 36  [0x19a558288]
+            + ! : | + ! : 1 DYLD-STUB$$dyld_get_active_platform  (in libxpc.dylib) + 8  [0x19a57e164]
+            + ! : | + ! : 1 dyld4::APIs::dyld_get_active_platform()  (in dyld) + 44  [0x19a4d8834]
+            + ! : | + ! 2 dyld4::APIs::dyld_get_active_platform()  (in dyld) + 84  [0x19a4d885c]
+            + ! : | + ! 2 dyld4::APIs::dyld_get_base_platform(unsigned int)  (in dyld) + 112  [0x19a4d88d8]
+            + ! : | + ! 1 DYLD-STUB$$_availability_version_check  (in libswiftCore.dylib) + 8  [0x1ac4566bc]
+            + ! : | + 2 __isPlatformVersionAtLeast  (in libswiftCore.dylib) + 56,296  [0x1ac454404,0x1ac4544f4]
+            + ! : | + 1 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 60  [0x1ac37db58]
+            + ! : | 4 _swift_allocObject_  (in libswiftCore.dylib) + 28,56,...  [0x1ac37dc24,0x1ac37dc40,...]
+            + ! : | 3 swift_allocObject  (in libswiftCore.dylib) + 0,4  [0x1ac37e2f4,0x1ac37e2f8]
+            + ! : 10 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 136  [0x1007cbed4]
+            + ! : | 5 malloc_size  (in libsystem_malloc.dylib) + 124  [0x19a64d484]
+            + ! : | + 2 szone_size  (in libsystem_malloc.dylib) + 68  [0x19a649f44]
+            + ! : | + ! 2 tiny_size  (in libsystem_malloc.dylib) + 72  [0x19a64a00c]
+            + ! : | + 2 szone_size  (in libsystem_malloc.dylib) + 96  [0x19a649f60]
+            + ! : | + ! 2 small_size  (in libsystem_malloc.dylib) + 56,224  [0x19a64a1b4,0x19a64a25c]
+            + ! : | + 1 szone_size  (in libsystem_malloc.dylib) + 68  [0x19a649f44]
+            + ! : | 4 malloc_size  (in libsystem_malloc.dylib) + 0,108  [0x19a64d408,0x19a64d474]
+            + ! : | 1 szone_size  (in libsystem_malloc.dylib) + 40  [0x19a649f28]
+            + ! : 5 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 240  [0x1007cbf3c]
+            + ! : | 3 swift_release  (in libswiftCore.dylib) + 88,28  [0x1ac37ed34,0x1ac37ecf8]
+            + ! : | 2 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0,8  [0x1ac3e49bc,0x1ac3e49c4]
+            + ! : 3 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 112  [0x1007cbebc]
+            + ! : | 3 __swift_instantiateConcreteTypeFromMangledNameV2  (in emulator-comparison) + 16  [0x1007ae9ac]
+            + ! : 2 malloc_size  (in libsystem_malloc.dylib) + 244  [0x19a64d4fc]
+            + ! : 1 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 76  [0x1007cbe98]
+            + ! : 1 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 376  [0x1ac35f6b8]
+            + ! 294 TerminalDocument.erase(_:row:columns:style:selective:)  (in emulator-comparison) + 508  [0x1007caa58]
+            + ! : 290 specialized _ArrayBuffer._consumeAndCreateNew()  (in emulator-comparison) + 36  [0x1007cbe44]
+            + ! : | 238 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 240  [0x1007cc068]
+            + ! : | + 170 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 348  [0x1ac35f69c]
+            + ! : | + ! 164 <deduplicated_symbol>  (in emulator-comparison) + 44  [0x1007c6d48]
+            + ! : | + ! : 92 swift_retain  (in libswiftCore.dylib) + 48,4,...  [0x1ac37f0b8,0x1ac37f08c,...]
+            + ! : | + ! : 39 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 8,0  [0x1ac3e4280,0x1ac3e4278]
+            + ! : | + ! : 33 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4,0  [0x1007eaca4,0x1007eaca0]
+            + ! : | + ! 6 <deduplicated_symbol>  (in emulator-comparison) + 0  [0x1007c6d1c]
+            + ! : | + 45 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 332,348,...  [0x1ac35f68c,0x1ac35f69c,...]
+            + ! : | + 17 <deduplicated_symbol>  (in emulator-comparison) + 52  [0x1007c6d50]
+            + ! : | + 4 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 220  [0x1ac35f61c]
+            + ! : | + ! 4 swift::TargetMetadata<swift::InProcess>::getTypeContextDescriptor() const  (in libswiftCore.dylib) + 204,80,...  [0x1ac36011c,0x1ac3600a0,...]
+            + ! : | + 2 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 168  [0x1ac35f5e8]
+            + ! : | +   2 swift::TargetMetadata<swift::InProcess>::getTypeContextDescriptor() const  (in libswiftCore.dylib) + 4,60  [0x1ac360054,0x1ac36008c]
+            + ! : | 44 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 136  [0x1007cc000]
+            + ! : | + 25 _swift_allocObject_  (in libswiftCore.dylib) + 1100  [0x1ac37e054]
+            + ! : | + ! 11 __isPlatformVersionAtLeast  (in libswiftCore.dylib) + 92  [0x1ac454428]
+            + ! : | + ! : 6 _availability_version_check  (in libxpc.dylib) + 40  [0x19a55828c]
+            + ! : | + ! : | 5 dyld4::APIs::dyld_get_base_platform(unsigned int)  (in dyld) + 60  [0x19a4d88a4]
+            + ! : | + ! : | + 5 mach_o::Platform::value() const  (in dyld) + 16  [0x19a52043c]
+            + ! : | + ! : | 1 DYLD-STUB$$dyld_get_base_platform  (in libxpc.dylib) + 8  [0x19a57e174]
+            + ! : | + ! : 2 _availability_version_check  (in libxpc.dylib) + 36  [0x19a558288]
+            + ! : | + ! : | 1 DYLD-STUB$$dyld_get_active_platform  (in libxpc.dylib) + 8  [0x19a57e164]
+            + ! : | + ! : | 1 dyld_get_active_platform  (in libdyld.dylib) + 32  [0x19a84eef8]
+            + ! : | + ! : 2 dyld4::APIs::dyld_get_base_platform(unsigned int)  (in dyld) + 112  [0x19a4d88d8]
+            + ! : | + ! : 1 _availability_version_check  (in libxpc.dylib) + 84  [0x19a5582b8]
+            + ! : | + ! :   1 os_system_version_get_current_version  (in libxpc.dylib) + 24  [0x19a558330]
+            + ! : | + ! 11 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 84  [0x1ac37db70]
+            + ! : | + ! : 5 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 280,40,...  [0x19a647cac,0x19a647bbc,...]
+            + ! : | + ! : 4 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 120  [0x19a647c0c]
+            + ! : | + ! : | 3 small_malloc_should_clear  (in libsystem_malloc.dylib) + 80,32  [0x19a647d68,0x19a647d38]
+            + ! : | + ! : | 1 small_malloc_should_clear  (in libsystem_malloc.dylib) + 52  [0x19a647d4c]
+            + ! : | + ! : |   1 rack_get_thread_index  (in libsystem_malloc.dylib) + 12  [0x19a662728]
+            + ! : | + ! : 1 malloc_type_malloc  (in libsystem_malloc.dylib) + 72  [0x19a663370]
+            + ! : | + ! : 1 small_malloc_should_clear  (in libsystem_malloc.dylib) + 256  [0x19a647e18]
+            + ! : | + ! 2 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 152  [0x1ac37dbb4]
+            + ! : | + ! 1 _availability_version_check  (in libxpc.dylib) + 168  [0x19a55830c]
+            + ! : | + 9 _swift_allocObject_  (in libswiftCore.dylib) + 108,28,...  [0x1ac37dc74,0x1ac37dc24,...]
+            + ! : | + 5 _swift_allocObject_  (in libswiftCore.dylib) + 144  [0x1ac37dc98]
+            + ! : | + ! 5 swift::ConcurrentReadableHashMap<MallocTypeCacheEntry, swift::LazyMutex>::find<unsigned int>(unsigned int const&, swift::ConcurrentReadableHashMap<MallocTypeCacheEntry, swift::LazyMutex>::IndexStorage, unsigned long, MallocTypeCacheEntry*)  (in libswiftCore.dylib) + 156,96,...  [0x1ac38233c,0x1ac382300,...]
+            + ! : | + 4 swift_allocObject  (in libswiftCore.dylib) + 0,4  [0x1ac37e2f4,0x1ac37e2f8]
+            + ! : | + 1 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 212  [0x1ac37dbf0]
+            + ! : | 4 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 144  [0x1007cc008]
+            + ! : | + 2 malloc_size  (in libsystem_malloc.dylib) + 0,16  [0x19a64d408,0x19a64d418]
+            + ! : | + 1 DYLD-STUB$$malloc_size  (in emulator-comparison) + 4  [0x1007eab90]
+            + ! : | + 1 malloc_size  (in libsystem_malloc.dylib) + 124  [0x19a64d484]
+            + ! : | +   1 szone_size  (in libsystem_malloc.dylib) + 68  [0x19a649f44]
+            + ! : | +     1 tiny_size  (in libsystem_malloc.dylib) + 72  [0x19a64a00c]
+            + ! : | 1 __swift_instantiateConcreteTypeFromMangledNameV2  (in emulator-comparison) + 72  [0x1007ae9e4]
+            + ! : | 1 malloc_size  (in libsystem_malloc.dylib) + 244  [0x19a64d4fc]
+            + ! : | 1 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 248  [0x1007cc070]
+            + ! : | + 1 swift_release  (in libswiftCore.dylib) + 52  [0x1ac37ed10]
+            + ! : | 1 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 376  [0x1ac35f6b8]
+            + ! : 3 specialized _ArrayBuffer._consumeAndCreateNew()  (in emulator-comparison) + 20,36  [0x1007cbe34,0x1007cbe44]
+            + ! : 1 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 264  [0x1007cc080]
+            + ! 191 TerminalDocument.erase(_:row:columns:style:selective:)  (in emulator-comparison) + 420  [0x1007caa00]
+            + ! : 190 specialized TerminalDocument.repairWidePairs(_:eraseStyle:)  (in emulator-comparison) + 312,452,...  [0x1007cc944,0x1007cc9d0,...]
+            + ! : 1 specialized TerminalDocument.repairWidePairs(_:eraseStyle:)  (in emulator-comparison) + 56  [0x1007cc844]
+            + ! :   1 DYLD-STUB$$swift_isUniquelyReferenced_nonNull_native  (in emulator-comparison) + 8  [0x1007ead5c]
+            + ! 12 TerminalDocument.erase(_:row:columns:style:selective:)  (in emulator-comparison) + 352  [0x1007ca9bc]
+            + ! : 5 outlined destroy of TerminalCell  (in emulator-comparison) + 32  [0x1007cc2f4]
+            + ! : | 3 swift_release  (in libswiftCore.dylib) + 88,4  [0x1ac37ed34,0x1ac37ece0]
+            + ! : | 2 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            + ! : 5 outlined destroy of TerminalCell  (in emulator-comparison) + 0,24,...  [0x1007cc2d4,0x1007cc2ec,...]
+            + ! : 2 outlined destroy of TerminalCell  (in emulator-comparison) + 24  [0x1007cc2ec]
+            + ! :   1 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            + ! :   1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            + ! 7 TerminalDocument.erase(_:row:columns:style:selective:)  (in emulator-comparison) + 196,180,...  [0x1007ca920,0x1007ca910,...]
+            + ! 2 TerminalDocument.erase(_:row:columns:style:selective:)  (in emulator-comparison) + 384  [0x1007ca9dc]
+            + ! : 1 DYLD-STUB$$swift_isUniquelyReferenced_nonNull_native  (in emulator-comparison) + 4  [0x1007ead58]
+            + ! : 1 swift_isUniquelyReferenced_nonNull_native  (in libswiftCore.dylib) + 8  [0x1ac3e5fe8]
+            + ! 2 specialized TerminalDocument.repairWidePairs(_:eraseStyle:)  (in emulator-comparison) + 284  [0x1007cc928]
+            + ! 1 TerminalDocument.erase(_:row:columns:style:selective:)  (in emulator-comparison) + 264  [0x1007ca964]
+            + ! : 1 swift_isUniquelyReferenced_nonNull_native  (in libswiftCore.dylib) + 0  [0x1ac3e5fe0]
+            + ! 1 outlined destroy of TerminalCell  (in emulator-comparison) + 40  [0x1007cc2fc]
+            + 1443 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 4880  [0x1007d0b84]
+            + ! 1442 outlined destroy of TerminalScreen  (in emulator-comparison) + 24  [0x1007ccb80]
+            + ! : 1430 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+            + ! : | 1427 _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+            + ! : | + 1399 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 96  [0x1ac07a3e8]
+            + ! : | + ! 1356 swift_arrayDestroy  (in libswiftCore.dylib) + 196  [0x1ac35fffc]
+            + ! : | + ! : 1159 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+            + ! : | + ! : | 1156 _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+            + ! : | + ! : | + 1140 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 96  [0x1ac07a3e8]
+            + ! : | + ! : | + ! 867 swift_arrayDestroy  (in libswiftCore.dylib) + 196  [0x1ac35fffc]
+            + ! : | + ! : | + ! : 215 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 8,0  [0x1ac3e49c4,0x1ac3e49bc]
+            + ! : | + ! : | + ! : 202 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4,0  [0x1007eac8c,0x1007eac88]
+            + ! : | + ! : | + ! : 195 destroy for TerminalCell  (in emulator-comparison) + 24  [0x1007ccc28]
+            + ! : | + ! : | + ! : | 130 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            + ! : | + ! : | + ! : | 65 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0,4  [0x1ac3e49bc,0x1ac3e49c0]
+            + ! : | + ! : | + ! : 188 swift_release  (in libswiftCore.dylib) + 4,88,...  [0x1ac37ece0,0x1ac37ed34,...]
+            + ! : | + ! : | + ! : 67 destroy for TerminalCell  (in emulator-comparison) + 24,0,...  [0x1007ccc28,0x1007ccc10,...]
+            + ! : | + ! : | + ! 271 swift_arrayDestroy  (in libswiftCore.dylib) + 196,172,...  [0x1ac35fffc,0x1ac35ffe4,...]
+            + ! : | + ! : | + ! 2 swift_arrayDestroy  (in libswiftCore.dylib) + 124  [0x1ac35ffb4]
+            + ! : | + ! : | + !   2 swift::TargetMetadata<swift::InProcess>::getTypeContextDescriptor() const  (in libswiftCore.dylib) + 4,204  [0x1ac360054,0x1ac36011c]
+            + ! : | + ! : | + 6 free_small  (in libsystem_malloc.dylib) + 52,56,...  [0x19a64a458,0x19a64a45c,...]
+            + ! : | + ! : | + 3 _szone_free  (in libsystem_malloc.dylib) + 296,20  [0x19a65f1a0,0x19a65f08c]
+            + ! : | + ! : | + 2 swift_deallocObject  (in libswiftCore.dylib) + 16,44  [0x1ac37eebc,0x1ac37eed8]
+            + ! : | + ! : | + 1 DYLD-STUB$$free  (in libswiftCore.dylib) + 0  [0x1ac456a94]
+            + ! : | + ! : | + 1 _free  (in libsystem_malloc.dylib) + 104  [0x19a679bd0]
+            + ! : | + ! : | + 1 free  (in libsystem_malloc.dylib) + 0  [0x19a647674]
+            + ! : | + ! : | + 1 swift_arrayDestroy  (in libswiftCore.dylib) + 220  [0x1ac360014]
+            + ! : | + ! : | + 1 swift_deallocClassInstance  (in libswiftCore.dylib) + 68  [0x1ac3818f8]
+            + ! : | + ! : | 2 _szone_free  (in libsystem_malloc.dylib) + 748  [0x19a65f364]
+            + ! : | + ! : | 1 _swift_release_dealloc  (in libswiftCore.dylib) + 32  [0x1ac381860]
+            + ! : | + ! : 105 swift_release  (in libswiftCore.dylib) + 4,52,...  [0x1ac37ece0,0x1ac37ed10,...]
+            + ! : | + ! : 52 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0,8  [0x1ac3e49bc,0x1ac3e49c4]
+            + ! : | + ! : 37 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4,0  [0x1007eac8c,0x1007eac88]
+            + ! : | + ! : 2 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 4,92  [0x1ac3826bc,0x1ac382714]
+            + ! : | + ! : 1 <deduplicated_symbol>  (in emulator-comparison) + 0  [0x1007c6d14]
+            + ! : | + ! 43 swift_arrayDestroy  (in libswiftCore.dylib) + 172,196,...  [0x1ac35ffe4,0x1ac35fffc,...]
+            + ! : | + 10 free_small  (in libsystem_malloc.dylib) + 592,56,...  [0x19a64a674,0x19a64a45c,...]
+            + ! : | + 5 DYLD-STUB$$free  (in libswiftCore.dylib) + 8  [0x1ac456a9c]
+            + ! : | + 5 free_small  (in libsystem_malloc.dylib) + 816  [0x19a64a754]
+            + ! : | + ! 5 small_free_list_add_ptr  (in libsystem_malloc.dylib) + 356,72,...  [0x19a64c8ec,0x19a64c7d0,...]
+            + ! : | + 3 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 52  [0x1ac07a3bc]
+            + ! : | + 2 _free  (in libsystem_malloc.dylib) + 24,56  [0x19a679b80,0x19a679ba0]
+            + ! : | + 2 free_small  (in libsystem_malloc.dylib) + 632  [0x19a64a69c]
+            + ! : | + ! 2 small_free_list_remove_ptr_no_clear  (in libsystem_malloc.dylib) + 28,372  [0x19a64ce50,0x19a64cfa8]
+            + ! : | + 1 _szone_free  (in libsystem_malloc.dylib) + 32  [0x19a65f098]
+            + ! : | 2 _szone_free  (in libsystem_malloc.dylib) + 748  [0x19a65f364]
+            + ! : | 1 _swift_release_dealloc  (in libswiftCore.dylib) + 32  [0x1ac381860]
+            + ! : 9 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 132,0,...  [0x1ac38273c,0x1ac3826b8,...]
+            + ! : 1 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            + ! : 1 _swift_release_dealloc  (in libswiftCore.dylib) + 60  [0x1ac38187c]
+            + ! : 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            + ! 1 outlined destroy of TerminalScreen  (in emulator-comparison) + 32  [0x1007ccb88]
+            + !   1 swift_release  (in libswiftCore.dylib) + 4  [0x1ac37ece0]
+            + 97 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 604  [0x1007cfad0]
+            + ! 42 static SwiftUnicode.cellWidth(of:)  (in emulator-comparison) + 224  [0x1007ade90]
+            + ! : 27 specialized static SwiftUnicode.category(of:)  (in emulator-comparison) + 20  [0x1007ae410]
+            + ! : | 27 static SwiftUnicode18Tables.category(_:)  (in emulator-comparison) + 64,28,...  [0x1007aecec,0x1007aecc8,...]
+            + ! : 15 specialized static SwiftUnicode.category(of:)  (in emulator-comparison) + 36,212,...  [0x1007ae420,0x1007ae4d0,...]
+            + ! 39 static SwiftUnicode.cellWidth(of:)  (in emulator-comparison) + 480  [0x1007adf90]
+            + ! : 28 specialized static SwiftUnicode.category(of:)  (in emulator-comparison) + 20  [0x1007ae410]
+            + ! : | 28 static SwiftUnicode18Tables.category(_:)  (in emulator-comparison) + 64,28,...  [0x1007aecec,0x1007aecc8,...]
+            + ! : 11 specialized static SwiftUnicode.category(of:)  (in emulator-comparison) + 156,56,...  [0x1007ae498,0x1007ae434,...]
+            + ! 6 static SwiftUnicode.cellWidth(of:)  (in emulator-comparison) + 144,252,...  [0x1007ade40,0x1007adeac,...]
+            + ! 5 static SwiftUnicode.cellWidth(of:)  (in emulator-comparison) + 88  [0x1007ade08]
+            + ! : 3 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + ! : 2 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 4  [0x1ac3e427c]
+            + ! 4 specialized static SwiftUnicode.category(of:)  (in emulator-comparison) + 624  [0x1007ae66c]
+            + ! 1 static SwiftUnicode.cellWidth(of:)  (in emulator-comparison) + 620  [0x1007ae01c]
+            + !   1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            + 35 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 552  [0x1007cfa9c]
+            + ! 28 SwiftUnicode.Segmenter.push(_:)  (in emulator-comparison) + 28  [0x1007ad050]
+            + ! : 19 specialized static SwiftUnicode.category(of:)  (in emulator-comparison) + 20  [0x1007ae410]
+            + ! : | 19 static SwiftUnicode18Tables.category(_:)  (in emulator-comparison) + 64,20,...  [0x1007aecec,0x1007aecc0,...]
+            + ! : 9 specialized static SwiftUnicode.category(of:)  (in emulator-comparison) + 36,56,...  [0x1007ae420,0x1007ae434,...]
+            + ! 6 SwiftUnicode.Segmenter.push(_:)  (in emulator-comparison) + 540,32,...  [0x1007ad250,0x1007ad054,...]
+            + ! 1 SwiftUnicode.Segmenter.push(_:)  (in emulator-comparison) + 404  [0x1007ad1c8]
+            + !   1 static SwiftUnicode18Tables.isIncbLinker(_:)  (in emulator-comparison) + 64  [0x1007aed78]
+            + 34 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 1256  [0x1007cfd5c]
+            + ! 14 SwiftTerminalCore.writeBounds(_:)  (in emulator-comparison) + 500,392,...  [0x1007cf848,0x1007cf7dc,...]
+            + ! 11 SwiftTerminalCore.writeBounds(_:)  (in emulator-comparison) + 316  [0x1007cf790]
+            + ! : 5 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 48,68,...  [0x1007ccef8,0x1007ccf0c,...]
+            + ! : 4 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 148  [0x1007ccf5c]
+            + ! : | 2 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + ! : | 1 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0  [0x1ac3e4278]
+            + ! : | 1 swift_retain  (in libswiftCore.dylib) + 4  [0x1ac37f08c]
+            + ! : 2 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 140  [0x1007ccf54]
+            + ! :   2 swift_retain  (in libswiftCore.dylib) + 48  [0x1ac37f0b8]
+            + ! 6 SwiftTerminalCore.writeBounds(_:)  (in emulator-comparison) + 436  [0x1007cf808]
+            + ! : 4 outlined destroy of TerminalScreen  (in emulator-comparison) + 32  [0x1007ccb88]
+            + ! : | 2 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0,8  [0x1ac3e49bc,0x1ac3e49c4]
+            + ! : | 1 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            + ! : | 1 swift_release  (in libswiftCore.dylib) + 12  [0x1ac37ece8]
+            + ! : 2 outlined destroy of TerminalScreen  (in emulator-comparison) + 24  [0x1007ccb80]
+            + ! :   2 swift_release  (in libswiftCore.dylib) + 4,52  [0x1ac37ece0,0x1ac37ed10]
+            + ! 2 SwiftTerminalCore.writeBounds(_:)  (in emulator-comparison) + 136  [0x1007cf6dc]
+            + ! : 1 DYLD-STUB$$swift_beginAccess  (in emulator-comparison) + 4  [0x1007eac80]
+            + ! : 1 swift::runtime::AccessSet::insert(swift::runtime::Access*, void*, void*, swift::ExclusivityFlags)  (in libswiftCore.dylib) + 132  [0x1ac37a058]
+            + ! 1 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 156  [0x1007ccf64]
+            + 21 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 1616  [0x1007cfec4]
+            + ! 6 SwiftTerminalCore.writeBounds(_:)  (in emulator-comparison) + 316  [0x1007cf790]
+            + ! : 2 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 140  [0x1007ccf54]
+            + ! : | 2 swift_retain  (in libswiftCore.dylib) + 4,48  [0x1ac37f08c,0x1ac37f0b8]
+            + ! : 2 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 148  [0x1007ccf5c]
+            + ! : | 1 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + ! : | 1 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0  [0x1ac3e4278]
+            + ! : 2 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 72,76  [0x1007ccf10,0x1007ccf14]
+            + ! 5 SwiftTerminalCore.writeBounds(_:)  (in emulator-comparison) + 436  [0x1007cf808]
+            + ! : 3 outlined destroy of TerminalScreen  (in emulator-comparison) + 32  [0x1007ccb88]
+            + ! : | 2 swift_release  (in libswiftCore.dylib) + 4  [0x1ac37ece0]
+            + ! : | 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            + ! : 2 outlined destroy of TerminalScreen  (in emulator-comparison) + 24  [0x1007ccb80]
+            + ! :   1 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            + ! :   1 swift_release  (in libswiftCore.dylib) + 52  [0x1ac37ed10]
+            + ! 5 SwiftTerminalCore.writeBounds(_:)  (in emulator-comparison) + 44,208,...  [0x1007cf680,0x1007cf724,...]
+            + ! 4 SwiftTerminalCore.writeBounds(_:)  (in emulator-comparison) + 136  [0x1007cf6dc]
+            + ! : 2 swift_beginAccess  (in libswiftCore.dylib) + 64  [0x1ac37a230]
+            + ! : | 2 swift::runtime::SwiftTLSContext::get()  (in libswiftCore.dylib) + 24,96  [0x1ac3ded9c,0x1ac3dede4]
+            + ! : 2 swift_beginAccess  (in libswiftCore.dylib) + 84  [0x1ac37a244]
+            + ! :   2 swift::runtime::AccessSet::insert(swift::runtime::Access*, void*, void*, swift::ExclusivityFlags)  (in libswiftCore.dylib) + 32  [0x1ac379ff4]
+            + ! 1 swift_beginAccess  (in libswiftCore.dylib) + 96  [0x1ac37a250]
+            + 21 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 1256,1632,...  [0x1007cfd5c,0x1007cfed4,...]
+            + 13 SwiftTerminalCore.writeBounds(_:)  (in emulator-comparison) + 516,532,...  [0x1007cf858,0x1007cf868,...]
+            + 9 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 356  [0x1007cf9d8]
+            + ! 4 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 140  [0x1007ccf54]
+            + ! : 2 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + ! : 2 swift_retain  (in libswiftCore.dylib) + 48  [0x1ac37f0b8]
+            + ! 3 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 148  [0x1007ccf5c]
+            + ! : 2 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0,12  [0x1ac3e4278,0x1ac3e4284]
+            + ! : 1 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + ! 1 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 104  [0x1007ccf30]
+            + ! 1 outlined init with copy of TerminalScreen  (in emulator-comparison) + 4  [0x1007cc6e8]
+            + 9 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 4972  [0x1007d0be0]
+            + ! 5 outlined destroy of TerminalScreen  (in emulator-comparison) + 32  [0x1007ccb88]
+            + ! : 3 swift_release  (in libswiftCore.dylib) + 88,4  [0x1ac37ed34,0x1ac37ece0]
+            + ! : 2 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0,8  [0x1ac3e49bc,0x1ac3e49c4]
+            + ! 2 outlined destroy of TerminalScreen  (in emulator-comparison) + 24  [0x1007ccb80]
+            + ! : 2 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 8  [0x1ac3e49c4]
+            + ! 2 outlined destroy of TerminalScreen  (in emulator-comparison) + 24  [0x1007ccb80]
+            + 6 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 1736  [0x1007cff3c]
+            + ! 3 swift_beginAccess  (in libswiftCore.dylib) + 28,84  [0x1ac37a20c,0x1ac37a244]
+            + ! 2 swift_beginAccess  (in libswiftCore.dylib) + 84  [0x1ac37a244]
+            + ! : 2 swift::runtime::AccessSet::insert(swift::runtime::Access*, void*, void*, swift::ExclusivityFlags)  (in libswiftCore.dylib) + 32  [0x1ac379ff4]
+            + ! 1 swift::runtime::AccessSet::insert(swift::runtime::Access*, void*, void*, swift::ExclusivityFlags)  (in libswiftCore.dylib) + 132  [0x1ac37a058]
+            + 6 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 2404  [0x1007d01d8]
+            + ! 3 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0,8  [0x1ac3e4278,0x1ac3e4280]
+            + ! 2 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + ! 1 swift_retain  (in libswiftCore.dylib) + 84  [0x1ac37f0dc]
+            + 5 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 144  [0x1007cf904]
+            + ! 2 swift_beginAccess  (in libswiftCore.dylib) + 84  [0x1ac37a244]
+            + ! : 2 swift::runtime::AccessSet::insert(swift::runtime::Access*, void*, void*, swift::ExclusivityFlags)  (in libswiftCore.dylib) + 32  [0x1ac379ff4]
+            + ! 1 DYLD-STUB$$swift_beginAccess  (in emulator-comparison) + 4  [0x1007eac80]
+            + ! 1 swift::runtime::AccessSet::insert(swift::runtime::Access*, void*, void*, swift::ExclusivityFlags)  (in libswiftCore.dylib) + 132  [0x1ac37a058]
+            + ! 1 swift_beginAccess  (in libswiftCore.dylib) + 28  [0x1ac37a20c]
+            + 5 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 3620  [0x1007d0698]
+            + ! 3 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 60,0  [0x1007ccf04,0x1007ccec8]
+            + ! 2 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 140  [0x1007ccf54]
+            + !   2 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + 5 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 156  [0x1007ccf64]
+            + 4 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 2668  [0x1007d02e0]
+            + ! 3 swift_retain  (in libswiftCore.dylib) + 4  [0x1ac37f08c]
+            + ! 1 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 8  [0x1ac3e4280]
+            + 3 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 2472  [0x1007d021c]
+            + ! 2 swift_isUniquelyReferenced_nonNull_native  (in libswiftCore.dylib) + 0,8  [0x1ac3e5fe0,0x1ac3e5fe8]
+            + ! 1 DYLD-STUB$$swift_isUniquelyReferenced_nonNull_native  (in emulator-comparison) + 4  [0x1007ead58]
+            + 3 TerminalDocument.erase(_:row:columns:style:selective:)  (in emulator-comparison) + 472  [0x1007caa34]
+            + 2 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 508  [0x1007cfa70]
+            + ! 1 <deduplicated_symbol>  (in emulator-comparison) + 68  [0x1007b0f38]
+            + ! : 1 _StringGuts.validateScalarIndex(_:)  (in emulator-comparison) + 52  [0x1007b251c]
+            + ! 1 <deduplicated_symbol>  (in emulator-comparison) + 16  [0x1007b0f04]
+            + 2 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 1788  [0x1007cff70]
+            + ! 1 swift_endAccess  (in libswiftCore.dylib) + 32  [0x1ac37a27c]
+            + ! : 1 swift::runtime::SwiftTLSContext::get()  (in libswiftCore.dylib) + 24  [0x1ac3ded9c]
+            + ! 1 swift_endAccess  (in libswiftCore.dylib) + 16  [0x1ac37a26c]
+            + 2 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 2412  [0x1007d01e0]
+            + ! 2 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 8  [0x1007eaca8]
+            + 2 static SwiftUnicode.cellWidth(of:)  (in emulator-comparison) + 644  [0x1007ae034]
+            + 2 swift_beginAccess  (in libswiftCore.dylib) + 100  [0x1ac37a254]
+            + 1 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 540  [0x1007cfa90]
+            + ! 1 DYLD-STUB$$swift_beginAccess  (in emulator-comparison) + 8  [0x1007eac84]
+            + 1 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 564  [0x1007cfaa8]
+            + ! 1 swift_endAccess  (in libswiftCore.dylib) + 32  [0x1ac37a27c]
+            + !   1 swift::runtime::SwiftTLSContext::get()  (in libswiftCore.dylib) + 24  [0x1ac3ded9c]
+            + 1 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 2460  [0x1007d0210]
+            + ! 1 TerminalCell.init(text:kind:style:link:flags:protected:)  (in emulator-comparison) + 48  [0x1007c9584]
+            + 1 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 2564  [0x1007d0278]
+            + ! 1 outlined assign with take of TerminalCell  (in emulator-comparison) + 44  [0x1007e9648]
+            + !   1 assignWithTake for TerminalCell  (in emulator-comparison) + 92  [0x1007ccdb8]
+            + !     1 swift_release  (in libswiftCore.dylib) + 88  [0x1ac37ed34]
+            + 1 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 2604  [0x1007d02a0]
+            + ! 1 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + 1 SwiftTerminalCore.put(_:)  (in emulator-comparison) + 2612  [0x1007d02a8]
+            + ! 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 4  [0x1ac3e49c0]
+            + 1 outlined assign with take of TerminalCell  (in emulator-comparison) + 52  [0x1007e9650]
+            104 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 2136  [0x1007d1624]
+            + 23 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 1240  [0x1007d4e68]
+            + ! 8 specialized SwiftTerminalCore.parameters(_:)  (in emulator-comparison) + 104  [0x1007e8130]
+            + ! : 8 specialized Collection.split(maxSplits:omittingEmptySubsequences:whereSeparator:)  (in emulator-comparison) + 960  [0x1007bc5a8]
+            + ! :   4 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 128  [0x1007b9d60]
+            + ! :   | 3 _swift_allocObject_  (in libswiftCore.dylib) + 1100  [0x1ac37e054]
+            + ! :   | + 2 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 84  [0x1ac37db70]
+            + ! :   | + ! 2 malloc_type_malloc  (in libsystem_malloc.dylib) + 16,72  [0x19a663338,0x19a663370]
+            + ! :   | + 1 __isPlatformVersionAtLeast  (in libswiftCore.dylib) + 92  [0x1ac454428]
+            + ! :   | +   1 _availability_version_check  (in libxpc.dylib) + 84  [0x19a5582b8]
+            + ! :   | +     1 os_system_version_get_current_version  (in libxpc.dylib) + 24  [0x19a558330]
+            + ! :   | 1 _swift_allocObject_  (in libswiftCore.dylib) + 144  [0x1ac37dc98]
+            + ! :   |   1 swift::ConcurrentReadableHashMap<MallocTypeCacheEntry, swift::LazyMutex>::find<unsigned int>(unsigned int const&, swift::ConcurrentReadableHashMap<MallocTypeCacheEntry, swift::LazyMutex>::IndexStorage, unsigned long, MallocTypeCacheEntry*)  (in libswiftCore.dylib) + 96  [0x1ac382300]
+            + ! :   2 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 240  [0x1007b9dd0]
+            + ! :   | 1 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            + ! :   | 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            + ! :   2 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 28,76  [0x1007b9cfc,0x1007b9d2c]
+            + ! 7 specialized SwiftTerminalCore.parameters(_:)  (in emulator-comparison) + 148  [0x1007e815c]
+            + ! : 7 specialized ContiguousArray._createNewBuffer(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 40  [0x1007e60ac]
+            + ! :   4 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 128  [0x1007e6170]
+            + ! :   | 2 _swift_allocObject_  (in libswiftCore.dylib) + 1100  [0x1ac37e054]
+            + ! :   | + 1 __isPlatformVersionAtLeast  (in libswiftCore.dylib) + 92  [0x1ac454428]
+            + ! :   | + ! 1 _availability_version_check  (in libxpc.dylib) + 36  [0x19a558288]
+            + ! :   | + !   1 DYLD-STUB$$dyld_get_active_platform  (in libxpc.dylib) + 8  [0x19a57e164]
+            + ! :   | + 1 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 84  [0x1ac37db70]
+            + ! :   | +   1 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 84  [0x19a647be8]
+            + ! :   | +     1 tiny_malloc_from_free_list  (in libsystem_malloc.dylib) + 1868  [0x19a649c70]
+            + ! :   | 2 swift_allocObject  (in libswiftCore.dylib) + 4  [0x1ac37e2f8]
+            + ! :   1 _swift_allocObject_  (in libswiftCore.dylib) + 1156  [0x1ac37e08c]
+            + ! :   1 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 136  [0x1007e6178]
+            + ! :   | 1 malloc_size  (in libsystem_malloc.dylib) + 124  [0x19a64d484]
+            + ! :   |   1 szone_size  (in libsystem_malloc.dylib) + 68  [0x19a649f44]
+            + ! :   |     1 tiny_size  (in libsystem_malloc.dylib) + 244  [0x19a64a0b8]
+            + ! :   1 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 232  [0x1007e61d8]
+            + ! :     1 swift_release  (in libswiftCore.dylib) + 28  [0x1ac37ecf8]
+            + ! 4 specialized SwiftTerminalCore.parameters(_:)  (in emulator-comparison) + 616  [0x1007e8330]
+            + ! : 3 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+            + ! : | 2 _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+            + ! : | + 1 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 96  [0x1ac07a3e8]
+            + ! : | + ! 1 swift_arrayDestroy  (in libswiftCore.dylib) + 124  [0x1ac35ffb4]
+            + ! : | + !   1 swift::TargetMetadata<swift::InProcess>::getTypeContextDescriptor() const  (in libswiftCore.dylib) + 60  [0x1ac36008c]
+            + ! : | + 1 free_tiny  (in libsystem_malloc.dylib) + 104  [0x19a64b838]
+            + ! : | 1 _szone_free  (in libsystem_malloc.dylib) + 592  [0x19a65f2c8]
+            + ! : 1 swift_release  (in libswiftCore.dylib) + 28  [0x1ac37ecf8]
+            + ! 2 specialized SwiftTerminalCore.parameters(_:)  (in emulator-comparison) + 368  [0x1007e8238]
+            + ! : 1 specialized closure #1 in Slice.withContiguousStorageIfAvailable<A>(_:)  (in emulator-comparison) + 464  [0x1007e9970]
+            + ! : | 1 partial apply for specialized closure #1 in FixedWidthInteger.init<A>(_:radix:)  (in emulator-comparison) + 12  [0x1007e9d5c]
+            + ! : |   1 partial apply for specialized closure #1 in FixedWidthInteger.init<A>(_:radix:)  (in emulator-comparison) + 16  [0x1007e96c0]
+            + ! : |     1 specialized closure #1 in FixedWidthInteger.init<A>(_:radix:)  (in emulator-comparison) + 544  [0x1007e7554]
+            + ! : 1 specialized closure #1 in Slice.withContiguousStorageIfAvailable<A>(_:)  (in emulator-comparison) + 0  [0x1007e97a0]
+            + ! 1 specialized SwiftTerminalCore.parameters(_:)  (in emulator-comparison) + 68  [0x1007e810c]
+            + ! : 1 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0  [0x1ac3e4278]
+            + ! 1 specialized SwiftTerminalCore.parameters(_:)  (in emulator-comparison) + 248  [0x1007e81c0]
+            + !   1 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0  [0x1ac3e4278]
+            + 17 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 6548  [0x1007d6324]
+            + ! 15 SwiftTerminalCore.applySGR(_:colonSyntax:)  (in emulator-comparison) + 928  [0x1007db3a4]
+            + ! : 9 StringProtocol.contains<A>(_:)  (in Foundation) + 392  [0x19c691474]
+            + ! : | 7 specialized _StringCompareOptionsIterable._range<A>(of:toHalfWidth:diacriticsInsensitive:caseFold:anchored:backwards:)  (in Foundation) + 316  [0x19c0c4994]
+            + ! : | + 2 specialized BidirectionalCollection._range<A>(of:anchored:backwards:)  (in Foundation) + 528  [0x19c0b8f98]
+            + ! : | + ! 1 Substring.subscript.getter  (in libswiftCore.dylib) + 352  [0x1ac20f4b0]
+            + ! : | + ! : 1 specialized static String._uncheckedFromUTF8(_:)  (in libswiftCore.dylib) + 216  [0x1ac30fb44]
+            + ! : | + ! :   1 specialized static String._uncheckedFromUTF8(_:isASCII:)  (in libswiftCore.dylib) + 8  [0x1ac30fe84]
+            + ! : | + ! 1 Substring.subscript.getter  (in libswiftCore.dylib) + 528  [0x1ac20f560]
+            + ! : | + 1 Substring.index(before:)  (in libswiftCore.dylib) + 296  [0x1ac20e470]
+            + ! : | + 1 specialized BidirectionalCollection._range<A>(of:anchored:backwards:)  (in Foundation) + 328  [0x19c0b8ed0]
+            + ! : | + ! 1 Substring.index(before:)  (in libswiftCore.dylib) + 236  [0x1ac20e434]
+            + ! : | + !   1 _StringGuts._opaqueCharacterStride(endingAt:in:)  (in libswiftCore.dylib) + 32  [0x1ac214d08]
+            + ! : | + 1 specialized BidirectionalCollection._range<A>(of:anchored:backwards:)  (in Foundation) + 616  [0x19c0b8ff0]
+            + ! : | + ! 1 _stringCompareWithSmolCheck(_:_:expecting:)  (in libswiftCore.dylib) + 0  [0x1ac1e6914]
+            + ! : | + 1 specialized BidirectionalCollection._range<A>(of:anchored:backwards:)  (in Foundation) + 628  [0x19c0b8ffc]
+            + ! : | + ! 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            + ! : | + 1 specialized BidirectionalCollection._range<A>(of:anchored:backwards:)  (in Foundation) + 1012  [0x19c0b917c]
+            + ! : | +   1 Substring.index(_:offsetBy:)  (in libswiftCore.dylib) + 296  [0x1ac20e6ac]
+            + ! : | 1 specialized BidirectionalCollection._range<A>(of:anchored:backwards:)  (in Foundation) + 1056  [0x19c0b91a8]
+            + ! : | 1 specialized _StringCompareOptionsIterable._range<A>(of:toHalfWidth:diacriticsInsensitive:caseFold:anchored:backwards:)  (in Foundation) + 220  [0x19c0c4934]
+            + ! : |   1 ___chkstk_darwin  (in libsystem_pthread.dylib) + 36  [0x19a842ba8]
+            + ! : 2 StringProtocol.contains<A>(_:)  (in Foundation) + 248  [0x19c6913e4]
+            + ! : | 1 StringProtocol._asContiguousUTF8Substring(from:)  (in Foundation) + 316  [0x19c69172c]
+            + ! : | + 1 <deduplicated_symbol>  (in libswiftCore.dylib) + 0  [0x1ac35d5a4]
+            + ! : | 1 StringProtocol._asContiguousUTF8Substring(from:)  (in Foundation) + 340  [0x19c691744]
+            + ! : |   1 swift_dynamicCast  (in libswiftCore.dylib) + 40  [0x1ac37125c]
+            + ! : 2 StringProtocol.contains<A>(_:)  (in Foundation) + 84  [0x19c691340]
+            + ! : 1 StringProtocol.contains<A>(_:)  (in Foundation) + 212  [0x19c6913c0]
+            + ! : | 1 <deduplicated_symbol>  (in libswiftCore.dylib) + 0  [0x1ac35b3f0]
+            + ! : 1 StringProtocol.contains<A>(_:)  (in Foundation) + 324  [0x19c691430]
+            + ! :   1 Substring.init<A>(_:)  (in libswiftCore.dylib) + 204  [0x1ac20dce8]
+            + ! :     1 ___chkstk_darwin  (in libsystem_pthread.dylib) + 0  [0x19a842b84]
+            + ! 1 SwiftTerminalCore.applySGR(_:colonSyntax:)  (in emulator-comparison) + 60  [0x1007db040]
+            + ! : 1 swift_retain  (in libswiftCore.dylib) + 4  [0x1ac37f08c]
+            + ! 1 SwiftTerminalCore.applySGR(_:colonSyntax:)  (in emulator-comparison) + 3316  [0x1007dbcf8]
+            + !   1 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            + 16 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 392  [0x1007d4b18]
+            + ! 10 specialized Collection.split(maxSplits:omittingEmptySubsequences:whereSeparator:)  (in emulator-comparison) + 908  [0x1007d957c]
+            + ! : 6 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 128  [0x1007b9d60]
+            + ! : | 6 _swift_allocObject_  (in libswiftCore.dylib) + 1100  [0x1ac37e054]
+            + ! : |   3 __isPlatformVersionAtLeast  (in libswiftCore.dylib) + 92  [0x1ac454428]
+            + ! : |   + 1 _availability_version_check  (in libxpc.dylib) + 36  [0x19a558288]
+            + ! : |   + ! 1 dyld4::APIs::dyld_get_active_platform()  (in dyld) + 36  [0x19a4d882c]
+            + ! : |   + !   1 mach_o::Platform::value() const  (in dyld) + 16  [0x19a52043c]
+            + ! : |   + 1 _availability_version_check  (in libxpc.dylib) + 40  [0x19a55828c]
+            + ! : |   + ! 1 dyld_get_base_platform  (in libdyld.dylib) + 36  [0x19a84f9ac]
+            + ! : |   + 1 _availability_version_check  (in libxpc.dylib) + 16  [0x19a558274]
+            + ! : |   3 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 84  [0x1ac37db70]
+            + ! : |     2 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 40  [0x19a647bbc]
+            + ! : |     1 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 84  [0x19a647be8]
+            + ! : |       1 tiny_malloc_should_clear  (in libsystem_malloc.dylib) + 272  [0x19a648dc4]
+            + ! : |         1 tiny_malloc_from_free_list  (in libsystem_malloc.dylib) + 1444  [0x19a649ac8]
+            + ! : 1 _swift_allocObject_  (in libswiftCore.dylib) + 1156  [0x1ac37e08c]
+            + ! : 1 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 240  [0x1007b9dd0]
+            + ! : | 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            + ! : 1 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 76  [0x1007b9d2c]
+            + ! : 1 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 376  [0x1ac35f6b8]
+            + ! 3 specialized Collection.split(maxSplits:omittingEmptySubsequences:whereSeparator:)  (in emulator-comparison) + 172  [0x1007d929c]
+            + ! : 1 Character.isNumber.getter  (in libswiftCore.dylib) + 44  [0x1ac2262a0]
+            + ! : | 1 Unicode.Scalar.Properties.numericType.getter  (in libswiftCore.dylib) + 32  [0x1ac225dd8]
+            + ! : |   1 _swift_stdlib_getNumericType  (in libswiftCore.dylib) + 80  [0x1ac4529c8]
+            + ! : 1 Character.isNumber.getter  (in libswiftCore.dylib) + 0  [0x1ac226274]
+            + ! : 1 Unicode.Scalar.Properties.numericType.getter  (in libswiftCore.dylib) + 64  [0x1ac225df8]
+            + ! 1 specialized Collection.split(maxSplits:omittingEmptySubsequences:whereSeparator:)  (in emulator-comparison) + 184  [0x1007d92a8]
+            + ! : 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            + ! 1 specialized Collection.split(maxSplits:omittingEmptySubsequences:whereSeparator:)  (in emulator-comparison) + 208  [0x1007d92c0]
+            + ! : 1 String._uncheckedIndex(after:)  (in libswiftCore.dylib) + 152  [0x1ac1e3a3c]
+            + ! 1 specialized Collection.split(maxSplits:omittingEmptySubsequences:whereSeparator:)  (in emulator-comparison) + 24  [0x1007d9208]
+            + 8 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 144,1412,...  [0x1007d4a20,0x1007d4f14,...]
+            + 7 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 92  [0x1007d49ec]
+            + ! 5 _swift_allocObject_  (in libswiftCore.dylib) + 1100  [0x1ac37e054]
+            + ! : 4 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 84  [0x1ac37db70]
+            + ! : | 4 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 84  [0x19a647be8]
+            + ! : |   3 tiny_malloc_should_clear  (in libsystem_malloc.dylib) + 272  [0x19a648dc4]
+            + ! : |   + 3 tiny_malloc_from_free_list  (in libsystem_malloc.dylib) + 76,1500,...  [0x19a649570,0x19a649b00,...]
+            + ! : |   1 tiny_malloc_from_free_list  (in libsystem_malloc.dylib) + 1864  [0x19a649c6c]
+            + ! : 1 __isPlatformVersionAtLeast  (in libswiftCore.dylib) + 92  [0x1ac454428]
+            + ! :   1 _availability_version_check  (in libxpc.dylib) + 84  [0x19a5582b8]
+            + ! :     1 os_system_version_get_current_version  (in libxpc.dylib) + 28  [0x19a558334]
+            + ! 1 _swift_allocObject_  (in libswiftCore.dylib) + 76  [0x1ac37dc54]
+            + ! 1 swift_allocObject  (in libswiftCore.dylib) + 0  [0x1ac37e2f4]
+            + 5 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 836  [0x1007d4cd4]
+            + ! 5 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+            + !   5 _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+            + !     2 free_tiny  (in libsystem_malloc.dylib) + 292,476  [0x19a64b8f4,0x19a64b9ac]
+            + !     1 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 96  [0x1ac07a3e8]
+            + !     : 1 swift_arrayDestroy  (in libswiftCore.dylib) + 124  [0x1ac35ffb4]
+            + !     :   1 swift::TargetMetadata<swift::InProcess>::getTypeContextDescriptor() const  (in libswiftCore.dylib) + 60  [0x1ac36008c]
+            + !     1 _free  (in libsystem_malloc.dylib) + 104  [0x19a679bd0]
+            + !     1 swift_deallocObject  (in libswiftCore.dylib) + 16  [0x1ac37eebc]
+            + 4 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 8132  [0x1007d6954]
+            + ! 2 specialized Data.append<A>(contentsOf:)  (in emulator-comparison) + 120  [0x1007dc19c]
+            + ! : 2 swift_dynamicCast  (in libswiftCore.dylib) + 88  [0x1ac37128c]
+            + ! :   2 tryCast(swift::OpaqueValue*, swift::TargetMetadata<swift::InProcess> const*, swift::OpaqueValue*, swift::TargetMetadata<swift::InProcess> const*, swift::TargetMetadata<swift::InProcess> const*&, swift::TargetMetadata<swift::InProcess> const*&, bool, bool)  (in libswiftCore.dylib) + 1008  [0x1ac37198c]
+            + ! :     2 tryCastToConstrainedOpaqueExistential(swift::OpaqueValue*, swift::TargetMetadata<swift::InProcess> const*, swift::OpaqueValue*, swift::TargetMetadata<swift::InProcess> const*, swift::TargetMetadata<swift::InProcess> const*&, swift::TargetMetadata<swift::InProcess> const*&, bool, bool)  (in libswiftCore.dylib) + 184  [0x1ac373ec0]
+            + ! :       2 swift::_conformsToProtocol(swift::OpaqueValue const*, swift::TargetMetadata<swift::InProcess> const*, swift::TargetProtocolDescriptorRef<swift::InProcess>, swift::TargetWitnessTable<swift::InProcess> const**)  (in libswiftCore.dylib) + 148  [0x1ac36bba4]
+            + ! :         2 swift_conformsToProtocolCommon  (in libswiftCore.dylib) + 56  [0x1ac3d4b1c]
+            + ! :           1 swift_conformsToProtocolMaybeInstantiateSuperclasses(swift::TargetMetadata<swift::InProcess> const*, swift::TargetProtocolDescriptor<swift::InProcess> const*, bool)  (in libswiftCore.dylib) + 1188  [0x1ac3d6544]
+            + ! :           | 1 dyld4::APIs::_dyld_find_protocol_conformance_on_disk(void const*, void const*, void const*, unsigned int)  (in dyld) + 48  [0x19a4e0480]
+            + ! :           1 swift_conformsToProtocolMaybeInstantiateSuperclasses(swift::TargetMetadata<swift::InProcess> const*, swift::TargetProtocolDescriptor<swift::InProcess> const*, bool)  (in libswiftCore.dylib) + 300  [0x1ac3d61cc]
+            + ! 2 specialized Data.append<A>(contentsOf:)  (in emulator-comparison) + 304  [0x1007dc254]
+            + !   2 specialized String.UTF8View.withContiguousStorageIfAvailable<A>(_:)  (in emulator-comparison) + 104  [0x1007e730c]
+            + !     2 Data._Representation.append(contentsOf:)  (in Foundation) + 492  [0x19c3532c0]
+            + !       2 Data.InlineSlice.append(contentsOf:)  (in Foundation) + 96  [0x19c34e8f8]
+            + !         1 __isPlatformOrVariantPlatformVersionAtLeast  (in libswiftCore.dylib) + 116  [0x1ac4545dc]
+            + !         | 1 _availability_version_check  (in libxpc.dylib) + 40  [0x19a55828c]
+            + !         |   1 dyld4::APIs::dyld_get_base_platform(unsigned int)  (in dyld) + 60  [0x19a4d88a4]
+            + !         |     1 mach_o::Platform::value() const  (in dyld) + 16  [0x19a52043c]
+            + !         1 _stdlib_isOSVersionAtLeastOrVariantVersionAtLeast(_:_:_:_:_:_:)  (in libswiftCore.dylib) + 56  [0x1ac01a624]
+            + 3 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 844  [0x1007d4cdc]
+            + ! 3 specialized Collection.first.getter  (in emulator-comparison) + 44  [0x1007b6828]
+            + !   2 String.subscript.getter  (in libswiftCore.dylib) + 0,176  [0x1ac1798d4,0x1ac179984]
+            + !   1 String.subscript.getter  (in libswiftCore.dylib) + 36  [0x1ac1798f8]
+            + !     1 _StringGuts.validateScalarIndex(_:)  (in libswiftCore.dylib) + 40  [0x1ac1e4bb0]
+            + 3 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 1200  [0x1007d4e40]
+            + ! 3 Character.isNumber.getter  (in libswiftCore.dylib) + 44  [0x1ac2262a0]
+            + !   2 Unicode.Scalar.Properties.numericType.getter  (in libswiftCore.dylib) + 32  [0x1ac225dd8]
+            + !   : 2 _swift_stdlib_getNumericType  (in libswiftCore.dylib) + 32,84  [0x1ac452998,0x1ac4529cc]
+            + !   1 Unicode.Scalar.Properties.numericType.getter  (in libswiftCore.dylib) + 32  [0x1ac225dd8]
+            + 3 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 6556  [0x1007d632c]
+            + ! 2 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+            + ! : 2 _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+            + ! :   2 _szone_free  (in libsystem_malloc.dylib) + 32,456  [0x19a65f098,0x19a65f240]
+            + ! 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            + 2 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 220  [0x1007d4a6c]
+            + ! 1 DYLD-STUB$$swift_arrayDestroy  (in emulator-comparison) + 0  [0x1007eac64]
+            + ! 1 swift_arrayDestroy  (in libswiftCore.dylib) + 196  [0x1ac35fffc]
+            + !   1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 4  [0x1ac3e49c0]
+            + 2 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 2780  [0x1007d546c]
+            + ! 2 _stringCompareWithSmolCheck(_:_:expecting:)  (in libswiftCore.dylib) + 88  [0x1ac1e696c]
+            + 1 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 236  [0x1007d4a7c]
+            + ! 1 free_tiny  (in libsystem_malloc.dylib) + 476  [0x19a64b9ac]
+            + 1 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 464  [0x1007d4b60]
+            + ! 1 specialized closure #1 in Slice.withContiguousStorageIfAvailable<A>(_:)  (in emulator-comparison) + 40  [0x1007e7848]
+            + !   1 specialized closure #1 in Slice.withContiguousStorageIfAvailable<A>(_:)  (in emulator-comparison) + 0  [0x1007e9a14]
+            + 1 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 904  [0x1007d4d18]
+            + ! 1 _stringCompareWithSmolCheck(_:_:expecting:)  (in libswiftCore.dylib) + 92  [0x1ac1e6970]
+            + 1 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 1080  [0x1007d4dc8]
+            + ! 1 String.Iterator.next()  (in libswiftCore.dylib) + 232  [0x1ac1e549c]
+            + !   1 specialized static String._uncheckedFromUTF8(_:)  (in libswiftCore.dylib) + 16  [0x1ac30fa7c]
+            + 1 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 1384  [0x1007d4ef8]
+            + ! 1 DYLD-STUB$$swift_beginAccess  (in emulator-comparison) + 4  [0x1007eac80]
+            + 1 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 1900  [0x1007d50fc]
+            + ! 1 _stringCompareWithSmolCheck(_:_:expecting:)  (in libswiftCore.dylib) + 88  [0x1ac1e696c]
+            + 1 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 2948  [0x1007d5514]
+            + ! 1 _stringCompareWithSmolCheck(_:_:expecting:)  (in libswiftCore.dylib) + 88  [0x1ac1e696c]
+            + 1 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 3880  [0x1007d58b8]
+            + ! 1 _stringCompareWithSmolCheck(_:_:expecting:)  (in libswiftCore.dylib) + 88  [0x1ac1e696c]
+            + 1 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 7128  [0x1007d6568]
+            + ! 1 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+            + !   1 _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+            + !     1 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 96  [0x1ac07a3e8]
+            + !       1 swift_arrayDestroy  (in libswiftCore.dylib) + 64  [0x1ac35ff78]
+            + 1 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 8052  [0x1007d6904]
+            + ! 1 protocol witness for CustomStringConvertible.description.getter in conformance Int  (in libswiftCore.dylib) + 48  [0x1ac2c4e78]
+            + !   1 _int64ToString(_:radix:uppercase:)  (in libswiftCore.dylib) + 360  [0x1ac1281f4]
+            + !     1 swift_int64ToString  (in libswiftCore.dylib) + 44  [0x1ac451f10]
+            + 1 SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison) + 8140  [0x1007d695c]
+            +   1 swift_endAccess  (in libswiftCore.dylib) + 32  [0x1ac37a27c]
+            +     1 swift::runtime::SwiftTLSContext::get()  (in libswiftCore.dylib) + 24  [0x1ac3ded9c]
+            103 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 2256  [0x1007d169c]
+            + 78 SwiftTerminalCore.lineFeed()  (in emulator-comparison) + 552  [0x1007d4820]
+            + ! 63 SwiftTerminalCore.index(_:reverse:allowHistory:)  (in emulator-comparison) + 2268  [0x1007d8ed0]
+            + ! : 26 TerminalDocument.eraseRow(_:)  (in emulator-comparison) + 76  [0x1007ca294]
+            + ! : | 22 specialized Array.init(repeating:count:)  (in emulator-comparison) + 112  [0x1007cc374]
+            + ! : | + 14 initializeWithCopy for TerminalCell  (in emulator-comparison) + 76  [0x1007ccc84]
+            + ! : | + ! 6 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + ! : | + ! 4 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0,8  [0x1ac3e4278,0x1ac3e4280]
+            + ! : | + ! 4 swift_retain  (in libswiftCore.dylib) + 4,84  [0x1ac37f08c,0x1ac37f0dc]
+            + ! : | + 7 initializeWithCopy for TerminalCell  (in emulator-comparison) + 68  [0x1007ccc7c]
+            + ! : | + ! 5 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0,4  [0x1ac3e4278,0x1ac3e427c]
+            + ! : | + ! 2 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + ! : | + 1 initializeWithCopy for TerminalCell  (in emulator-comparison) + 48  [0x1007ccc68]
+            + ! : | 2 specialized Array.init(repeating:count:)  (in emulator-comparison) + 56  [0x1007cc33c]
+            + ! : | + 1 _ContiguousArrayBuffer.init(_uninitializedCount:minimumCapacity:)  (in libswiftCore.dylib) + 60  [0x1abff1608]
+            + ! : | + ! 1 __swift_instantiateCanonicalPrespecializedGenericMetadata  (in libswiftCore.dylib) + 40  [0x1ac35946c]
+            + ! : | + !   1 _swift_getGenericMetadata(swift::MetadataRequest, void const* const*, swift::TargetTypeContextDescriptor<swift::InProcess> const*)  (in libswiftCore.dylib) + 1440  [0x1ac38e76c]
+            + ! : | + !     1 swift::MetadataCacheEntryBase<(anonymous namespace)::GenericCacheEntry, void const*>::awaitSatisfyingState(swift::ConcurrencyControl&, swift::MetadataRequest)  (in libswiftCore.dylib) + 60  [0x1ac3a16c8]
+            + ! : | + 1 _ContiguousArrayBuffer.init(_uninitializedCount:minimumCapacity:)  (in libswiftCore.dylib) + 244  [0x1abff16c0]
+            + ! : | +   1 swift_release  (in libswiftCore.dylib) + 4  [0x1ac37ece0]
+            + ! : | 1 initializeWithCopy for TerminalCell  (in emulator-comparison) + 84  [0x1007ccc8c]
+            + ! : | 1 specialized Array.init(repeating:count:)  (in emulator-comparison) + 136  [0x1007cc38c]
+            + ! : 21 TerminalDocument.eraseRow(_:)  (in emulator-comparison) + 148  [0x1007ca2dc]
+            + ! : | 13 specialized Array.init(repeating:count:)  (in emulator-comparison) + 112  [0x1007cc374]
+            + ! : | + 9 initializeWithCopy for TerminalCell  (in emulator-comparison) + 76  [0x1007ccc84]
+            + ! : | + ! 4 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + ! : | + ! 3 swift_retain  (in libswiftCore.dylib) + 4  [0x1ac37f08c]
+            + ! : | + ! 2 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0,8  [0x1ac3e4278,0x1ac3e4280]
+            + ! : | + 3 initializeWithCopy for TerminalCell  (in emulator-comparison) + 68  [0x1007ccc7c]
+            + ! : | + ! 3 DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 4  [0x1007eaca4]
+            + ! : | + 1 initializeWithCopy for TerminalCell  (in emulator-comparison) + 20  [0x1007ccc4c]
+            + ! : | 4 specialized Array.init(repeating:count:)  (in emulator-comparison) + 136  [0x1007cc38c]
+            + ! : | 3 specialized Array.init(repeating:count:)  (in emulator-comparison) + 56  [0x1007cc33c]
+            + ! : | + 2 _ContiguousArrayBuffer.init(_uninitializedCount:minimumCapacity:)  (in libswiftCore.dylib) + 60  [0x1abff1608]
+            + ! : | + ! 1 __isPlatformOrVariantPlatformVersionAtLeast  (in libswiftCore.dylib) + 116  [0x1ac4545dc]
+            + ! : | + ! : 1 _availability_version_check  (in libxpc.dylib) + 36  [0x19a558288]
+            + ! : | + ! :   1 DYLD-STUB$$dyld_get_active_platform  (in libxpc.dylib) + 8  [0x19a57e164]
+            + ! : | + ! 1 __swift_instantiateCanonicalPrespecializedGenericMetadata  (in libswiftCore.dylib) + 40  [0x1ac35946c]
+            + ! : | + !   1 _swift_getGenericMetadata(swift::MetadataRequest, void const* const*, swift::TargetTypeContextDescriptor<swift::InProcess> const*)  (in libswiftCore.dylib) + 204  [0x1ac38e298]
+            + ! : | + 1 _ContiguousArrayBuffer.init(_uninitializedCount:minimumCapacity:)  (in libswiftCore.dylib) + 168  [0x1abff1674]
+            + ! : | +   1 malloc_size  (in libsystem_malloc.dylib) + 52  [0x19a64d43c]
+            + ! : | 1 initializeWithCopy for TerminalCell  (in emulator-comparison) + 84  [0x1007ccc8c]
+            + ! : 16 TerminalDocument.eraseRow(_:)  (in emulator-comparison) + 96  [0x1007ca2a8]
+            + ! :   16 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+            + ! :     16 _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+            + ! :       16 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 96  [0x1ac07a3e8]
+            + ! :         9 swift_arrayDestroy  (in libswiftCore.dylib) + 196  [0x1ac35fffc]
+            + ! :         + 5 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4,0  [0x1007eac8c,0x1007eac88]
+            + ! :         + 1 destroy for TerminalCell  (in emulator-comparison) + 24  [0x1007ccc28]
+            + ! :         + ! 1 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            + ! :         + 1 destroy for TerminalCell  (in emulator-comparison) + 24  [0x1007ccc28]
+            + ! :         + 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            + ! :         + 1 swift_release  (in libswiftCore.dylib) + 4  [0x1ac37ece0]
+            + ! :         7 swift_arrayDestroy  (in libswiftCore.dylib) + 196,172  [0x1ac35fffc,0x1ac35ffe4]
+            + ! 6 SwiftTerminalCore.index(_:reverse:allowHistory:)  (in emulator-comparison) + 2880  [0x1007d9134]
+            + ! : 6 specialized _ArrayBuffer._consumeAndCreateNew()  (in emulator-comparison) + 36  [0x1007cbe44]
+            + ! :   6 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 240  [0x1007cc068]
+            + ! :     5 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 348  [0x1ac35f69c]
+            + ! :     | 4 <deduplicated_symbol>  (in emulator-comparison) + 44  [0x1007c6d48]
+            + ! :     | + 3 swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0,8  [0x1ac3e4278,0x1ac3e4280]
+            + ! :     | + 1 swift_retain  (in libswiftCore.dylib) + 84  [0x1ac37f0dc]
+            + ! :     | 1 <deduplicated_symbol>  (in emulator-comparison) + 0  [0x1007c6d1c]
+            + ! :     1 swift_arrayInitWithCopy  (in libswiftCore.dylib) + 220  [0x1ac35f61c]
+            + ! :       1 swift::TargetMetadata<swift::InProcess>::getTypeContextDescriptor() const  (in libswiftCore.dylib) + 4  [0x1ac360054]
+            + ! 3 SwiftTerminalCore.index(_:reverse:allowHistory:)  (in emulator-comparison) + 2612  [0x1007d9028]
+            + ! : 1 SwiftTerminalCore.enforceHistoryLimits()  (in emulator-comparison) + 60  [0x1007de68c]
+            + ! : | 1 swift_beginAccess  (in libswiftCore.dylib) + 0  [0x1ac37a1f0]
+            + ! : 1 SwiftTerminalCore.enforceHistoryLimits()  (in emulator-comparison) + 204  [0x1007de71c]
+            + ! : | 1 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 136  [0x1007e627c]
+            + ! : |   1 _swift_allocObject_  (in libswiftCore.dylib) + 1100  [0x1ac37e054]
+            + ! : |     1 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 84  [0x1ac37db70]
+            + ! : |       1 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 84  [0x19a647be8]
+            + ! : |         1 tiny_malloc_should_clear  (in libsystem_malloc.dylib) + 52  [0x19a648ce8]
+            + ! : |           1 rack_get_thread_index  (in libsystem_malloc.dylib) + 12  [0x19a662728]
+            + ! : 1 SwiftTerminalCore.enforceHistoryLimits()  (in emulator-comparison) + 324  [0x1007de794]
+            + ! :   1 specialized SwiftTerminalCore.rowStorageBytes(_:)  (in emulator-comparison) + 40  [0x1007e7dc8]
+            + ! 2 SwiftTerminalCore.index(_:reverse:allowHistory:)  (in emulator-comparison) + 300,592  [0x1007d8720,0x1007d8844]
+            + ! 1 SwiftTerminalCore.index(_:reverse:allowHistory:)  (in emulator-comparison) + 352  [0x1007d8754]
+            + ! : 1 initializeWithCopy for TerminalScreen  (in emulator-comparison) + 140  [0x1007ccf54]
+            + ! :   1 swift_retain  (in libswiftCore.dylib) + 12  [0x1ac37f094]
+            + ! 1 SwiftTerminalCore.index(_:reverse:allowHistory:)  (in emulator-comparison) + 2548  [0x1007d8fe8]
+            + ! : 1 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+            + ! :   1 _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+            + ! :     1 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 52  [0x1ac07a3bc]
+            + ! 1 SwiftTerminalCore.index(_:reverse:allowHistory:)  (in emulator-comparison) + 2556  [0x1007d8ff0]
+            + ! : 1 specialized SwiftTerminalCore.rowStorageBytes(_:)  (in emulator-comparison) + 40  [0x1007e7dc8]
+            + ! 1 SwiftTerminalCore.index(_:reverse:allowHistory:)  (in emulator-comparison) + 3016  [0x1007d91bc]
+            + !   1 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 144  [0x1007e6284]
+            + !     1 malloc_size  (in libsystem_malloc.dylib) + 124  [0x19a64d484]
+            + !       1 szone_size  (in libsystem_malloc.dylib) + 68  [0x19a649f44]
+            + !         1 tiny_size  (in libsystem_malloc.dylib) + 160  [0x19a64a064]
+            + 25 SwiftTerminalCore.lineFeed()  (in emulator-comparison) + 828  [0x1007d4934]
+            +   25 outlined destroy of TerminalScreen  (in emulator-comparison) + 24  [0x1007ccb80]
+            +     25 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+            +       25 _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+            +         25 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 96  [0x1ac07a3e8]
+            +           24 swift_arrayDestroy  (in libswiftCore.dylib) + 196  [0x1ac35fffc]
+            +           : 23 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+            +           : | 23 _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+            +           : |   23 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 96  [0x1ac07a3e8]
+            +           : |     18 swift_arrayDestroy  (in libswiftCore.dylib) + 196  [0x1ac35fffc]
+            +           : |     + 7 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 8,0  [0x1ac3e49c4,0x1ac3e49bc]
+            +           : |     + 4 destroy for TerminalCell  (in emulator-comparison) + 24  [0x1007ccc28]
+            +           : |     + ! 3 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            +           : |     + ! 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            +           : |     + 3 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4,0  [0x1007eac8c,0x1007eac88]
+            +           : |     + 2 destroy for TerminalCell  (in emulator-comparison) + 24  [0x1007ccc28]
+            +           : |     + 2 swift_release  (in libswiftCore.dylib) + 4,88  [0x1ac37ece0,0x1ac37ed34]
+            +           : |     5 swift_arrayDestroy  (in libswiftCore.dylib) + 172,196  [0x1ac35ffe4,0x1ac35fffc]
+            +           : 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+            +           1 swift_arrayDestroy  (in libswiftCore.dylib) + 172  [0x1ac35ffe4]
+            75 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 6568  [0x1007d2774]
+            + 59 SwiftUnicode.UTF8Decoder.drain(endOfInput:)  (in emulator-comparison) + 692  [0x1007ad638]
+            + ! 37 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 128  [0x1007ae1b8]
+            + ! : 24 _swift_allocObject_  (in libswiftCore.dylib) + 1100  [0x1ac37e054]
+            + ! : | 12 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 84  [0x1ac37db70]
+            + ! : | + 4 malloc_type_malloc  (in libsystem_malloc.dylib) + 16  [0x19a663338]
+            + ! : | + 4 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 84  [0x19a647be8]
+            + ! : | + ! 4 tiny_malloc_should_clear  (in libsystem_malloc.dylib) + 188,28,...  [0x19a648d70,0x19a648cd0,...]
+            + ! : | + 3 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 40,76,...  [0x19a647bbc,0x19a647be0,...]
+            + ! : | + 1 DYLD-STUB$$malloc_type_malloc  (in libswiftCore.dylib) + 8  [0x1ac456c2c]
+            + ! : | 9 __isPlatformVersionAtLeast  (in libswiftCore.dylib) + 92  [0x1ac454428]
+            + ! : | + 4 _availability_version_check  (in libxpc.dylib) + 40  [0x19a55828c]
+            + ! : | + ! 2 dyld4::APIs::dyld_get_base_platform(unsigned int)  (in dyld) + 40  [0x19a4d8890]
+            + ! : | + ! : 2 mach_o::Platform::Platform(unsigned int)  (in dyld) + 76  [0x19a520284]
+            + ! : | + ! 1 dyld4::APIs::dyld_get_base_platform(unsigned int)  (in dyld) + 68  [0x19a4d88ac]
+            + ! : | + ! 1 dyld_get_base_platform  (in libdyld.dylib) + 36  [0x19a84f9ac]
+            + ! : | + 2 _availability_version_check  (in libxpc.dylib) + 36  [0x19a558288]
+            + ! : | + ! 1 dyld4::APIs::dyld_get_active_platform()  (in dyld) + 36  [0x19a4d882c]
+            + ! : | + ! : 1 mach_o::Platform::value() const  (in dyld) + 16  [0x19a52043c]
+            + ! : | + ! 1 dyld_get_active_platform  (in libdyld.dylib) + 0  [0x19a84eed8]
+            + ! : | + 1 DYLD-STUB$$_availability_version_check  (in libswiftCore.dylib) + 8  [0x1ac4566bc]
+            + ! : | + 1 _availability_version_check  (in libxpc.dylib) + 116  [0x19a5582d8]
+            + ! : | + 1 dyld4::APIs::dyld_get_active_platform()  (in dyld) + 84  [0x19a4d885c]
+            + ! : | 3 __isPlatformVersionAtLeast  (in libswiftCore.dylib) + 40,296  [0x1ac4543f4,0x1ac4544f4]
+            + ! : 6 _swift_allocObject_  (in libswiftCore.dylib) + 144  [0x1ac37dc98]
+            + ! : | 6 swift::ConcurrentReadableHashMap<MallocTypeCacheEntry, swift::LazyMutex>::find<unsigned int>(unsigned int const&, swift::ConcurrentReadableHashMap<MallocTypeCacheEntry, swift::LazyMutex>::IndexStorage, unsigned long, MallocTypeCacheEntry*)  (in libswiftCore.dylib) + 88,152,...  [0x1ac3822f8,0x1ac382338,...]
+            + ! : 6 _swift_allocObject_  (in libswiftCore.dylib) + 76,28,...  [0x1ac37dc54,0x1ac37dc24,...]
+            + ! : 1 swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 212  [0x1ac37dbf0]
+            + ! 8 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 136  [0x1007ae1c0]
+            + ! : 5 malloc_size  (in libsystem_malloc.dylib) + 124  [0x19a64d484]
+            + ! : | 5 szone_size  (in libsystem_malloc.dylib) + 68  [0x19a649f44]
+            + ! : |   5 tiny_size  (in libsystem_malloc.dylib) + 244,72,...  [0x19a64a0b8,0x19a64a00c,...]
+            + ! : 3 malloc_size  (in libsystem_malloc.dylib) + 16,36,...  [0x19a64d418,0x19a64d42c,...]
+            + ! 4 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 224  [0x1007ae218]
+            + ! : 3 _platform_memmove  (in libsystem_platform.dylib) + 0,428,...  [0x19a8812c0,0x19a88146c,...]
+            + ! : 1 DYLD-STUB$$memcpy  (in emulator-comparison) + 4  [0x1007eab9c]
+            + ! 4 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 232  [0x1007ae220]
+            + ! : 3 swift_release  (in libswiftCore.dylib) + 76,4  [0x1ac37ed28,0x1ac37ece0]
+            + ! : 1 swift_bridgeObjectRelease  (in libswiftCore.dylib) + 8  [0x1ac3e49c4]
+            + ! 4 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 8,0,...  [0x1007ae140,0x1007ae138,...]
+            + ! 1 _swift_allocObject_  (in libswiftCore.dylib) + 1152  [0x1ac37e088]
+            + ! 1 malloc_size  (in libsystem_malloc.dylib) + 244  [0x19a64d4fc]
+            + 7 SwiftUnicode.UTF8Decoder.drain(endOfInput:)  (in emulator-comparison) + 1456  [0x1007ad934]
+            + ! 4 specialized Array.replaceSubrange<A>(_:with:)  (in emulator-comparison) + 144  [0x1007aeb1c]
+            + ! : 2 specialized _ArrayBufferProtocol.replaceSubrange<A>(_:with:elementsOf:)  (in emulator-comparison) + 96  [0x1007aea4c]
+            + ! : | 1 DYLD-STUB$$memmove  (in emulator-comparison) + 4  [0x1007eaba8]
+            + ! : | 1 _platform_memmove  (in libsystem_platform.dylib) + 428  [0x19a88146c]
+            + ! : 2 specialized _ArrayBufferProtocol.replaceSubrange<A>(_:with:elementsOf:)  (in emulator-comparison) + 60  [0x1007aea28]
+            + ! 2 specialized Array.replaceSubrange<A>(_:with:)  (in emulator-comparison) + 32,88  [0x1007aeaac,0x1007aeae4]
+            + ! 1 specialized Array.replaceSubrange<A>(_:with:)  (in emulator-comparison) + 80  [0x1007aeadc]
+            + !   1 swift_isUniquelyReferenced_nonNull_native  (in libswiftCore.dylib) + 0  [0x1ac3e5fe0]
+            + 3 SwiftUnicode.UTF8Decoder.drain(endOfInput:)  (in emulator-comparison) + 128  [0x1007ad404]
+            + ! 3 swift_isUniquelyReferenced_nonNull_native  (in libswiftCore.dylib) + 32,24  [0x1ac3e6000,0x1ac3e5ff8]
+            + 2 SwiftUnicode.UTF8Decoder.drain(endOfInput:)  (in emulator-comparison) + 40,132  [0x1007ad3ac,0x1007ad408]
+            + 2 SwiftUnicode.UTF8Decoder.push(_:)  (in emulator-comparison) + 36  [0x1007ad308]
+            + ! 2 swift_isUniquelyReferenced_nonNull_native  (in libswiftCore.dylib) + 0  [0x1ac3e5fe0]
+            + 2 specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison) + 244  [0x1007ae22c]
+            36 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 7220  [0x1007d2a00]
+            + 26 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+            + ! 25 _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+            + ! : 6 free_tiny  (in libsystem_malloc.dylib) + 104,152,...  [0x19a64b838,0x19a64b868,...]
+            + ! : 4 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 96  [0x1ac07a3e8]
+            + ! : | 4 swift_arrayDestroy  (in libswiftCore.dylib) + 16,64,...  [0x1ac35ff48,0x1ac35ff78,...]
+            + ! : 4 _free  (in libsystem_malloc.dylib) + 0,56,...  [0x19a679b68,0x19a679ba0,...]
+            + ! : 4 free_tiny  (in libsystem_malloc.dylib) + 136  [0x19a64b858]
+            + ! : | 4 _platform_memset  (in libsystem_platform.dylib) + 180,208  [0x19a8810a4,0x19a8810c0]
+            + ! : 3 swift_deallocObject  (in libswiftCore.dylib) + 16,44  [0x1ac37eebc,0x1ac37eed8]
+            + ! : 2 _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 52,96  [0x1ac07a3bc,0x1ac07a3e8]
+            + ! : 1 _szone_free  (in libsystem_malloc.dylib) + 84  [0x19a65f0cc]
+            + ! : 1 swift_deallocClassInstance  (in libswiftCore.dylib) + 60  [0x1ac3818f0]
+            + ! 1 _szone_free  (in libsystem_malloc.dylib) + 592  [0x19a65f2c8]
+            + 6 swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 64,0,...  [0x1ac3826f8,0x1ac3826b8,...]
+            + 3 swift_release  (in libswiftCore.dylib) + 28,76  [0x1ac37ecf8,0x1ac37ed28]
+            + 1 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            16 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 2216,6628,...  [0x1007d1674,0x1007d27b0,...]
+            12 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 6712  [0x1007d2804]
+            + 5 specialized static String._uncheckedFromUTF8(_:)  (in libswiftCore.dylib) + 4,116,...  [0x1ac30fa70,0x1ac30fae0,...]
+            + 4 specialized static String._uncheckedFromUTF8(_:)  (in libswiftCore.dylib) + 216  [0x1ac30fb44]
+            + ! 4 specialized static String._uncheckedFromUTF8(_:isASCII:)  (in libswiftCore.dylib) + 428,64,...  [0x1ac310028,0x1ac30febc,...]
+            + 2 static String._uncheckedFromUTF8(_:)  (in libswiftCore.dylib) + 0  [0x1ac1cd85c]
+            + 1 DYLD-STUB$$static String._uncheckedFromUTF8(_:)  (in emulator-comparison) + 4  [0x1007ea68c]
+            7 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 6580  [0x1007d2780]
+            + 5 swift_endAccess  (in libswiftCore.dylib) + 16,0  [0x1ac37a26c,0x1ac37a25c]
+            + 1 DYLD-STUB$$swift_endAccess  (in emulator-comparison) + 4  [0x1007eacec]
+            + 1 swift_endAccess  (in libswiftCore.dylib) + 32  [0x1ac37a27c]
+            +   1 swift::runtime::SwiftTLSContext::get()  (in libswiftCore.dylib) + 24  [0x1ac3ded9c]
+            5 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 4136  [0x1007d1df4]
+            + 2 String.UnicodeScalarView.append(_:)  (in libswiftCore.dylib) + 32  [0x1ac1d8970]
+            + ! 1 specialized Unicode.Scalar.withUTF8CodeUnits<A>(_:)  (in libswiftCore.dylib) + 84  [0x1ac158a88]
+            + ! : 1 specialized static String._uncheckedFromUTF8(_:)  (in libswiftCore.dylib) + 80  [0x1ac30fabc]
+            + ! 1 specialized Unicode.Scalar.withUTF8CodeUnits<A>(_:)  (in libswiftCore.dylib) + 8  [0x1ac158a3c]
+            + 2 String.UnicodeScalarView.append(_:)  (in libswiftCore.dylib) + 40  [0x1ac1d8978]
+            + ! 2 _StringGuts.append(_:)  (in libswiftCore.dylib) + 124  [0x1ac179cf8]
+            + !   2 specialized _SmallString.init(_:appending:)  (in libswiftCore.dylib) + 0,152  [0x1ac310750,0x1ac3107e8]
+            + 1 String.UnicodeScalarView.append(_:)  (in libswiftCore.dylib) + 0  [0x1ac1d8950]
+            1 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 1144  [0x1007d1244]
+            + 1 DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 4  [0x1007eac8c]
+            1 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 2108  [0x1007d1608]
+            + 1 specialized static String._uncheckedFromUTF8(_:)  (in libswiftCore.dylib) + 216  [0x1ac30fb44]
+            1 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 2252  [0x1007d1698]
+            + 1 specialized SwiftTerminalCore.flushText(final:)  (in emulator-comparison) + 56  [0x1007e7f14]
+            +   1 swift_beginAccess  (in libswiftCore.dylib) + 28  [0x1ac37a20c]
+            1 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 4104  [0x1007d1dd4]
+            + 1 swift::runtime::AccessSet::insert(swift::runtime::Access*, void*, void*, swift::ExclusivityFlags)  (in libswiftCore.dylib) + 132  [0x1ac37a058]
+            1 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 4156  [0x1007d1e08]
+            + 1 swift_endAccess  (in libswiftCore.dylib) + 16  [0x1ac37a26c]
+            1 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 6528  [0x1007d274c]
+            + 1 SwiftTerminalCore.carriageReturn()  (in emulator-comparison) + 1104  [0x1007d4574]
+            1 SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison) + 6552  [0x1007d2764]
+            + 1 swift::runtime::AccessSet::insert(swift::runtime::Access*, void*, void*, swift::ExclusivityFlags)  (in libswiftCore.dylib) + 140  [0x1ac37a060]
+            1 swift_endAccess  (in libswiftCore.dylib) + 100  [0x1ac37a2c0]
+
+Total number in stack (recursive counted multiple, when >=5):
+        23       swift_bridgeObjectRelease  (in libswiftCore.dylib) + 0  [0x1ac3e49bc]
+        19       swift_release  (in libswiftCore.dylib) + 0  [0x1ac37ecdc]
+        16       DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison) + 0  [0x1007eac88]
+        16       DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison) + 0  [0x1007eaca0]
+        15       swift_bridgeObjectRetain  (in libswiftCore.dylib) + 0  [0x1ac3e4278]
+        13       swift_retain  (in libswiftCore.dylib) + 0  [0x1ac37f088]
+        11       _swift_release_dealloc  (in libswiftCore.dylib) + 56  [0x1ac381878]
+        11       swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib) + 152  [0x1ac382750]
+        9       _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib) + 96  [0x1ac07a3e8]
+        8       _swift_allocObject_  (in libswiftCore.dylib) + 1100  [0x1ac37e054]
+        8       _szone_free  (in libsystem_malloc.dylib) + 0  [0x19a65f078]
+        8       swift::TargetMetadata<swift::InProcess>::getTypeContextDescriptor() const  (in libswiftCore.dylib) + 0  [0x1ac360050]
+        8       swift::runtime::AccessSet::insert(swift::runtime::Access*, void*, void*, swift::ExclusivityFlags)  (in libswiftCore.dylib) + 0  [0x1ac379fd4]
+        8       swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib) + 84  [0x1ac37db70]
+        8       swift_arrayDestroy  (in libswiftCore.dylib) + 0  [0x1ac35ff38]
+        7       __isPlatformVersionAtLeast  (in libswiftCore.dylib) + 92  [0x1ac454428]
+        7       _swift_allocObject_  (in libswiftCore.dylib) + 0  [0x1ac37dc08]
+        7       malloc_size  (in libsystem_malloc.dylib) + 0  [0x19a64d408]
+        6       _availability_version_check  (in libxpc.dylib) + 36  [0x19a558288]
+        6       _stringCompareWithSmolCheck(_:_:expecting:)  (in libswiftCore.dylib) + 0  [0x1ac1e6914]
+        6       initializeWithCopy for TerminalCell  (in emulator-comparison) + 0  [0x1007ccc38]
+        6       initializeWithCopy for TerminalScreen  (in emulator-comparison) + 0  [0x1007ccec8]
+        6       swift_arrayDestroy  (in libswiftCore.dylib) + 196  [0x1ac35fffc]
+        6       swift_beginAccess  (in libswiftCore.dylib) + 0  [0x1ac37a1f0]
+        6       swift_isUniquelyReferenced_nonNull_native  (in libswiftCore.dylib) + 0  [0x1ac3e5fe0]
+        5       _availability_version_check  (in libxpc.dylib) + 40  [0x19a55828c]
+        5       initializeWithCopy for TerminalScreen  (in emulator-comparison) + 140  [0x1007ccf54]
+        5       mach_o::Platform::value() const  (in dyld) + 0  [0x19a52042c]
+        5       malloc_size  (in libsystem_malloc.dylib) + 124  [0x19a64d484]
+        5       outlined destroy of TerminalScreen  (in emulator-comparison) + 24  [0x1007ccb80]
+        5       swift::runtime::SwiftTLSContext::get()  (in libswiftCore.dylib) + 0  [0x1ac3ded84]
+        5       swift_arrayInitWithCopy  (in libswiftCore.dylib) + 0  [0x1ac35f540]
+        5       szone_malloc_should_clear  (in libsystem_malloc.dylib) + 84  [0x19a647be8]
+        5       szone_size  (in libsystem_malloc.dylib) + 68  [0x19a649f44]
+        5       tiny_size  (in libsystem_malloc.dylib) + 0  [0x19a649fc4]
+
+Sort by top of stack, same collapsed (when >= 5):
+        DYLD-STUB$$swift_bridgeObjectRetain  (in emulator-comparison)        427
+        DYLD-STUB$$swift_bridgeObjectRelease  (in emulator-comparison)        391
+        swift_bridgeObjectRelease  (in libswiftCore.dylib)        362
+        swift_bridgeObjectRetain  (in libswiftCore.dylib)        356
+        swift_arrayDestroy  (in libswiftCore.dylib)        333
+        swift_release  (in libswiftCore.dylib)        323
+        swift_retain  (in libswiftCore.dylib)        312
+        swift_arrayInitWithCopy  (in libswiftCore.dylib)        197
+        initializeWithCopy for TerminalCell  (in emulator-comparison)        192
+        specialized TerminalDocument.repairWidePairs(_:eraseStyle:)  (in emulator-comparison)        192
+        static SwiftUnicode18Tables.category(_:)  (in emulator-comparison)        74
+        destroy for TerminalCell  (in emulator-comparison)        70
+        specialized static SwiftUnicode.category(of:)  (in emulator-comparison)        39
+        SwiftTerminalCore.writeBounds(_:)  (in emulator-comparison)        32
+        <deduplicated_symbol>  (in emulator-comparison)        26
+        _swift_allocObject_  (in libswiftCore.dylib)        23
+        SwiftTerminalCore.put(_:)  (in emulator-comparison)        21
+        swift::TargetMetadata<swift::InProcess>::getTypeContextDescriptor() const  (in libswiftCore.dylib)        18
+        initializeWithCopy for TerminalScreen  (in emulator-comparison)        17
+        swift::RefCounts<swift::RefCountBitsT<(swift::RefCountInlinedness)1>>::doDecrementSlow<(swift::PerformDeinit)1>(swift::RefCountBitsT<(swift::RefCountInlinedness)1>, unsigned int)  (in libswiftCore.dylib)        17
+        SwiftTerminalCore.feed(_:count:now:)  (in emulator-comparison)        16
+        free_small  (in libsystem_malloc.dylib)        16
+        malloc_size  (in libsystem_malloc.dylib)        14
+        _szone_free  (in libsystem_malloc.dylib)        13
+        mach_o::Platform::value() const  (in dyld)        13
+        small_malloc_should_clear  (in libsystem_malloc.dylib)        13
+        swift::ConcurrentReadableHashMap<MallocTypeCacheEntry, swift::LazyMutex>::find<unsigned int>(unsigned int const&, swift::ConcurrentReadableHashMap<MallocTypeCacheEntry, swift::LazyMutex>::IndexStorage, unsigned long, MallocTypeCacheEntry*)  (in libswiftCore.dylib)        12
+        szone_malloc_should_clear  (in libsystem_malloc.dylib)        12
+        specialized _ArrayBuffer._consumeAndCreateNew(bufferIsUnique:minimumCapacity:growForAppend:)  (in emulator-comparison)        11
+        swift::runtime::AccessSet::insert(swift::runtime::Access*, void*, void*, swift::ExclusivityFlags)  (in libswiftCore.dylib)        11
+        TerminalDocument.erase(_:row:columns:style:selective:)  (in emulator-comparison)        10
+        free_tiny  (in libsystem_malloc.dylib)        10
+        swift_allocObject  (in libswiftCore.dylib)        10
+        swift_isUniquelyReferenced_nonNull_native  (in libswiftCore.dylib)        10
+        tiny_size  (in libsystem_malloc.dylib)        10
+        swift_beginAccess  (in libswiftCore.dylib)        9
+        SwiftTerminalCore.handleCSI(_:final:)  (in emulator-comparison)        8
+        _free  (in libsystem_malloc.dylib)        8
+        malloc_type_malloc  (in libsystem_malloc.dylib)        8
+        specialized static String._uncheckedFromUTF8(_:)  (in libswiftCore.dylib)        8
+        static SwiftUnicode.cellWidth(of:)  (in emulator-comparison)        8
+        swift_endAccess  (in libswiftCore.dylib)        8
+        _stringCompareWithSmolCheck(_:_:expecting:)  (in libswiftCore.dylib)        7
+        small_free_list_remove_ptr_no_clear  (in libsystem_malloc.dylib)        7
+        DYLD-STUB$$free  (in libswiftCore.dylib)        6
+        SwiftUnicode.Segmenter.push(_:)  (in emulator-comparison)        6
+        _ContiguousArrayStorage.__deallocating_deinit  (in libswiftCore.dylib)        6
+        outlined destroy of TerminalCell  (in emulator-comparison)        6
+        swift::runtime::SwiftTLSContext::get()  (in libswiftCore.dylib)        6
+        swift_deallocObject  (in libswiftCore.dylib)        6
+        tiny_malloc_from_free_list  (in libsystem_malloc.dylib)        6
+        __isPlatformVersionAtLeast  (in libswiftCore.dylib)        5
+        dyld4::APIs::dyld_get_base_platform(unsigned int)  (in dyld)        5
+        small_free_list_add_ptr  (in libsystem_malloc.dylib)        5
+        small_malloc_from_free_list  (in libsystem_malloc.dylib)        5
+        specialized Array.init(repeating:count:)  (in emulator-comparison)        5
+        specialized static String._uncheckedFromUTF8(_:isASCII:)  (in libswiftCore.dylib)        5
+        swift::swift_slowAllocTyped(unsigned long, unsigned long, unsigned long long)  (in libswiftCore.dylib)        5
+
+Binary Images:
+       0x1007ac000 -        0x1007f0c97 +emulator-comparison (0) <E887F5B0-4C1D-3FAB-BAA2-0D580FB84C2F> /Users/*/emulator-comparison
+       0x19a44c000 -        0x19a49f893  libobjc.A.dylib (940.4) <8CA52E4D-F699-3D14-8061-EEA9D4366538> /usr/lib/libobjc.A.dylib
+       0x19a4a0000 -        0x19a53b577  dyld (1.0.0 - 1286.10) <3247E185-CED2-36FF-9E29-47A77C23E004> /usr/lib/dyld
+       0x19a53c000 -        0x19a53f168  libsystem_blocks.dylib (96) <BA8F0C40-B12D-3D8B-8396-FC3F8A733C27> /usr/lib/system/libsystem_blocks.dylib
+       0x19a540000 -        0x19a58a8ff  libxpc.dylib (2894.140.12) <1B8951EB-68DB-37BA-9581-240B796AA872> /usr/lib/system/libxpc.dylib
+       0x19a58b000 -        0x19a5a67ff  libsystem_trace.dylib (1643.120.5) <AC8466B8-AF1D-3895-876B-228151F0DF1D> /usr/lib/system/libsystem_trace.dylib
+       0x19a5a7000 -        0x19a6453b7  libcorecrypto.dylib (1736.140.2) <7254F3F1-A46F-30B6-934A-511B730A8FC7> /usr/lib/system/libcorecrypto.dylib
+       0x19a646000 -        0x19a68d06f  libsystem_malloc.dylib (715.140.5) <85947F4E-385D-3B6D-9BF5-844EFE876D53> /usr/lib/system/libsystem_malloc.dylib
+       0x19a68e000 -        0x19a6d475f  libdispatch.dylib (1521.140.2) <24CE0D89-4114-30C2-A81A-3DB1F5931CFF> /usr/lib/system/libdispatch.dylib
+       0x19a6d5000 -        0x19a6d7d1b  libsystem_featureflags.dylib (97) <856DB4EF-8C67-3842-970C-6FA814B07749> /usr/lib/system/libsystem_featureflags.dylib
+       0x19a6d8000 -        0x19a759243  libsystem_c.dylib (1698.140.3) <DFEA8794-80CE-37C3-8F6A-108AA1D0B1B0> /usr/lib/system/libsystem_c.dylib
+       0x19a75a000 -        0x19a7e6ff7  libc++.1.dylib (1900.181) <643ED232-CE19-3F63-8015-0AEE768C002F> /usr/lib/libc++.1.dylib
+       0x19a7e7000 -        0x19a804fff  libc++abi.dylib (1900.181) <776A4AFB-71EE-32AB-B2EE-E6FF80818654> /usr/lib/libc++abi.dylib
+       0x19a805000 -        0x19a840653  libsystem_kernel.dylib (11417.140.69) <6E4A96AD-04B8-3E8A-B91D-087E62306246> /usr/lib/system/libsystem_kernel.dylib
+       0x19a841000 -        0x19a84da47  libsystem_pthread.dylib (536) <D6494BA9-171E-39FC-B1AA-28ECF87975D1> /usr/lib/system/libsystem_pthread.dylib
+       0x19a84e000 -        0x19a87dba3  libdyld.dylib (1286.10) <01BCB3F7-AB89-30BD-87EE-91B291EADAE8> /usr/lib/system/libdyld.dylib
+       0x19a87e000 -        0x19a885e0b  libsystem_platform.dylib (349.140.6) <FD19A599-8750-31F9-924F-C2810C938371> /usr/lib/system/libsystem_platform.dylib
+       0x19a886000 -        0x19a8b56f7  libsystem_info.dylib (597) <9720B57E-A0DF-3BDD-8149-0801054B5D00> /usr/lib/system/libsystem_info.dylib
+       0x19a8b6000 -        0x19adf4fff  com.apple.CoreFoundation (6.9 - 3603) <8D45BAEE-6CC0-3B89-93FD-EA1C8E15C6D7> /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
+       0x19adf5000 -        0x19b0e713f  com.apple.LaunchServices (1141.1 - 1141.1) <1E58A116-8211-3368-8F5A-5DF00D6F8971> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/LaunchServices
+       0x19b0e8000 -        0x19b26c57f  com.apple.gpusw.MetalTools (1.0 - 1) <E103DE28-45B8-3C05-AED8-E4074910C914> /System/Library/PrivateFrameworks/MetalTools.framework/Versions/A/MetalTools
+       0x19b26d000 -        0x19b90072f  libBLAS.dylib (1545) <5C972072-BCC3-3AA1-B54F-B535C56734FE> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib
+       0x19b901000 -        0x19ba0d2df  com.apple.Lexicon-framework (1.0 - 173.9) <30FE75B5-1104-3EA2-889F-7E11206A8D1A> /System/Library/PrivateFrameworks/Lexicon.framework/Versions/A/Lexicon
+       0x19ba0e000 -        0x19bb09bd7  libSparse.dylib (127.120.9) <D4B61818-B40F-39D7-A2F4-837D2E2382A5> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libSparse.dylib
+       0x19bb0a000 -        0x19bb9d87f  com.apple.SystemConfiguration (1.21 - 1.21) <22C01CFC-8196-38E7-B6D6-65AF1C8D5227> /System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration
+       0x19bb9e000 -        0x19bbd2bb7  libCRFSuite.dylib (55) <E02C68C0-C106-3F70-A870-3037766722D2> /usr/lib/libCRFSuite.dylib
+       0x19bea7000 -        0x19cc9059f  com.apple.Foundation (6.9 - 3603) <B9A92060-F21E-3ECF-9DED-94A65C68A6F4> /System/Library/Frameworks/Foundation.framework/Versions/C/Foundation
+       0x19ce4c000 -        0x19cf6c75f  com.apple.CoreDisplay (288 - 288) <AE76A642-22B6-31C9-9EBC-BE4E48DAA0D9> /System/Library/Frameworks/CoreDisplay.framework/Versions/A/CoreDisplay
+       0x19cf6d000 -        0x19d32437f  com.apple.audio.AudioToolboxCore (1.0 - 1456.703) <3F69ED5D-9D77-3A65-B8A6-2F631B87A864> /System/Library/PrivateFrameworks/AudioToolboxCore.framework/Versions/A/AudioToolboxCore
+       0x19d325000 -        0x19d543c9f  com.apple.CoreText (844.6.0.4 - 844.6.0.4) <0C195180-47F8-31AC-A951-B00B3C5D4477> /System/Library/Frameworks/CoreText.framework/Versions/A/CoreText
+       0x19d544000 -        0x19dc7539f  com.apple.audio.CoreAudio (5.0 - 5.0) <52C7F0A2-F403-391B-9B0D-CE498EFF4D7E> /System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio
+       0x19dc76000 -        0x19e07f45f  com.apple.security (7.0 - 61439.140.12) <3F615FD7-8463-355F-84A0-6660A238FDBD> /System/Library/Frameworks/Security.framework/Versions/A/Security
+       0x19e080000 -        0x19e34bbeb  libicucore.A.dylib (76104.4) <5F93C461-2895-3D41-8459-560D35F81694> /usr/lib/libicucore.A.dylib
+       0x19e34c000 -        0x19e356387  libsystem_darwin.dylib (1698.140.3) <8E58BBDB-E560-3AB4-8A1D-849AB83CBFC5> /usr/lib/system/libsystem_darwin.dylib
+       0x19e357000 -        0x19e649cbf  com.apple.CoreServices.CarbonCore (1333 - 1333) <18084480-B19D-3142-ADBE-40F2AA328977> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/CarbonCore
+       0x19e64a000 -        0x19e68984b  com.apple.CoreServicesInternal (505 - 505) <059EC98D-B718-3028-B844-6CB1590B2E2A> /System/Library/PrivateFrameworks/CoreServicesInternal.framework/Versions/A/CoreServicesInternal
+       0x19e68a000 -        0x19e6ca4df  com.apple.CSStore (1141.1 - 1141.1) <E5453CD6-3EFB-3F00-8E26-94A52D2C9898> /System/Library/PrivateFrameworks/CoreServicesStore.framework/Versions/A/CoreServicesStore
+       0x19e6cb000 -        0x19e7ad33f  com.apple.framework.IOKit (2.0.2 - 100150.120.2) <1B056404-8B47-31A9-B1F3-ED0693EE9684> /System/Library/Frameworks/IOKit.framework/Versions/A/IOKit
+       0x19e7ae000 -        0x19e7bffeb  libsystem_notify.dylib (342) <6A411086-A1A2-349F-B9CA-348F9DCBB415> /usr/lib/system/libsystem_notify.dylib
+       0x19fe5e000 -        0x19fe73d1f  com.apple.UniformTypeIdentifiers (709 - 709) <8945E326-399B-3721-9A74-A51665F73A57> /System/Library/Frameworks/UniformTypeIdentifiers.framework/Versions/A/UniformTypeIdentifiers
+       0x1a0315000 -        0x1a03e565f  libboringssl.dylib (486.140.6) <1BE1E0DF-67B5-3220-B66D-095F18E35495> /usr/lib/libboringssl.dylib
+       0x1a03e6000 -        0x1a03e63cf  libnetwork.dylib (4277.140.33) <E37CC7D2-5DC0-38DF-AE7E-5DB18C677544> /usr/lib/libnetwork.dylib
+       0x1a03e7000 -        0x1a07b0a5f  com.apple.CFNetwork (1.0 - 3826.600.41) <45AD6442-531D-3E9A-967E-B3AA0D01F24F> /System/Library/Frameworks/CFNetwork.framework/Versions/A/CFNetwork
+       0x1a07b1000 -        0x1a07cbe8f  libsystem_networkextension.dylib (2063.140.6) <8183B684-71EB-3FB1-8378-EB830CADAE7D> /usr/lib/system/libsystem_networkextension.dylib
+       0x1a07cc000 -        0x1a07cd067  libenergytrace.dylib (23) <2487E659-CD52-3A6B-84D5-7811A4439F36> /usr/lib/libenergytrace.dylib
+       0x1a07ce000 -        0x1a0847e5f  libMobileGestalt.dylib (1414.140.6) <234C5EB8-CAC8-3473-9B99-5AA439E7ACF7> /usr/lib/libMobileGestalt.dylib
+       0x1a0848000 -        0x1a085ffdb  libsystem_asl.dylib (402) <FE29D1E8-D286-33F9-81CB-822E632D1571> /usr/lib/system/libsystem_asl.dylib
+       0x1a0860000 -        0x1a0882113  com.apple.TCC (1.0 - 1) <E5524421-C789-3387-9FDD-DFEA68E1BC95> /System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC
+       0x1a0883000 -        0x1a0da905f  com.apple.SkyLight (1.600.0 - 891.7) <4E052846-80C2-38AF-85BF-1482E070A32B> /System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/SkyLight
+       0x1a0daa000 -        0x1a14da13f  com.apple.CoreGraphics (2.0 - 1889.6.3) <47E7F717-751C-344A-8EF9-3A1358F30C82> /System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics
+       0x1a14db000 -        0x1a1690d97  com.apple.ColorSync (4.13.0 - 3777.4.1) <1B6741D3-11C2-3515-B06B-A76812B15722> /System/Library/Frameworks/ColorSync.framework/Versions/A/ColorSync
+       0x1a1b0b000 -        0x1a1f65e3f  com.apple.CoreData (120 - 1448.1) <57715E60-EA5F-3CEF-9D42-304DAC8554EE> /System/Library/Frameworks/CoreData.framework/Versions/A/CoreData
+       0x1a1f66000 -        0x1a1f800ff  com.apple.ProtocolBuffer (1 - 303.26.4.18.1) <271D62A0-451E-31E3-8945-FDF99C31D2BA> /System/Library/PrivateFrameworks/ProtocolBuffer.framework/Versions/A/ProtocolBuffer
+       0x1a1f81000 -        0x1a2135c67  libsqlite3.dylib (360.3) <5F82B5CA-C186-361E-AEB3-38B2FE056EDE> /usr/lib/libsqlite3.dylib
+       0x1a21d2000 -        0x1a22b6a7f  com.apple.BaseBoard (694.5.5 - 694.5.5) <95B09ECC-6E62-3545-BA9B-5E99838C3432> /System/Library/PrivateFrameworks/BaseBoard.framework/Versions/A/BaseBoard
+       0x1a22b7000 -        0x1a231f1ff  com.apple.RunningBoardServices (1.0 - 961.100.17) <11D50C81-655E-3347-95C9-F860406D4DEC> /System/Library/PrivateFrameworks/RunningBoardServices.framework/Versions/A/RunningBoardServices
+       0x1a2320000 -        0x1a2393787  com.apple.AE (944 - 944) <C410F3F4-79C0-3066-92BD-3B8AB89ADE37> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/AE.framework/Versions/A/AE
+       0x1a2394000 -        0x1a23a4247  libdns_services.dylib (2600.140.3) <4CBFDD3C-8E13-341A-8800-996AC749DA1D> /usr/lib/libdns_services.dylib
+       0x1a23a5000 -        0x1a23ad3a7  libsystem_symptoms.dylib (2022.140.4) <AABA26A2-74BC-3219-BAA3-ACC8D81D8589> /usr/lib/system/libsystem_symptoms.dylib
+       0x1a23ae000 -        0x1a3456cdf  com.apple.Network (1.0 - 4277.140.33) <D8C3869A-81C8-3DFB-B2D1-9C24E87075C0> /System/Library/Frameworks/Network.framework/Versions/A/Network
+       0x1a3457000 -        0x1a34872ff  com.apple.analyticsd (1.0 - 1) <6A01B49E-F0AE-3467-97DE-DB27D3082903> /System/Library/PrivateFrameworks/CoreAnalytics.framework/Versions/A/CoreAnalytics
+       0x1a3488000 -        0x1a34898d3  libDiagnosticMessagesClient.dylib (113) <C01F158F-1CF1-38B8-94B2-243FE62D82DF> /usr/lib/libDiagnosticMessagesClient.dylib
+       0x1a348a000 -        0x1a34eaeff  com.apple.spotlight.metadata.utilities (1.0 - 2333.57.1) <40AA2EE8-3059-3AAF-82E2-FC466C8BBAFF> /System/Library/PrivateFrameworks/MetadataUtilities.framework/Versions/A/MetadataUtilities
+       0x1a34eb000 -        0x1a35751df  com.apple.Metadata (15.6 - 2333.57.1) <3CC474C7-EFFA-3C6C-BB2B-9F9CA08C6B61> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Metadata
+       0x1a3576000 -        0x1a357e95b  com.apple.DiskArbitration (2.7 - 2.7) <936806C4-7267-3C10-BC06-42EAFB593A11> /System/Library/Frameworks/DiskArbitration.framework/Versions/A/DiskArbitration
+       0x1a357f000 -        0x1a398e633  com.apple.vImage (8.1 - 611.140.2) <E00EB66B-7890-31C3-A594-F8F36F608BEE> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vImage.framework/Versions/A/vImage
+       0x1a398f000 -        0x1a3d62c7f  com.apple.QuartzCore (1.11 - 1156.18) <31921699-8990-3ACE-8D83-16E7BE814C6F> /System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore
+       0x1a3d63000 -        0x1a3db4adf  libFontRegistry.dylib (391.6.0.1) <6A18A25C-8E29-38A5-BC96-81C4035CD854> /System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ATS.framework/Versions/A/Resources/libFontRegistry.dylib
+       0x1a4049000 -        0x1a4056a7f  com.apple.OpenDirectory (15.6 - 643) <21D9B5E4-5D90-3380-B07A-F4EBF10C2151> /System/Library/Frameworks/OpenDirectory.framework/Versions/A/OpenDirectory
+       0x1a4057000 -        0x1a4075053  com.apple.CFOpenDirectory (15.6 - 643) <2B023818-EF71-3CF5-BF26-8C27B0A807DA> /System/Library/Frameworks/OpenDirectory.framework/Versions/A/Frameworks/CFOpenDirectory.framework/Versions/A/CFOpenDirectory
+       0x1a4076000 -        0x1a408383b  com.apple.CoreServices.FSEvents (1400.100.1 - 1400.100.1) <B39570B0-DBCA-3E28-A650-00E07668AE67> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/FSEvents.framework/Versions/A/FSEvents
+       0x1a4084000 -        0x1a40ad83f  com.apple.coreservices.SharedFileList (225 - 225) <930922F8-7DDF-3A45-ACC9-43ED445E6C10> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/SharedFileList.framework/Versions/A/SharedFileList
+       0x1a40ae000 -        0x1a40b10af  libapp_launch_measurement.dylib (17) <6560472A-BBC1-3712-B74D-B11AA2AB6F57> /usr/lib/libapp_launch_measurement.dylib
+       0x1a40b2000 -        0x1a40fb55f  com.apple.CoreAutoLayout (1.0 - 33) <F4722B74-B54F-32B4-9794-402B2608DA60> /System/Library/PrivateFrameworks/CoreAutoLayout.framework/Versions/A/CoreAutoLayout
+       0x1a40fc000 -        0x1a41e5c9b  libxml2.2.dylib (38.15) <4412586C-E119-3A27-908B-D4466DD26621> /usr/lib/libxml2.2.dylib
+       0x1a41e6000 -        0x1a4246d5f  com.apple.CoreVideo (1.8 - 692.1) <09D2CFD2-78BE-3AB9-BD62-81ADFB485FCC> /System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo
+       0x1a4247000 -        0x1a4249e7f  com.apple.loginsupport (3.0 - 259.5.1) <D4668654-0726-35E5-87E6-F614FD9EC9C0> /System/Library/PrivateFrameworks/login.framework/Versions/A/Frameworks/loginsupport.framework/Versions/A/loginsupport
+       0x1a4287000 -        0x1a42b157f  com.apple.UserManagement (1.0 - 1) <F5EEDB3F-49E3-3CAF-8963-47D8FB9D8633> /System/Library/PrivateFrameworks/UserManagement.framework/Versions/A/UserManagement
+       0x1a5bf2000 -        0x1a5c2238f  libsystem_containermanager.dylib (689.100.6) <24EE4AC1-5C9F-3EE0-8B4E-9D060EBCBD41> /usr/lib/system/libsystem_containermanager.dylib
+       0x1a5c23000 -        0x1a5c3bedf  com.apple.IOSurface (372.5.2 - 372.5.2) <B681DAE8-0089-38F1-98E0-FAC680608E1F> /System/Library/Frameworks/IOSurface.framework/Versions/A/IOSurface
+       0x1a5c3c000 -        0x1a5c45e9f  com.apple.IOAccelerator (485 - 485) <8C396EF6-B4DC-312F-8A1C-4E588832AC53> /System/Library/PrivateFrameworks/IOAccelerator.framework/Versions/A/IOAccelerator
+       0x1a5c46000 -        0x1a5eb8a1f  com.apple.Metal (368.52 - 368.52) <F83EE1A6-49CC-3A46-80AF-1B8B07EE0322> /System/Library/Frameworks/Metal.framework/Versions/A/Metal
+       0x1a5eb9000 -        0x1a5ee0ddf  com.apple.audio.caulk (1.0 - 181.700) <42085F32-42E2-3F11-B0B4-0343137B5F72> /System/Library/PrivateFrameworks/caulk.framework/Versions/A/caulk
+       0x1a5ee1000 -        0x1a603ca7f  com.apple.CoreMedia (1.0 - 3235.14.1) <B58190F1-836A-3043-9003-AEED46970E59> /System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia
+       0x1a603d000 -        0x1a630f27f  libFontParser.dylib (423.6.0.2) <EC125789-35EC-3DA0-AEFA-8FB606B96F80> /System/Library/PrivateFrameworks/FontServices.framework/libFontParser.dylib
+       0x1a666d000 -        0x1a69ebf9f  com.apple.ImageIO (3.3.0 - 2661.6.2) <6C7096CE-FEFA-3420-9FAE-4567DFEC4DCA> /System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO
+       0x1a69ec000 -        0x1a6da697f  com.apple.CoreImage (19.0.0 - 1510.140.2) <D42177F0-3B0C-39CD-85C1-5620DEE9B5CF> /System/Library/Frameworks/CoreImage.framework/Versions/A/CoreImage
+       0x1a6da7000 -        0x1a6e56ddf  com.apple.MetalPerformanceShaders.MPSCore (1.0 - 1) <D921BBB7-3E7E-3E06-8567-65051E1DCE7A> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSCore.framework/Versions/A/MPSCore
+       0x1a6e57000 -        0x1a6e5b5df  libsystem_configuration.dylib (1351.140.5) <B1ADB810-702B-3646-8B66-EB2C288FE51A> /usr/lib/system/libsystem_configuration.dylib
+       0x1a6e5c000 -        0x1a6e6247f  libsystem_sandbox.dylib (2401.140.15) <B86C6D35-683E-3156-BAB2-A422F5AFF2BD> /usr/lib/system/libsystem_sandbox.dylib
+       0x1a6e63000 -        0x1a6e6417f  com.apple.AggregateDictionary (1.0 - 1) <372DB354-1857-3580-8EF9-ED51E93B94FD> /System/Library/PrivateFrameworks/AggregateDictionary.framework/Versions/A/AggregateDictionary
+       0x1a6e65000 -        0x1a6e6959b  com.apple.AppleSystemInfo (3.1.5 - 3.1.5) <715E55BA-3640-3069-959F-C72A0CB1E8AB> /System/Library/PrivateFrameworks/AppleSystemInfo.framework/Versions/A/AppleSystemInfo
+       0x1a6e6a000 -        0x1a6e6b44f  liblangid.dylib (140) <177E6F2C-552D-3918-B0FA-E41D3994D594> /usr/lib/liblangid.dylib
+       0x1a6e6c000 -        0x1a6f88fbf  com.apple.CoreNLP (1.0 - 313) <43BE2651-24A0-3DFF-B1CB-F5230E883875> /System/Library/PrivateFrameworks/CoreNLP.framework/Versions/A/CoreNLP
+       0x1a6f89000 -        0x1a6f8f55f  com.apple.LinguisticData (1.0 - 483.10) <B176FCC7-BFA1-3A88-BE8F-21CA30A60F3D> /System/Library/PrivateFrameworks/LinguisticData.framework/Versions/A/LinguisticData
+       0x1a6f90000 -        0x1a7a3cbb7  libBNNS.dylib (1497.120.5) <794CFDA3-BA8D-33FA-9FB4-2AB42EABF3A8> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBNNS.dylib
+       0x1a7a3d000 -        0x1a7b2ecff  libvDSP.dylib (1068.100.12) <4A17CD0E-0460-333B-8347-C11B0BEDEE2F> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libvDSP.dylib
+       0x1a7b62000 -        0x1a7b727e7  com.apple.IOMobileFramebuffer (343.0.0 - 343.0.0) <6DE81CE6-C629-3194-AD6A-B0E8A02A3937> /System/Library/PrivateFrameworks/IOMobileFramebuffer.framework/Versions/A/IOMobileFramebuffer
+       0x1a7d72000 -        0x1a7d8eddf  com.apple.MobileKeyBag (2.0 - 1.0) <6A8A1EBF-2700-3033-B7B5-6D05EFAA12EC> /System/Library/PrivateFrameworks/MobileKeyBag.framework/Versions/A/MobileKeyBag
+       0x1a7d8f000 -        0x1a7d9d15f  com.apple.AssertionServices (1.0 - 961.100.17) <45F6BFCA-44CC-339B-AD77-6422A999B5C6> /System/Library/PrivateFrameworks/AssertionServices.framework/Versions/A/AssertionServices
+       0x1a7d9e000 -        0x1a7e2c9df  com.apple.securityfoundation (6.0 - 55290) <F1E5AC83-C3D0-3CC9-B4F2-74682268D7E2> /System/Library/Frameworks/SecurityFoundation.framework/Versions/A/SecurityFoundation
+       0x1a7e2d000 -        0x1a7e5bc7f  com.apple.coreservices.BackgroundTaskManagement (1.0 - 104) <7D03C736-510B-30E4-91AF-30CAE864EEFF> /System/Library/PrivateFrameworks/BackgroundTaskManagement.framework/Versions/A/BackgroundTaskManagement
+       0x1a7e67000 -        0x1a7e69fe3  libquarantine.dylib (181.120.2) <8CE8DAD0-52D6-3F46-98EF-161E1397FB48> /usr/lib/system/libquarantine.dylib
+       0x1a7e6a000 -        0x1a7e75323  libCheckFix.dylib (33) <97583C83-D04E-33FE-85B3-F29C7663AD24> /usr/lib/libCheckFix.dylib
+       0x1a7e76000 -        0x1a7e8d44f  libcoretls.dylib (186) <EDFD57F9-1580-3CBD-B37E-FB507B9202F4> /usr/lib/libcoretls.dylib
+       0x1a7e8e000 -        0x1a7e9f26b  libbsm.0.dylib (89) <FA3678AC-02BA-3D6A-917C-AC6241E8F9F1> /usr/lib/libbsm.0.dylib
+       0x1a7ea0000 -        0x1a7eff81f  libmecab.dylib (1093.502) <626F850B-833D-383B-8247-089C476B50AA> /usr/lib/libmecab.dylib
+       0x1a7f00000 -        0x1a7f0244b  libgermantok.dylib (31) <ADC70CB8-B2EF-3A6D-BD4B-31ACC79BA474> /usr/lib/libgermantok.dylib
+       0x1a7f03000 -        0x1a7f17a5f  libLinearAlgebra.dylib (1545) <9F530DCD-2D1A-39F9-8205-8052AD7BB661> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libLinearAlgebra.dylib
+       0x1a7f18000 -        0x1a816331f  com.apple.MetalPerformanceShaders.MPSNeuralNetwork (1.0 - 1) <B081231B-0721-3E8F-AE92-C38FCEDA7348> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSNeuralNetwork.framework/Versions/A/MPSNeuralNetwork
+       0x1a8164000 -        0x1a81b87df  com.apple.MetalPerformanceShaders.MPSRayIntersector (1.0 - 1) <18E6F25E-A7D2-3383-AF17-A3DDF2630DAE> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSRayIntersector.framework/Versions/A/MPSRayIntersector
+       0x1a834f000 -        0x1a838023f  com.apple.MetalPerformanceShaders.MPSMatrix (1.0 - 1) <0D54A81B-B9CD-34CC-AFF1-1ADA0D8F27D6> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSMatrix.framework/Versions/A/MPSMatrix
+       0x1a8381000 -        0x1a84ced7f  com.apple.MetalPerformanceShaders.MPSNDArray (1.0 - 1) <D6066B0F-8147-36A6-81FA-744E9A58C368> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSNDArray.framework/Versions/A/MPSNDArray
+       0x1a84cf000 -        0x1a856315f  com.apple.MetalPerformanceShaders.MPSImage (1.0 - 1) <638755FF-884D-3731-8F7A-DA71D31BAC32> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSImage.framework/Versions/A/MPSImage
+       0x1a8564000 -        0x1a856f193  com.apple.AppleFSCompression (170 - 1.0) <785F1EB7-768B-322A-8F2B-D9AA35595A61> /System/Library/PrivateFrameworks/AppleFSCompression.framework/Versions/A/AppleFSCompression
+       0x1a8570000 -        0x1a857c56b  libbz2.1.0.dylib (46) <BB0834D5-06A1-35D4-9437-47FF94DDBDB8> /usr/lib/libbz2.1.0.dylib
+       0x1a857d000 -        0x1a8584033  libsystem_coreservices.dylib (178.6.1) <A4E84D5A-8D0E-3692-B888-89B9EEF8753D> /usr/lib/system/libsystem_coreservices.dylib
+       0x1a8585000 -        0x1a85b729f  com.apple.CoreServices.OSServices (1141.1 - 1141.1) <C95E9290-6ED3-32EB-93CC-3BEDB5FF90CD> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/OSServices.framework/Versions/A/OSServices
+       0x1a89ed000 -        0x1a89fbe97  libz.1.dylib (98) <FD078C6F-B196-3EF4-A464-36D3F6DBF918> /usr/lib/libz.1.dylib
+       0x1a89fc000 -        0x1a8a392b7  libsystem_m.dylib (3291.100.4) <0D060230-BD2F-3C8E-ACB9-8A79F5CD8EDE> /usr/lib/system/libsystem_m.dylib
+       0x1a8a3a000 -        0x1a8a3ac9b  libcharset.1.dylib (109.100.2) <5517E59D-AA69-3422-9AFE-4E3CA7307050> /usr/lib/libcharset.1.dylib
+       0x1a8a3b000 -        0x1a8a3e4e7  libmacho.dylib (1024.3) <87AB4EEF-3A18-3399-A767-C6BF4ECEDCEB> /usr/lib/system/libmacho.dylib
+       0x1a8a3f000 -        0x1a8a57dfb  libkxld.dylib (11417.140.69) <30C6B4F5-421A-374C-89BF-0F86D7C74FB0> /usr/lib/system/libkxld.dylib
+       0x1a8a58000 -        0x1a8a655ef  libcommonCrypto.dylib (600035) <E6BC26C2-DED7-3C04-A670-AEDB150BDB1F> /usr/lib/system/libcommonCrypto.dylib
+       0x1a8a66000 -        0x1a8a6fad7  libunwind.dylib (1900.125) <F753CC2B-775B-3567-B0C6-D2989CA9EBF4> /usr/lib/system/libunwind.dylib
+       0x1a8a70000 -        0x1a8a77109  liboah.dylib (349) <4EE80AAC-8204-3BD0-AB75-EDD23DE67E2F> /usr/lib/liboah.dylib
+       0x1a8a78000 -        0x1a8a8269f  libcopyfile.dylib (224) <213FA18D-6145-3615-8DB5-906B6863EAB9> /usr/lib/system/libcopyfile.dylib
+       0x1a8a83000 -        0x1a8a8698f  libcompiler_rt.dylib (103.3) <F0F65700-8E9D-35F3-AC32-952D363190BC> /usr/lib/system/libcompiler_rt.dylib
+       0x1a8a87000 -        0x1a8a8ba1b  libsystem_collections.dylib (1698.140.3) <B77BE835-646C-3F05-BDBD-7703DE140F6A> /usr/lib/system/libsystem_collections.dylib
+       0x1a8a8c000 -        0x1a8a8f2c7  libsystem_secinit.dylib (153.140.2) <D15B45AD-1345-34BF-B8E3-05336C4046A0> /usr/lib/system/libsystem_secinit.dylib
+       0x1a8a90000 -        0x1a8a92b6f  libremovefile.dylib (81) <9BCF9A24-BECB-3DED-A78E-3A3ECD1B1757> /usr/lib/system/libremovefile.dylib
+       0x1a8a93000 -        0x1a8a93f27  libkeymgr.dylib (31) <B20C6921-D5BE-3BB5-B68C-32D90D629E39> /usr/lib/system/libkeymgr.dylib
+       0x1a8a94000 -        0x1a8a9cd57  libsystem_dnssd.dylib (2600.140.3) <61F023F3-E2C5-3F19-BA1B-B02D7564ACC4> /usr/lib/system/libsystem_dnssd.dylib
+       0x1a8a9d000 -        0x1a8aa20b3  libcache.dylib (95) <2B900F8F-9EDE-3208-AB17-BD1385B5546A> /usr/lib/system/libcache.dylib
+       0x1a8aa3000 -        0x1a8aa4ca3  libSystem.B.dylib (1351) <072C7C60-2B6C-3E07-AA56-FD1750EADC2F> /usr/lib/libSystem.B.dylib
+       0x1a8aa5000 -        0x1a8aa703f  libfakelink.dylib (5) <4306B95C-F250-3D6D-8F27-47AB568FC36B> /usr/lib/libfakelink.dylib
+       0x1a8aa8000 -        0x1a8aa8a63  com.apple.SoftLinking (1.0 - 65) <794A11DB-27AC-3F0B-9035-D7109AE09F12> /System/Library/PrivateFrameworks/SoftLinking.framework/Versions/A/SoftLinking
+       0x1a8adf000 -        0x1a8ae61eb  libiconv.2.dylib (109.100.2) <621F2C06-2AF7-3EA8-AEDC-C922075CB67B> /usr/lib/libiconv.2.dylib
+       0x1a8afa000 -        0x1a8bf15cf  libarchive.2.dylib (151.140.2) <71EEF1EB-4098-3E0D-92F8-5CE8BE58928F> /usr/lib/libarchive.2.dylib
+       0x1a8bf2000 -        0x1a8c5957f  com.apple.SearchKit (1.4.2 - 1.4.2) <DAF96486-1362-3A68-9329-5CC6BCB83970> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/SearchKit.framework/Versions/A/SearchKit
+       0x1a8c5a000 -        0x1a8c6209f  libThaiTokenizer.dylib (28) <137CF9AD-D5ED-39AD-902C-6039EE0E24EA> /usr/lib/libThaiTokenizer.dylib
+       0x1a8c63000 -        0x1a8c87187  com.apple.applesauce (1.0 - 16.62) <A20CA568-BBC1-34A4-A324-4374C0A0C6A7> /System/Library/PrivateFrameworks/AppleSauce.framework/Versions/A/AppleSauce
+       0x1a8c88000 -        0x1a8ca19ff  libapple_nghttp2.dylib (29) <E52CBCF0-8814-35A1-901F-73550FCE667D> /usr/lib/libapple_nghttp2.dylib
+       0x1a8ca2000 -        0x1a8cc8ac3  libSparseBLAS.dylib (1545) <133526B0-B0BC-359C-AA89-337B9230FC26> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libSparseBLAS.dylib
+       0x1a8cc9000 -        0x1a8cca59f  com.apple.MetalPerformanceShaders.MetalPerformanceShaders (1.0 - 1) <3B79D590-616A-3753-BB30-719FF80CE7B7> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/MetalPerformanceShaders
+       0x1a8ccb000 -        0x1a8cd0f7f  libpam.2.dylib (34) <5B5E5276-679D-30AC-B2BA-08B3B0C841B4> /usr/lib/libpam.2.dylib
+       0x1a8cd1000 -        0x1a8da184f  libcompression.dylib (181.100.1) <BC7B578D-54F3-3504-A67B-CC46F43A8478> /usr/lib/libcompression.dylib
+       0x1a8da2000 -        0x1a8da61e7  libQuadrature.dylib (8) <4F62F3C9-E470-30B9-8B3D-AE8A17C62B0F> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libQuadrature.dylib
+       0x1a8da7000 -        0x1aa0082df  libLAPACK.dylib (1545) <82C02762-17B0-370D-B760-9413D38F49AC> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libLAPACK.dylib
+       0x1aa009000 -        0x1aa05f31f  com.apple.DictionaryServices (1.2 - 368.203) <9DD35110-DFA6-34A1-94A0-408BC95FAE2B> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/DictionaryServices.framework/Versions/A/DictionaryServices
+       0x1aa060000 -        0x1aa07e8bf  liblzma.5.dylib (20) <3BF01D85-5D8A-3631-A421-3987D83CBF3B> /usr/lib/liblzma.5.dylib
+       0x1aa07f000 -        0x1aa080867  libcoretls_cfhelpers.dylib (186) <7EDDF8E1-C6EF-3D7C-832A-D158EDF1F6D1> /usr/lib/libcoretls_cfhelpers.dylib
+       0x1aa081000 -        0x1aa0f27cb  com.apple.APFS (2332.140.13 - 2332.140.13) <86C1D3EF-1C0D-3326-A14A-0E1A7F6CBAA4> /System/Library/PrivateFrameworks/APFS.framework/Versions/A/APFS
+       0x1aa0f3000 -        0x1aa10168b  libxar.1.dylib (501) <A33DCA22-6997-3F85-A7B3-4ACDC88F64B0> /usr/lib/libxar.1.dylib
+       0x1aa102000 -        0x1aa1057fb  libutil.dylib (72) <A1063365-F998-3B4D-8F2E-363BBA169472> /usr/lib/libutil.dylib
+       0x1aa106000 -        0x1aa13178f  libxslt.1.dylib (21.11) <83F120D8-DC7D-39E6-BAC5-1DD10E6B82E0> /usr/lib/libxslt.1.dylib
+       0x1aa13a000 -        0x1aa1b37c7  libvMisc.dylib (1068.100.12) <9F8D55C6-728A-3B13-97F9-3D8E178F22AE> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libvMisc.dylib
+       0x1aa1b4000 -        0x1aa2443bf  libate.dylib (3.0.9) <6CF8BB06-F870-39D9-9C70-8DF764B0C8AF> /usr/lib/libate.dylib
+       0x1aa24e000 -        0x1aa26191f  com.apple.CrashReporterSupport (10.13 - 15131) <A3AF81B2-8970-3B02-9716-277363F5E424> /System/Library/PrivateFrameworks/CrashReporterSupport.framework/Versions/A/CrashReporterSupport
+       0x1aa3a2000 -        0x1aa3e34bf  com.apple.pluginkit.framework (1.0 - 1) <D3681B49-43DF-3CED-80F7-7D6F3446C47B> /System/Library/PrivateFrameworks/PlugInKit.framework/Versions/A/PlugInKit
+       0x1aa45a000 -        0x1aa4a2ef7  com.apple.AppleVAFramework (6.2.10 - 6.2.10) <F29D894B-DD6C-38F4-BD36-0F526771CA34> /System/Library/PrivateFrameworks/AppleVA.framework/Versions/A/AppleVA
+       0x1aa4a3000 -        0x1aa4bd2a7  libexpat.1.dylib (43) <4D5F1B49-1ECE-3392-B90E-BA826A4CAE37> /usr/lib/libexpat.1.dylib
+       0x1aa4be000 -        0x1aa4c7bab  libheimdal-asn1.dylib (693.140.2) <39990E7A-0118-3168-B716-5FA192E0E4E6> /usr/lib/libheimdal-asn1.dylib
+       0x1aa5a8000 -        0x1aa64e7ff  com.apple.MediaExperience (1.0 - 1) <20DDB5F5-3D6B-33A9-AF13-A9059147A09C> /System/Library/PrivateFrameworks/MediaExperience.framework/Versions/A/MediaExperience
+       0x1aa67b000 -        0x1aa686eff  com.apple.GraphVisualizer (1.0 - 120.1) <40B192AF-71D9-37F3-96EA-F76CB29BF343> /System/Library/PrivateFrameworks/GraphVisualizer.framework/Versions/A/GraphVisualizer
+       0x1aa687000 -        0x1aa6c779f  com.apple.OTSVG (1.0 - 844.6.0.4) <A2A2003F-A40B-3476-98A2-77EA5E2DEE1D> /System/Library/PrivateFrameworks/OTSVG.framework/Versions/A/OTSVG
+       0x1aa6c8000 -        0x1aa6d1a9f  com.apple.xpc.AppServerSupport (1.0 - 2894.140.12) <7D6D34E4-C7E3-3226-BF8E-7421E2E6BF0B> /System/Library/PrivateFrameworks/AppServerSupport.framework/Versions/A/AppServerSupport
+       0x1aa6d2000 -        0x1aa6d867f  libspindump.dylib (383.17) <10205D3C-4FBE-33FD-A05D-1CB1BA17F66B> /usr/lib/libspindump.dylib
+       0x1aa6d9000 -        0x1aa799c7f  com.apple.Heimdal (4.0 - 2.0) <AF4E59A2-E134-3646-B09F-7B9A213C71AA> /System/Library/PrivateFrameworks/Heimdal.framework/Versions/A/Heimdal
+       0x1aaa02000 -        0x1aaa4737f  com.apple.AppleJPEG (1.0 - 1) <6FCE7323-BA18-3941-A41A-4A5FE7250C40> /System/Library/PrivateFrameworks/AppleJPEG.framework/Versions/A/AppleJPEG
+       0x1aaa48000 -        0x1aab3825f  libJP2.dylib (2661.6.2) <55A9F8FD-1B1A-3E3C-9FBC-5B55806C2778> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libJP2.dylib
+       0x1aab39000 -        0x1aab3ad53  com.apple.WatchdogClient.framework (1.0 - 299.140.5) <9A14A61F-4052-33E6-8896-5B67E01E071B> /System/Library/PrivateFrameworks/WatchdogClient.framework/Versions/A/WatchdogClient
+       0x1aab3b000 -        0x1aab8029f  com.apple.MultitouchSupport.framework (8440.1 - 8440.1) <202E0EFF-A57D-3D80-A56E-155F80FE08F3> /System/Library/PrivateFrameworks/MultitouchSupport.framework/Versions/A/MultitouchSupport
+       0x1aab81000 -        0x1aaff739f  com.apple.VideoToolbox (1.0 - 3235.14.1) <6885D61E-6EAB-35AA-B279-212D0947CC9B> /System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox
+       0x1aaff8000 -        0x1ab02d63f  libAudioToolboxUtility.dylib (1456.703) <03319E37-4127-3701-95EF-1AFE937C7FC1> /usr/lib/libAudioToolboxUtility.dylib
+       0x1ab02e000 -        0x1ab0584c7  libPng.dylib (2661.6.2) <1CF7E330-7F0D-3D9D-A79D-CFAAD04AB91E> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libPng.dylib
+       0x1ab059000 -        0x1ab0bb12f  libTIFF.dylib (2661.6.2) <40220114-B389-3915-B9E1-DDEA6080B1DD> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libTIFF.dylib
+       0x1ab0bc000 -        0x1ab0db983  com.apple.IOPresentment (67 - 67) <D99C7E44-9C52-304A-A888-D25081915FA3> /System/Library/PrivateFrameworks/IOPresentment.framework/Versions/A/IOPresentment
+       0x1ab0dc000 -        0x1ab0e07e3  com.apple.GPUWrangler (8.1.10 - 8.1.10) <D7A31D1D-DDA3-320D-9E12-C9B911ECD752> /System/Library/PrivateFrameworks/GPUWrangler.framework/Versions/A/GPUWrangler
+       0x1ab0e1000 -        0x1ab0e394b  libRadiance.dylib (2661.6.2) <55A571F9-19F4-3052-BA4D-B9A179B0DAF1> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libRadiance.dylib
+       0x1ab0e4000 -        0x1ab0e964f  com.apple.DSExternalDisplay (3.1 - 380) <34B9CC3D-CFFA-3B98-8CA7-BF0EC6842A1F> /System/Library/PrivateFrameworks/DSExternalDisplay.framework/Versions/A/DSExternalDisplay
+       0x1ab0ea000 -        0x1ab114e87  libJPEG.dylib (2661.6.2) <25ACB188-2F92-371F-967D-9408FB352F97> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libJPEG.dylib
+       0x1ab143000 -        0x1ab1487a3  libGIF.dylib (2661.6.2) <868FC504-1C26-306A-B6AF-540D36B43A7C> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libGIF.dylib
+       0x1ab149000 -        0x1ab157d1f  com.apple.CMCaptureCore (1.0 - 587.140.11.0.1) <0EC748BE-CDD6-3D68-A44D-9766B44AE214> /System/Library/PrivateFrameworks/CMCaptureCore.framework/Versions/A/CMCaptureCore
+       0x1abf73000 -        0x1abfe3753  libusrtcp.dylib (4277.140.33) <9320597F-D1C4-3306-9EF1-FF61429C8A8D> /usr/lib/libusrtcp.dylib
+       0x1abfe4000 -        0x1ac552f3f  libswiftCore.dylib (6.1.2 - 6.1.2.1.101) <7186C5C8-2A46-3F35-B27F-F7F6923F7186> /usr/lib/swift/libswiftCore.dylib
+       0x1ac608000 -        0x1ac64ee5f  libSessionUtility.dylib (321.702) <109116D0-2D5E-3DC8-92A3-164CDD5D4AD0> /System/Library/PrivateFrameworks/AudioSession.framework/libSessionUtility.dylib
+       0x1ac64f000 -        0x1ac7f945f  com.apple.audio.toolbox.AudioToolbox (1.14 - 1.14) <36E6E4C6-232D-3188-96D5-4C7FC3726DFB> /System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox
+       0x1ac7fa000 -        0x1ac857d7f  com.apple.audio.AudioSession (1.0 - 321.702) <199EACBB-C237-305F-8CFE-E29EF9558488> /System/Library/PrivateFrameworks/AudioSession.framework/Versions/A/AudioSession
+       0x1ac858000 -        0x1ac87089f  libAudioStatistics.dylib (235.601) <0DF10E87-E2C5-3FC4-BB4F-7F6D151F260C> /usr/lib/libAudioStatistics.dylib
+       0x1ac91d000 -        0x1ac939003  libresolv.9.dylib (91) <E3C88F79-60F8-34AC-8DB1-0512C9404F78> /usr/lib/libresolv.9.dylib
+       0x1ac93a000 -        0x1ac94c6e7  libsasl2.2.dylib (215) <BE12C1B8-7004-34C7-9BD3-92BC5809C600> /usr/lib/libsasl2.2.dylib
+       0x1acb3c000 -        0x1acc1ca0f  libSMC.dylib (38) <D4A4ACEC-771A-3A09-A6AD-77BE3CD088D6> /usr/lib/libSMC.dylib
+       0x1acc7c000 -        0x1acc88a17  com.apple.NetAuth (6.2 - 6.2) <06EA9EBB-1F8E-30E3-921F-220B383149D7> /System/Library/PrivateFrameworks/NetAuth.framework/Versions/A/NetAuth
+       0x1acc9b000 -        0x1acca849f  com.apple.perfdata (1.0 - 121) <721F7C91-AC36-3671-ACEE-26E14A9CB595> /System/Library/PrivateFrameworks/perfdata.framework/Versions/A/perfdata
+       0x1acca9000 -        0x1accb6cdf  libperfcheck.dylib (46) <A6A48167-3F5F-30F9-B5F7-5EAC32BABFB9> /usr/lib/libperfcheck.dylib
+       0x1accb7000 -        0x1accc7fbf  com.apple.Kerberos (3.0 - 1) <37C143BE-E694-3012-BEF9-31AA87703AC8> /System/Library/Frameworks/Kerberos.framework/Versions/A/Kerberos
+       0x1accc8000 -        0x1acd19a17  com.apple.GSS (4.0 - 2.0) <D096B8E6-9053-35D7-8C3A-C13211A54364> /System/Library/Frameworks/GSS.framework/Versions/A/GSS
+       0x1acd1a000 -        0x1acd2ada7  com.apple.CommonAuth (4.0 - 2.0) <21CD953E-4336-3EA4-95C6-E94F51D9BFD7> /System/Library/PrivateFrameworks/CommonAuth.framework/Versions/A/CommonAuth
+       0x1ae3cb000 -        0x1ae4e2537  com.apple.combine (1.0 - 3022) <C42A6603-325A-3681-B42E-B99F53555F04> /System/Library/Frameworks/Combine.framework/Versions/A/Combine
+       0x1b04ab000 -        0x1b04ab86f  com.apple.Accelerate.vecLib (3.11 - vecLib 3.11) <9E5CC1C0-A5F8-395F-B84A-96D532A98712> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/vecLib
+       0x1b04d0000 -        0x1b04d098f  com.apple.CoreServices (1226 - 1226) <1125F05C-0D0F-310D-A951-4BE5E3EA0B89> /System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices
+       0x1b077c000 -        0x1b077c417  com.apple.Accelerate (1.11 - Accelerate 1.11) <907AA97D-7ADF-3A9E-8A47-4CF51E9253E4> /System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate
+       0x1b148a000 -        0x1b14b887f  com.apple.PowerLog (1.0 - 1) <3E8FD162-29BC-3C1B-8E2A-62495321AC75> /System/Library/PrivateFrameworks/PowerLog.framework/Versions/A/PowerLog
+       0x1b14c6000 -        0x1b157a31f  com.apple.DiscRecording (9.0.3 - 9030.4.5) <3B57AC05-3937-33E2-8E4D-308B13051C69> /System/Library/Frameworks/DiscRecording.framework/Versions/A/DiscRecording
+       0x1b157b000 -        0x1b15ac25f  com.apple.MediaKit (16 - 938) <B01DD3DE-8949-365E-B938-53BDC6B75035> /System/Library/PrivateFrameworks/MediaKit.framework/Versions/A/MediaKit
+       0x1b1fc9000 -        0x1b1fdfaf8  libswiftDispatch.dylib (54) <DD8B3C94-A6A9-30CB-98D0-0EBDD5B3AB66> /usr/lib/swift/libswiftDispatch.dylib
+       0x1b232e000 -        0x1b239cabf  com.apple.BoardServices (1.0 - 694.5.5) <5B304A06-94BE-3B3C-8EF6-B7CB09AC8189> /System/Library/PrivateFrameworks/BoardServices.framework/Versions/A/BoardServices
+       0x1b273b000 -        0x1b275e721  com.apple.DebugSymbols (216 - 217) <061CC5D4-9B48-339B-9F7E-28F44F166266> /System/Library/PrivateFrameworks/DebugSymbols.framework/Versions/A/DebugSymbols
+       0x1b275f000 -        0x1b286bea3  com.apple.CoreSymbolication (16.0 - 64570.35.1) <66107D0A-7C53-314C-82CF-E2C64E0CC2F5> /System/Library/PrivateFrameworks/CoreSymbolication.framework/Versions/A/CoreSymbolication
+       0x1b286c000 -        0x1b287617f  com.apple.CoreTime (334.0.4.1) <04AF580A-8231-3417-B47E-8876103FB681> /System/Library/PrivateFrameworks/CoreTime.framework/Versions/A/CoreTime
+       0x1b3fda000 -        0x1b4015967  com.apple.LDAPFramework (2.4.28 - 194.5) <5C678210-2715-345A-85AC-72C3E24C9CB3> /System/Library/Frameworks/LDAP.framework/Versions/A/LDAP
+       0x1b4016000 -        0x1b40177a7  com.apple.TrustEvaluationAgent (2.0 - 38) <4030FCD6-C647-3FBB-833F-DE0988AF8E4F> /System/Library/PrivateFrameworks/TrustEvaluationAgent.framework/Versions/A/TrustEvaluationAgent
+       0x1b4144000 -        0x1b420199f  com.apple.DiskImagesFramework (671.140.2 - 671.140.2) <3872319F-0AEA-3B04-A166-E1F2A980A193> /System/Library/PrivateFrameworks/DiskImages.framework/Versions/A/DiskImages
+       0x1b4302000 -        0x1b4383157  libcurl.4.dylib (160) <A1891A92-4BE8-3B76-9CC0-5A10299C91C0> /usr/lib/libcurl.4.dylib
+       0x1b4ba2000 -        0x1b4ba23f7  libHeimdalProxy.dylib (87.100.1) <1503CC2C-3561-34F8-92CB-238AC537FA51> /System/Library/Frameworks/Kerberos.framework/Versions/A/Libraries/libHeimdalProxy.dylib
+       0x1b4c4b000 -        0x1b4c4ebdd  libswiftObjectiveC.dylib (940.4) <9CA5A29C-BDB6-3D63-AA8A-0ABC8A9D608D> /usr/lib/swift/libswiftObjectiveC.dylib
+       0x1b4c4f000 -        0x1b4c681ff  libswiftos.dylib (1062.100.1) <786A3581-D02F-3BF2-BEB5-4E74B7D8E8D6> /usr/lib/swift/libswiftos.dylib
+       0x1b5d8e000 -        0x1b5dc3fff  com.apple.ASEProcessing (1.41.51 - 1.41.51) <BCAF95BF-815A-34DF-ABD5-59FA39B11048> /System/Library/PrivateFrameworks/ASEProcessing.framework/Versions/A/ASEProcessing
+       0x1b6e98000 -        0x1b6f52d1f  com.apple.audio.midi.CoreMIDI (2.0 - 88) <504D9A4A-F0A7-348F-A7BC-13FD26B48D99> /System/Library/Frameworks/CoreMIDI.framework/Versions/A/CoreMIDI
+       0x1b7976000 -        0x1b797a547  com.apple.IOSurfaceAccelerator (1.0.0 - 1.0.0) <976B7271-DCBD-3433-8693-71E8834057B0> /System/Library/PrivateFrameworks/IOSurfaceAccelerator.framework/Versions/A/IOSurfaceAccelerator
+       0x1bc35c000 -        0x1bc36cdbf  com.apple.HID (1.0 - 1) <502EA20E-1554-3A3A-9807-122C37B7FF00> /System/Library/PrivateFrameworks/HID.framework/Versions/A/HID
+       0x1c064d000 -        0x1c065c53f  com.apple.NetFS (6.0 - 4.0) <EA81278B-8281-3413-BB0E-7A98CBBD101F> /System/Library/Frameworks/NetFS.framework/Versions/A/NetFS
+       0x1c0b24000 -        0x1c0b25d3b  libswiftDarwin.dylib (310.100.8.0.1) <69DA8436-3AF9-337A-B186-0D9F72326B0D> /usr/lib/swift/libswiftDarwin.dylib
+       0x1c2855000 -        0x1c29434df  libquic.dylib (4277.140.33) <98A7CCD6-84FF-33E8-AAC5-8723B44B9341> /usr/lib/libquic.dylib
+       0x1c294e000 -        0x1c29733ff  com.apple.private.SystemPolicy (1.0 - 1) <2C546714-FC56-3BF4-BE42-E1E9C0D758D0> /System/Library/PrivateFrameworks/SystemPolicy.framework/Versions/A/SystemPolicy
+       0x1c36a6000 -        0x1c372e5ff  com.apple.LoggingSupport (1.0 - 1643.120.5) <3A3864AF-99BE-37D4-A4B1-70BE44C2C714> /System/Library/PrivateFrameworks/LoggingSupport.framework/Versions/A/LoggingSupport
+       0x1c372f000 -        0x1c373b62b  com.apple.MallocStackLogging (1.0 - 64570.58.1) <440CA2E7-CBC1-3DBA-902C-E3F98B54A267> /System/Library/PrivateFrameworks/MallocStackLogging.framework/Versions/A/MallocStackLogging
+       0x1c3761000 -        0x1c379547f  libmis.dylib (436.100.18) <D794BA6C-5CA3-3135-B6B3-99C573EE90AC> /usr/lib/libmis.dylib
+       0x1c3796000 -        0x1c3799c7f  com.apple.gpusw.GPURawCounter (34 - 34) <0868254A-D17B-37C5-8F15-3C301507B6B5> /System/Library/PrivateFrameworks/GPURawCounter.framework/Versions/A/GPURawCounter
+       0x1c37bb000 -        0x1c37c1fff  libswiftCoreFoundation.dylib (2401) <14125A42-FDBF-3E76-B72A-360E057C2F29> /usr/lib/swift/libswiftCoreFoundation.dylib
+       0x1c37cd000 -        0x1c38146da  libswiftXPC.dylib (69.120.3) <2266E375-73D0-3FAF-8DA1-16C34CD3C7BE> /usr/lib/swift/libswiftXPC.dylib
+       0x1c3816000 -        0x1c3816ab3  libswiftIOKit.dylib (1) <845B7138-7C18-3F26-B364-2B4EDE7A9933> /usr/lib/swift/libswiftIOKit.dylib
+       0x1c706f000 -        0x1c7086a4b  libswiftsimd.dylib (21) <51BB28D1-EF2E-35C4-A0FE-CDDB2B5EDE5B> /usr/lib/swift/libswiftsimd.dylib
+       0x1c8418000 -        0x1c842129f  com.apple.IOAccelMemoryInfo (1.0 - 1) <687C8C09-F5C9-32B3-974D-3CD46C9CDEDB> /System/Library/PrivateFrameworks/IOAccelMemoryInfo.framework/Versions/A/IOAccelMemoryInfo
+       0x1d0380000 -        0x1d03873b8  libswiftMetal.dylib (368.52) <34BE65B2-3609-3A4A-BF7E-DD4A821C5D4F> /usr/lib/swift/libswiftMetal.dylib
+       0x1d0388000 -        0x1d038ee5f  libswiftCompression.dylib (8) <FF8578A4-10CB-38AA-B677-BA62B3494F18> /usr/lib/swift/libswiftCompression.dylib
+       0x1d4356000 -        0x1d43b3d1f  com.apple.osanalytics.OSAnalytics (1.0 - 1) <1422F546-9320-3DDD-9D89-14CCE8432731> /System/Library/PrivateFrameworks/OSAnalytics.framework/Versions/A/OSAnalytics
+       0x1d571f000 -        0x1d5720e25  libswiftQuartzCore.dylib (4) <FEAF25A9-D673-3D99-9E21-B9DBDB1749E6> /usr/lib/swift/libswiftQuartzCore.dylib
+       0x1d5b14000 -        0x1d5b19967  com.apple.kperf (1.0 - 1) <73FBFFF3-D364-3F63-8B65-997C39CBC9DF> /System/Library/PrivateFrameworks/kperf.framework/Versions/A/kperf
+       0x1d5c1e000 -        0x1d5c2345f  com.apple.MobileSystemServices (1.0 - 1) <693296D2-17BA-3078-AC4C-9D60788E5846> /System/Library/PrivateFrameworks/MobileSystemServices.framework/Versions/A/MobileSystemServices
+       0x1d9d7a000 -        0x1d9d88815  libswiftUniformTypeIdentifiers.dylib (840.8) <E7BE1DAE-7200-3E29-8858-5A92A6C95805> /usr/lib/swift/libswiftUniformTypeIdentifiers.dylib
+       0x1df321000 -        0x1df322d8b  libswiftOSLog.dylib (8) <652469EF-4AB1-3BAC-B734-95BCAE271663> /usr/lib/swift/libswiftOSLog.dylib
+       0x1e2e5f000 -        0x1e2f5bbdf  com.apple.Symbolication (16.0 - 64570.58.1) <53FE7B05-915A-387A-BD77-6677DA4A98BC> /System/Library/PrivateFrameworks/Symbolication.framework/Versions/A/Symbolication
+       0x1e6f5d000 -        0x1e6f6d21f  com.apple.OSLog (1.0 - 1643.120.5) <0BA0151F-829E-310C-AF22-805F4479AEB8> /System/Library/Frameworks/OSLog.framework/Versions/A/OSLog
+       0x1e7196000 -        0x1e729f7dc  com.apple.InternalSwiftProtobuf (1.0 - 1.26.0) <3D0160BE-6CF5-3938-8069-F712E5E45C76> /System/Library/PrivateFrameworks/InternalSwiftProtobuf.framework/Versions/A/InternalSwiftProtobuf
+       0x1e7364000 -        0x1e736f2ff  com.apple.HIDDisplay (1.0 - 1) <1C4ED25E-429B-3872-8544-9F8EFADEFB16> /System/Library/PrivateFrameworks/HIDDisplay.framework/Versions/A/HIDDisplay
+       0x1ee4cc000 -        0x1ee4ccc5b  com.apple.FeatureFlags (1.0 - 97) <0414B0A9-C26E-33A4-89B6-F7DB46A4DE36> /System/Library/PrivateFrameworks/FeatureFlags.framework/Versions/A/FeatureFlags
+       0x1f7d6c000 -        0x1f7d6e65f  com.apple.ConfigProfileHelper (17.1 - 1722) <4A7052C7-9527-341E-94F9-9E6B71DA40B2> /System/Library/PrivateFrameworks/ConfigProfileHelper.framework/Versions/A/ConfigProfileHelper
+       0x1fad10000 -        0x1fad172f7  libCoreFSCache.dylib (301) <A2D8A355-802C-3624-86AC-4D8B349A3FC8> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libCoreFSCache.dylib
+       0x1fad18000 -        0x1fad1d907  libCoreVMClient.dylib (301) <EB205CBC-BD0A-3F61-A715-C2255DF73A78> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libCoreVMClient.dylib
+       0x1fad1e000 -        0x1fad2e277  com.apple.opengl (21.1.1 - 21.1.1) <B7FB8397-67BB-3A39-AB27-B78079EB02BA> /System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL
+       0x1fad2f000 -        0x1fad317af  libCVMSPluginSupport.dylib (21.1.2) <29B3D4D7-C716-3B50-8BDB-73D0A3852EBE> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libCVMSPluginSupport.dylib
+       0x1fad32000 -        0x1fad3a6bf  libGFXShared.dylib (21.1.2) <6A31ADEE-A1F3-393E-9DA8-FDDF94453E69> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGFXShared.dylib
+       0x1fad3b000 -        0x1fad6dce3  libGLImage.dylib (21.1.2) <202EBBC2-6332-3F72-A721-35171ED8989C> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGLImage.dylib
+       0x1fad6e000 -        0x1fada832f  libGLU.dylib (21.1.2) <B1BFDFB3-91A6-38EF-A671-12D70F6BE387> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGLU.dylib
+       0x1faefa000 -        0x1faf03bcf  libGL.dylib (21.1.2) <884FD2BC-9F1C-3AA5-8590-025FB88C55DC> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL.dylib
+       0x1fc93f000 -        0x1fca0907f  com.apple.ExtensionFoundation (97 - 97) <50633427-3001-3CCC-8011-77CCC9BE1053> /System/Library/Frameworks/ExtensionFoundation.framework/Versions/A/ExtensionFoundation
+       0x1fe5f2000 -        0x1fe60f09f  com.apple.MPSBenchmarkLoop (1.0 - 1) <FA36F8B7-C1A5-3739-A3DB-4F0F8DC43CC7> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSBenchmarkLoop.framework/Versions/A/MPSBenchmarkLoop
+       0x1fe610000 -        0x1fe6241bf  com.apple.MPSFunctions (1.0 - 1) <CA6CE94E-6351-3B59-9A66-2A55C3DE77B2> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSFunctions.framework/Versions/A/MPSFunctions
+       0x201222000 -        0x20135c022  com.apple.SwiftData (1.0 - 98.1) <C2A307A9-407E-372D-BAAA-6D1C5A7FEDD7> /System/Library/Frameworks/SwiftData.framework/Versions/A/SwiftData
+       0x2446e5000 -        0x24473b20f  com.apple.AppleKeyStore (1.0 - 1.0) <33F3452C-1002-3DE6-8D60-8887B9FE6EC3> /System/Library/PrivateFrameworks/AppleKeyStore.framework/Versions/A/AppleKeyStore
+       0x244e73000 -        0x244e8bc5f  com.apple.private.AppleMobileFileIntegrity-fmk (1.0 - 1) <A04725C4-C001-3242-985C-B79A4DFB2F8B> /System/Library/PrivateFrameworks/AppleMobileFileIntegrity.framework/Versions/A/AppleMobileFileIntegrity
+       0x245263000 -        0x24529157f  com.apple.imgaudio.AudioAnalytics (1.0 - 1) <F8F266B4-B07E-35F0-8B17-4F52C0B14B41> /System/Library/PrivateFrameworks/AudioAnalytics.framework/Versions/A/AudioAnalytics
+       0x24895e000 -        0x248aa1297  com.apple.CollectionsInternal (1.1.0 - 103.5) <B42360F3-3579-371F-922E-EB453B1A0F2D> /System/Library/PrivateFrameworks/CollectionsInternal.framework/Versions/A/CollectionsInternal
+       0x24ebb5000 -        0x24ebb56e3  com.apple.FontServices (1.0 - 1) <CDC993A6-B1B4-3F03-ACE6-62BC2CF425A1> /System/Library/PrivateFrameworks/FontServices.framework/Versions/A/FontServices
+       0x24ebb6000 -        0x24ec7edef  libXTFontStaticRegistryData.dylib (309.6.0.2) <C3F24150-4860-35F3-8F8E-4BF5EBDAA6F6> /System/Library/PrivateFrameworks/FontServices.framework/libXTFontStaticRegistryData.dylib
+       0x24ec80000 -        0x24ec8bfdf  com.apple.FramePacing (1.0 - 1) <4274A591-284D-3F26-99FC-010D602D172C> /System/Library/PrivateFrameworks/FramePacing.framework/Versions/A/FramePacing
+       0x24f7f5000 -        0x24f7fa747  libGPUCompilerUtils.dylib (32023.622) <2F123CA9-D284-3341-AE21-7A92789ED26F> /System/Library/PrivateFrameworks/GPUCompiler.framework/Versions/32023/Libraries/libGPUCompilerUtils.dylib
+       0x253884000 -        0x2538c401f  libllvm-flatbuffers.dylib (32023.622) <B3D0267C-66A6-3C28-9471-C4A48AB55E14> /System/Library/PrivateFrameworks/GPUCompiler.framework/Versions/32023/Libraries/libllvm-flatbuffers.dylib
+       0x2583d4000 -        0x2584b8c3f  com.apple.InstalledContentLibrary (1.0 - 1.0) <9D5D2A2E-CC34-316E-AF24-942B499577BC> /System/Library/PrivateFrameworks/InstalledContentLibrary.framework/Versions/A/InstalledContentLibrary
+       0x25cb9f000 -        0x25d2307cf  com.apple.MIL (3405.2 - 3405.2.1) <F7D03EF9-C62C-338F-A832-044058C56772> /System/Library/PrivateFrameworks/MIL.framework/Versions/A/MIL
+       0x25f7b0000 -        0x25f805c3f  com.apple.MessageSecurity (1.0 - 115.100.9) <F57140EC-5899-33BC-929A-3454D831C112> /System/Library/PrivateFrameworks/MessageSecurity.framework/Versions/A/MessageSecurity
+       0x263a54000 -        0x263b737af  com.apple.ParsingInternal (0.0.1 - 103.5) <ED54149F-0A9A-37C3-B89B-94024B30A681> /System/Library/PrivateFrameworks/ParsingInternal.framework/Versions/A/ParsingInternal
+       0x266cbb000 -        0x266cda67f  com.apple.accessibility.PhotosensitivityProcessing (1.0 - 1) <3C3E0096-B0B8-3CBB-8BB5-DC454C843B60> /System/Library/PrivateFrameworks/PhotosensitivityProcessing.framework/Versions/A/PhotosensitivityProcessing
+       0x267b4e000 -        0x267bd147f  com.apple.ProDisplayLibrary (9.4.6 - 9.4.6) <44F0A589-2A78-3F21-A464-3204AFE76831> /System/Library/PrivateFrameworks/ProDisplayLibrary.framework/Versions/A/ProDisplayLibrary
+       0x268810000 -        0x268818efb  com.apple.ReflectionInternal (1.0.0 - 103.5) <077A2310-D596-374B-A0A6-B211AA70B70D> /System/Library/PrivateFrameworks/ReflectionInternal.framework/Versions/A/ReflectionInternal
+       0x2694e7000 -        0x2694fba87  com.apple.RuntimeInternal (1.0.0 - 103.5) <59C620F9-15F4-31AA-BD57-8FE22C86D534> /System/Library/PrivateFrameworks/RuntimeInternal.framework/Versions/A/RuntimeInternal
+       0x272a73000 -        0x272a9f00f  com.apple.security.SwiftASN1Internal (1.0 - 1) <52F78B56-77F7-361E-9E57-81E3944506E0> /System/Library/PrivateFrameworks/SwiftASN1Internal.framework/Versions/A/SwiftASN1Internal
+       0x278d79000 -        0x278d7a197  com.apple.VideoToolboxParavirtualizationSupport (40.7.1 - 40.7.1) <E3D2B701-A052-3B0D-978E-25BA1137BF49> /System/Library/PrivateFrameworks/VideoToolboxParavirtualizationSupport.framework/Versions/A/VideoToolboxParavirtualizationSupport
+       0x281ca7000 -        0x281d3fc27  libAppleArchive.dylib (423.100.6) <0E6A8DD6-851E-365A-82F0-D4E23D1B8BF4> /usr/lib/libAppleArchive.dylib
+       0x281ddc000 -        0x281de66df  libCoreEntitlements.dylib (69.100.2) <32D93AAD-F537-3F8B-91A7-2A345A8BC46D> /usr/lib/libCoreEntitlements.dylib
+       0x281f84000 -        0x281f8b109  libRosetta.dylib (349) <4EE80AAC-8204-3BD0-AB75-EDD23DE67E2F> /usr/lib/libRosetta.dylib
+       0x281fe7000 -        0x281ff041f  libTLE.dylib (69.100.2) <4D92D884-07DE-3229-8DCD-01DB7AB1F885> /usr/lib/libTLE.dylib
+       0x28221b000 -        0x28232b4b7  libcrypto.46.dylib (107) <EDA6D5D9-4E62-3C7E-97A6-9B600B3D0682> /usr/lib/libcrypto.46.dylib
+       0x282369000 -        0x282384567  libhvf.dylib (9) <8AE2E2A9-1EDF-37C3-A803-59EA1875FE12> /usr/lib/libhvf.dylib
+       0x282d45000 -        0x282d7d1d7  libssl.48.dylib (107) <E652A685-648E-3029-BAEE-2F0198004B7C> /usr/lib/libssl.48.dylib
+       0x282f68000 -        0x282f7ca7f  libswiftDistributed.dylib (6.1.2 - 6.1.2.1.101) <82A85240-141B-3964-8833-65CDAC5E052E> /usr/lib/swift/libswiftDistributed.dylib
+       0x282f94000 -        0x282fa1e97  libswiftObservation.dylib (6.1.2 - 6.1.2.1.101) <FA0C6C15-2754-31B3-A41F-2C8FD298CFB1> /usr/lib/swift/libswiftObservation.dylib
+       0x282fb1000 -        0x282fbd847  libswiftRegexBuilder.dylib (6.1.2 - 6.1.2.1.101) <7C8BCF65-594E-3D82-B5E2-3903BE9EFE12> /usr/lib/swift/libswiftRegexBuilder.dylib
+       0x283001000 -        0x28300a97f  libswiftSynchronization.dylib (6.1.2 - 6.1.2.1.101) <8497FE13-91B1-3A3B-926E-324A14CDE11C> /usr/lib/swift/libswiftSynchronization.dylib
+       0x28300b000 -        0x2830256f7  libswiftSystem.dylib (64) <07B721E1-3431-3467-B5C7-B404DABEF3C5> /usr/lib/swift/libswiftSystem.dylib
+       0x28307a000 -        0x28307c7ef  libswift_Builtin_float.dylib (6.1.2 - 6.1.2.1.101) <03D0A1F4-BF98-39AE-8776-8E69D5711ED0> /usr/lib/swift/libswift_Builtin_float.dylib
+       0x28307d000 -        0x2830fdc63  libswift_Concurrency.dylib (6.1.2 - 6.1.2.1.101) <33017264-73FF-36D0-B876-2B45899474E2> /usr/lib/swift/libswift_Concurrency.dylib
+       0x283139000 -        0x2831db2cf  libswift_RegexParser.dylib (6.1.2 - 6.1.2.1.101) <C440C1F0-D56E-3C2C-BDC2-3DC394FE8DA5> /usr/lib/swift/libswift_RegexParser.dylib
+       0x2831dc000 -        0x28326be57  libswift_StringProcessing.dylib (6.1.2 - 6.1.2.1.101) <2566B4EF-A771-327C-9201-90D29956BBFA> /usr/lib/swift/libswift_StringProcessing.dylib
+       0x28326f000 -        0x283270497  libswift_errno.dylib (310.100.8.0.1) <D41C076F-BDAD-35CD-9C5D-6E2D964C2249> /usr/lib/swift/libswift_errno.dylib
+       0x283271000 -        0x28327377f  libswift_math.dylib (310.100.8.0.1) <DE0364A8-5368-3AE6-A17F-199447A96059> /usr/lib/swift/libswift_math.dylib
+       0x283274000 -        0x283274565  libswift_signal.dylib (310.100.8.0.1) <6A943F54-D50D-3D25-BCCE-0ECE1EEED5AA> /usr/lib/swift/libswift_signal.dylib
+       0x283275000 -        0x283275dcf  libswift_stdio.dylib (310.100.8.0.1) <CF7EEC05-B0DF-36F7-B113-DB80FAE5ABCA> /usr/lib/swift/libswift_stdio.dylib
+       0x283276000 -        0x2832767c7  libswift_time.dylib (310.100.8.0.1) <F13769AF-C154-363F-A10B-119CDB3D0273> /usr/lib/swift/libswift_time.dylib
+       0x283277000 -        0x283277737  libswiftsys_time.dylib (310.100.8.0.1) <89FE4D79-D655-3935-9A3A-FD4DB442946A> /usr/lib/swift/libswiftsys_time.dylib
+       0x283278000 -        0x28327898f  libswiftunistd.dylib (310.100.8.0.1) <5B1696DE-91D6-33EC-B0E4-207DD00976AC> /usr/lib/swift/libswiftunistd.dylib
+       0x2833af000 -        0x2833b2deb  libsystem_darwindirectory.dylib (122) <277D32FB-F49A-3949-97A4-B190A3DF89E8> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x2833b3000 -        0x2833ba523  libsystem_eligibility.dylib (181.140.5) <27E48AAA-644F-394A-9F62-49CEFB813716> /usr/lib/system/libsystem_eligibility.dylib
+       0x2833bb000 -        0x2833c06c5  libsystem_sanitizers.dylib (19) <FB86D2F7-4501-38E4-9D9A-83F960D7D7BA> /usr/lib/system/libsystem_sanitizers.dylib
