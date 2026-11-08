@@ -36,17 +36,11 @@ final class GlyphResidency: @unchecked Sendable {
     var x: Int = 1
     var y: Int = 0
     var shelf: Int = 0
-    var generation: UInt64 = 0
     var pins = 0
   }
   private struct Entry {
     let lease: GlyphLease
     let page: UUID?
-    let bytes: Int
-    var lastUse: UInt64
-  }
-  private struct Retired {
-    let page: Page
     let bytes: Int
   }
 
@@ -67,15 +61,12 @@ final class GlyphResidency: @unchecked Sendable {
   private var uploadQueue: [QueuedUpload] = []
   private var preparedPins: Set<UUID> = []
   private var submittedPins: Set<UUID> = []
-  private var retired: [Retired] = []
   private var residentBytes = 0
-  private var retiredBytes = 0
   private var reservations = 0
   private var directFallbackBytes = 0
   private var transientReplacementBytes = 0
   private var legacyBridgeBytes = 0
   private var deniedAllocations: UInt64 = 0
-  private var useSerial: UInt64 = 0
   private var fallback: GlyphLease?
 
   init(device: MTLDevice, owner: DispatchQueue, worker: GlyphRasterWorker = GlyphRasterWorker(), budget: Int = 64 * 1024 * 1024,
@@ -97,10 +88,7 @@ final class GlyphResidency: @unchecked Sendable {
   func setOnReady(_ callback: @escaping @Sendable () -> Void) { onReady = callback }
 
   func resolve(_ recipe: GlyphRasterRecipe) -> GlyphLease? {
-    useSerial &+= 1
-    if var entry = entries[recipe] {
-      entry.lastUse = useSerial
-      entries[recipe] = entry
+    if let entry = entries[recipe] {
       if let page = entry.page { preparedPins.insert(page) }
       return entry.lease
     }
@@ -162,8 +150,7 @@ final class GlyphResidency: @unchecked Sendable {
                 Float(recipe.width) / side, Float(recipe.height) / side),
       width: recipe.width, texture: placement.page.texture,
       kind: kind == .mask ? .mask : .color, allocation: placement.page.id)
-    entries[recipe] = Entry(lease: lease, page: placement.page.id, bytes: recipe.width * recipe.height,
-                            lastUse: useSerial)
+    entries[recipe] = Entry(lease: lease, page: placement.page.id, bytes: recipe.width * recipe.height)
   }
 
   func fallbackGlyph(width: Int, height: Int) -> GlyphLease? {
@@ -198,11 +185,10 @@ final class GlyphResidency: @unchecked Sendable {
       pages[id] = page
     }
     submittedPins.removeAll(keepingCapacity: true)
-    collectRetired()
   }
 
   func diagnostics() -> Diagnostics {
-    Diagnostics(residentBytes: residentBytes, retiredBytes: retiredBytes, reservations: reservations,
+    Diagnostics(residentBytes: residentBytes, retiredBytes: 0, reservations: reservations,
                 directFallbackBytes: directFallbackBytes, transientReplacementBytes: transientReplacementBytes,
                 deniedAllocations: deniedAllocations)
   }
@@ -213,7 +199,7 @@ final class GlyphResidency: @unchecked Sendable {
   func reserveLegacyTexture(_ descriptor: MTLTextureDescriptor) -> Int? {
     let capacity = Int(device.heapTextureSizeAndAlign(descriptor: descriptor).size)
     guard capacity > 0,
-          residentBytes + retiredBytes + reservations + capacity <= byteBudget else {
+          residentBytes + reservations + capacity <= byteBudget else {
       deniedAllocations &+= 1
       return nil
     }
@@ -263,7 +249,7 @@ final class GlyphResidency: @unchecked Sendable {
     let capacity = Int(sizeAndAlign.size)
     // Account capacity before heap allocation.  A failed allocation never
     // leaves an optimistic budget charge behind.
-    guard capacity > 0, residentBytes + retiredBytes + reservations + capacity <= byteBudget else {
+    guard capacity > 0, residentBytes + reservations + capacity <= byteBudget else {
       deniedAllocations &+= 1
       return nil
     }
@@ -272,7 +258,7 @@ final class GlyphResidency: @unchecked Sendable {
     heapDescriptor.size = sizeAndAlign.size
     guard let heap = device.makeHeap(descriptor: heapDescriptor) else { return nil }
     let actualCapacity = Int(heap.size)
-    guard residentBytes + retiredBytes + reservations + actualCapacity <= byteBudget,
+    guard residentBytes + reservations + actualCapacity <= byteBudget,
           let texture = heap.makeTexture(descriptor: descriptor) else {
       deniedAllocations &+= 1
       return nil
@@ -282,14 +268,6 @@ final class GlyphResidency: @unchecked Sendable {
     pages[page.id] = page
     RendererMetrics.recordAtlasPages(pages.count)
     return page
-  }
-
-  private func collectRetired() {
-    // There is one GPU submission in flight.  Pages are only retired after
-    // their submitted pins drain, so releasing the heap is safe here.
-    let releasable = retired.filter { $0.page.pins == 0 }
-    retired.removeAll { $0.page.pins == 0 }
-    for value in releasable { retiredBytes -= value.bytes }
   }
 
   private func convertPremultipliedSRGBToLinear(_ pixels: inout [UInt8]) {
