@@ -761,6 +761,7 @@ impl Terminal {
             modes: self.modes.clone(),
             alternate: self.is_alternate,
             title: self.title.clone(),
+            cwd: self.cwd.clone(),
             history_rows: self.history.len(),
             history: Vec::new(),
             palette: self.palette.clone(),

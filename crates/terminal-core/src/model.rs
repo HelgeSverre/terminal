@@ -640,6 +640,7 @@ pub struct Snapshot {
     pub modes: Modes,
     pub alternate: bool,
     pub title: String,
+    pub cwd: Option<String>,
     pub history_rows: usize,
     pub history: Vec<String>,
     pub palette: Vec<[u8; 3]>,
