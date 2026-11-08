@@ -75,8 +75,23 @@ import Foundation
     precondition(after["scroll_offset"] as! Int == (before["scroll_offset"] as! Int) + 1)
   }
 
+  static func anchoredViewportSurvivesTenThousandEvictingRows() {
+    let t = make(8, 2); defer { terminal_destroy(t) }
+    feed(t, "\u{1b}]133;A\u{7}\u{1b}]133;B\u{7}" + String(repeating: "x\r\n", count: 12_100))
+    setLimit(t, 12_100)
+    scroll(t, 500)
+    let before = snapshot(t)!
+    precondition(before["scroll_offset"] as? Int == 500 && before["at_prompt"] as? Bool == true && before["input_ready"] as? Bool == true)
+    // The pinned row remains retained while 9,999 front entries are evicted.
+    // This is the public ABI path that must avoid one history scan per row.
+    feed(t, String(repeating: "x\r\n", count: 10_000))
+    let after = snapshot(t)!
+    precondition(after["scroll_offset"] as? Int == 10_500 && !(after["following_tail"] as! Bool))
+    precondition(after["at_prompt"] as? Bool == true && after["input_ready"] as? Bool == true)
+  }
+
   static func main() {
-    outputPreservesAnchor(); evictionClampsOnce(); alternateRetainsPrimaryView(); richReflowMapsAnchorsAndWideAtoms(); heightGrowthAndEpochs(); publicationGateAndAtomicInvalidResize()
-    print("PASS TerminalDocument viewport oracle: 7 Rust viewport scenarios through Swift emulator")
+    outputPreservesAnchor(); evictionClampsOnce(); alternateRetainsPrimaryView(); richReflowMapsAnchorsAndWideAtoms(); heightGrowthAndEpochs(); publicationGateAndAtomicInvalidResize(); anchoredViewportSurvivesTenThousandEvictingRows()
+    print("PASS TerminalDocument viewport oracle: 7 Rust viewport scenarios plus anchored flood through Swift emulator")
   }
 }

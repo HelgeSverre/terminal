@@ -637,6 +637,40 @@ import Foundation
     fifo.replace([rich, plain]); precondition(fifo.rows == [rich, plain] && fifo.byteCount == richCost + plainCost)
   }
 
+  static func historyRowIdentityIndexTracksTrimCompactionAndReplacement() {
+    var row = TerminalRow(columns: 1)
+    var history = TerminalHistory()
+    for id in 1...600 { row.id = UInt64(id); history.append(row) }
+    precondition(history.index(ofRowID: 1) == 0 && history.index(ofRowID: 600) == 599)
+    precondition(history.index(ofRowID: 0) == nil)
+
+    // Removing half the entries compacts the consumed front and reindexes the
+    // retained absolute slots exactly once.
+    precondition(history.trim(rows: 300, bytes: Int.max) == 300)
+    precondition(history.index(ofRowID: 1) == nil && history.index(ofRowID: 301) == 0)
+    precondition(history.index(ofRowID: 600) == 299)
+
+    // A non-compacting front trim still converts the maintained absolute slot
+    // to a logical history index.
+    precondition(history.trim(rows: 260, bytes: Int.max) == 40)
+    precondition(history.index(ofRowID: 341) == 0 && history.index(ofRowID: 600) == 259)
+    row.id = 601; history.append(row)
+    precondition(history.index(ofRowID: 601) == 260)
+
+    row.id = 900; let replacement = row
+    history.replace([replacement])
+    precondition(history.index(ofRowID: 341) == nil && history.index(ofRowID: 900) == 0)
+    history.removeAll()
+    precondition(history.index(ofRowID: 900) == nil)
+
+    // The runtime assigns unique IDs, but fixture mistakes must not let a
+    // retired duplicate remove the newer entry's maintained lookup.
+    var duplicate = TerminalHistory()
+    row.id = 42; duplicate.append(row); duplicate.append(row)
+    precondition(duplicate.trim(rows: 1, bytes: Int.max) == 1)
+    precondition(duplicate.index(ofRowID: 42) == 0)
+  }
+
   static func sparsePayloadsBoundStorageAndKeepLogicalBudget() {
     var row = TerminalRow(columns: 3)
     // Scalar text has no retained String payload; only the exceptional link
@@ -752,6 +786,7 @@ import Foundation
     historyOwnerChargesAndTrimsOnce()
     scalarStorageChargesUTF8WithoutRichText()
     historyOwnerRetainsSnapshotsAndHeterogeneousBoundaries()
+    historyRowIdentityIndexTracksTrimCompactionAndReplacement()
     sparsePayloadsBoundStorageAndKeepLogicalBudget()
     logicalCapacityMatchesFormerRichArray()
     richPayloadMovesAndProjectionsRemainIndependent()

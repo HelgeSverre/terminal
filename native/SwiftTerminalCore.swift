@@ -1019,7 +1019,7 @@ private final class SwiftTerminalCore {
   }
   @discardableResult private func resolveViewportAnchor(clamp: Bool) -> Int {
     guard let anchor = viewAnchor else { viewOffset = 0; return 0 }
-    if let historyIndex = history.firstIndex(where: { $0.id == anchor }) {
+    if let historyIndex = history.index(ofRowID: anchor) {
       viewOffset = history.count - historyIndex; return viewOffset
     }
     if let primaryIndex = primary.rows.firstIndex(where: { $0.id == anchor }) {
@@ -1038,7 +1038,7 @@ private final class SwiftTerminalCore {
     let retainedAnchor = viewAnchor
     let evicted = document.trimHistory(rowLimit: historyLimit, byteLimit: historyByteLimit) > 0
     if evicted, let retainedAnchor,
-       !history.contains(where: { $0.id == retainedAnchor }),
+       history.index(ofRowID: retainedAnchor) == nil,
        !primary.rows.contains(where: { $0.id == retainedAnchor }) {
       clampViewportAfterEviction()
     }

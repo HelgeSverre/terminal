@@ -318,6 +318,10 @@ struct PromptAnchor: Equatable {
 struct TerminalHistory: RandomAccessCollection, Equatable {
   private struct Entry: Equatable { let row: TerminalRow; let chargedBytes: UInt64 }
   private var entries: [Entry?] = []
+  // Entries retain their absolute slot while the history's front is trimmed.
+  // The map makes a pinned viewport's row lookup independent of scrollback
+  // length; row identity zero is the unassigned placeholder and never anchors.
+  private var absoluteIndexByRowID: [UInt64: Int] = [:]
   private var head = 0
   private(set) var byteCount: UInt64 = 0
   var count: Int { entries.count - head }
@@ -326,19 +330,45 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
   var isEmpty: Bool { count == 0 }
   subscript(_ index: Int) -> TerminalRow { entries[head + index]!.row }
   var rows: [TerminalRow] { Array(self) }
-  mutating func append(_ row: TerminalRow) { let cost = row.retainedStorageCost; entries.append(Entry(row: row, chargedBytes: cost)); byteCount &+= cost }
+  mutating func append(_ row: TerminalRow) {
+    let cost = row.retainedStorageCost
+    let absoluteIndex = entries.count
+    entries.append(Entry(row: row, chargedBytes: cost))
+    if row.id != 0 { absoluteIndexByRowID[row.id] = absoluteIndex }
+    byteCount &+= cost
+  }
   mutating func append(contentsOf values: [TerminalRow]) { for row in values { append(row) } }
-  mutating func removeAll() { entries.removeAll(); head = 0; byteCount = 0 }
+  mutating func removeAll() { entries.removeAll(); absoluteIndexByRowID.removeAll(); head = 0; byteCount = 0 }
   mutating func replace(_ values: [TerminalRow]) { removeAll(); append(contentsOf: values) }
+  func index(ofRowID rowID: UInt64) -> Int? {
+    guard rowID != 0, let absoluteIndex = absoluteIndexByRowID[rowID],
+          absoluteIndex >= head, absoluteIndex < entries.count, entries[absoluteIndex] != nil else { return nil }
+    return absoluteIndex - head
+  }
   mutating func trim(rows limit: Int, bytes: Int) -> Int {
     var remove = 0; let cap = UInt64(Swift.max(0, bytes)); var total = byteCount
     let rowLimit = Swift.max(0, limit)
     while count - remove > rowLimit || (total > cap && remove < count) {
       total &-= entries[head + remove]!.chargedBytes; remove += 1
     }
-    if remove > 0 { for index in head..<(head + remove) { entries[index] = nil }; head += remove; byteCount = total
-      if head == entries.count { entries.removeAll(); head = 0 }
-      else if head >= count && head >= 256 { entries.removeFirst(head); head = 0 }
+    if remove > 0 {
+      for index in head..<(head + remove) {
+        if let entry = entries[index], entry.row.id != 0,
+           absoluteIndexByRowID[entry.row.id] == index {
+          absoluteIndexByRowID.removeValue(forKey: entry.row.id)
+        }
+        entries[index] = nil
+      }
+      head += remove; byteCount = total
+      if head == entries.count { entries.removeAll(); absoluteIndexByRowID.removeAll(); head = 0 }
+      else if head >= count && head >= 256 {
+        entries.removeFirst(head); head = 0
+        absoluteIndexByRowID.removeAll(keepingCapacity: true)
+        for (index, entry) in entries.enumerated() {
+          guard let entry, entry.row.id != 0 else { continue }
+          absoluteIndexByRowID[entry.row.id] = index
+        }
+      }
     }
     return remove
   }
