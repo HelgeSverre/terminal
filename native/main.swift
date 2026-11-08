@@ -33,9 +33,9 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     window.makeFirstResponder(pane)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
-  private func makePane() -> TerminalCanvasView {
+  private func makePane(launch: LaunchSpec? = nil) -> TerminalCanvasView {
     let pane = TerminalCanvasView(
-      frame: .zero, session: Session(launch: initialLaunch ?? diagnosticSplitLaunch))
+      frame: .zero, session: Session(launch: initialLaunch ?? diagnosticSplitLaunch ?? launch))
     initialLaunch = nil
     pane.onStatus = { [weak self, weak pane] text in
       NSLog("Session: %@", text)
@@ -95,7 +95,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     current.frame = split.bounds
     current.autoresizingMask = [.width, .height]
     split.addArrangedSubview(current)
-    let pane = makePane()
+    let pane = makePane(launch: current.session.siblingLaunch)
     pane.frame = split.bounds
     split.addArrangedSubview(pane)
     let extent = vertical ? split.bounds.width : split.bounds.height

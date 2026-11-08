@@ -21,6 +21,51 @@ import Foundation
         "closed_text_input_is_reported", "committed_text_round_trip",
       ].map { ($0, false) })
     var statuses: [String] = []
+    let splitFolder = FileManager.default.temporaryDirectory.appendingPathComponent("Terminal split 猫 #% \(UUID().uuidString)")
+    try! FileManager.default.createDirectory(at: splitFolder, withIntermediateDirectories: false)
+    defer { try? FileManager.default.removeItem(at: splitFolder) }
+    let splitAlias = splitFolder.appendingPathComponent("logical link")
+    try! FileManager.default.createSymbolicLink(atPath: splitAlias.path, withDestinationPath: splitFolder.path)
+    let splitURL = splitAlias.absoluteString
+    let parent = Session(launch: LaunchSpec(executable: "/bin/sh",
+      arguments: ["/bin/sh", "-c", "stty -echo; cd -- \"$1\"; printf '\\033]7;%s\\007SPLIT_CWD_READY' \"$2\"; IFS= read -r line",
+        "split-fixture", splitAlias.path, splitURL], cwd: "/tmp", launcher: spec("").launcher))
+    var sibling: Session?
+    var parentCWD: String?, childText = ""
+    var parentEnded = false, siblingEnded = false, siblingMatched = false
+    parent.onStatus = { if $0 == "Session finished" { parentEnded = true } }
+    parent.onSnapshot = { snapshot in
+      parentCWD = snapshot.cwd
+      guard sibling == nil, snapshot.cwd == splitURL,
+        snapshot.rows.flatMap({ $0.cells }).map({ $0.text }).joined().contains("SPLIT_CWD_READY")
+      else { return }
+      let launch = parent.siblingLaunch
+      precondition(URL(fileURLWithPath: launch.cwd).resolvingSymlinksInPath().path == splitFolder.resolvingSymlinksInPath().path)
+      let child = Session(launch: LaunchSpec(executable: "/bin/sh",
+        arguments: ["/bin/sh", "-c", "printf 'SPLIT_CHILD_PWD=%s\\n' \"$PWD\""],
+        cwd: launch.cwd, launcher: spec("").launcher))
+      sibling = child
+      child.onStatus = { if $0 == "Session finished" { siblingEnded = true } }
+      child.onSnapshot = { snapshot in
+        let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
+        childText = text
+        if let marker = text.range(of: "SPLIT_CHILD_PWD=") {
+          let path = String(text[marker.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+          let actual = try? FileManager.default.attributesOfItem(atPath: path)
+          let expected = try? FileManager.default.attributesOfItem(atPath: splitAlias.path)
+          siblingMatched = siblingMatched || (path == splitAlias.path && actual?[.systemFileNumber] as? NSNumber != nil &&
+            actual?[.systemFileNumber] as? NSNumber == expected?[.systemFileNumber] as? NSNumber)
+        }
+      }
+      precondition(parent.input("\n"))
+    }
+    let splitDeadline = Date().addingTimeInterval(8)
+    while !(parentEnded && siblingEnded && siblingMatched) && Date() < splitDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    parent.close(); sibling?.close()
+    precondition(parentEnded && siblingEnded && siblingMatched,
+      "split cwd: parent=\(parentEnded), child=\(siblingEnded), match=\(siblingMatched), cwd=\(String(describing: parentCWD)), childText=\(childText)")
     // The first partial REP snapshot arrives before its suffix sets bracketed paste.
     // Input admitted at that point must wait for the accepted byte event to finish.
     let orderedScript =

@@ -13,6 +13,7 @@ int main(int argc,char **argv){
     if(fcntl(status,F_SETFD,FD_CLOEXEC)<0)fail(status,1);
     if(login_tty(3)<0)fail(status,2);
     if(chdir(argv[1])<0)fail(status,3);
+    if(setenv("PWD",argv[1],1)<0)fail(status,3);
     sigset_t mask;sigemptyset(&mask);if(sigprocmask(SIG_SETMASK,&mask,NULL)<0)fail(status,4);
     for(int s=1;s<NSIG;s++){if(s!=SIGKILL && s!=SIGSTOP)signal(s,SIG_DFL);}
     execv(argv[2],&argv[3]);fail(status,5);

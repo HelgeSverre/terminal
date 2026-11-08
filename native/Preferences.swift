@@ -32,6 +32,17 @@ struct TerminalPreferences {
     }
     return Self.directory(startingDirectory) ?? Self.home
   }
+  func launchDirectory(inheriting location: String?) -> String {
+    guard let location, location.utf8.count <= 8192, let url = URL(string: location),
+      url.isFileURL, url.user == nil, url.password == nil, url.port == nil,
+      url.query == nil, url.fragment == nil,
+      url.path.hasPrefix("/"), !url.path.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 })
+    else { return launchDirectory }
+    let host = (url.host ?? "").lowercased()
+    guard host.isEmpty || host == "localhost" || host == ProcessInfo.processInfo.hostName.lowercased()
+    else { return launchDirectory }
+    return Self.directory(url.path) ?? launchDirectory
+  }
   var startingDirectoryText: String {
     let path = (startingDirectory as NSString).expandingTildeInPath
     if path == Self.home { return "~" }

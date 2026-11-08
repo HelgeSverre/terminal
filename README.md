@@ -93,7 +93,10 @@ an OSC 8 link to open an http/https/mailto URL. File drops paste quoted paths.
 The current shell is `$SHELL`, falling back to `/bin/zsh`, with its normal login
 configuration. Set the starting folder in Settings → Startup → Directory; `~`
 and an empty field use your home folder. The setting applies to new shells;
-existing sessions keep their current directory. If the saved folder disappears,
+existing sessions keep their current directory. Splits inherit the active pane's
+reported local working directory; the bundled zsh integration reports it at each
+prompt. Shells without directory reporting use the configured starting folder.
+If the saved folder disappears,
 new shells fall back to home. `just dev --working-directory /tmp` overrides it
 for that launch. The font-size number field supports Up/Down and native stepper
 buttons, bounded to 8–40 pt. Closing the last window quits the application and

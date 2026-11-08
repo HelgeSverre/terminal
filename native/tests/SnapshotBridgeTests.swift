@@ -37,9 +37,16 @@ import AppKit
       precondition(value.cols == legacy.cols && value.history_rows == legacy.history_rows)
       precondition(value.palette == legacy.palette && value.default_fg == legacy.default_fg)
       precondition(value.default_bg == legacy.default_bg && value.title == legacy.title)
+      precondition(value.cwd == legacy.cwd)
       return value
     }
     _ = try check()
+    feed("\u{1b}]7;file://localhost/tmp/project%20%E7%8C%AB%23%25\u{7}")
+    let directorySnapshot = try check()
+    precondition(directorySnapshot.cwd == "file://localhost/tmp/project%20%E7%8C%AB%23%25")
+    feed("\u{1b}c")
+    let resetDirectorySnapshot = try check()
+    precondition(resetDirectorySnapshot.cwd == directorySnapshot.cwd)
     // Old experimental metadata did not have a readiness field. Preserve that
     // as unknown so automation cannot mistake an old A-only snapshot for B.
     feed("\u{1b}]133;A\u{7}")

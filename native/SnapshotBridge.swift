@@ -21,6 +21,7 @@ enum SnapshotBridge {
     let modes: ModesSnapshot
     let alternate: Bool
     let title: String
+    let cwd: String?
     let history_rows: Int
     let palette: [[Int]]
     let default_fg: [Int]
@@ -105,7 +106,7 @@ enum SnapshotBridge {
           screen_epoch: header.screen_epoch, scroll_offset: header.scroll_offset,
           following_tail: header.following_tail, viewport_clamp_revision: header.viewport_clamp_revision,
           cols: header.cols, rows: rows, cursor: header.cursor, modes: header.modes,
-          alternate: header.alternate, title: header.title, history_rows: header.history_rows,
+          alternate: header.alternate, title: header.title, cwd: header.cwd, history_rows: header.history_rows,
           palette: header.palette, default_fg: header.default_fg, default_bg: header.default_bg)
       } catch {
         capture.error = "Snapshot metadata decode failed: \(error)"

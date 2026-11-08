@@ -98,7 +98,7 @@ struct TerminalSnapshot: Decodable {
   var imagePixels: [ImageKey: ImagePixels] = [:]
   enum CodingKeys: String, CodingKey {
     case at_prompt, input_ready, search, images, revision, geometry_epoch, document_epoch, history_epoch, screen_epoch,
-      scroll_offset, following_tail, viewport_clamp_revision, cols, rows, cursor, modes, alternate, title,
+      scroll_offset, following_tail, viewport_clamp_revision, cols, rows, cursor, modes, alternate, title, cwd,
       history_rows, palette, default_fg, default_bg
   }
   let revision: UInt64
@@ -115,6 +115,7 @@ struct TerminalSnapshot: Decodable {
   let modes: ModesSnapshot
   let alternate: Bool
   let title: String
+  let cwd: String?
   let history_rows: Int
   let palette: [[Int]]
   let default_fg: [Int]
@@ -150,6 +151,10 @@ struct LaunchSpec {
       executable: executable, arguments: [executable, "-l"],
       cwd: TerminalPreferences.load().launchDirectory,
       launcher: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher").path)
+  }
+  func inheritingDirectory(_ location: String?) -> Self {
+    Self(executable: executable, arguments: arguments,
+         cwd: TerminalPreferences.load().launchDirectory(inheriting: location), launcher: launcher)
   }
 }
 final class ClipboardWriteRequest {
@@ -272,6 +277,8 @@ final class Session: @unchecked Sendable {
   private let publication = NSLock()
   private var latest: TerminalSnapshot?
   private var deliveryScheduled = false
+  @MainActor private var deliveredDirectory: String?
+  @MainActor var siblingLaunch: LaunchSpec { .shell.inheritingDirectory(deliveredDirectory) }
   private lazy var historySearch = HistorySearch(session: self)
   private let clipboardSessionID = UUID()
   private var pendingClipboardIDs = Set<UInt64>()
@@ -989,7 +996,10 @@ final class Session: @unchecked Sendable {
       latest = nil
       deliveryScheduled = false
       publication.unlock()
-      if let snapshot { onSnapshot?(snapshot) }
+      if let snapshot {
+        deliveredDirectory = snapshot.cwd
+        onSnapshot?(snapshot)
+      }
     }
   }
   func close() {
