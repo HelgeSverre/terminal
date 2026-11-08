@@ -211,6 +211,8 @@ final class Session: @unchecked Sendable {
   private var closed = false
   private var readSuspended = false
   private var writeSuspended = false
+  private var clipboardClosedNotified = false
+  private var clipboardCloseDelivered = false
   private var reader: DispatchSourceRead?
   private var writer: DispatchSourceWrite?
   private var statusReader: DispatchSourceRead?
@@ -235,7 +237,7 @@ final class Session: @unchecked Sendable {
   var onSnapshot: (@MainActor (TerminalSnapshot) -> Void)?
   var onStatus: (@MainActor (String) -> Void)?
   var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
-  var onClipboardClosed: (@MainActor (UUID) -> Void)?
+  private var onClipboardClosed: (@MainActor (UUID) -> Void)?
   let clipboardSessionID = UUID()
   init(launch: LaunchSpec? = nil) {
     launchSpec = launch
@@ -363,10 +365,30 @@ final class Session: @unchecked Sendable {
     accepting = false
     admission.unlock()
   }
+  private func notifyClipboardClosed() {
+    guard !clipboardClosedNotified else { return }
+    clipboardClosedNotified = true
+    deliverClipboardCloseIfPossible()
+  }
+  private func deliverClipboardCloseIfPossible() {
+    guard clipboardClosedNotified, !clipboardCloseDelivered, let handler = onClipboardClosed else {
+      return
+    }
+    clipboardCloseDelivered = true
+    let sessionID = clipboardSessionID
+    DispatchQueue.main.async { handler(sessionID) }
+  }
   private var acceptingClipboardRequests: Bool {
     admission.lock()
     defer { admission.unlock() }
     return accepting
+  }
+  func setClipboardClosedHandler(_ handler: @escaping @MainActor (UUID) -> Void) {
+    queue.async { [weak self] in
+      guard let self else { return }
+      onClipboardClosed = handler
+      deliverClipboardCloseIfPossible()
+    }
   }
   private func start() {
     guard terminal_abi_version() == 1, let handle = terminal_create(80, 24) else {
@@ -618,6 +640,7 @@ final class Session: @unchecked Sendable {
   }
   private func endWrite() {
     stopAcceptingInput()
+    notifyClipboardClosed()
     writeEnded = true
     if writeSuspended {
       writer?.resume()
@@ -900,10 +923,9 @@ final class Session: @unchecked Sendable {
   }
   func close() {
     stopAcceptingInput()
-    let sessionID = clipboardSessionID
-    DispatchQueue.main.async { [weak self] in self?.onClipboardClosed?(sessionID) }
     queue.async { [self] in
       guard !closed else { return }
+      notifyClipboardClosed()
       closed = true
       historySearch.cancel()
       for index in head..<events.count {

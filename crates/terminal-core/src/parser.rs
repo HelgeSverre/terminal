@@ -377,6 +377,9 @@ fn string_limit(kind: StringKind, bytes: &[u8], next: &[u8]) -> usize {
     if kind == StringKind::Apc {
         return 8192;
     }
+    if kind != StringKind::Osc {
+        return MAX_OSC;
+    }
     let prefix = b"52;c;";
     let matched = bytes.len().min(prefix.len());
     if bytes[..matched] != prefix[..matched] {
@@ -387,5 +390,17 @@ fn string_limit(kind: StringKind, bytes: &[u8], next: &[u8]) -> usize {
         MAX_OSC52
     } else {
         MAX_OSC
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_OSC, MAX_OSC52, StringKind, string_limit};
+
+    #[test]
+    fn osc52_exception_does_not_expand_other_string_kinds() {
+        let prefix = b"52;c;";
+        assert_eq!(string_limit(StringKind::Osc, &[], prefix), MAX_OSC52);
+        assert_eq!(string_limit(StringKind::Unsupported, &[], prefix), MAX_OSC);
     }
 }

@@ -4,7 +4,7 @@ The terminal supports a deliberately narrow OSC 52 surface:
 
 - `OSC 52 ; c ; <RFC 4648 base64> ST` is a request to write the macOS general
   pasteboard. The core decodes at most 1 MiB and has at most four outstanding
-  requests per session.
+  requests per session. Only valid UTF-8 is accepted for the text pasteboard.
 - The native default is an **Allow / Deny** sheet. `ClipboardAccess` is the
   only object that presents it or writes `NSPasteboard`; no preference grant is
   persisted.
@@ -24,7 +24,12 @@ mailbox. Every request has a core-owned ID and a session UUID; resolution is
 sent back to the owner queue, and a closed/stale session cannot write after a
 late decision. The native owner presents one sheet at a time and accepts only
 four total pending requests, so output floods neither block the PTY nor create
-an unbounded prompt queue.
+an unbounded prompt queue. A decision is rate limited to one prompt per second
+per session; after an explicit Deny, the rest of that session is silently
+denied. This state is discarded when the session ends and is not a persisted
+grant. Session close or PTY input EOF dismisses an active sheet, rejects its
+late callback, and advances another session's pending request without waiting
+for user interaction.
 
 Verification uses named private `NSPasteboard` fixtures only. It covers allow,
 deny, stale-session suppression, prompt bounds, malformed and oversized core

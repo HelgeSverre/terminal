@@ -114,7 +114,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       }
       delegate.clipboardAccess.request(request, from: self.window)
     }
-    session.onClipboardClosed = { sessionID in
+    session.setClipboardClosedHandler { sessionID in
       (NSApp.delegate as? AppDelegate)?.clipboardAccess.cancel(sessionID: sessionID)
     }
   }
