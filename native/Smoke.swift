@@ -38,7 +38,7 @@ import Darwin
       "ime_commit_once", "resize_epoch", "split_panes", "metal_submitted",
       "split_resize_frames_match_drawables",
       "split_resize_drops_stale_frames",
-      "split_resize_retained_frame_does_not_scale",
+      "split_resize_layer_gravity_configured",
       "completed_without_timeout", "accessibility_text_ranges",
       "native_keypad_enter",
       "pane_focus_consistent", "settings_window",
@@ -56,6 +56,7 @@ import Darwin
   var oldCols = 0
   var maximumIMEMarkerLines = 0
   var geometryMismatchedPresents: UInt64 = 0
+  var geometryMismatchedDrawables: UInt64 = 0
   var geometryDroppedStaleFrames: UInt64 = 0
   init(window: TerminalWindow, path: String) {
     controller = window
@@ -152,6 +153,7 @@ import Darwin
           "FOCUS_DISCARDED_PREEDIT", selectedRange: NSRange(location: 0, length: 0),
           replacementRange: NSRange(location: NSNotFound, length: 0))
         geometryMismatchedPresents = RendererMetrics.mismatchedPresentations()
+        geometryMismatchedDrawables = RendererMetrics.report()["mismatched_drawables"] as? UInt64 ?? 0
         geometryDroppedStaleFrames = RendererMetrics.staleFrameDropCount()
         controller.splitVertical(nil)
         checks["preedit_cancelled_on_focus"] = controller.panes.first?.hasMarkedText() == false
@@ -163,14 +165,20 @@ import Darwin
             controller.window?.isKeyWindow == true && controller.window?.firstResponder === pane
           return pane.geometryReport()["focused"] as? Bool == expected
         }
-        checks["split_resize_retained_frame_does_not_scale"] = controller.panes.allSatisfy {
+        checks["split_resize_layer_gravity_configured"] = controller.panes.allSatisfy {
           $0.geometryReport()["contents_gravity"] as? String == CALayerContentsGravity.topLeft.rawValue
         }
         exerciseSplitResizeStress { [self] in
+          let mismatches = RendererMetrics.report()["mismatched_drawables"] as? UInt64 ?? 0
+          let drops = RendererMetrics.staleFrameDropCount()
           checks["split_resize_frames_match_drawables"] =
             RendererMetrics.mismatchedPresentations() == geometryMismatchedPresents
+          // A fast or occluded renderer may acquire no stale drawable. Require
+          // drops when a mismatch was observed, rather than requiring a race.
           checks["split_resize_drops_stale_frames"] =
-            RendererMetrics.staleFrameDropCount() > geometryDroppedStaleFrames
+            mismatches == geometryMismatchedDrawables || drops > geometryDroppedStaleFrames
+          measurements["split_resize_mismatched_drawables"] = mismatches - geometryMismatchedDrawables
+          measurements["split_resize_stale_frames_dropped"] = drops - geometryDroppedStaleFrames
           checks["metal_submitted"] = RendererMetrics.submissions() > 0
           phase = 4
           controller.panes.first?.session.find("SMOKE_SENTINEL") { [weak self] outcome in
