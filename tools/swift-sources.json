@@ -96,7 +96,9 @@
       "tests/TerminalDocumentOracleTests.swift"
     ],
     "terminal_document_ownership": [
-      "TerminalDocument.swift", "tests/TerminalDocumentOwnershipTests.swift"
+      "TerminalDocument.swift", "TerminalWidth.swift", "TerminalWidthTables.swift",
+      "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
+      "tests/TerminalDocumentOwnershipTests.swift"
     ],
     "terminal_viewport_oracle": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift",

@@ -42,13 +42,26 @@ struct TerminalScreen: Equatable {
   init(columns: Int, rows count: Int) { self.init(rows: Array(repeating: TerminalRow(columns: columns), count: count), columns: columns) }
 }
 struct TerminalDocument {
-  struct ASCIIPlacement {
+  struct PrintAttributes {
+    var style: TerminalStyle
+    var link: String?
+    var protected: Bool
+  }
+  struct PrintEffect {
     var appendedHistory: [TerminalRow]
-    var owner: (row: Int, column: Int)
+    var lastPrinted: String?
+    var repeatAttributes: PrintAttributes?
+    var resetSegmenter = false
   }
   private(set) var columns: Int; private(set) var rowCount: Int
   var history: [TerminalRow] = []; var primary: TerminalScreen; var alternate: TerminalScreen
   fileprivate var nextRowID: UInt64 = 1
+  // Placement state belongs beside the cells it identifies.  The parser owns
+  // grapheme-boundary detection; this owner only remembers the open cell and
+  // its retained scalar budget while applying that decision.
+  private var openCluster: (row: Int, column: Int)?
+  private var retainedClusterScalars = 0
+  private var cappedCluster = false
   init(columns: Int, rows: Int) {
     self.columns = columns; rowCount = rows
     primary = TerminalScreen(rows: [], columns: columns); alternate = TerminalScreen(rows: [], columns: columns)
@@ -64,36 +77,39 @@ struct TerminalDocument {
   }
   mutating func setSize(columns: Int, rows: Int) { self.columns = columns; rowCount = rows }
 
-  // The common printable-ASCII path must not materialize a complete
-  // TerminalScreen just to change one cell.  Keep this deliberately specific:
-  // it is the document's placement operation, not a mutable-grid callback for
-  // callers to assemble their own terminal edits.  The Unicode/cluster path
-  // continues through the richer editor until it moves here as one transaction.
-  @discardableResult
-  mutating func placeASCII(_ text: String, usingAlternate: Bool,
-                           leftRightMargins: Bool, autoWrap: Bool,
-                           insertMode: Bool, style: TerminalStyle,
-                           link: String?, protected: Bool) -> ASCIIPlacement? {
+  mutating func resetPrintCluster() {
+    openCluster = nil; retainedClusterScalars = 0; cappedCluster = false
+  }
+
+  // This is the document's scalar-print transaction. It is intentionally a
+  // terminal operation rather than a generic mutable-grid callback: callers
+  // provide parser/mode facts, while this module owns cells, continuation
+  // repair, cursor/wrap, history rows, identities and cluster retention.
+  mutating func print(_ scalar: Unicode.Scalar, startsCluster: Bool,
+                      usingAlternate: Bool, leftRightMargins: Bool,
+                      autoWrap: Bool, insertMode: Bool,
+                      attributes: PrintAttributes) -> PrintEffect {
     var appended: [TerminalRow] = []
     var replacements: [Int] = []
-    var owner: (row: Int, column: Int)?
+    var effect = PrintEffect(appendedHistory: [], lastPrinted: nil, repeatAttributes: nil)
     if usingAlternate {
-      Self.placeASCII(text, in: &alternate, columns: columns,
-                      leftRightMargins: leftRightMargins, autoWrap: autoWrap,
-                      insertMode: insertMode, style: style, link: link,
-                      protected: protected, history: &appended,
-                      replacementRows: &replacements, retainHistory: false, owner: &owner)
+      Self.print(scalar, startsCluster: startsCluster, in: &alternate, columns: columns,
+                 leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
+                 attributes: attributes, history: &appended, replacementRows: &replacements,
+                 retainHistory: false, openCluster: &openCluster,
+                 retainedScalars: &retainedClusterScalars, capped: &cappedCluster, effect: &effect)
       Self.assignRowIDs(&alternate, at: replacements, nextRowID: &nextRowID)
     } else {
-      Self.placeASCII(text, in: &primary, columns: columns,
-                      leftRightMargins: leftRightMargins, autoWrap: autoWrap,
-                      insertMode: insertMode, style: style, link: link,
-                      protected: protected, history: &appended,
-                      replacementRows: &replacements, retainHistory: true, owner: &owner)
+      Self.print(scalar, startsCluster: startsCluster, in: &primary, columns: columns,
+                 leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
+                 attributes: attributes, history: &appended, replacementRows: &replacements,
+                 retainHistory: true, openCluster: &openCluster,
+                 retainedScalars: &retainedClusterScalars, capped: &cappedCluster, effect: &effect)
       Self.assignRowIDs(&primary, at: replacements, nextRowID: &nextRowID)
       history.append(contentsOf: appended)
     }
-    return owner.map { ASCIIPlacement(appendedHistory: appended, owner: $0) }
+    effect.appendedHistory = appended
+    return effect
   }
 
   private static func assignRowIDs(_ screen: inout TerminalScreen, at indices: [Int], nextRowID: inout UInt64) {
@@ -106,14 +122,18 @@ struct TerminalDocument {
     }
   }
 
-  private static func placeASCII(_ text: String, in screen: inout TerminalScreen,
-                                 columns: Int, leftRightMargins: Bool,
-                                 autoWrap: Bool, insertMode: Bool,
-                                 style: TerminalStyle, link: String?,
-                                 protected: Bool, history: inout [TerminalRow],
-                                 replacementRows: inout [Int], retainHistory: Bool,
-                                 owner: inout (row: Int, column: Int)?) {
-    guard text.unicodeScalars.count == 1 else { return }
+  private static func print(_ scalar: Unicode.Scalar, startsCluster: Bool,
+                            in screen: inout TerminalScreen, columns: Int,
+                            leftRightMargins: Bool, autoWrap: Bool, insertMode: Bool,
+                            attributes: PrintAttributes, history: inout [TerminalRow],
+                            replacementRows: inout [Int], retainHistory: Bool,
+                            openCluster: inout (row: Int, column: Int)?,
+                            retainedScalars: inout Int, capped: inout Bool,
+                            effect: inout PrintEffect) {
+    switch SwiftUnicode.category(of: scalar) {
+    case .control, .cr, .lf: return
+    default: break
+    }
     let horizontal = leftRightMargins ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
     func writeBounds(_ column: Int) -> (left: Int, right: Int) {
       return column <= horizontal.1 ? (horizontal.0, horizontal.1) : (0, columns - 1)
@@ -140,7 +160,7 @@ struct TerminalDocument {
     }
     func scrollUpFullWidth() {
       let removed = screen.rows.remove(at: screen.topMargin)
-      let replacement = TerminalRow(id: 0, cells: Array(repeating: .erased(style), count: columns))
+      let replacement = TerminalRow(id: 0, cells: Array(repeating: .erased(attributes.style), count: columns))
       screen.rows.insert(replacement, at: screen.bottomMargin)
       replacementRows.append(screen.bottomMargin)
       if retainHistory && screen.topMargin == 0 && screen.bottomMargin == screen.rows.count - 1 {
@@ -157,7 +177,7 @@ struct TerminalDocument {
         } else {
           Self.scrollRectangleInPlace(&screen, columns: columns, top: screen.topMargin, bottom: screen.bottomMargin,
                                       left: horizontal.0, right: horizontal.1, count: 1,
-                                      up: true, eraseStyle: style)
+                               up: true, eraseStyle: attributes.style)
         }
       } else {
         screen.cursorRow = min(screen.rows.count - 1, screen.cursorRow + 1)
@@ -166,22 +186,89 @@ struct TerminalDocument {
       screen.pendingWrap = false
     }
 
+    if !startsCluster, let owner = openCluster, owner.row == screen.cursorRow,
+       screen.rows[owner.row].cells.indices.contains(owner.column) {
+      let cell = screen.rows[owner.row].cells[owner.column]
+      if capped || retainedScalars + 1 > 64 {
+        capped = true
+        screen.rows[owner.row].cells[owner.column].flags |= 4
+        return
+      }
+      screen.rows[owner.row].cells[owner.column].text.unicodeScalars.append(scalar)
+      retainedScalars += 1
+      let combined = screen.rows[owner.row].cells[owner.column].text
+      let nominal = min(2, max(1, SwiftUnicode.cellWidth(of: combined)))
+      let oldWidth = cell.kind == 2 ? 2 : 1
+      let right = writeBounds(owner.column).right
+      if nominal > oldWidth && owner.column + nominal > right + 1 && autoWrap {
+        erase(owner.row, owner.column..<(owner.column + oldWidth), cell.style.erased())
+        if writeBounds(owner.column).left == 0 && right == columns - 1 { screen.rows[owner.row].cells[owner.column].kind = 4 }
+        screen.cursorRow = owner.row; screen.cursorColumn = owner.column; screen.pendingWrap = true
+        wrap()
+        let row = screen.cursorRow, column = screen.cursorColumn
+        let newRight = writeBounds(column).right
+        let occupied = min(nominal, newRight + 1 - column)
+        erase(row, column..<(column + occupied), cell.style.erased())
+        screen.rows[row].cells[column] = TerminalCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1, style: cell.style, link: cell.link, flags: cell.flags | (nominal > occupied ? 1 : 0), protected: cell.protected)
+        if nominal == 2 && occupied == 2 { screen.rows[row].cells[column + 1] = TerminalCell(text: "", kind: 3, style: cell.style, link: cell.link, flags: cell.flags, protected: cell.protected) }
+        openCluster = (row, column)
+        screen.cursorColumn = min(newRight, column + occupied); screen.pendingWrap = column + occupied > newRight && autoWrap
+      } else {
+        let occupied = min(nominal, right + 1 - owner.column)
+        if occupied > oldWidth && insertMode && (horizontal.0...horizontal.1).contains(owner.column) {
+          shift(owner.row, owner.column + oldWidth, horizontal.1, occupied - oldWidth, cell.style.erased())
+        }
+        erase(owner.row, owner.column..<(owner.column + max(oldWidth, occupied)), cell.style.erased())
+        screen.rows[owner.row].cells[owner.column] = TerminalCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1, style: cell.style, link: cell.link, flags: cell.flags | (nominal > occupied ? 1 : 0), protected: cell.protected)
+        if nominal == 2 && occupied == 2 { screen.rows[owner.row].cells[owner.column + 1] = TerminalCell(text: "", kind: 3, style: cell.style, link: cell.link, flags: cell.flags, protected: cell.protected) }
+        screen.cursorRow = owner.row; screen.cursorColumn = min(right, owner.column + occupied); screen.pendingWrap = owner.column + occupied > right && autoWrap
+      }
+      effect.lastPrinted = combined
+      effect.repeatAttributes = PrintAttributes(style: cell.style, link: cell.link, protected: cell.protected)
+      return
+    }
+    openCluster = nil; retainedScalars = 0
+    let text = String(scalar)
+    let measuredWidth = SwiftUnicode.cellWidth(of: text)
+    if measuredWidth == 0 {
+      if SwiftUnicode.isDefaultIgnorable(scalar) { effect.resetSegmenter = true; return }
+      if !startsCluster, screen.cursorColumn > 0 {
+        var attachment = screen.pendingWrap ? screen.cursorColumn : screen.cursorColumn - 1
+        if !screen.pendingWrap, screen.rows[screen.cursorRow].cells[attachment].kind == 0, screen.cursorColumn < columns { attachment = screen.cursorColumn }
+        let owner = Self.repairedCellOwner(in: screen.rows[screen.cursorRow], at: attachment)
+        let count = screen.rows[screen.cursorRow].cells[owner].text.unicodeScalars.count
+        if count + 1 > 64 { screen.rows[screen.cursorRow].cells[owner].flags |= 4 }
+        else { screen.rows[screen.cursorRow].cells[owner].text.unicodeScalars.append(scalar) }
+      }
+      if !startsCluster { return }
+    }
+    let width = min(2, max(1, measuredWidth))
+    capped = false
     if screen.pendingWrap && autoWrap { wrap() }
     guard screen.rows.indices.contains(screen.cursorRow),
           (0..<columns).contains(screen.cursorColumn) else { return }
     let bounds = writeBounds(screen.cursorColumn)
-    if insertMode, (horizontal.0...horizontal.1).contains(screen.cursorColumn) {
-      shift(screen.cursorRow, screen.cursorColumn, horizontal.1, 1, style.erased())
+    if width == 2 && screen.cursorColumn + 2 > bounds.right + 1 && bounds.right > bounds.left && autoWrap {
+      erase(screen.cursorRow, screen.cursorColumn..<(screen.cursorColumn + 1), attributes.style.erased())
+      if bounds.left == 0 && bounds.right == columns - 1 { screen.rows[screen.cursorRow].cells[screen.cursorColumn].kind = 4 }
+      wrap()
     }
-    erase(screen.cursorRow, screen.cursorColumn..<(screen.cursorColumn + 1), style.erased())
+    let right = writeBounds(screen.cursorColumn).right
+    let occupied = min(width, right + 1 - screen.cursorColumn)
+    guard occupied > 0 else { return }
+    if insertMode, (horizontal.0...horizontal.1).contains(screen.cursorColumn) {
+      shift(screen.cursorRow, screen.cursorColumn, horizontal.1, occupied, attributes.style.erased())
+    }
+    erase(screen.cursorRow, screen.cursorColumn..<(screen.cursorColumn + occupied), attributes.style.erased())
     let row = screen.cursorRow, column = screen.cursorColumn
-    screen.rows[row].cells[column] = TerminalCell(text: text, kind: 1, style: style,
-                                                   link: link, flags: protected ? 2 : 0,
-                                                   protected: protected)
-    owner = (row, column)
-    let reachesPastRight = column + 1 > bounds.right
-    screen.cursorColumn = min(bounds.right, column + 1)
-    screen.pendingWrap = reachesPastRight && autoWrap
+    let truncated = width == 2 && occupied < width
+    screen.rows[row].cells[column] = TerminalCell(text: text, kind: width == 2 && occupied == 2 ? 2 : 1, style: attributes.style, link: attributes.link, flags: (attributes.protected ? 2 : 0) | (truncated ? 1 : 0), protected: attributes.protected)
+    if width == 2 && occupied == 2 { screen.rows[row].cells[column + 1] = TerminalCell(text: "", kind: 3, style: attributes.style, link: attributes.link, flags: attributes.protected ? 2 : 0, protected: attributes.protected) }
+    openCluster = (row, column); retainedScalars = 1
+    effect.lastPrinted = text
+    effect.repeatAttributes = attributes
+    screen.cursorColumn = min(right, column + occupied)
+    screen.pendingWrap = column + occupied > right && autoWrap
   }
 
   func hasValidInvariants(_ screen: TerminalScreen) -> Bool {
@@ -280,7 +367,8 @@ struct TerminalDocument {
     result.cursorRow = min(nextRows - 1, max(0, screen.cursorRow - start)); result.cursorColumn = min(nextColumns - 1, screen.cursorColumn); result.pendingWrap = false
     return result
   }
-  func repairedCellOwner(in row: TerminalRow, at column: Int) -> Int { row.cells.indices.contains(column) && row.cells[column].kind == 3 && column > 0 ? column - 1 : column }
+  func repairedCellOwner(in row: TerminalRow, at column: Int) -> Int { Self.repairedCellOwner(in: row, at: column) }
+  private static func repairedCellOwner(in row: TerminalRow, at column: Int) -> Int { row.cells.indices.contains(column) && row.cells[column].kind == 3 && column > 0 ? column - 1 : column }
   private mutating func makeRows(_ count: Int) -> [TerminalRow] { (0..<count).map { _ in blankRow() } }
   private func repairWidePairs(_ row: inout TerminalRow, eraseStyle: TerminalStyle) {
     Self.repairWidePairsInPlace(&row, eraseStyle: eraseStyle)

@@ -10,15 +10,14 @@ private typealias SwiftCell = TerminalCell
 private typealias SwiftRow = TerminalRow
 private typealias SwiftScreen = TerminalScreen
 
-private func decSpecialGraphics(_ text: String) -> String {
-  guard text.unicodeScalars.count == 1, let scalar = text.unicodeScalars.first else { return text }
-  let mapping: [UInt32: String] = [
-    0x5f: "\u{00a0}", 0x60: "◆", 0x61: "▒", 0x62: "␉", 0x63: "␌", 0x64: "␍", 0x65: "␊",
-    0x66: "°", 0x67: "±", 0x68: "␤", 0x69: "␋", 0x6a: "┘", 0x6b: "┐", 0x6c: "┌", 0x6d: "└",
-    0x6e: "┼", 0x6f: "⎺", 0x70: "⎻", 0x71: "─", 0x72: "⎼", 0x73: "⎽", 0x74: "├", 0x75: "┤",
-    0x76: "┴", 0x77: "┬", 0x78: "│", 0x79: "≤", 0x7a: "≥", 0x7b: "π", 0x7c: "≠", 0x7d: "£", 0x7e: "·",
+private func decSpecialGraphics(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
+  let mapping: [UInt32: UInt32] = [
+    0x5f: 0x00a0, 0x60: 0x25c6, 0x61: 0x2592, 0x62: 0x2409, 0x63: 0x240c, 0x64: 0x240d, 0x65: 0x240a,
+    0x66: 0x00b0, 0x67: 0x00b1, 0x68: 0x2424, 0x69: 0x240b, 0x6a: 0x2518, 0x6b: 0x2510, 0x6c: 0x250c, 0x6d: 0x2514,
+    0x6e: 0x253c, 0x6f: 0x23ba, 0x70: 0x23bb, 0x71: 0x2500, 0x72: 0x23bc, 0x73: 0x23bd, 0x74: 0x251c, 0x75: 0x2524,
+    0x76: 0x2534, 0x77: 0x252c, 0x78: 0x2502, 0x79: 0x2264, 0x7a: 0x2265, 0x7b: 0x03c0, 0x7c: 0x2260, 0x7d: 0x00a3, 0x7e: 0x00b7,
   ]
-  return mapping[scalar.value] ?? text
+  return mapping[scalar.value].flatMap(Unicode.Scalar.init) ?? scalar
 }
 
 private enum SwiftParserState { case ground, escape, charset(Int), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool) }
@@ -106,20 +105,7 @@ private final class SwiftTerminalCore {
   private var repeatRemaining = 0
   private var charsetSpecial = [false, false]
   private var charsetSlot = 0
-  // A terminal cell is intentionally bounded even while a grapheme is being
-  // decoded incrementally.  The cap is observable through cell_flags (bit 2)
-  // and prevents an untrusted combining-mark stream from growing one cell
-  // without limit.  A capped ZWJ still consumes its following pictograph as
-  // part of the discarded cluster, rather than making it a new grid glyph.
-  private var cappedCluster = false
-  private var cappedClusterJoinsNextPictograph = false
   private var segmenter = SwiftUnicode.Segmenter()
-  private var clusterOwner: (row: Int, column: Int)?
-  // The document owns the hot ASCII placement transaction.  Once a
-  // non-ASCII cluster reaches the legacy richer editor, stay there until a
-  // terminal boundary resets grapheme state; this keeps the first ownership
-  // patch mechanically narrow while preserving its established Unicode path.
-  private var asciiPlacementSafe = true
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
@@ -155,9 +141,9 @@ private final class SwiftTerminalCore {
   private func flushText(final: Bool = false) {
     // Escape/control input interrupts an incomplete UTF-8 sequence. Emit its
     // maximal invalid prefix now so that the control byte is still parsed.
-    for scalar in utf8.finish() { put(String(scalar)) }
+    for scalar in utf8.finish() { put(scalar) }
   }
-  private func resetClusterBoundary() { segmenter = SwiftUnicode.Segmenter(); clusterOwner = nil; cappedCluster = false; cappedClusterJoinsNextPictograph = false; asciiPlacementSafe = true }
+  private func resetClusterBoundary() { segmenter = SwiftUnicode.Segmenter(); document.resetPrintCluster() }
   private func tick(_ now: UInt64) {
     clock = now
     if let deadline = syncDeadline, now >= deadline {
@@ -169,7 +155,7 @@ private final class SwiftTerminalCore {
     let savedPen = pen, savedLink = currentLink, savedProtected = protectedOutput
     pen = lastPrintedStyle; currentLink = lastPrintedLink; protectedOutput = lastPrintedFlags & 2 != 0
     resetClusterBoundary()
-    for scalar in lastPrinted.unicodeScalars { put(String(scalar)) }
+    for scalar in lastPrinted.unicodeScalars { put(scalar) }
     resetClusterBoundary()
     pen = savedPen; currentLink = savedLink; protectedOutput = savedProtected
   }
@@ -199,8 +185,7 @@ private final class SwiftTerminalCore {
         case 0x0f: flushText(); charsetSlot = 0
         default:
           for scalar in utf8.push(byte) {
-            let text = String(scalar)
-            put(charsetSpecial[charsetSlot] ? decSpecialGraphics(text) : text)
+            put(charsetSpecial[charsetSlot] ? decSpecialGraphics(scalar) : scalar)
           }
         }
       case .escape:
@@ -290,160 +275,32 @@ private final class SwiftTerminalCore {
     default: break
     }
   }
-  private func put(_ text: String) {
-    guard let scalar = text.unicodeScalars.first else { return }
-    if asciiPlacementSafe, scalar.value >= 0x20, scalar.value <= 0x7e,
-       text.unicodeScalars.count == 1 {
-      // Printable ASCII always starts a fresh cluster after another printable
-      // ASCII scalar or an explicit terminal boundary. Keep the segmenter in
-      // lockstep for the eventual richer path without borrowing a screen.
-      guard segmenter.push(scalar) else {
-        asciiPlacementSafe = false
-        putComplex(text)
-        return
-      }
-      guard let placement = document.placeASCII(text, usingAlternate: usingAlternate,
-                                                 leftRightMargins: leftRightMargins,
-                                                 autoWrap: autoWrap, insertMode: insertMode,
-                                                 style: pen, link: currentLink,
-                                                 protected: protectedOutput) else { return }
-      clusterOwner = placement.owner
-      if !placement.appendedHistory.isEmpty {
-        for row in placement.appendedHistory { historyByteCount &+= rowStorageBytes(row) }
-        if viewAnchor != nil { viewOffset += placement.appendedHistory.count }
-        enforceHistoryLimits()
-        historyEpoch &+= 1
-      }
-      lastPrinted = text
-      lastPrintedStyle = pen
-      lastPrintedLink = currentLink
-      lastPrintedFlags = protectedOutput ? 2 : 0
-      changed()
-      return
-    }
-    asciiPlacementSafe = false
-    putComplex(text)
-  }
-  private func putComplex(_ text: String) {
-    var s = screen
-    guard let scalar = text.unicodeScalars.first else { return }
+  private func put(_ scalar: Unicode.Scalar) {
     switch SwiftUnicode.category(of: scalar) {
     case .control, .cr, .lf: return
     default: break
     }
-    let startsCluster = segmenter.push(scalar)
-    if !startsCluster, let owner = clusterOwner, owner.row == s.cursorRow,
-       s.rows[owner.row].cells.indices.contains(owner.column) {
-      let cell = s.rows[owner.row].cells[owner.column]
-      if cell.text.unicodeScalars.count + text.unicodeScalars.count > 64 {
-        s.rows[owner.row].cells[owner.column].flags |= 4
-      } else {
-        s.rows[owner.row].cells[owner.column].text.append(text)
-        let combined = s.rows[owner.row].cells[owner.column].text
-        let nominal = min(2, max(1, SwiftUnicode.cellWidth(of: combined)))
-        let oldWidth = cell.kind == 2 ? 2 : 1
-        let right = writeBounds(owner.column).right
-        if nominal > oldWidth && owner.column + nominal > right + 1 && autoWrap {
-          document.erase(&s, row: owner.row, columns: owner.column..<(owner.column + oldWidth), style: cell.style.erased())
-          if writeBounds(owner.column).left == 0 && right == columns - 1 {
-            s.rows[owner.row].cells[owner.column].kind = 4
-          }
-          s.cursorRow = owner.row; s.cursorColumn = owner.column; s.pendingWrap = true
-          wrap(&s)
-          let row = s.cursorRow, column = s.cursorColumn
-          let newRight = writeBounds(column).right
-          let occupied = min(nominal, newRight + 1 - column)
-          document.erase(&s, row: row, columns: column..<(column + occupied), style: cell.style.erased())
-          s.rows[row].cells[column] = SwiftCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1, style: cell.style, link: cell.link, flags: cell.flags | (nominal > occupied ? 1 : 0), protected: cell.protected)
-          if nominal == 2 && occupied == 2 { s.rows[row].cells[column + 1] = SwiftCell(text: "", kind: 3, style: cell.style, link: cell.link, flags: cell.flags, protected: cell.protected) }
-          clusterOwner = (row, column)
-          let reachesPastRight = column + occupied > newRight
-          s.cursorColumn = min(newRight, column + occupied); s.pendingWrap = reachesPastRight && autoWrap
-        } else {
-          let occupied = min(nominal, right + 1 - owner.column)
-          if occupied > oldWidth && insertMode {
-            let margins = horizontalMargins
-            if (margins.left...margins.right).contains(owner.column) {
-              document.shift(&s, row: owner.row, column: owner.column + oldWidth, right: margins.right,
-                             count: occupied - oldWidth, inserting: true, eraseStyle: cell.style.erased())
-            }
-          }
-          document.erase(&s, row: owner.row, columns: owner.column..<(owner.column + max(oldWidth, occupied)), style: cell.style.erased())
-          s.rows[owner.row].cells[owner.column] = SwiftCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1, style: cell.style, link: cell.link, flags: cell.flags | (nominal > occupied ? 1 : 0), protected: cell.protected)
-          if nominal == 2 && occupied == 2 { s.rows[owner.row].cells[owner.column + 1] = SwiftCell(text: "", kind: 3, style: cell.style, link: cell.link, flags: cell.flags, protected: cell.protected) }
-          let reachesPastRight = owner.column + occupied > right
-          s.cursorRow = owner.row; s.cursorColumn = min(right, owner.column + occupied); s.pendingWrap = reachesPastRight && autoWrap
-        }
-        lastPrinted = combined
-      }
-      screen = s; changed(); return
+    let effect = document.print(
+      scalar, startsCluster: segmenter.push(scalar), usingAlternate: usingAlternate,
+      leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
+      attributes: TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput))
+    if effect.resetSegmenter { resetClusterBoundary(); return }
+    if !effect.appendedHistory.isEmpty {
+      for row in effect.appendedHistory { historyByteCount &+= rowStorageBytes(row) }
+      if viewAnchor != nil { viewOffset += effect.appendedHistory.count }
+      enforceHistoryLimits()
+      historyEpoch &+= 1
     }
-    clusterOwner = nil
-    let measuredWidth = SwiftUnicode.cellWidth(of: text)
-    if measuredWidth == 0 {
-      if SwiftUnicode.isDefaultIgnorable(scalar) { resetClusterBoundary(); return }
-      if startsCluster {
-        // An orphan combining/default-ignorable scalar is a visible one-cell
-        // terminal glyph after a movement boundary.
-      } else if s.cursorColumn > 0 {
-        var attachmentColumn = s.pendingWrap ? s.cursorColumn : s.cursorColumn - 1
-        if !s.pendingWrap, s.rows[s.cursorRow].cells[attachmentColumn].kind == 0,
-           s.cursorColumn < columns { attachmentColumn = s.cursorColumn }
-        let owner = document.repairedCellOwner(in: s.rows[s.cursorRow], at: attachmentColumn)
-        let scalarCount = s.rows[s.cursorRow].cells[owner].text.unicodeScalars.count
-        if cappedCluster || scalarCount + text.unicodeScalars.count > 64 {
-          cappedCluster = true
-          cappedClusterJoinsNextPictograph = cappedClusterJoinsNextPictograph || text.unicodeScalars.contains { $0.value == 0x200d }
-          s.rows[s.cursorRow].cells[owner].flags |= 4
-        } else {
-          s.rows[s.cursorRow].cells[owner].text.append(text)
-        }
-      }
-      if !startsCluster { screen = s; changed(); return }
+    if let printed = effect.lastPrinted {
+      lastPrinted = printed
+      let attributes = effect.repeatAttributes ?? TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)
+      lastPrintedStyle = attributes.style
+      lastPrintedLink = attributes.link
+      lastPrintedFlags = attributes.protected ? 2 : 0
     }
-    let width = min(2, max(1, measuredWidth))
-    cappedCluster = false
-    cappedClusterJoinsNextPictograph = false
-    if s.pendingWrap && autoWrap { wrap(&s) }
-    let bounds = writeBounds(s.cursorColumn)
-    if width == 2 && s.cursorColumn + 2 > bounds.right + 1 && bounds.right > bounds.left && autoWrap {
-      document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<(s.cursorColumn + 1), style: eraseStyle())
-      if bounds.left == 0 && bounds.right == columns - 1 { s.rows[s.cursorRow].cells[s.cursorColumn].kind = 4 }
-      wrap(&s)
-    }
-    guard s.cursorRow < s.rows.count, s.cursorColumn < columns else { return }
-    let right = writeBounds(s.cursorColumn).right
-    let occupied = min(width, right + 1 - s.cursorColumn)
-    if occupied <= 0 { return }
-    if insertMode {
-      let margins = horizontalMargins
-      if (margins.left...margins.right).contains(s.cursorColumn) {
-        document.shift(&s, row: s.cursorRow, column: s.cursorColumn, right: margins.right,
-                       count: occupied, inserting: true, eraseStyle: eraseStyle())
-      }
-    }
-    document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<(s.cursorColumn + occupied), style: eraseStyle())
-    let truncatedWide = width == 2 && occupied < width
-    let placedColumn = s.cursorColumn
-    s.rows[s.cursorRow].cells[s.cursorColumn] = SwiftCell(text: text, kind: width == 2 && occupied == 2 ? 2 : 1, style: pen, link: currentLink, flags: (protectedOutput ? 2 : 0) | (truncatedWide ? 1 : 0), protected: protectedOutput)
-    clusterOwner = (s.cursorRow, placedColumn)
-    lastPrinted = text
-    lastPrintedStyle = pen
-    lastPrintedLink = currentLink
-    lastPrintedFlags = protectedOutput ? 2 : 0
-    if width == 2 && occupied == 2 { s.rows[s.cursorRow].cells[s.cursorColumn + 1] = SwiftCell(text: "", kind: 3, style: pen, link: currentLink, flags: protectedOutput ? 2 : 0, protected: protectedOutput) }
-    let reachesPastRight = s.cursorColumn + occupied > right
-    s.cursorColumn = min(right, s.cursorColumn + occupied)
-    s.pendingWrap = reachesPastRight && autoWrap
-    screen = s; changed()
+    changed()
   }
-  private func wrap(_ s: inout SwiftScreen) {
-    let old = s.cursorRow
-    s.rows[old].softWrapped = horizontalMargins.left == 0 && horizontalMargins.right == columns - 1
-    index(&s, reverse: false, allowHistory: true)
-    s.cursorColumn = writeBounds(s.cursorColumn).left
-    s.pendingWrap = false
-  }
+
   private func index(_ s: inout SwiftScreen, reverse: Bool, allowHistory: Bool) {
     let vertical = (s.topMargin, s.bottomMargin), horizontal = horizontalMargins
     let inside = (horizontal.left...horizontal.right).contains(s.cursorColumn)

@@ -301,6 +301,19 @@ import Foundation
     precondition(expected.isEqual(stable(snapshot(terminal))))
   }
 
+  static func repRetainsOriginalClusterAttributesAfterExtension() {
+    let terminal = make(); defer { terminal_destroy(terminal) }
+    feed(terminal, "\u{1b}]8;;https://one.example\u{1b}\\\u{1b}[31m\u{1b}[1\"qA\u{1b}[32m\u{301}\u{1b}[2b")
+    let value = snapshot(terminal)
+    for column in 0...2 {
+      let value = cell(value, 0, column)
+      precondition(value["text"] as? String == "A\u{301}")
+      precondition((value["style"] as! [String: Any])["foreground"] as? [String: Int] == ["Indexed": 1])
+      precondition(value["link"] as? String == "https://one.example")
+      precondition(((value["flags"] as! Int) & 2) != 0)
+    }
+  }
+
   static func main() {
     deferredWrapLFAndUTF8(); renditionSaveEraseAndOverflow(); alternateAndStringSafety(); cursorAppearanceAndClippedWideRepair()
     decCharsetPartitionsAndHistoryBounds(); utf8EOFEditingAndResetSemantics(); displayClusterAndMalformedOSC()
@@ -311,6 +324,7 @@ import Foundation
     physicalKeyMetadataUsesABI()
     snapshotsAreImmutableAndIngressIsPartitionIndependent()
     randomPartitionsRetainInvariants()
+    repRetainsOriginalClusterAttributesAfterExtension()
     print("PASS Terminal semantic regression oracle: wrap, UTF-8, rendition, alternates, strings, cursor, wide repair")
   }
 }
