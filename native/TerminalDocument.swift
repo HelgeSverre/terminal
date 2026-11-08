@@ -70,12 +70,20 @@ struct TerminalRow: Equatable {
     self.storage = TerminalRowStorage(slots: slots, logicalCapacity: cells.capacity, detachCapacity: Self.blankLogicalCapacity(columns: cells.count))
     for (index, cell) in cells.enumerated() { setCell(cell, at: index) }
   }
+  private init(id: UInt64, storage: TerminalRowStorage) {
+    self.id = id; self.revision = 0; self.softWrapped = false; self.storage = storage
+  }
   init(columns: Int, logicalCellCapacity: Int? = nil) {
     id = 0; revision = 0
     let capacity = logicalCellCapacity ?? Self.blankLogicalCapacity(columns: columns)
     // Fresh blank rows are already calibrated by their document geometry;
     // reuse that shape for a later COW detach rather than calibrating again.
     storage = TerminalRowStorage(slots: Array(repeating: TerminalRowSlot(), count: columns), logicalCapacity: capacity, detachCapacity: capacity)
+  }
+  static func erased(columns: Int, logicalCellCapacity: Int, style: TerminalStyle, id: UInt64 = 0) -> TerminalRow {
+    let slots = Array(repeating: TerminalRowSlot(style: style.erased()), count: columns)
+    return TerminalRow(id: id, storage: TerminalRowStorage(slots: slots,
+                       logicalCapacity: logicalCellCapacity, detachCapacity: logicalCellCapacity))
   }
 
   // Read-only rich projection for publication, search, and compatibility at
@@ -133,7 +141,7 @@ struct TerminalRow: Equatable {
     }
     storage.slots[index] = slot
     if payload.text != nil || payload.link != nil { storage.payloads[index] = payload }
-    else { storage.payloads.removeValue(forKey: index) }
+    else if !storage.payloads.isEmpty { storage.payloads.removeValue(forKey: index) }
   }
 
   mutating func setScalar(_ scalar: Unicode.Scalar, at index: Int, kind: UInt8,
@@ -142,12 +150,12 @@ struct TerminalRow: Equatable {
     storage.slots[index] = TerminalRowSlot(scalar: scalar.value, style: style, hasScalar: true,
                                    kind: kind, flags: flags, protected: protected)
     if let link { storage.payloads[index] = TerminalRowPayload(text: nil, link: link) }
-    else { storage.payloads.removeValue(forKey: index) }
+    else if !storage.payloads.isEmpty { storage.payloads.removeValue(forKey: index) }
   }
 
   mutating func erase(at index: Int, style: TerminalStyle = TerminalStyle()) {
     ensureUniqueForCellEdit(); storage.slots[index] = TerminalRowSlot(style: style.erased())
-    storage.payloads.removeValue(forKey: index)
+    if !storage.payloads.isEmpty { storage.payloads.removeValue(forKey: index) }
   }
   mutating func copyCell(from source: TerminalRow, at sourceIndex: Int, to index: Int) {
     ensureUniqueForCellEdit(); storage.slots[index] = source.storage.slots[sourceIndex]
@@ -210,6 +218,26 @@ struct TerminalRow: Equatable {
         storage.slots[destination] = storage.slots[destination + amount]
         if let payload = storage.payloads[destination + amount] { storage.payloads[destination] = payload }
         else { storage.payloads.removeValue(forKey: destination) }
+      }
+    }
+  }
+  mutating func replaceASCII<C: Collection>(at column: Int, scalars: C, style: TerminalStyle,
+                                             link: String?, protected: Bool) where C.Element == Unicode.Scalar {
+    let count = scalars.count
+    guard count > 0, column >= 0, column + count <= storage.slots.count else { return }
+    ensureUniqueForCellEdit()
+    let range = column..<(column + count)
+    if let link {
+      for index in range { storage.payloads[index] = TerminalRowPayload(text: nil, link: link) }
+    } else if !storage.payloads.isEmpty {
+      for index in range { storage.payloads.removeValue(forKey: index) }
+    }
+    storage.slots.withUnsafeMutableBufferPointer { slots in
+      var index = column
+      for scalar in scalars {
+        slots[index] = TerminalRowSlot(scalar: scalar.value, style: style, hasScalar: true,
+                                       kind: 1, flags: protected ? 2 : 0, protected: protected)
+        index += 1
       }
     }
   }
@@ -346,9 +374,8 @@ struct TerminalDocument {
     var row = TerminalRow(columns: columns, logicalCellCapacity: blankCellCapacity); row.id = nextRowID; return row
   }
   mutating func eraseRow(_ style: TerminalStyle) -> TerminalRow {
-    var row = blankRow()
-    for column in 0..<columns { row.erase(at: column, style: style) }
-    return row
+    defer { nextRowID &+= 1 }
+    return TerminalRow.erased(columns: columns, logicalCellCapacity: blankCellCapacity, style: style, id: nextRowID)
   }
   mutating func setSize(columns: Int, rows: Int) {
     if self.columns != columns { blankCellCapacity = TerminalRow.blankLogicalCapacity(columns: columns) }
@@ -411,9 +438,7 @@ struct TerminalDocument {
       return nil
     }
     let removed = screen.rows.remove(at: up ? top : bottom)
-    var replacement = TerminalRow(columns: columns, logicalCellCapacity: blankCellCapacity)
-    replacement.id = nextRowID
-    for column in 0..<columns { replacement.erase(at: column, style: eraseStyle) }
+    let replacement = TerminalRow.erased(columns: columns, logicalCellCapacity: blankCellCapacity, style: eraseStyle, id: nextRowID)
     nextRowID &+= 1
     screen.rows.insert(replacement, at: up ? bottom : top)
     return up && top == 0 && bottom == screen.rows.count - 1 ? removed : nil
@@ -603,8 +628,7 @@ struct TerminalDocument {
     }
     func scrollUpFullWidth() {
       let removed = screen.rows.remove(at: screen.topMargin)
-      var replacement = TerminalRow(columns: columns, logicalCellCapacity: blankCellCapacity)
-      for column in 0..<columns { replacement.erase(at: column, style: attributes.style) }
+      let replacement = TerminalRow.erased(columns: columns, logicalCellCapacity: blankCellCapacity, style: attributes.style)
       screen.rows.insert(replacement, at: screen.bottomMargin)
       replacementRows.append(screen.bottomMargin)
       if retainHistory && screen.topMargin == 0 && screen.bottomMargin == screen.rows.count - 1 {
@@ -785,13 +809,8 @@ struct TerminalDocument {
     let prototype = TerminalCell(text: "", kind: 1, style: attributes.style, link: attributes.link,
                                  flags: attributes.protected ? 2 : 0, protected: attributes.protected)
     guard preparePrintedReplacement(in: &row, at: column, count: count, like: prototype) else { return }
-    var destination = column
-    for scalar in scalars {
-      row.setScalar(scalar, at: destination, kind: 1, style: attributes.style,
-                    link: attributes.link, flags: attributes.protected ? 2 : 0,
-                    protected: attributes.protected)
-      destination += 1
-    }
+    row.replaceASCII(at: column, scalars: scalars, style: attributes.style,
+                     link: attributes.link, protected: attributes.protected)
     row.revision &+= UInt64(count)
   }
 
