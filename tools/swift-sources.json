@@ -54,6 +54,7 @@
     "TerminalSnapshot.swift", "SwiftTerminalCore.swift"
   ],
   "tests": {
+    "metal_upload_probe": ["tests/MetalUploadProbe.swift"],
     "terminal_palette": ["TerminalPalette.swift", "tests/TerminalPaletteTests.swift"],
     "terminal_graphics_oracle": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
