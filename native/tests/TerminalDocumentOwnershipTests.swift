@@ -339,6 +339,110 @@ import Foundation
     precondition(alternateSnapshot.rows[0].cells[0].text.isEmpty)
   }
 
+  static func asciiSpanMatchesScalarTransactions() {
+    let attributes = TerminalDocument.PrintAttributes(
+      style: TerminalStyle(foreground: 0x0102_0304, background: 0x0506_0708, flags: 1),
+      link: "https://example.test/ascii-span", protected: true)
+    func compare(_ values: [Unicode.Scalar], columns: Int = 4, rows: Int = 1,
+                 leftRightMargins: Bool = false, autoWrap: Bool = true, insertMode: Bool = false,
+                 configure: (inout TerminalDocument) -> Void = { _ in }) -> TerminalDocument.PrintBatchEffect {
+      var scalar = TerminalDocument(columns: columns, rows: rows); configure(&scalar)
+      var batch = TerminalDocument(columns: columns, rows: rows); configure(&batch)
+      var scalarMutations = 0
+      for value in values {
+        if scalar.print(value, usingAlternate: false, leftRightMargins: leftRightMargins,
+                        autoWrap: autoWrap, insertMode: insertMode, attributes: attributes) != nil {
+          scalarMutations += 1
+        }
+      }
+      var offset = 0, batchMutations = 0
+      var last = TerminalDocument.PrintBatchEffect(
+        effect: .init(appendedHistory: [], lastPrinted: nil, repeatAttributes: nil),
+        consumedScalarCount: 0, mutationCount: 0)
+      while offset < values.count {
+        last = batch.print(values[offset...], usingAlternate: false, leftRightMargins: leftRightMargins,
+                           autoWrap: autoWrap, insertMode: insertMode, attributes: attributes)
+        precondition(last.consumedScalarCount > 0)
+        offset += last.consumedScalarCount; batchMutations += last.mutationCount
+      }
+      precondition(batch.primary == scalar.primary && batch.alternate == scalar.alternate && batch.history == scalar.history)
+      precondition(batchMutations == scalarMutations)
+      precondition(batch.hasValidInvariants(batch.primary))
+      return last
+    }
+
+    let ordinary = compare(Array("ABCD".unicodeScalars))
+    precondition(ordinary.effect.lastPrinted == "D" && ordinary.effect.repeatAttributes?.link == attributes.link)
+    // Prepend makes the first ASCII scalar a continuation; it must go through
+    // the scalar transaction before a later fresh ASCII may be admitted.
+    _ = compare(Array("\u{600}ABC".unicodeScalars))
+    // The final ASCII owns a following combining mark after the span seeds
+    // segmenter/open-cluster state from that final scalar.
+    _ = compare(Array("ABC\u{301}".unicodeScalars))
+    _ = compare(Array("ABCDEFG".unicodeScalars), autoWrap: false)
+    _ = compare(Array("ABCD".unicodeScalars), insertMode: true)
+    _ = compare(Array("ABC".unicodeScalars), columns: 5, leftRightMargins: true,
+                configure: { document in document.primary.leftMargin = 1; document.primary.rightMargin = 3; document.primary.cursorColumn = 1 })
+
+    // The first ordinary ASCII replacement lands on a continuation, then the
+    // admitted B/C span crosses the lead of a second rich pair. Both external
+    // surviving halves must clear with the replacement's metadata, while a
+    // retained screen retains its original rich pairs unchanged.
+    let old = TerminalDocument.PrintAttributes(
+      style: TerminalStyle(foreground: 9, background: 0x1111_1111, flags: 4),
+      link: "https://example.test/ascii-span-old", protected: false)
+    func prepopulate(_ document: inout TerminalDocument) {
+      for text in ["猫", "X", "界"] {
+        for scalar in text.unicodeScalars {
+          _ = document.print(scalar, usingAlternate: false, leftRightMargins: false,
+                             autoWrap: true, insertMode: false, attributes: old)
+        }
+        document.resetPrintCluster()
+      }
+      document.primary.cursorColumn = 1; document.primary.pendingWrap = false
+    }
+    var scalarCrossing = TerminalDocument(columns: 6, rows: 1); prepopulate(&scalarCrossing)
+    var spanCrossing = TerminalDocument(columns: 6, rows: 1); prepopulate(&spanCrossing)
+    let retainedCrossing = spanCrossing.primary
+    for scalar in "ABC".unicodeScalars {
+      _ = scalarCrossing.print(scalar, usingAlternate: false, leftRightMargins: false,
+                               autoWrap: true, insertMode: false, attributes: attributes)
+    }
+    let crossingEffect = spanCrossing.print(Array("ABC".unicodeScalars), usingAlternate: false,
+                                             leftRightMargins: false, autoWrap: true,
+                                             insertMode: false, attributes: attributes)
+    precondition(crossingEffect.consumedScalarCount == 3 && crossingEffect.mutationCount == 3)
+    precondition(spanCrossing.primary == scalarCrossing.primary)
+    let crossing = spanCrossing.primary.rows[0]
+    precondition(crossing.cells[0].kind == 0 && crossing.cells[0].style == attributes.style.erased())
+    for (column, text) in [(1, "A"), (2, "B"), (3, "C")] {
+      precondition(crossing.cells[column].text == text && crossing.cells[column].kind == 1 &&
+                   crossing.cells[column].style == attributes.style && crossing.cells[column].link == attributes.link &&
+                   crossing.cells[column].protected && crossing.cells[column].flags & 2 != 0)
+    }
+    precondition(crossing.cells[4].kind == 0 && crossing.cells[4].style == attributes.style.erased())
+    precondition(retainedCrossing.rows[0].cells[0].text == "猫" && retainedCrossing.rows[0].cells[3].text == "界")
+    precondition(spanCrossing.hasValidInvariants(spanCrossing.primary))
+
+    // The alternate screen also takes the generic collection transaction;
+    // retain it before an ASCII span to make its COW contract explicit.
+    let retainedAlternate = spanCrossing.alternate
+    _ = spanCrossing.print(Array("XYZ".unicodeScalars), usingAlternate: true,
+                           leftRightMargins: false, autoWrap: true, insertMode: false,
+                           attributes: attributes)
+    precondition(retainedAlternate.rows[0].cells.allSatisfy { $0.kind == 0 })
+
+    // A span may fill a row, but the following scalar still owns the wrap and
+    // must yield its newly retained history row before further admission.
+    var history = TerminalDocument(columns: 2, rows: 1)
+    let yielded = history.print(Array("ABCD".unicodeScalars), usingAlternate: false,
+                                leftRightMargins: false, autoWrap: true, insertMode: false,
+                                attributes: attributes)
+    precondition(yielded.consumedScalarCount == 3 && yielded.mutationCount == 3)
+    precondition(yielded.effect.appendedHistory.count == 1 && history.history.count == 1)
+    precondition(history.history[0].cells[0].text == "A" && history.history[0].cells[1].text == "B")
+  }
+
   static func main() {
     let old = retainedSnapshot()
     populatedSnapshotsRemainImmutable()
@@ -346,6 +450,7 @@ import Foundation
     printedReplacementKeepsRichPairBoundaries()
     documentOwnsSegmentationAndOrphans()
     batchWriterMatchesScalarTransactions()
+    asciiSpanMatchesScalarTransactions()
     // `document` has been destroyed. Retention is real value/COW retention,
     // not a borrowed mutable grid whose lifetime happens to extend this call.
     precondition(old.rows[0].cells[0].text.isEmpty)

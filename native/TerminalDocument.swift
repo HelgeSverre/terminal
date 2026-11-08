@@ -172,7 +172,10 @@ struct TerminalDocument {
     var replacements: [Int] = []
     var effect = PrintEffect(appendedHistory: [], lastPrinted: nil, repeatAttributes: nil)
     var consumed = 0, mutations = 0
-    for scalar in scalars {
+    var index = scalars.startIndex
+    while index != scalars.endIndex {
+      let scalar = scalars[index]
+      index = scalars.index(after: index)
       consumed += 1
       let category = category(for: scalar)
       switch category { case .control, .cr, .lf: continue; default: break }
@@ -196,6 +199,56 @@ struct TerminalDocument {
         effect.appendedHistory = appended
         return PrintBatchEffect(effect: effect, consumedScalarCount: consumed, mutationCount: mutations)
       }
+
+      // Admission remains deliberately narrow: the first scalar has already
+      // established grapheme ownership through the ordinary transaction.
+      // Subsequent printable ASCII scalars each begin a fresh cluster, so a
+      // bounded same-row run can share one row replacement without altering
+      // wrapping, insert, history or identity boundaries.
+      guard category == .other, scalar.value >= 0x20, scalar.value <= 0x7e,
+            startsCluster, !insertMode, !screen.pendingWrap,
+            screen.rows.indices.contains(screen.cursorRow),
+            screen.rows[screen.cursorRow].cells.indices.contains(screen.cursorColumn) else { continue }
+      let horizontal = leftRightMargins
+        ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
+      let bounds = screen.cursorColumn <= horizontal.1 ? horizontal : (0, columns - 1)
+      let capacity = autoWrap ? bounds.1 - screen.cursorColumn + 1
+                              : bounds.1 - screen.cursorColumn
+      guard capacity > 0, index != scalars.endIndex else { continue }
+
+      var end = index
+      var count = 0
+      var last: Unicode.Scalar?
+      while end != scalars.endIndex, count < capacity {
+        let candidate = scalars[end]
+        guard candidate.value >= 0x20, candidate.value <= 0x7e else { break }
+        last = candidate
+        count += 1
+        end = scalars.index(after: end)
+      }
+      guard count > 0, let last else { continue }
+
+      // Segmenter state after a run of plain ASCII depends only on its final
+      // scalar. Work on a copy so an unexpected continuation retains the
+      // ordinary scalar path rather than changing state prematurely.
+      var finalSegmenter = state.segmenter
+      guard finalSegmenter.push(last, category: .other) else { continue }
+      Self.replacePrintedASCII(in: &screen.rows[screen.cursorRow], at: screen.cursorColumn,
+                               scalars: scalars[index..<end], count: count,
+                               attributes: attributes)
+      state.segmenter = finalSegmenter
+      let firstColumn = screen.cursorColumn
+      state.openCluster = (screen.cursorRow, firstColumn + count - 1)
+      state.retainedScalars = 1
+      state.capped = false
+      effect.lastPrinted = String(last)
+      effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link,
+                                                protected: attributes.protected)
+      screen.cursorColumn = min(bounds.1, firstColumn + count)
+      screen.pendingWrap = firstColumn + count > bounds.1 && autoWrap
+      consumed += count
+      mutations += count
+      index = end
     }
     effect.appendedHistory = appended
     return PrintBatchEffect(effect: effect, consumedScalarCount: consumed, mutationCount: mutations)
@@ -380,18 +433,7 @@ struct TerminalDocument {
     guard row.cells.indices.contains(column) else { return }
     let width = lead.kind == 2 ? 2 : 1
     guard column + width <= row.cells.count else { return }
-    let end = column + width
-    let eraseStyle = lead.style.erased()
-
-    // A replacement can cut the right half of a pair to its left, and/or the
-    // left half of a pair immediately beyond its span.  These are the only
-    // pre-existing pair cells outside the new lead/continuation ownership.
-    let clearsLeft = column > 0 && row.cells[column].kind == 3 &&
-      row.cells[column - 1].kind == 2
-    let clearsRight = end < row.cells.count && row.cells[end - 1].kind == 2 &&
-      row.cells[end].kind == 3
-    if clearsLeft { row.cells[column - 1] = .erased(eraseStyle) }
-    if clearsRight { row.cells[end] = .erased(eraseStyle) }
+    guard preparePrintedReplacement(in: &row, at: column, count: width, like: lead) else { return }
 
     row.cells[column] = lead
     if width == 2 {
@@ -400,6 +442,41 @@ struct TerminalDocument {
                                              protected: lead.protected)
     }
     row.revision &+= 1
+  }
+
+  private static func replacePrintedASCII<C: Collection>(in row: inout TerminalRow, at column: Int,
+                                                          scalars: C, count: Int,
+                                                          attributes: borrowing PrintAttributes)
+  where C.Element == Unicode.Scalar {
+    guard count > 0, row.cells.indices.contains(column), column + count <= row.cells.count else { return }
+    let prototype = TerminalCell(text: "", kind: 1, style: attributes.style, link: attributes.link,
+                                 flags: attributes.protected ? 2 : 0, protected: attributes.protected)
+    guard preparePrintedReplacement(in: &row, at: column, count: count, like: prototype) else { return }
+    row.cells.withUnsafeMutableBufferPointer { cells in
+      var destination = column
+      for scalar in scalars {
+        cells[destination] = TerminalCell(text: String(scalar), kind: 1, style: attributes.style,
+                                          link: attributes.link, flags: attributes.protected ? 2 : 0,
+                                          protected: attributes.protected)
+        destination += 1
+      }
+    }
+    row.revision &+= UInt64(count)
+  }
+
+  // All print-time replacements share this boundary owner. It clears only
+  // pair halves that survive outside the newly owned span; the caller writes
+  // every cell inside that span directly.
+  private static func preparePrintedReplacement(in row: inout TerminalRow, at column: Int,
+                                                count: Int, like lead: borrowing TerminalCell) -> Bool {
+    guard count > 0, row.cells.indices.contains(column), column + count <= row.cells.count else { return false }
+    let end = column + count
+    let eraseStyle = lead.style.erased()
+    let clearsLeft = column > 0 && row.cells[column].kind == 3 && row.cells[column - 1].kind == 2
+    let clearsRight = end < row.cells.count && row.cells[end - 1].kind == 2 && row.cells[end].kind == 3
+    if clearsLeft { row.cells[column - 1] = .erased(eraseStyle) }
+    if clearsRight { row.cells[end] = .erased(eraseStyle) }
+    return true
   }
 
   func hasValidInvariants(_ screen: TerminalScreen) -> Bool {
