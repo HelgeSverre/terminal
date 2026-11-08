@@ -130,6 +130,7 @@ swift-host-build-test: build
 @test: lint build
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     ruby tools/native_smoke_test.rb
+    ruby tools/profile_terminal_test.rb
     xcrun clang -Wall -Wextra -Werror -O2 native/benchmarks/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
     target/native/terminal-bench-clock-test
     ruby tools/close_smoke_test.rb
@@ -214,6 +215,11 @@ benchmark-core:
 [group('bench')]
 @benchmark-apps rust_app swift_app output="reports/app-comparison":
     ruby tools/compare_terminal_apps.rb "$3" "$1" "$2"
+
+# Profile one supplied app through the fixed visible PTY workload and owned sample process.
+[group('bench')]
+@profile-app app output:
+    ruby tools/profile_terminal.rb "$1" "$2"
 
 # Compare PTY throughput: just benchmark terminal|ghostty|kitty [new-report-directory]
 [group('bench')]
