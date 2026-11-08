@@ -1,6 +1,7 @@
 import Foundation
 import Metal
 import simd
+import Darwin
 
 // This is the only owner of font-raster results and glyph GPU allocations.
 // TerminalRendering intentionally sees leases only; it cannot reset a page or
@@ -102,6 +103,21 @@ final class GlyphResidency: @unchecked Sendable {
     self.worker = worker
     byteBudget = budget
     self.onReady = onReady
+  }
+
+  // Metal reports a texture's placement requirement, not necessarily the
+  // allocation granularity of the heap that will contain it. Heaps are also
+  // rounded to a VM page on this target, so charge the maximum granularity
+  // before creating one. This value matches MTLHeap.size for our descriptors.
+  static func heapCapacity(device: MTLDevice, descriptor: MTLTextureDescriptor) -> Int {
+    let requirement = device.heapTextureSizeAndAlign(descriptor: descriptor)
+    guard requirement.size > 0, requirement.align > 0 else { return 0 }
+    let granularity = max(requirement.align, Int(getpagesize()))
+    let remainder = requirement.size % granularity
+    let capacity = remainder == 0
+      ? requirement.size
+      : requirement.size + (granularity - remainder)
+    return capacity
   }
 
   func beginFrame(surface: UUID? = nil) {
@@ -368,15 +384,14 @@ final class GlyphResidency: @unchecked Sendable {
   // The legacy bridge uses the same heap admission path as native pages. The
   // actual heap capacity is charged before its texture exists.
   func makeLegacyTexture(_ descriptor: MTLTextureDescriptor) -> LegacyTexture? {
-    let requirement = device.heapTextureSizeAndAlign(descriptor: descriptor)
-    let estimate = Int(requirement.size)
-    guard estimate > 0, residentBytes + reservations + estimate <= byteBudget else {
+    let capacity = Self.heapCapacity(device: device, descriptor: descriptor)
+    guard capacity > 0, residentBytes + reservations + capacity <= byteBudget else {
       deniedAllocations &+= 1
       return nil
     }
     let heapDescriptor = MTLHeapDescriptor()
     heapDescriptor.storageMode = descriptor.storageMode
-    heapDescriptor.size = requirement.size
+    heapDescriptor.size = capacity
     guard let heap = device.makeHeap(descriptor: heapDescriptor) else { return nil }
     let actual = Int(heap.size)
     guard residentBytes + reservations + actual <= byteBudget,
@@ -449,8 +464,7 @@ final class GlyphResidency: @unchecked Sendable {
                                                                 height: kind.side, mipmapped: false)
     descriptor.storageMode = .shared
     descriptor.usage = .shaderRead
-    let sizeAndAlign = device.heapTextureSizeAndAlign(descriptor: descriptor)
-    let capacity = Int(sizeAndAlign.size)
+    let capacity = Self.heapCapacity(device: device, descriptor: descriptor)
     // Account capacity before heap allocation.  A failed allocation never
     // leaves an optimistic budget charge behind.
     guard capacity > 0, residentBytes + reservations + capacity <= byteBudget else {
@@ -459,7 +473,7 @@ final class GlyphResidency: @unchecked Sendable {
     }
     let heapDescriptor = MTLHeapDescriptor()
     heapDescriptor.storageMode = .shared
-    heapDescriptor.size = sizeAndAlign.size
+    heapDescriptor.size = capacity
     guard let heap = device.makeHeap(descriptor: heapDescriptor) else { return nil }
     let actualCapacity = Int(heap.size)
     guard residentBytes + reservations + actualCapacity <= byteBudget,

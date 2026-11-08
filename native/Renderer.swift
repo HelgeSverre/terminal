@@ -215,12 +215,12 @@ final class TerminalRendering: @unchecked Sendable {
     let legacyDescriptor = MTLTextureDescriptor.texture2DDescriptor(
       pixelFormat: .rgba8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
     legacyDescriptor.storageMode = .shared; legacyDescriptor.usage = .shaderRead
-    let maskDescriptor = MTLTextureDescriptor.texture2DDescriptor(
-      pixelFormat: .r8Unorm, width: 1024, height: 1024, mipmapped: false)
-    maskDescriptor.storageMode = .shared; maskDescriptor.usage = .shaderRead
+    // The denial smoke leaves room for exactly the legacy solid texel atlas
+    // that keeps allocation-free outlines visible.  It deliberately leaves
+    // no native mask/direct heap capacity, so its result is a real global
+    // budget denial rather than a legacy-atlas initialization failure.
     let sharedBudget = fallbackBudgetSmoke
-      ? Int(gpu.heapTextureSizeAndAlign(descriptor: legacyDescriptor).size
-        + gpu.heapTextureSizeAndAlign(descriptor: maskDescriptor).size)
+      ? GlyphResidency.heapCapacity(device: gpu, descriptor: legacyDescriptor)
       : 64 * 1024 * 1024
     glyphResidency = GlyphResidency(device: gpu, owner: executor, budget: sharedBudget) {}
     font = TerminalFont.core(size: 14)
@@ -925,6 +925,10 @@ final class RendererMetrics: @unchecked Sendable {
   private static var peakGlyphFallbackCount: UInt64 = 0
   private static var droppedQuadBuffers: UInt64 = 0
   private static var peakAtlasPages: UInt64 = 0
+  // A submission is recorded before command.commit().  Native diagnostics that
+  // install a marked overlay need the complementary completion sequence to
+  // distinguish that overlay's render from the preceding PTY snapshot.
+  private static var completedCount: UInt64 = 0
   private static var preparation: [Double] = []
   private static var gpu: [Double] = []
   private static var errors = 0
@@ -963,6 +967,7 @@ final class RendererMetrics: @unchecked Sendable {
   }
   static func completed(gpuMs: Double, error: Bool) {
     lock.lock()
+    completedCount &+= 1
     if gpuMs > 0 {
       if gpu.count == 128 { gpu.removeFirst() }
       gpu.append(gpuMs)
@@ -1050,6 +1055,7 @@ final class RendererMetrics: @unchecked Sendable {
     defer { lock.unlock() }
     return [
       "submissions": count, "preparation_ms": preparation, "gpu_command_ms": gpu,
+      "completed_submissions": completedCount,
       "command_errors": errors, "font": TerminalFont.family, "attachment": "BGRA8Unorm_sRGB",
       "glyph_atlas": "premultiplied linear RGBA8Unorm",
       "mismatched_drawables": mismatchedDrawables,
