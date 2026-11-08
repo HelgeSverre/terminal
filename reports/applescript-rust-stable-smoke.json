@@ -1,0 +1,261 @@
+{
+  "passed": true,
+  "failure": null,
+  "source": "/Users/helge/code/terminal/dist/release/Helge Terminal.app",
+  "source_signature": "Executable=/Users/helge/code/terminal/dist/release/Helge Terminal.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20500 size=27939 flags=0x10000(runtime) hashes=866+3 location=embedded\nSignature size=9058\nAuthority=Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=8 Nov 2026 at 05:16:51\nNotarization Ticket=stapled\nInfo.plist entries=16\nTeamIdentifier=9Z2L5FBZS3\nRuntime Version=26.2.0\nSealed Resources version=2 rules=13 files=24\nInternal requirements count=1 size=184\n",
+  "bundle_id": "no.helgesverre.terminal.automation-fixture",
+  "fixture_pid": 99654,
+  "fixture_identity": {
+    "pid": 99654,
+    "bundle_path": "/Users/helge/code/terminal-swift-experiment/target/automation-fixture/Terminal Automation Fixture.app"
+  },
+  "fixture_path": "/Users/helge/code/terminal-swift-experiment/target/automation-fixture/Terminal Automation Fixture.app",
+  "stable_fixture": true,
+  "signing_identity": "Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)",
+  "fixture_signature": "Executable=/Users/helge/code/terminal-swift-experiment/target/automation-fixture/Terminal Automation Fixture.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal.automation-fixture\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20500 size=27958 flags=0x10000(runtime) hashes=866+3 location=embedded\nSignature size=9058\nAuthority=Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=8 Nov 2026 at 09:48:29\nNotarization Ticket=stapled\nInfo.plist entries=16\nTeamIdentifier=9Z2L5FBZS3\nRuntime Version=26.2.0\nSealed Resources version=2 rules=13 files=24\nInternal requirements count=1 size=204\n",
+  "launch_mode": "direct",
+  "fixture_process": "99654 99646 R    00:00 /Users/helge/code/terminal-swift-experiment/target/automation-fixture/Terminal Automation Fixture.app/Contents/MacOS/Terminal --working-directory /tmp --execute /bin/sh -c stty raw -echo; printf \"%s\\n\" \"$$\" >> \"$TERMINAL_AUTOMATION_CHILD_PIDS\"; exec /bin/cat",
+  "automation_permission_status": 0,
+  "automation_permission_outcome": "permitted",
+  "requested_standard_consent": false,
+  "preflight_only": false,
+  "fixture_stdout_stderr": "2026-11-08 09:48:31.990 Terminal[99654:24751250] Session: Process exited (status 1); draining output\n2026-11-08 09:48:32.273 Terminal[99654:24751250] Session: Process exited (status 1); draining output\n2026-11-08 09:48:32.459 Terminal[99654:24751250] Session: Process exited (status 1); draining output\n",
+  "child_processes_recorded": [
+    99656,
+    99745,
+    99747,
+    99751,
+    99764
+  ],
+  "commands": [
+    {
+      "name": "get fixture name",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to get name",
+      "stdout": "Terminal Automation Fixture",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "get fixture id",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to get id",
+      "stdout": "no.helgesverre.terminal.automation-fixture",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "initial focus pane",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to focus pane",
+      "stdout": "no.helgesverre.terminal.pane.17FE9CE5-035A-4C06-8096-2F17460CB4C1",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "unknown pane",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to read screen from pane \"no.helgesverre.terminal.pane.missing\"",
+      "stdout": "68:128: execution error: Terminal Automation Fixture got an error: The requested terminal pane is closed or does not exist. (-1728)",
+      "exit_status": 1,
+      "timed_out": false
+    },
+    {
+      "name": "new window",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to new window",
+      "stdout": "no.helgesverre.terminal.pane.1DD59350-C01B-4470-917E-C88418D88442",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "split right",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to split right pane id \"no.helgesverre.terminal.pane.17FE9CE5-035A-4C06-8096-2F17460CB4C1\"",
+      "stdout": "no.helgesverre.terminal.pane.906B08E0-48AC-4964-9507-18FABDBB68BB",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "split below",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to split below pane id \"no.helgesverre.terminal.pane.906B08E0-48AC-4964-9507-18FABDBB68BB\"",
+      "stdout": "no.helgesverre.terminal.pane.DDDE609D-CC93-4840-8E75-CF22A06307C5",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "show settings",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to show settings",
+      "stdout": "true",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "new tab",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to new tab",
+      "stdout": "no.helgesverre.terminal.pane.E92585A4-32A2-4C6B-B209-415932787544",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "list panes",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to list panes",
+      "stdout": "no.helgesverre.terminal.pane.17FE9CE5-035A-4C06-8096-2F17460CB4C1, no.helgesverre.terminal.pane.906B08E0-48AC-4964-9507-18FABDBB68BB, no.helgesverre.terminal.pane.DDDE609D-CC93-4840-8E75-CF22A06307C5, no.helgesverre.terminal.pane.1DD59350-C01B-4470-917E-C88418D88442, no.helgesverre.terminal.pane.E92585A4-32A2-4C6B-B209-415932787544",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "focus named pane",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to focus pane pane id \"no.helgesverre.terminal.pane.17FE9CE5-035A-4C06-8096-2F17460CB4C1\"",
+      "stdout": "no.helgesverre.terminal.pane.17FE9CE5-035A-4C06-8096-2F17460CB4C1",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "reject zero read limit",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to read screen max characters 0",
+      "stdout": "68:96: execution error: Terminal Automation Fixture got an error: max characters must be between 1 and 262144. (-1700)",
+      "exit_status": 1,
+      "timed_out": false
+    },
+    {
+      "name": "reject oversized read limit",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to read screen max characters 262145",
+      "stdout": "68:101: execution error: Terminal Automation Fixture got an error: max characters must be between 1 and 262144. (-1700)",
+      "exit_status": 1,
+      "timed_out": false
+    },
+    {
+      "name": "reject invalid font size",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to configure preferences font size 7.0",
+      "stdout": "68:103: execution error: Terminal Automation Fixture got an error: Enter a font size from 8–40 pt. (-1700)",
+      "exit_status": 1,
+      "timed_out": false
+    },
+    {
+      "name": "reject invalid directory",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to configure preferences starting directory \"/does/not/exist\"",
+      "stdout": "68:126: execution error: Terminal Automation Fixture got an error: Choose an existing starting directory. (-1700)",
+      "exit_status": 1,
+      "timed_out": false
+    },
+    {
+      "name": "show settings while focused",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to show settings",
+      "stdout": "true",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "hide fixture",
+      "language": "JavaScript",
+      "source": "ObjC.import('AppKit');\nconst application = $.NSRunningApplication.runningApplicationWithProcessIdentifier(99654);\nif (application) application.hide;\n",
+      "stdout": "false",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "send text",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to send text (\"AUTOMATION_TEXT\" & return)",
+      "stdout": "no.helgesverre.terminal.pane.17FE9CE5-035A-4C06-8096-2F17460CB4C1",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "read screen",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to read screen max characters 2048",
+      "stdout": "iAUTOMATION_TEXT",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "configure preferences",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to configure preferences font size 15.0 scrollback rows 1000 option sends escape true follows tail on input false starting directory \"/tmp\"",
+      "stdout": "font size 15, scrollback rows 1000, starting directory /tmp",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "clear screen",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to clear screen",
+      "stdout": "no.helgesverre.terminal.pane.17FE9CE5-035A-4C06-8096-2F17460CB4C1",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "close tab pane",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.E92585A4-32A2-4C6B-B209-415932787544\"",
+      "stdout": "true",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "close below pane",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.DDDE609D-CC93-4840-8E75-CF22A06307C5\"",
+      "stdout": "true",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "close right pane",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.906B08E0-48AC-4964-9507-18FABDBB68BB\"",
+      "stdout": "true",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "close other window",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.1DD59350-C01B-4470-917E-C88418D88442\"",
+      "stdout": "true",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "list remaining panes",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to list panes",
+      "stdout": "no.helgesverre.terminal.pane.17FE9CE5-035A-4C06-8096-2F17460CB4C1",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "quit fixture",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to quit",
+      "stdout": "",
+      "exit_status": 0,
+      "timed_out": false
+    }
+  ],
+  "scenarios": [
+    "invalid-target",
+    "bounded-read",
+    "preferences",
+    "window",
+    "split",
+    "tab",
+    "focus",
+    "settings",
+    "inactive",
+    "close",
+    "cleanup"
+  ]
+}

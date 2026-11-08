@@ -5,6 +5,9 @@ private final class Capture { var data = Data() }
 @main struct KeyMapTests {
   static func main() {
     var context = "startup"
+    func scalar(_ text: String) -> UInt32 {
+      text.unicodeScalars.count == 1 ? text.unicodeScalars.first!.value : 0
+    }
     func hex(_ data: Data) -> String {
       data.map { String(format: "%02x", $0) }.joined()
     }
@@ -40,9 +43,10 @@ private final class Capture { var data = Data() }
         fail("physical key must route to the terminal")
       }
       let capture = Capture()
-      let accepted = terminal_input_key(
-        core, mapped.text, mapped.logical, mapped.shifted, mapped.baseLayout, mapped.legacyText,
-        mapped.key, mapped.modifiers, release ? 2 : 0,
+      let accepted = terminal_input_with_metadata(
+        core, (300...317).contains(mapped.key) ? mapped.text : mapped.logical,
+        mapped.key, mapped.modifiers, release ? 2 : 0, mapped.text, mapped.legacyText,
+        scalar(mapped.shifted), scalar(mapped.baseLayout),
         Unmanaged.passUnretained(capture).toOpaque(),
         { context, bytes, count in
           guard let context, let bytes else { return }
@@ -72,6 +76,24 @@ private final class Capture { var data = Data() }
       context = "keypad legacy keyCode=\(code) expected=\(expected.debugDescription)"
       precondition(encode(UInt16(code), expected) == Data(expected.utf8))
     }
+    let localizedKeypad = NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+      windowNumber: 0, context: nil, characters: ",", charactersIgnoringModifiers: ".",
+      isARepeat: false, keyCode: 65)!
+    guard case .encoded(let localized) = NativeKeyMap.route(localizedKeypad) else {
+      fatalError("localized keypad must route to terminal")
+    }
+    let localizedCapture = Capture()
+    precondition(terminal_input_with_metadata(
+      core, localized.text, localized.key, localized.modifiers, 0,
+      localized.text, localized.legacyText,
+      localized.shifted.unicodeScalars.count == 1 ? localized.shifted.unicodeScalars.first!.value : 0,
+      localized.baseLayout.unicodeScalars.count == 1 ? localized.baseLayout.unicodeScalars.first!.value : 0,
+      Unmanaged.passUnretained(localizedCapture).toOpaque(), { context, bytes, count in
+        guard let context, let bytes else { return }
+        Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().data.append(bytes, count: count)
+      }))
+    precondition(localizedCapture.data == Data(",".utf8))
     let separatorEvent = NSEvent.keyEvent(
       with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
       windowNumber: 0, context: nil, characters: ",", charactersIgnoringModifiers: ",",
@@ -85,8 +107,8 @@ private final class Capture { var data = Data() }
     // The keypad's current-layout symbol is protocol metadata; numeric-mode
     // legacy input must use the text AppKit committed for this press instead.
     let committedKeypadComma = Capture()
-    precondition(terminal_input_key(
-      core, ",", ".", "", "", "", 310, 0, 0,
+    precondition(terminal_input_with_metadata(
+      core, ",", 310, 0, 0, ",", ".", 0, 0,
       Unmanaged.passUnretained(committedKeypadComma).toOpaque(),
       { context, bytes, count in
         guard let context, let bytes else { return }
@@ -133,8 +155,8 @@ private final class Capture { var data = Data() }
     precondition(mappedPunctuation.baseLayout == "1")
     precondition(mappedPunctuation.modifiers & 1 == 1)
     let alternateCapture = Capture()
-    precondition(terminal_input_key(
-      core, "!", "1", "!", "1", "!", mappedPunctuation.key, mappedPunctuation.modifiers, 0,
+    precondition(terminal_input_with_metadata(
+      core, "1", mappedPunctuation.key, mappedPunctuation.modifiers, 0, "!", "!", 33, 49,
       Unmanaged.passUnretained(alternateCapture).toOpaque(),
       { context, bytes, count in
         guard let context, let bytes else { return }
@@ -184,8 +206,8 @@ private final class Capture { var data = Data() }
     precondition(mappedCaps.baseLayout == "'")
     precondition(mappedCaps.modifiers == 64)
     let modifierCapture = Capture()
-    precondition(terminal_input_key(
-      core, "", "", "", "", "", controlDown.event.key, controlDown.event.modifiers, 0,
+    precondition(terminal_input_with_metadata(
+      core, "", controlDown.event.key, controlDown.event.modifiers, 0, nil, nil, 0, 0,
       Unmanaged.passUnretained(modifierCapture).toOpaque(),
       { context, bytes, count in
         guard let context, let bytes else { return }
@@ -193,8 +215,8 @@ private final class Capture { var data = Data() }
       }))
     precondition(modifierCapture.data == Data("\u{1b}[57442;5:1u".utf8))
     let counterpartRelease = Capture()
-    precondition(terminal_input_key(
-      core, "", "", "", "", "", controlDown.event.key, controlDown.event.modifiers, 2,
+    precondition(terminal_input_with_metadata(
+      core, "", controlDown.event.key, controlDown.event.modifiers, 2, nil, nil, 0, 0,
       Unmanaged.passUnretained(counterpartRelease).toOpaque(),
       { context, bytes, count in
         guard let context, let bytes else { return }
@@ -221,23 +243,39 @@ private final class Capture { var data = Data() }
     precondition(focusState.resolve(controlDown)?.release == false)
     feed("\u{1b}[=0u")
     func physical(
-      _ text: String, logical: String, shifted: String = "", base: String = "", legacy: String = "",
+      _ text: String, logical: String, shifted: String = "", base: String = "", legacy: String? = nil,
       modifiers: UInt32
     ) -> Data {
       let capture = Capture()
-      precondition(terminal_input_key(
-        core, text, logical, shifted, base, legacy, 200, modifiers, 0,
-        Unmanaged.passUnretained(capture).toOpaque(),
-        { context, bytes, count in
-          guard let context, let bytes else { return }
-          Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().data.append(bytes, count: count)
-        }))
+      func send(_ legacyPointer: UnsafePointer<CChar>?) {
+        precondition(terminal_input_with_metadata(
+          core, logical, 200, modifiers, 0, text, legacyPointer, scalar(shifted), scalar(base),
+          Unmanaged.passUnretained(capture).toOpaque(),
+          { context, bytes, count in
+            guard let context, let bytes else { return }
+            Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().data.append(bytes, count: count)
+          }))
+      }
+      if let legacy { legacy.withCString { send($0) } } else { send(nil) }
       context =
         "physical text=\(text.debugDescription) logical=\(logical.debugDescription) "
         + "shifted=\(shifted.debugDescription) base=\(base.debugDescription) "
         + "legacy=\(legacy.debugDescription) modifiers=\(modifiers) wire=\(hex(capture.data))"
       return capture.data
     }
+    context = "committed text overrides legacy layout text"
+    // Empty C strings mean absent metadata in the public ABI, matching the
+    // archived Rust adapter; a typed encoder can still represent present-empty.
+    precondition(physical("", logical: "a", legacy: "legacy", modifiers: 0) == Data("a".utf8))
+    precondition(physical("æ", logical: "a", legacy: "", modifiers: 2) == Data("\u{1b}a".utf8))
+    precondition(physical("", logical: "e\u{301}", modifiers: 0) == Data("e".utf8))
+    precondition(physical("", logical: "👨‍💻", modifiers: 0) == Data("👨".utf8))
+    precondition(physical(",", logical: ".", legacy: ".", modifiers: 0) == Data(",".utf8))
+    precondition(physical("A", logical: "a", legacy: "a", modifiers: 1) == Data("A".utf8))
+    precondition(physical("x\u{1b}y", logical: "a", legacy: "legacy", modifiers: 0) == Data("a".utf8))
+    precondition(physical("👨‍💻", logical: "a", legacy: "legacy", modifiers: 0) == Data("👨‍💻".utf8))
+    precondition(physical("committed", logical: "1", legacy: "legacy", modifiers: 4) == Data("1".utf8))
+    precondition(physical("æ", logical: "a", legacy: "x\u{85}y", modifiers: 2) == Data("\u{1b}a".utf8))
     context = "legacy physical shifted ASCII"
     precondition(physical("A", logical: "a", shifted: "A", base: "a", modifiers: 1) == Data("A".utf8))
     context = "legacy physical shifted punctuation"
@@ -257,6 +295,46 @@ private final class Capture { var data = Data() }
     precondition(physical("ø", logical: "å", legacy: "Å", modifiers: 66) == Data("\u{1b}Å".utf8))
     precondition(physical("!", logical: "1", shifted: "!", base: "1", modifiers: 9)
       == Data("\u{1b}[49;10u".utf8))
+    func missingAssociated(_ associated: UnsafePointer<CChar>?) -> Data {
+      let capture = Capture()
+      precondition(terminal_input_with_metadata(
+        core, "a", 200, 0, 0, associated, nil, 0, 0,
+        Unmanaged.passUnretained(capture).toOpaque(),
+        { context, bytes, count in
+          guard let context, let bytes else { return }
+          Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().data.append(bytes, count: count)
+        }))
+      return capture.data
+    }
+    context = "nil and empty ABI metadata fall back only in legacy mode"
+    precondition(missingAssociated(nil) == Data("a".utf8))
+    precondition("".withCString { missingAssociated($0) } == Data("a".utf8))
+    feed("\u{1b}[=24u")
+    precondition(physical("e\u{301}", logical: "e\u{301}", modifiers: 0)
+      == Data("\u{1b}[101;1;101:769u".utf8))
+    precondition(physical("👨‍💻", logical: "👨‍💻", modifiers: 0)
+      == Data("\u{1b}[128104;1;128104:8205:128187u".utf8))
+    precondition(missingAssociated(nil) == Data("\u{1b}[97;1u".utf8))
+    precondition("".withCString { missingAssociated($0) } == Data("\u{1b}[97;1u".utf8))
+    let defaultCapture = Capture()
+    precondition(terminal_input(
+      core, "a", 200, 0, 0, Unmanaged.passUnretained(defaultCapture).toOpaque(),
+      { context, bytes, count in
+        guard let context, let bytes else { return }
+        Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().data.append(bytes, count: count)
+      }))
+    precondition(defaultCapture.data == Data("\u{1b}[97;1;97u".utf8))
+    feed("\u{1b}[=12u")
+    let shiftedDefault = Capture()
+    precondition(terminal_input(
+      core, "A", 200, 1, 0, Unmanaged.passUnretained(shiftedDefault).toOpaque(),
+      { context, bytes, count in
+        guard let context, let bytes else { return }
+        Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().data.append(bytes, count: count)
+      }))
+    precondition(shiftedDefault.data == Data("\u{1b}[97:65;2u".utf8))
+    precondition(physical("A", logical: "A", modifiers: 1) == Data("\u{1b}[97;2u".utf8))
+    feed("\u{1b}[=0u")
     let commandShiftPunctuation = NSEvent.keyEvent(
       with: .keyDown, location: .zero, modifierFlags: [.command, .shift], timestamp: 0,
       windowNumber: 0, context: nil, characters: "!", charactersIgnoringModifiers: "!",

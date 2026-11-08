@@ -1,0 +1,11 @@
+{
+  "changed": [
+    "native/tests/BinarySnapshotOracle.swift",
+    "native/tests/SnapshotBridgeTests.swift"
+  ],
+  "reason": "Active OSC8 empty URI correctly maps to nil; imported isolated assertion expected empty String. All three snapshot projections already agreed. Keep failure and add separate binary empty-sentinel control.",
+  "final_hashes": {
+    "native/tests/BinarySnapshotOracle.swift": "3b1e35b9b70e3e5dbacb79180293a7d149e1c4f6cb20a087906783ff10817205",
+    "native/tests/SnapshotBridgeTests.swift": "69fe7d3516ed02a99a59dcc33f3f184577fa99f6485b6a82b3a390a01815f802"
+  }
+}

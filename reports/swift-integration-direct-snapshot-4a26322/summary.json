@@ -1,0 +1,25 @@
+{
+  "baseline": "4a26322",
+  "integrated": [
+    "14ea9d7",
+    "ac3957a",
+    "35ede5c",
+    "a600105"
+  ],
+  "gates": [
+    "terminal-document-ownership",
+    "swift-core-test",
+    "terminal-viewport-oracle",
+    "terminal-graphics-oracle",
+    "terminal-palette",
+    "terminal-scheduler-oracle",
+    "terminal-prompt-clear-oracle",
+    "snapshot_bridge-revised",
+    "session"
+  ],
+  "passed": true,
+  "session_checks": 23,
+  "source_stable": true,
+  "all_core_groups_include_snapshot": true,
+  "qualification": "Initial snapshot run failed only on imported empty-URI fixture; corrected to active nil semantics and added independent C empty-sentinel control. Original failure/debug logs retained. No app performance or GUI acceptance asserted."
+}

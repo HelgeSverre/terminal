@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+ICONSET=target/native/Terminal.iconset
+if [[ target/native/Terminal.icns -nt assets/AppIcon.png ]]; then exit 0; fi
+mkdir -p "$ICONSET"
+for SIZE in 16 32 128 256 512; do
+  sips -z "$SIZE" "$SIZE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}.png" >/dev/null
+  DOUBLE=$((SIZE * 2))
+  sips -z "$DOUBLE" "$DOUBLE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o target/native/Terminal.icns
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR="$TERMINAL_PROJECT_ROOT"
+BUILD_DIR="$ROOT_DIR/target/native"
+APP_BUNDLE="$ROOT_DIR/dist/Terminal.app"
+mkdir -p "$BUILD_DIR" "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+cargo build --release --locked -p terminal-core
+xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 native/Launcher.c -o "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
+xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
+xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
+xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
+xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Smoke.swift native/EditingSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
+cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
+ditto native/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
+ditto assets/fonts "$APP_BUNDLE/Contents/Resources/Fonts"
+codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
+codesign --force --sign - "$APP_BUNDLE"
+   Compiling proc-macro2 v1.0.107
+   Compiling quote v1.0.47
+   Compiling unicode-ident v1.0.27
+   Compiling simd-adler32 v0.3.10
+   Compiling crc32fast v1.5.4
+   Compiling adler2 v2.0.1
+   Compiling serde_core v1.0.228
+   Compiling cfg-if v1.0.5
+   Compiling zmij v1.0.23
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.149
+   Compiling thiserror v2.0.18
+   Compiling memchr v2.8.3
+   Compiling itoa v1.0.18
+   Compiling miniz_oxide v0.9.1
+   Compiling miniz_oxide v0.8.9
+   Compiling fdeflate v0.3.7
+   Compiling bitflags v2.13.2
+   Compiling unicode-width v0.2.3
+   Compiling unicode-segmentation v1.13.3 (/private/tmp/terminal-rust-comparison/vendor/unicode-segmentation)
+   Compiling base64 v0.23.1
+   Compiling flate2 v1.1.11
+   Compiling png v0.18.1
+   Compiling syn v2.0.119
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v2.0.18
+   Compiling terminal-core v0.1.0 (/private/tmp/terminal-rust-comparison/crates/terminal-core)
+    Finished `release` profile [optimized] target(s) in 8.53s
+/private/tmp/terminal-rust-comparison/dist/Terminal.app/Contents/MacOS/TerminalLauncher: replacing existing signature
+/private/tmp/terminal-rust-comparison/dist/Terminal.app: replacing existing signature
+real 26.24
+user 33.33
+sys 3.67
+           309379072  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              826828  page reclaims
+               15976  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                  10  messages sent
+                   0  messages received
+                  56  signals received
+                5618  voluntary context switches
+               51882  involuntary context switches
+            43601174  instructions retired
+            17762654  cycles elapsed
+             3490432  peak memory footprint

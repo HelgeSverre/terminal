@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'json'
+require 'fileutils'
 require 'open3'
 require 'set'
 
@@ -111,9 +112,14 @@ if $PROGRAM_NAME == __FILE__
   when 'idle' then ['native-idle', '--self-test', 90, ['--idle-test']]
   else abort "Unknown smoke mode: #{mode}"
   end
-  path = File.join(root, 'reports', "#{report_name}.json")
+  report_directory = ENV.fetch('TERMINAL_NATIVE_SMOKE_REPORT_DIRECTORY', File.join(root, 'reports'))
+  path = File.join(report_directory, "#{report_name}.json")
+  FileUtils.mkdir_p(report_directory)
   File.delete(path) if File.exist?(path)
-  process = NativeSmokeProcess.new([File.join(root, 'dist/Terminal.app/Contents/MacOS/Terminal'), flag, path, *extra])
+  executable = ENV.fetch(
+    'TERMINAL_NATIVE_SMOKE_EXECUTABLE', File.join(root, 'dist/Terminal.app/Contents/MacOS/Terminal'))
+  abort "Missing app executable: #{executable}" unless File.executable?(executable)
+  process = NativeSmokeProcess.new([executable, flag, path, *extra])
   begin
     status = process.wait(seconds)
     raise "#{mode} smoke timed out" unless status

@@ -1,0 +1,166 @@
+import Foundation
+
+// Internal implementation partition of TerminalDocument. It moves row slots
+// and their sparse payloads together while rebuilding physical rows, and returns only the small mapping
+// needed by the emulator to retain cursor and viewport identity.
+extension TerminalDocument {
+  struct ReflowMapping {
+    var anchor: UInt64?
+    var cursor: (row: Int, column: Int, pending: Bool)
+    var saved: (row: Int, column: Int, pending: Bool)
+  }
+
+  mutating func reflowPrimary(columns nextColumns: Int, rows nextRows: Int,
+                              anchor: UInt64?) -> ReflowMapping {
+    let oldColumns = columns
+    let oldRows = rowCount
+    let oldHistoryCount = history.count
+    let oldPrimary = primary
+    let oldPromptAnchor = oldPrimary.promptAnchor
+    let input = history.rows + primary.rows
+    if nextColumns == oldColumns {
+      // A height change moves retained physical rows; it does not reflow or
+      // create new identities for existing content (including image anchors).
+      let cursor = oldHistoryCount + oldPrimary.cursorRow
+      let saved = oldHistoryCount + oldPrimary.savedRow
+      var start = max(0, oldHistoryCount - max(0, nextRows - oldRows))
+      if cursor < start { start = cursor }
+      if cursor >= start + nextRows { start = cursor + 1 - nextRows }
+      setSize(columns: nextColumns, rows: nextRows)
+      history.replace(Array(input.prefix(start)))
+      var retained = Array(input.dropFirst(start).prefix(nextRows))
+      while retained.count < nextRows { retained.append(blankRow()) }
+      primary.rows = retained
+      primary.cursorRow = min(nextRows - 1, max(0, cursor - start))
+      primary.savedRow = min(nextRows - 1, max(0, saved - start))
+      primary.topMargin = 0; primary.bottomMargin = nextRows - 1
+      primary.leftMargin = 0; primary.rightMargin = nextColumns - 1
+      if let prompt = oldPromptAnchor, !retained.contains(where: { $0.id == prompt.row }) { primary.retirePromptAnchor() }
+      return ReflowMapping(anchor: anchor,
+                           cursor: (primary.cursorRow, primary.cursorColumn, primary.pendingWrap),
+                           saved: (primary.savedRow, primary.savedColumn, primary.savedPendingWrap))
+    }
+    let cursorSource = oldHistoryCount + oldPrimary.cursorRow
+    let savedSource = oldHistoryCount + oldPrimary.savedRow
+    let lastRelevant = input.indices.last(where: { index in
+      index <= cursorSource || index <= savedSource || input[index].cells.contains { $0.kind != 0 || $0.style.background != 0 }
+    }) ?? 0
+    // New physical rows are born at the replacement width while `input`
+    // retains its old-width value copy for atom traversal.
+    setSize(columns: nextColumns, rows: nextRows)
+    var output: [TerminalRow] = []
+    var row = blankRow()
+    var column = 0
+    var mappedAnchor: UInt64?
+    var promptMap: PromptAnchor?
+    var cursorMap = (row: 0, column: 0, pending: false)
+    var savedMap = (row: 0, column: 0, pending: false)
+
+    func finish(_ soft: Bool) {
+      row.softWrapped = soft
+      output.append(row)
+      row = blankRow()
+      column = 0
+    }
+    func map(_ sourceIndex: Int, _ sourceColumn: Int) {
+      if sourceIndex == oldHistoryCount + oldPrimary.cursorRow,
+         sourceColumn == oldPrimary.cursorColumn + (oldPrimary.pendingWrap ? 1 : 0) {
+        cursorMap = (output.count, min(column, nextColumns - 1), column == nextColumns)
+      }
+      if sourceIndex == oldHistoryCount + oldPrimary.savedRow,
+         sourceColumn == oldPrimary.savedColumn {
+        savedMap = (output.count, min(column, nextColumns - 1), false)
+      }
+      if let anchor = oldPromptAnchor, input[sourceIndex].id == anchor.row,
+         sourceColumn == anchor.column + (anchor.pendingWrap ? 1 : 0) {
+        promptMap = PromptAnchor(row: row.id, column: min(column, nextColumns - 1),
+                                 pendingWrap: column == nextColumns)
+      }
+    }
+
+    for (sourceIndex, source) in input.prefix(lastRelevant + 1).enumerated() {
+      let soft = source.softWrapped
+      var end = source.cells.lastIndex { cell in
+        cell.kind != 0 || cell.style.background != 0
+      }.map { $0 + 1 } ?? 0
+      if soft { end = oldColumns }
+      if sourceIndex == oldHistoryCount + oldPrimary.cursorRow {
+        end = max(end, min(oldColumns, oldPrimary.cursorColumn + (oldPrimary.pendingWrap ? 1 : 0)))
+      }
+      if sourceIndex == oldHistoryCount + oldPrimary.savedRow { end = max(end, min(oldColumns, oldPrimary.savedColumn)) }
+      var sourceColumn = 0
+      while sourceColumn <= end {
+        if sourceColumn == 0, source.id == anchor {
+          // An anchor on a soft-continuation row denotes the leading boundary
+          // of its whole logical line. If narrowing already emitted that
+          // leading part, retain it instead of rebasing at the continuation.
+          if sourceIndex > 0, input[sourceIndex - 1].softWrapped, let leading = output.last {
+            mappedAnchor = leading.id
+          } else {
+            mappedAnchor = row.id
+          }
+        }
+        map(sourceIndex, sourceColumn)
+        guard sourceColumn < end else { break }
+        let sourceKind = source.kind(at: sourceColumn)
+        let sourceFlags = source.flags(at: sourceColumn)
+        if sourceKind == 3 || sourceKind == 4 { sourceColumn += 1; continue }
+        let nominal = (sourceKind == 2 || sourceFlags & 1 != 0) ? 2 : 1
+        let width = min(nominal, nextColumns)
+        if column + width > nextColumns {
+          if column < nextColumns { row.setKind(4, at: column) }
+          finish(true)
+          if source.id == anchor, mappedAnchor == nil { mappedAnchor = row.id }
+        }
+        if sourceKind == 0 {
+          row.erase(at: column, style: source.style(at: sourceColumn))
+        } else {
+          row.copyCell(from: source, at: sourceColumn, to: column)
+          row.setKind(width == 2 ? 2 : 1, at: column)
+          row.setFlags(width < nominal ? sourceFlags | 1 : sourceFlags & ~UInt8(1), at: column)
+          if width == 2 {
+            if source.count > sourceColumn + 1 {
+              row.copyCell(from: source, at: sourceColumn + 1, to: column + 1)
+              row.clearText(at: column + 1)
+              row.setKind(3, at: column + 1)
+            } else {
+              row.setCell(TerminalCell(text: "", kind: 3), at: column + 1)
+            }
+          }
+        }
+        column += width
+        sourceColumn += nominal
+      }
+      if !soft { finish(false) }
+    }
+    if output.isEmpty { finish(false) }
+
+    // Height growth can expose retained history; preserve the visible cursor.
+    // The anchored row is a leading logical boundary, not merely the old
+    // history/screen split. Reflow may join a history row onto an earlier row.
+    // The live grid remains the tail of the physical document. An anchored
+    // viewport is represented by its row identity in retained history rather
+    // than by moving that historical row into the live screen and discarding
+    // newer content.
+    var start = max(0, output.count - nextRows)
+    if nextRows > oldRows { start = max(0, start - (nextRows - oldRows)) }
+    start = min(start, max(0, output.count - 1))
+    history.replace(Array(output.prefix(start)))
+    var screenRows = Array(output.dropFirst(start).prefix(nextRows))
+    while screenRows.count < nextRows { screenRows.append(blankRow()) }
+    primary = TerminalScreen(rows: screenRows, columns: nextColumns)
+    primary.cursorRow = min(nextRows - 1, max(0, cursorMap.row - start))
+    primary.cursorColumn = min(nextColumns - 1, cursorMap.column)
+    primary.pendingWrap = cursorMap.pending
+    primary.savedRow = min(nextRows - 1, max(0, savedMap.row - start))
+    primary.savedColumn = min(nextColumns - 1, savedMap.column)
+    primary.promptPhase = oldPrimary.promptPhase
+    primary.promptRedraw = oldPrimary.promptRedraw
+    if let promptMap, screenRows.contains(where: { $0.id == promptMap.row }) {
+      primary.promptAnchor = promptMap
+    } else {
+      primary.retirePromptAnchor()
+    }
+    return ReflowMapping(anchor: mappedAnchor, cursor: cursorMap, saved: savedMap)
+  }
+}

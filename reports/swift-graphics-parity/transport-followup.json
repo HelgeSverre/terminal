@@ -1,0 +1,33 @@
+{
+  "scope": "Graphics transport admission and deferred anchor retirement; not full terminal parity or a performance measurement",
+  "base": "2d85516a5610dd1f2bc1fdc58cf836f56ac0ad5f",
+  "source_and_executable_sha256": {
+    "native/SwiftGraphics.swift": "436301e6d99efa815b3f5daa85732df9db5bcace5b572fab03f2284bbd111944",
+    "native/SwiftTerminalCore.swift": "96585e974fbd1add5b14ab313a6f07504973f88ea2ad67d09963d2564b528504",
+    "native/tests/TerminalGraphicsOracleTests.swift": "e91098e57371529863949a0d75f68c6919fc800b6064d70aaed9f905f3e73f19",
+    "target/native/terminal-graphics-oracle-tests": "b6778506e2d39613c031dcd606540f17e3bc08497eb56dd22abd5a602b9e395f"
+  },
+  "red_controls": [
+    {
+      "name": "axis-limit",
+      "exit": null,
+      "signal": 5,
+      "passed": null
+    },
+    {
+      "name": "transport-fields",
+      "exit": null,
+      "signal": 5,
+      "passed": null
+    }
+  ],
+  "passing_gate": "just terminal-graphics-oracle",
+  "passing_groups": 17,
+  "added_cases": [
+    "raw and PNG 4097-pixel axis rejected",
+    "I/U/P/Q unsupported and q>2 invalid without replacing prior image generation",
+    "ignored compressed PNG ancillary metadata preserves exact RGBA",
+    "primary eviction and alternate wrapping release placement admission before next graphics command"
+  ],
+  "qualification": "Red probes predate added PNG-axis, metadata and retired-anchor assertions. Passing ABI controls and source filtering establish protocol behavior; no RSS or throughput claim. Core lazy-pruning source belongs to concurrent protocol owner and is recorded by hash, not included in this graphics-only commit."
+}

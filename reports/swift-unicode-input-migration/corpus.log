@@ -1,0 +1,6 @@
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 38 app sources; 30 test groups; 354 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print swift_unicode18_corpus) -framework Foundation -o target/native/swift-unicode18-corpus
+target/native/swift-unicode18-corpus "$PWD" --strict
+Unicode 18 corpus: 853 cases, 0 boundary failures

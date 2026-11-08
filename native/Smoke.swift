@@ -661,6 +661,9 @@ import Darwin
   var anchoredSnapshotCount = 0
   var finishing = false
   var latest: [String: Any] = [:]
+  let motionStress = CommandLine.arguments.prefix { $0 != "--execute" }.contains("--cat-motion-stress")
+  var motion: WindowStressMotion?
+  var finalMotionReport: [String: Any]?
   init(window: TerminalWindow, path: String, bytes: UInt64) {
     controller = window
     self.path = path
@@ -684,6 +687,9 @@ import Darwin
   }
   func run() {
     guard let pane = controller.panes.first else { return }
+    if motionStress, let window = controller.window {
+      motion = WindowStressMotion.start(window: window)
+    }
     pane.onObservedSnapshot = { [weak self] snapshot in
       guard let self else { return }
       updates += 1
@@ -705,11 +711,13 @@ import Darwin
     }
     heartbeat()
     sample()
-    DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
-      self?.controller.window?.setContentSize(NSSize(width: 900, height: 620))
-    }
-    DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-      self?.controller.window?.setContentSize(NSSize(width: 1000, height: 680))
+    if !motionStress {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+        self?.controller.window?.setContentSize(NSSize(width: 900, height: 620))
+      }
+      DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+        self?.controller.window?.setContentSize(NSSize(width: 1000, height: 680))
+      }
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 600) { [weak self] in
       self?.finish(timeout: true)
@@ -743,6 +751,10 @@ import Darwin
   func finish(timeout: Bool) {
     guard !finishing, let pane = controller.panes.first else { return }
     finishing = true
+    if let motion {
+      finalMotionReport = motion.stop(reason: timeout ? .catTimedOut : .catFinished)
+      self.motion = nil
+    }
     pane.session.statistics { [self] values in
       latest = values
       peakFootprint = max(peakFootprint, footprint())
@@ -760,7 +772,7 @@ import Darwin
       "history_within_64_mib": ((latest["history_bytes"] as? UInt64) ?? 0) <= 64 * 1_048_576,
       "not_timed_out": !timeout,
     ]
-    let report: [String: Any] = [
+    var report: [String: Any] = [
       "final": final, "passed": final && checks.values.allSatisfy { $0 }, "checks": checks,
       "source_file_bytes": expected, "session": latest,
       "wall_seconds": Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000_000,
@@ -771,9 +783,13 @@ import Darwin
       "semantic_queue_probe_delay": TimingDistribution.report(ownerDelay),
       "exit_status": exitStatus,
       "renderer": RendererMetrics.report(),
-      "note":
-        "Actual /bin/cat of a local SQL dump. Report contains no SQL content. PTY wire bytes can exceed file bytes because normal terminal output processing expands LF to CRLF. Includes two live resizes during output; timings are a development stress run, not an isolated comparison benchmark.",
+      "note": motionStress
+        ? "Actual /bin/cat of a local SQL dump with opt-in smooth programmatic window motion. Report contains no SQL content. PTY wire bytes can exceed file bytes because normal terminal output processing expands LF to CRLF. Timings are a development stress run, not an isolated comparison benchmark."
+        : "Actual /bin/cat of a local SQL dump. Report contains no SQL content. PTY wire bytes can exceed file bytes because normal terminal output processing expands LF to CRLF. Includes two live resizes during output; timings are a development stress run, not an isolated comparison benchmark.",
     ]
+    if motionStress {
+      report["window_motion"] = final ? finalMotionReport ?? motion?.report() ?? [:] : motion?.report() ?? [:]
+    }
     do {
       try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
         .write(to: URL(fileURLWithPath: path), options: .atomic)

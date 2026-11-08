@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "changed_after_final_fixture": [],
+  "production_changed": false,
+  "test_fixture_correction": [
+    "native/tests/BinarySnapshotOracle.swift",
+    "native/tests/SnapshotBridgeTests.swift"
+  ]
+}

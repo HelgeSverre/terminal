@@ -41,6 +41,7 @@ enum TerminalFont {
     var pixels: [UInt8]
     let missing: Bool
     let fonts: [String]
+    let glyphIDs: [CGGlyph]
     let clipped: Bool
   }
   static func rasterize(_ text: String, font: CTFont, width: Int, height: Int) -> Bitmap {
@@ -71,9 +72,11 @@ enum TerminalFont {
       : CGPoint(x: 0, y: CGFloat(height) - CTFontGetAscent(font) - 2)
     var missing = false
     var fonts: [String] = []
+    var glyphIDs: [CGGlyph] = []
     for run in CTLineGetGlyphRuns(shaped) as! [CTRun] {
       var glyphs = [CGGlyph](repeating: 0, count: CTRunGetGlyphCount(run))
       CTRunGetGlyphs(run, CFRange(location: 0, length: glyphs.count), &glyphs)
+      glyphIDs.append(contentsOf: glyphs)
       missing = missing || glyphs.contains(0)
       let attributes = CTRunGetAttributes(run) as NSDictionary
       if let value = attributes[kCTFontAttributeName] {
@@ -93,7 +96,7 @@ enum TerminalFont {
     let ink = bounds.offsetBy(dx: position.x, dy: position.y)
     let clipped = !bounds.isEmpty && (ink.minX < -0.5 || ink.maxX > CGFloat(width) + 0.5
       || ink.minY < -0.5 || ink.maxY > CGFloat(height) + 0.5)
-    return Bitmap(pixels: pixels, missing: missing, fonts: fonts, clipped: clipped)
+    return Bitmap(pixels: pixels, missing: missing, fonts: fonts, glyphIDs: glyphIDs, clipped: clipped)
   }
   // Enumerate the actual shipped cmap, including supplementary-plane icons.
   static let iconCodepoints: [UInt32] = {

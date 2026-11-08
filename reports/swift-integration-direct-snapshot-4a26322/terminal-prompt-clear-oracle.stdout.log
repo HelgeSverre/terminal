@@ -1,0 +1,2 @@
+Swift source graph verified: 38 app sources; 30 test groups; 354 declared paths; bundle inputs present
+PASS Prompt/reflow and display-clear oracles: phase/readiness survives anchor retirement

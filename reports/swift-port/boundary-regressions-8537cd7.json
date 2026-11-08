@@ -1,0 +1,80 @@
+{
+  "implementation": "swift",
+  "inputs": {
+    "head": "09b0b7680fc65b4792f2b5897a87a01207fed599",
+    "source_sha256": {
+      "SwiftUnicode.swift": "0991125cc2658d87a3d33a013c128d46cfff8b1b30a3d4641c6134caff9a6088",
+      "SwiftUnicode18Tables.swift": "7a8fe8592908349ce031f847e9ed4d1fb60a238aee5f9b4c553af141841a96c8",
+      "SwiftInputEncoder.swift": "85959a186dcb4f1e236ac684c95acf6b5d27b047c173df72c8edda55277693f5",
+      "SwiftGraphics.swift": "181b4f8be7b6f369caf0b12816e48919c15ed9f8d46ec7ddee4d371d7841d6cf",
+      "SwiftReflow.swift": "d19472aef4d3f569252630a5460cbe92c6af9457d216fe4c6da2de90003dd5c9",
+      "SwiftSearchViewport.swift": "9aca1b2f46ce17f1d505f84c5cdcb37ea0bd6cc700ce3d0e1e68cfb1c8fed978",
+      "SwiftMargins.swift": "1c10e1ddd4d9cb4409c92ca716b4a6435378f17710c9b67d1b0c907b0c59a939",
+      "TerminalDocument.swift": "0e55d892ab87d6f4e21898a9618ab73b87e4548ecb46ff78c44667680704e797",
+      "DocumentReflow.swift": "48c8837aad94aadbfdec74aca58cea2f8bea2426b676adbc34a8e54df9c69faf",
+      "SwiftTerminalCore.swift": "73d1f45074fd95f04cddd1bac741bc087112a351d17302b55065eaa6266f7236",
+      "tests/TerminalBoundaryRegressionTests.swift": "4e3b9e3aa3cfa6122c093e1b69f63f96e209095d5a07b10a15689ecb61446b7e",
+      "Bridge.h": "e5baa6ffe077d4fa1ceb6f202e91eebd47119172cd1b0102f512ff4a68d86539"
+    },
+    "matches_commit": {
+      "SwiftUnicode.swift": true,
+      "SwiftUnicode18Tables.swift": true,
+      "SwiftInputEncoder.swift": true,
+      "SwiftGraphics.swift": true,
+      "SwiftReflow.swift": true,
+      "SwiftSearchViewport.swift": true,
+      "SwiftMargins.swift": true,
+      "TerminalDocument.swift": true,
+      "DocumentReflow.swift": true,
+      "SwiftTerminalCore.swift": true,
+      "tests/TerminalBoundaryRegressionTests.swift": false,
+      "Bridge.h": true
+    }
+  },
+  "executable_sha256": "cbe7c8f9b15b6b9b337b31bbec2b838c4c4201dff182945603a59c4a305332b5",
+  "checks": [
+    {
+      "case": "utf8",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary utf8"
+    },
+    {
+      "case": "strings",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary strings"
+    },
+    {
+      "case": "anchor",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary anchor"
+    },
+    {
+      "case": "retention",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary retention"
+    },
+    {
+      "case": "readiness",
+      "passed": true,
+      "exit_status": 0,
+      "output": "PASS boundary readiness"
+    },
+    {
+      "case": "cap",
+      "passed": false,
+      "exit_status": 1,
+      "output": "FAIL boundary: capped non-emoji ZWJ swallowed new pictograph"
+    },
+    {
+      "case": "segmenter",
+      "passed": false,
+      "exit_status": 1,
+      "output": "FAIL boundary: segmenter not used by emulator for \"각\""
+    }
+  ],
+  "passed": false
+}

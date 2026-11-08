@@ -1,131 +1,6 @@
 import Foundation
 
-struct CellSnapshot: Decodable, Equatable {
-  let text: String
-  let kind: String
-  let style: CellStyle
-  let link: String?
-  let flags: Int
-}
-struct TerminalColor: Decodable, Equatable {
-  let index: Int?
-  let rgb: [Int]?
-  init(packed: UInt32) {
-    index = packed >> 24 == 1 ? Int(packed & 255) : nil
-    rgb =
-      packed >> 24 == 2
-      ? [Int((packed >> 16) & 255), Int((packed >> 8) & 255), Int(packed & 255)] : nil
-  }
-  init(from decoder: Decoder) throws {
-    if let single = try? decoder.singleValueContainer(), let s = try? single.decode(String.self),
-      s == "Default"
-    {
-      index = nil
-      rgb = nil
-      return
-    }
-    let c = try decoder.container(keyedBy: CodingKeys.self)
-    index = try c.decodeIfPresent(Int.self, forKey: .Indexed)
-    rgb = try c.decodeIfPresent([Int].self, forKey: .Rgb)
-  }
-  enum CodingKeys: String, CodingKey { case Indexed, Rgb }
-}
-struct CellStyle: Decodable, Equatable {
-  let foreground: TerminalColor
-  let background: TerminalColor
-  let underline_color: TerminalColor
-  let underline: Int
-  let bold: Bool
-  let faint: Bool
-  let italic: Bool
-  let inverse: Bool
-  let conceal: Bool
-  let strike: Bool
-  let overline: Bool
-  let blink: Bool
-}
-struct RowSnapshot: Decodable, Equatable {
-  let cells: [CellSnapshot]
-  let soft_wrapped: Bool
-}
-struct CursorSnapshot: Decodable, Equatable {
-  let row: Int
-  let col: Int
-  let pending_wrap: Bool
-  let visible: Bool
-  let shape: Int
-}
-struct ModesSnapshot: Decodable, Equatable {
-  let application_cursor: Bool
-  let bracketed_paste: Bool
-  let focus: Bool
-  let mouse: Int
-  let sgr_mouse: Bool
-  let reverse_video: Bool
-}
-struct ImageKey: Hashable {
-  let id: UInt32
-  let generation: UInt64
-}
-struct ImagePlacementSnapshot: Decodable, Equatable {
-  let image: UInt32
-  let generation: UInt64
-  let width: Int
-  let height: Int
-  let source: [Int]
-  let row: Int
-  let col: Int
-  let columns: Int
-  let rows: Int
-  let offset: [Int]
-  let natural: Bool
-  let z: Int
-  let placement: UInt64
-  var key: ImageKey { ImageKey(id: image, generation: generation) }
-}
-final class ImagePixels: @unchecked Sendable {
-  let data: Data
-  init(_ data: Data) { self.data = data }
-}
 private final class ImageCapture { var data: Data? }
-struct TerminalSnapshot: Decodable {
-  let at_prompt: Bool
-  // Older experimental snapshot metadata did not include this field. A missing
-  // value is unknown, and therefore must not admit scripted startup input.
-  let input_ready: Bool?
-  let search: [SearchHighlight]
-  let images: [ImagePlacementSnapshot]
-  var imagePixels: [ImageKey: ImagePixels] = [:]
-  enum CodingKeys: String, CodingKey {
-    case at_prompt, input_ready, search, images, revision, geometry_epoch, document_epoch, history_epoch, screen_epoch,
-      scroll_offset, following_tail, viewport_clamp_revision, cols, rows, cursor, modes, alternate, title, cwd,
-      history_rows, palette, default_fg, default_bg
-  }
-  let revision: UInt64
-  let geometry_epoch: UInt64
-  let document_epoch: UInt64
-  let history_epoch: UInt64
-  let screen_epoch: UInt64
-  let scroll_offset: Int
-  let following_tail: Bool
-  let viewport_clamp_revision: UInt64
-  let cols: Int
-  let rows: [RowSnapshot]
-  let cursor: CursorSnapshot
-  let modes: ModesSnapshot
-  let alternate: Bool
-  let title: String
-  let cwd: String?
-  let history_rows: Int
-  let palette: [[Int]]
-  let default_fg: [Int]
-  let default_bg: [Int]
-}
-struct SearchHighlight: Decodable, Equatable {
-  let row: Int
-  let start: Int
-  let end: Int
-}
 enum HistorySearchOutcome: Equatable {
   case found, missing, changed, cancelled, invalidQuery, resourceLimit
   var message: String {
@@ -160,30 +35,23 @@ struct LaunchSpec {
 final class ClipboardWriteRequest {
   let sessionID: UUID
   let data: Data
-  private let complete: (Bool, @escaping @MainActor (Bool) -> Void) -> Void
   private let live: () -> Bool
+  private let completion: (Bool, @escaping @MainActor (Bool) -> Void) -> Void
   private var resolved = false
-  init(
-    sessionID: UUID, data: Data,
-    live: @escaping () -> Bool,
-    complete: @escaping (Bool, @escaping @MainActor (Bool) -> Void) -> Void
-  ) {
-    self.sessionID = sessionID
-    self.data = data
-    self.live = live
-    self.complete = complete
+  init(sessionID: UUID, data: Data, live: @escaping () -> Bool,
+       completion: @escaping (Bool, @escaping @MainActor (Bool) -> Void) -> Void) {
+    self.sessionID = sessionID; self.data = data; self.live = live; self.completion = completion
   }
   var isLive: Bool { live() }
-  func resolve(_ allowed: Bool, completion: @escaping @MainActor (Bool) -> Void) {
+  func resolve(_ allowed: Bool, _ result: @escaping @MainActor (Bool) -> Void) {
     guard !resolved else { return }
     resolved = true
-    complete(allowed, completion)
+    completion(allowed, result)
   }
 }
 
-// Complete physical-key facts are admitted as one object. Text commits, paste
-// and focus use Session's legacy raw-input API and cannot accidentally claim a
-// keyboard-layout identity they do not have.
+/// Immutable physical-key facts that survive queueing until the SwiftCore
+/// adapter emits the negotiated terminal sequence.
 struct TerminalKeyEvent {
   private static let retainedOverhead = 128
   private static let wireOverhead = 256
@@ -196,13 +64,7 @@ struct TerminalKeyEvent {
   let modifiers: UInt32
   let event: UInt32
   private var isModifierOnly: Bool { (400...412).contains(key) }
-  // Presentation policy belongs to the immutable input fact, not to mutable
-  // terminal modes queried from the main thread. A modifier can encode to an
-  // empty legacy write or a Kitty sequence, but it never changes user intent.
   var isKeyAction: Bool { event != 2 && !isModifierOnly }
-  /// Bytes retained until the owner consumes this event. Every Swift String
-  /// crosses the async queue boundary, even though some only contribute one
-  /// scalar to a Kitty sequence.
   var retainedCost: Int? {
     var total = Self.retainedOverhead
     for value in [text, logical, shifted, baseLayout, legacyText] {
@@ -212,9 +74,6 @@ struct TerminalKeyEvent {
     }
     return total
   }
-  /// A mode-independent upper bound for the PTY write produced by this key.
-  /// Associated text needs at most four decimal/separator bytes per UTF-8 byte;
-  /// it and the legacy Option-as-Escape layout text are alternate branches.
   var maximumWireBytes: Int? {
     let (expandedText, overflow) = text.utf8.count.multipliedReportingOverflow(by: 4)
     guard !overflow else { return nil }
@@ -222,10 +81,25 @@ struct TerminalKeyEvent {
     let (total, overheadOverflow) = payload.addingReportingOverflow(Self.wireOverhead)
     return overheadOverflow ? nil : total
   }
+  /// Numeric keypad legacy input is AppKit's committed text. Other keys use
+  /// their unmodified current-layout key as the negotiated primary value.
+  var adapterText: String { (300...317).contains(key) ? text : logical }
+  var shiftedScalar: UInt32 {
+    shifted.unicodeScalars.count == 1 ? shifted.unicodeScalars.first!.value : 0
+  }
+  var baseLayoutScalar: UInt32 {
+    baseLayout.unicodeScalars.count == 1 ? baseLayout.unicodeScalars.first!.value : 0
+  }
 }
-private let terminalWriteCapacity = 3 * 1024 * 1024
 // The PTY and Rust handle are confined to this queue. Main receives immutable decoded values.
 final class Session: @unchecked Sendable {
+  private struct StreamStatistics {
+    var readCallbacks = 0, readCalls = 0, outputEvents = 0, pumpSchedules = 0, pumpTurns = 0, feedCalls = 0, queueHighWater = 0, suspends = 0, resumes = 0, publishCalls = 0
+    var feedBytes: UInt64 = 0, readNanoseconds: UInt64 = 0, feedNanoseconds: UInt64 = 0, snapshotNanoseconds: UInt64 = 0, pumpNanoseconds: UInt64 = 0
+    var queuedBytesHighWater = 0
+    mutating func observeEventQueue(_ count: Int) { queueHighWater = max(queueHighWater, count) }
+    mutating func observeQueuedBytes(_ count: Int) { queuedBytesHighWater = max(queuedBytesHighWater, count) }
+  }
   let queue = DispatchQueue(label: "no.helgesverre.terminal.owner", qos: .userInteractive)
   private enum Event {
     case output(Data, Int)
@@ -278,6 +152,7 @@ final class Session: @unchecked Sendable {
   private var configuration = TerminalSessionConfiguration()
   private var imageCache: [ImageKey: ImagePixels] = [:]
   private var publishScheduled = false
+  private var streamStatistics: StreamStatistics?
   private let admission = NSLock()
   private var admittedBytes = 0
   private var accepting = true
@@ -287,13 +162,16 @@ final class Session: @unchecked Sendable {
   @MainActor private var deliveredDirectory: String?
   @MainActor var siblingLaunch: LaunchSpec { .shell.inheritingDirectory(deliveredDirectory) }
   private lazy var historySearch = HistorySearch(session: self)
+  private let clipboardSessionID = UUID()
   var onSnapshot: (@MainActor (TerminalSnapshot) -> Void)?
   var onStatus: (@MainActor (String) -> Void)?
   var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
   private var onClipboardClosed: (@MainActor (UUID) -> Void)?
-  private let clipboardSessionID = UUID()
   init(launch: LaunchSpec? = nil) {
     launchSpec = launch
+    if CommandLine.arguments.prefix(while: { $0 != "--execute" }).contains("--session-statistics-file") {
+      streamStatistics = StreamStatistics()
+    }
     queue.async { [self] in start() }
   }
   deinit { if let core { terminal_destroy(core) } }
@@ -414,9 +292,7 @@ final class Session: @unchecked Sendable {
     admission.unlock()
   }
   private func stopAcceptingInput() {
-    admission.lock()
-    accepting = false
-    admission.unlock()
+    admission.lock(); accepting = false; admission.unlock()
   }
   private func notifyClipboardClosed() {
     guard !clipboardClosedNotified else { return }
@@ -424,24 +300,14 @@ final class Session: @unchecked Sendable {
     deliverClipboardCloseIfPossible()
   }
   private func deliverClipboardCloseIfPossible() {
-    guard clipboardClosedNotified, !clipboardCloseDelivered, let handler = onClipboardClosed else {
-      return
-    }
+    guard clipboardClosedNotified, !clipboardCloseDelivered, let handler = onClipboardClosed else { return }
     clipboardCloseDelivered = true
-    let sessionID = clipboardSessionID
-    DispatchQueue.main.async { handler(sessionID) }
+    let id = clipboardSessionID
+    DispatchQueue.main.async { handler(id) }
   }
   private var acceptingClipboardRequests: Bool {
-    admission.lock()
-    defer { admission.unlock() }
+    admission.lock(); defer { admission.unlock() }
     return accepting
-  }
-  func setClipboardClosedHandler(_ handler: @escaping @MainActor (UUID) -> Void) {
-    queue.async { [weak self] in
-      guard let self else { return }
-      onClipboardClosed = handler
-      deliverClipboardCloseIfPossible()
-    }
   }
   private func start() {
     guard terminal_abi_version() == 1, let handle = terminal_create(80, 24) else {
@@ -529,12 +395,15 @@ final class Session: @unchecked Sendable {
     }
   }
   private func enqueue(_ event: Event) {
+    if case .output = event { streamStatistics?.outputEvents += 1 }
     events.append(event)
+    streamStatistics?.observeEventQueue(events.count - head)
     scheduleOwner()
   }
   private func scheduleOwner() {
     guard !closed, !ownerScheduled, head < events.count else { return }
     ownerScheduled = true
+    streamStatistics?.pumpSchedules += 1
     queue.async { [self] in
       ownerScheduled = false
       pump()
@@ -542,17 +411,28 @@ final class Session: @unchecked Sendable {
   }
   private func pump() {
     guard !closed, head < events.count else { return }
+    let started = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
+    defer {
+      if streamStatistics != nil { streamStatistics!.pumpNanoseconds &+= DispatchTime.now().uptimeNanoseconds - started }
+    }
     let event = events[head]
+    streamStatistics?.pumpTurns += 1
     var complete = true
     switch event {
     case .output(let bytes, let offset):
-      guard writeBytes < terminalWriteCapacity else {
+      guard writeBytes < 3 * 1024 * 1024 else {
         updateReadInterest()
         return
       }
+      let feedStarted = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
       let used = bytes.withUnsafeBytes {
         terminal_feed(
           core, $0.bindMemory(to: UInt8.self).baseAddress! + offset, bytes.count - offset, Self.now)
+      }
+      if streamStatistics != nil {
+        streamStatistics!.feedCalls += 1
+        streamStatistics!.feedBytes &+= UInt64(used)
+        streamStatistics!.feedNanoseconds &+= DispatchTime.now().uptimeNanoseconds - feedStarted
       }
       queuedOutput -= used
       bytesParsed += UInt64(used)
@@ -570,11 +450,10 @@ final class Session: @unchecked Sendable {
         break
       }
       // An admitted event waits for write capacity; it is never silently rejected.
-      guard writeBytes + text.utf8.count + 256 <= terminalWriteCapacity else { return }
+      guard writeBytes + text.utf8.count + 256 <= 3 * 1024 * 1024 else { return }
       collectingPaste = key == 1
       let accepted = terminal_input(
-        core, text, key, modifiers, event,
-        Unmanaged.passUnretained(self).toOpaque(), Self.collect)
+        core, text, key, modifiers, event, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
       collectingPaste = false
       release(cost)
       if !accepted { report("Input rejected by encoding policy") }
@@ -585,22 +464,26 @@ final class Session: @unchecked Sendable {
         report("Input closed before delivery")
         break
       }
-      guard let wireBytes = input.maximumWireBytes, wireBytes <= terminalWriteCapacity else {
+      guard let wireBytes = input.maximumWireBytes, wireBytes <= 3 * 1024 * 1024 else {
         release(cost)
         report("Key input exceeds write limit")
         break
       }
-      guard writeBytes <= terminalWriteCapacity - wireBytes else { return }
-      let accepted = terminal_input_key(
-        core, input.text, input.logical, input.shifted, input.baseLayout, input.legacyText, input.key,
-        input.modifiers, input.event, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
+      guard writeBytes <= 3 * 1024 * 1024 - wireBytes else { return }
+      let accepted = terminal_input_with_metadata(
+        core, input.adapterText, input.key, input.modifiers, input.event,
+        input.text, input.legacyText, input.shiftedScalar, input.baseLayoutScalar,
+        Unmanaged.passUnretained(self).toOpaque(), Self.collect)
       release(cost)
       if !accepted { report("Input rejected by encoding policy") }
       if accepted && input.isKeyAction && configuration.followTailOnInput {
         terminal_view_follow_tail(core)
       }
+    case .clipboardDecision(let requestID, let allowed, let completion):
+      let accepted = acceptingClipboardRequests && terminal_complete_clipboard_request(core, requestID)
+      DispatchQueue.main.async { completion(accepted && allowed) }
     case .raw(let bytes, let cost), .shortcut(let bytes, let cost):
-      guard writeBytes + bytes.count <= terminalWriteCapacity else { return }
+      guard writeBytes + bytes.count <= 3 * 1024 * 1024 else { return }
       writeID += 1
       if !writeEnded { writes.append(WriteTransaction(id: writeID, data: bytes, kind: .ordinary)) }
       if case .shortcut = event, configuration.followTailOnInput { terminal_view_follow_tail(core) }
@@ -634,9 +517,6 @@ final class Session: @unchecked Sendable {
     case .probe(let accepted, let completion):
       let delay = Double(DispatchTime.now().uptimeNanoseconds - accepted) / 1_000_000
       DispatchQueue.main.async { completion(delay) }
-    case .clipboardDecision(let requestID, let allowed, let completion):
-      let accepted = acceptingClipboardRequests && terminal_complete_clipboard_request(core, requestID)
-      DispatchQueue.main.async { completion(accepted && allowed) }
     case .eof:
       parserEnded = true
       terminal_finish(core)
@@ -661,13 +541,17 @@ final class Session: @unchecked Sendable {
   }
   private func readAvailable() {
     guard !closed, !readEnded else { return }
+    streamStatistics?.readCallbacks += 1
+    let started = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
     var slab = [UInt8](repeating: 0, count: 16_384)
     var total = 0
     while total < 65_536 && queuedOutput < 2 * 1024 * 1024 {
+      streamStatistics?.readCalls += 1
       let count = Darwin.read(master, &slab, slab.count)
       if count > 0 {
         enqueue(.output(Data(slab.prefix(count)), 0))
         queuedOutput += count
+        streamStatistics?.observeQueuedBytes(queuedOutput)
         bytesRead += UInt64(count)
         if firstReadNs == 0 { firstReadNs = DispatchTime.now().uptimeNanoseconds }
         total += count
@@ -686,18 +570,21 @@ final class Session: @unchecked Sendable {
         break
       }
     }
+    if streamStatistics != nil { streamStatistics!.readNanoseconds &+= DispatchTime.now().uptimeNanoseconds - started }
     updateReadInterest()
   }
   private func updateReadInterest() {
     guard !closed, !readEnded else { return }
-    if queuedOutput >= 2 * 1024 * 1024 || writeBytes >= terminalWriteCapacity {
+    if queuedOutput >= 2 * 1024 * 1024 || writeBytes >= 3 * 1024 * 1024 {
       if !readSuspended {
         reader?.suspend()
         readSuspended = true
+        streamStatistics?.suspends += 1
       }
     } else if readSuspended && queuedOutput < 1024 * 1024 && writeBytes < 1536 * 1024 {
       reader?.resume()
       readSuspended = false
+      streamStatistics?.resumes += 1
       queue.async { [weak self] in self?.readAvailable() }
     }
   }
@@ -706,6 +593,7 @@ final class Session: @unchecked Sendable {
     if readSuspended {
       reader?.resume()
       readSuspended = false
+      streamStatistics?.resumes += 1
     }
     reader?.cancel()
     endWrite()
@@ -740,43 +628,32 @@ final class Session: @unchecked Sendable {
   private func drainReplies() {
     terminal_replies(core, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
   }
-  private static let collectClipboard:
-    @convention(c) (UnsafeMutableRawPointer?, UInt64, UnsafePointer<UInt8>?, Int) -> Void = {
-      context, requestID, bytes, count in
-      guard let context, let bytes, count >= 0 else { return }
-      let owner = Unmanaged<Session>.fromOpaque(context).takeUnretainedValue()
-      let data = Data(bytes: bytes, count: count)
-      let request = ClipboardWriteRequest(
-        sessionID: owner.clipboardSessionID, data: data,
-        live: { [weak owner] in owner?.acceptingClipboardRequests == true },
-        complete: { [weak owner] allowed, completion in
-          guard let owner else {
-            DispatchQueue.main.async { completion(false) }
-            return
-          }
-          owner.queue.async {
-            guard !owner.closed else {
-              DispatchQueue.main.async { completion(false) }
-              return
-            }
-            owner.enqueue(.clipboardDecision(requestID, allowed, completion))
-          }
-        })
-      DispatchQueue.main.async { [weak owner, request] in
-        guard let owner, owner.acceptingClipboardRequests else {
-          request.resolve(false) { _ in }
-          return
+  private static let collectClipboard: ClipboardCallback = { context, requestID, bytes, count in
+    guard let context, let bytes, count >= 0 else { return }
+    let owner = Unmanaged<Session>.fromOpaque(context).takeUnretainedValue()
+    let request = ClipboardWriteRequest(
+      sessionID: owner.clipboardSessionID, data: Data(bytes: bytes, count: count),
+      live: { [weak owner] in owner?.acceptingClipboardRequests == true },
+      completion: { [weak owner] allowed, completion in
+        guard let owner else { DispatchQueue.main.async { completion(false) }; return }
+        owner.queue.async {
+          guard !owner.closed else { DispatchQueue.main.async { completion(false) }; return }
+          owner.enqueue(.clipboardDecision(requestID, allowed, completion))
         }
-        if let handler = owner.onClipboardWrite {
-          handler(request)
-        } else {
-          request.resolve(false) { _ in }
-        }
-      }
+      })
+    DispatchQueue.main.async { [weak owner, request] in
+      guard let owner, owner.acceptingClipboardRequests else { request.resolve(false) { _ in }; return }
+      if let handler = owner.onClipboardWrite { handler(request) }
+      else { request.resolve(false) { _ in } }
     }
-  private func drainClipboardWrites() {
-    terminal_take_clipboard_requests(
-      core, Unmanaged.passUnretained(self).toOpaque(), Self.collectClipboard)
+  }
+  private func drainClipboardWrites() { terminal_take_clipboard_requests(core, Unmanaged.passUnretained(self).toOpaque(), Self.collectClipboard) }
+  func setClipboardClosedHandler(_ handler: @escaping @MainActor (UUID) -> Void) {
+    queue.async { [weak self] in
+      guard let self else { return }
+      onClipboardClosed = handler
+      deliverClipboardCloseIfPossible()
+    }
   }
   private func flush() {
     guard !closed, !writeEnded else { return }
@@ -851,7 +728,7 @@ final class Session: @unchecked Sendable {
       report("Key input metadata is too large")
       return false
     }
-    guard let wireBytes = input.maximumWireBytes, wireBytes <= terminalWriteCapacity else {
+    guard let wireBytes = input.maximumWireBytes, wireBytes <= 3 * 1024 * 1024 else {
       report("Key input exceeds write limit")
       return false
     }
@@ -907,13 +784,26 @@ final class Session: @unchecked Sendable {
       let elapsed =
         lastParseNs > firstReadNs && firstReadNs > 0
         ? Double(lastParseNs - firstReadNs) / 1_000_000_000 : 0
-      let stats: [String: Any] = [
+      var stats: [String: Any] = [
         "bytes_read": bytesRead, "bytes_parsed": bytesParsed, "queued_output_bytes": queuedOutput,
         "history_bytes": terminal_history_bytes(core), "stream_seconds": elapsed,
         "parsed_mib_per_second": elapsed > 0 ? Double(bytesParsed) / 1_048_576 / elapsed : 0,
         "child_reaped": reaped, "read_ended": readEnded, "parser_ended": parserEnded,
         "child_pid": pid,
       ]
+      if let stream = streamStatistics {
+        stats["stream_diagnostic"] = [
+          "read_callbacks": stream.readCallbacks, "read_calls": stream.readCalls,
+          "output_events": stream.outputEvents, "pump_schedules": stream.pumpSchedules,
+          "pump_turns": stream.pumpTurns, "feed_calls": stream.feedCalls,
+          "feed_bytes": stream.feedBytes, "event_queue_high_water": stream.queueHighWater,
+          "queued_output_bytes_high_water": stream.queuedBytesHighWater,
+          "read_suspends": stream.suspends, "read_resumes": stream.resumes,
+          "publish_calls": stream.publishCalls,
+          "read_nanoseconds": stream.readNanoseconds, "feed_nanoseconds": stream.feedNanoseconds,
+          "snapshot_nanoseconds": stream.snapshotNanoseconds, "pump_nanoseconds": stream.pumpNanoseconds,
+        ] as [String: Any]
+      }
       DispatchQueue.main.async { completion(stats) }
     }
   }
@@ -987,7 +877,10 @@ final class Session: @unchecked Sendable {
     }
   private func publish() {
     guard !closed else { return }
+    streamStatistics?.publishCalls += 1
+    let snapshotStarted = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
     let result = SnapshotBridge.readView(core, now: Self.now)
+    if streamStatistics != nil { streamStatistics!.snapshotNanoseconds &+= DispatchTime.now().uptimeNanoseconds - snapshotStarted }
     guard var snapshot = result.snapshot else {
       if let error = result.error { report(error) }
       queue.asyncAfter(deadline: .now() + .milliseconds(150)) { [weak self] in self?.publish() }
@@ -1033,9 +926,9 @@ final class Session: @unchecked Sendable {
       historySearch.cancel()
       for index in head..<events.count {
         switch events[index] {
-        case .input(_, _, _, _, let cost), .keyInput(_, let cost), .raw(_, let cost), .shortcut(_, let cost):
-          release(cost)
+        case .input(_, _, _, _, let cost), .keyInput(_, let cost), .raw(_, let cost), .shortcut(_, let cost): release(cost)
         case .find(_, let completion): DispatchQueue.main.async { completion(.cancelled) }
+        case .clipboardDecision(_, _, let completion): DispatchQueue.main.async { completion(false) }
         default: break
         }
       }
@@ -1044,6 +937,7 @@ final class Session: @unchecked Sendable {
       if readSuspended {
         reader?.resume()
         readSuspended = false
+        streamStatistics?.resumes += 1
       }
       reader?.cancel()
       endWrite()

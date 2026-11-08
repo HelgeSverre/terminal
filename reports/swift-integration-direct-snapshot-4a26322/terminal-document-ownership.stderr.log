@@ -1,0 +1,4 @@
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_document_ownership) -framework Foundation -o target/native/terminal-document-ownership-tests
+target/native/terminal-document-ownership-tests

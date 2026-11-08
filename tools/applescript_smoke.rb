@@ -36,12 +36,12 @@ class AppleScriptSmoke
 
   def initialize(root)
     @root = root
-    @source = File.join(root, 'dist', 'Terminal.app')
-    @fixture_root = File.join(root, 'target', 'automation-fixture')
+    @source = ENV.fetch('TERMINAL_AUTOMATION_SOURCE', File.join(root, 'dist', 'Terminal.app'))
+    @fixture_root = ENV.fetch('TERMINAL_AUTOMATION_FIXTURE_ROOT', File.join(root, 'target', 'automation-fixture'))
     @fixture = File.join(@fixture_root, "#{FIXTURE_NAME}.app")
     @executable = File.join(@fixture, 'Contents', 'MacOS', 'Terminal')
-    @report_path = File.join(root, 'reports', 'applescript-smoke.json')
-    @lock_path = File.join(root, 'target', 'automation-fixture.lock')
+    @report_path = ENV.fetch('TERMINAL_AUTOMATION_REPORT', File.join(root, 'reports', 'applescript-smoke.json'))
+    @lock_path = ENV.fetch('TERMINAL_AUTOMATION_LOCK', File.join(root, 'target', 'automation-fixture.lock'))
     @request_consent = ENV['TERMINAL_AUTOMATION_REQUEST_CONSENT'] == '1'
     @preflight_only = ENV['TERMINAL_AUTOMATION_PREFLIGHT_ONLY'] == '1'
     @commands = []
@@ -133,10 +133,13 @@ class AppleScriptSmoke
     @fixture_signature = code_signature(@fixture)
     @source_signature = code_signature(@source)
     @source_sha256 = Digest::SHA256.file(File.join(@source, 'Contents', 'MacOS', 'Terminal')).hexdigest
-    revision, status = capture('/usr/bin/git', '-C', @root, 'rev-parse', 'HEAD')
-    raise "Could not determine source revision: #{revision.strip}" unless status.success?
+    @source_revision = ENV['TERMINAL_AUTOMATION_SOURCE_REVISION']
+    unless @source_revision
+      revision, status = capture('/usr/bin/git', '-C', @root, 'rev-parse', 'HEAD')
+      raise "Could not determine source revision: #{revision.strip}" unless status.success?
 
-    @source_revision = revision.strip
+      @source_revision = revision.strip
+    end
   end
 
   def launch_fixture

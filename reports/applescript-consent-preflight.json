@@ -1,0 +1,57 @@
+{
+  "passed": false,
+  "failure": "AutomationConsentRequired: consent_required: non-prompting AppleEvent preflight returned -1744.",
+  "source": "/Users/helge/code/terminal-swift-experiment/dist/Terminal.app",
+  "source_signature": "Executable=/Users/helge/code/terminal-swift-experiment/dist/Terminal.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20400 size=13200 flags=0x2(adhoc) hashes=406+3 location=embedded\nSignature=adhoc\nInfo.plist entries=16\nTeamIdentifier=not set\nSealed Resources version=2 rules=13 files=23\nInternal requirements count=0 size=12\n",
+  "bundle_id": "no.helgesverre.terminal.automation-fixture",
+  "fixture_pid": 65191,
+  "fixture_identity": {
+    "pid": 65191,
+    "bundle_path": "/Users/helge/code/terminal-swift-experiment/target/automation-fixture/Terminal Automation Fixture.app"
+  },
+  "fixture_path": "/Users/helge/code/terminal-swift-experiment/target/automation-fixture/Terminal Automation Fixture.app",
+  "stable_fixture": true,
+  "signing_identity": "Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)",
+  "fixture_signature": "Executable=/Users/helge/code/terminal-swift-experiment/target/automation-fixture/Terminal Automation Fixture.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal.automation-fixture\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20500 size=13238 flags=0x10000(runtime) hashes=406+3 location=embedded\nSignature size=9058\nAuthority=Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=8 Nov 2026 at 07:17:39\nInfo.plist entries=16\nTeamIdentifier=9Z2L5FBZS3\nRuntime Version=26.2.0\nSealed Resources version=2 rules=13 files=23\nInternal requirements count=1 size=204\n",
+  "launch_mode": "direct",
+  "fixture_process": "65191 65184 R    00:00 /Users/helge/code/terminal-swift-experiment/target/automation-fixture/Terminal Automation Fixture.app/Contents/MacOS/Terminal --working-directory /tmp --execute /bin/sh -c stty raw -echo; printf \"%s\\n\" \"$$\" >> \"$TERMINAL_AUTOMATION_CHILD_PIDS\"; exec /bin/cat",
+  "automation_permission_status": -1744,
+  "automation_permission_outcome": "consent_required",
+  "requested_standard_consent": false,
+  "preflight_only": false,
+  "fixture_stdout_stderr": "",
+  "child_processes_recorded": [
+    65231
+  ],
+  "commands": [
+    {
+      "name": "get fixture name",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to get name",
+      "stdout": "Terminal Automation Fixture",
+      "exit_status": 0,
+      "timed_out": false
+    },
+    {
+      "name": "get fixture id",
+      "language": "AppleScript",
+      "source": "tell application id \"no.helgesverre.terminal.automation-fixture\" to get id",
+      "stdout": "no.helgesverre.terminal.automation-fixture",
+      "exit_status": 0,
+      "timed_out": false
+    }
+  ],
+  "scenarios": [
+    "invalid-target",
+    "bounded-read",
+    "preferences",
+    "window",
+    "split",
+    "tab",
+    "focus",
+    "settings",
+    "inactive",
+    "close",
+    "cleanup"
+  ]
+}

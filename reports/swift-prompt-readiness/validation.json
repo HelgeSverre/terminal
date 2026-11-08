@@ -1,0 +1,19 @@
+{
+  "base_commit": "6674c2247f61f35e55d0dec76aad177e4eefa8f5",
+  "source_sha256": {
+    "native/SwiftTerminalCore.swift": "20fea71e7f51a37469b4fb806b3b611a1006e32b1c57d2bec5f59c516a68717e",
+    "native/TerminalDocument.swift": "7d667093fd229263ee05127b3680475ef145bf779f2d371c1fdc34a50dd3d6a8",
+    "native/DocumentReflow.swift": "71b50bff01df932e3987062fe611616a002019a39d0afa2394011931e8d8a7a1",
+    "native/tests/TerminalPromptClearOracleTests.swift": "b1277e7e7b827bb5586fec662d26065a7c5dace44c03c5d218317514eb42c015"
+  },
+  "reproduction": "OSC133 A on bottom row; three prompt lines scroll anchor into history; B; width/height changes",
+  "before_swift_exit": 133,
+  "rust_focused_reference_exit": 0,
+  "swift_prompt_oracles_exit": 0,
+  "clear_action_abi": {
+    "ignored_alternate": 0,
+    "cleared": 1,
+    "redraw_prompt": 2
+  },
+  "note": "Focused shared ABI oracle is run against the real Rust archive; full Swift oracle additionally uses Swift-private row IDs. Corrected earlier test assumptions about geometry clearing prompt phase and reversed clear return codes. Native verification pending."
+}

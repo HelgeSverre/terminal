@@ -8,6 +8,8 @@ require 'tmpdir'
 root = File.expand_path('..', __dir__)
 source = File.join(root, 'native', 'Terminal.terminfo')
 bundle_database = File.join(root, 'dist', 'Terminal.app', 'Contents', 'Resources', 'terminfo')
+probe = File.join(root, 'target', 'native', 'terminfo-probe')
+raise 'Run just terminfo-test to compile the Swift ABI probe' unless File.executable?(probe)
 
 def run(*command, env: {})
   output, status = Open3.capture2e(env, *command)
@@ -66,8 +68,8 @@ Dir.mktmpdir('helge-terminal-terminfo-') do |temporary|
   program << run('/usr/bin/tput', '-T', 'helge-terminal', 'smcup', env: environment)
   program << 'X'
   program << run('/usr/bin/tput', '-T', 'helge-terminal', 'rmcup', env: environment)
-  snapshot, status = Open3.capture2e('cargo', 'run', '--quiet', '--locked', '-p', 'terminal-tools', '--bin', 'terminal-tools', '--', '8', '3', stdin_data: program, chdir: root)
-  raise "terminal-tools failed:\n#{snapshot}" unless status.success?
+  snapshot, status = Open3.capture2e(probe, '8', '3', stdin_data: program, chdir: root)
+  raise "Swift ABI replay failed:\n#{snapshot}" unless status.success?
 
   output = JSON.parse(snapshot)
   cell = output.fetch('rows').fetch(1).fetch('cells').fetch(2)
@@ -79,8 +81,8 @@ Dir.mktmpdir('helge-terminal-terminfo-') do |temporary|
   acs_input = ['`', 'a', 'f', 'g', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '{', '|', '}', '~'].join
   acs_program << acs_input
   acs_program << run('/usr/bin/tput', '-T', 'helge-terminal', 'rmacs', env: environment)
-  acs_snapshot, status = Open3.capture2e('cargo', 'run', '--quiet', '--locked', '-p', 'terminal-tools', '--bin', 'terminal-tools', '--', '40', '2', stdin_data: acs_program, chdir: root)
-  raise "terminal-tools ACS replay failed:\n#{acs_snapshot}" unless status.success?
+  acs_snapshot, status = Open3.capture2e(probe, '40', '2', stdin_data: acs_program, chdir: root)
+  raise "Swift ABI ACS replay failed:\n#{acs_snapshot}" unless status.success?
 
   acs_text = JSON.parse(acs_snapshot).fetch('rows').fetch(0).fetch('cells').map { |item| item.fetch('text') }.join
   raise "tput ACS mapping mismatch: #{acs_text.inspect}" unless acs_text == '◆▒°±␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·'

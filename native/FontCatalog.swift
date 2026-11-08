@@ -71,6 +71,10 @@ enum FontCatalog {
   private var pageRevision: UInt64?
   private var pageDeadline: DispatchTime?
   private var pageRedrawRequested = false
+  private var markedInstalled = false
+  private var markedSubmissionBaseline: UInt64?
+  private var markedCompletionBaseline: UInt64?
+  private var markedEvidence: [String: Any] = [:]
   private var failures: [String] = []
   private let budgetPressure = CommandLine.arguments.contains("--atlas-fallback-budget-smoke")
   private let pressure: Bool
@@ -129,7 +133,44 @@ enum FontCatalog {
     }
     let completed =
       pane.geometryReport()["completed_snapshot_revision"] as? UInt64 ?? 0
-    if completed >= revision {
+    let metrics = RendererMetrics.report()
+    let residency = metrics["glyph_residency"] as? [String: Any]
+    let quiescent = residency?["quiescent"] as? Bool ?? false
+    let completedGlyphRevision = metrics["last_completed_glyph_revision"] as? UInt64 ?? 0
+    if completed >= revision && quiescent && completedGlyphRevision >= revision {
+      if pressure && !markedInstalled {
+        markedInstalled = true
+        markedSubmissionBaseline = metrics["submissions"] as? UInt64 ?? 0
+        markedCompletionBaseline = metrics["completed_submissions"] as? UInt64 ?? 0
+        // Install after Canvas has accepted the PTY/CSI target snapshot. The
+        // marked run is native overlay state and must get its own render pass.
+        pane.setMarkedText(
+          String(repeating: "W", count: 160), selectedRange: NSRange(location: 0, length: 0),
+          replacementRange: NSRange(location: NSNotFound, length: 0))
+        markedEvidence = [
+          "has_marked_text_before_assertions": pane.hasMarkedText(),
+          "cell_span": 160,
+          "baseline_submissions": markedSubmissionBaseline ?? 0,
+          "baseline_completed_submissions": markedCompletionBaseline ?? 0,
+        ]
+        pageRedrawRequested = false
+        DispatchQueue.main.async { [weak self] in self?.pollRenderedPage() }
+        return
+      }
+      if let baseline = markedSubmissionBaseline,
+        let completedBaseline = markedCompletionBaseline,
+        ((metrics["submissions"] as? UInt64 ?? 0) <= baseline
+          || (metrics["completed_submissions"] as? UInt64 ?? 0) <= completedBaseline)
+      {
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(10)) { [weak self] in
+          self?.pollRenderedPage()
+        }
+        return
+      }
+      if pressure {
+        markedEvidence["completed_submissions"] = metrics["completed_submissions"] as? UInt64 ?? 0
+        markedEvidence["has_marked_text_at_completion"] = pane.hasMarkedText()
+      }
       pageRevision = nil
       pageDeadline = nil
       pageRedrawRequested = false
@@ -152,13 +193,6 @@ enum FontCatalog {
     let offset = (page % pages) * pageSize
     points = FontCatalog.codepoints[offset..<min(offset + pageSize, FontCatalog.codepoints.count)]
     let style = ["0", "1", "3", "1;3"][page / pages]
-    if pressure, let pane = window.panes.first {
-      // Twenty cells exceed the pressure atlas width, exercising the direct
-      // fallback on the IME/preedit path as well as ordinary grid glyphs.
-      pane.setMarkedText(
-        String(repeating: "W", count: 20), selectedRange: NSRange(location: 0, length: 0),
-        replacementRange: NSRange(location: NSNotFound, length: 0))
-    }
     var output = "\u{1b}[2J\u{1b}[H\u{1b}[0mObel Mono + Nerd Font: page \(page + 1)/\(pages * styles)\r\n\u{1b}[\(style)m"
     for index in stride(from: points.startIndex, to: points.endIndex, by: 32) {
       output += points[index..<min(index + 32, points.endIndex)].map {
@@ -178,21 +212,26 @@ enum FontCatalog {
     let metrics = RendererMetrics.report()
     let expected = pressure ? min(pageSize, FontCatalog.codepoints.count) : FontCatalog.codepoints.count * 4
     let visibleDrops = metrics["visible_glyph_drops"] as? UInt64 ?? 0
-    let exactFallbacks = metrics["exact_glyph_fallbacks"] as? UInt64 ?? 0
-    let substitutions = metrics["substitute_glyph_fallbacks"] as? UInt64 ?? 0
-    let oversized = metrics["oversized_glyph_fallbacks"] as? UInt64 ?? 0
+    let finalSubstitutions = metrics["last_completed_substitutes"] as? UInt64 ?? 0
     let droppedBuffers = metrics["dropped_quad_buffers"] as? UInt64 ?? 0
-    let peakBytes = metrics["peak_glyph_fallback_bytes"] as? UInt64 ?? 0
-    let peakCount = metrics["peak_glyph_fallback_count"] as? UInt64 ?? 0
+    let residency = metrics["glyph_residency"] as? [String: Any] ?? [:]
+    let directBytes = residency["direct_bytes"] as? Int ?? 0
+    let denied = residency["denied_allocations"] as? UInt64 ?? 0
+    let quiescent = residency["quiescent"] as? Bool ?? false
+    let markedFixturePassed = !pressure || (
+      markedEvidence["has_marked_text_before_assertions"] as? Bool == true
+        && markedEvidence["has_marked_text_at_completion"] as? Bool == true
+        && (markedEvidence["cell_span"] as? Int ?? 0) > 0
+    )
     let pressurePassed = !pressure || (budgetPressure
-      ? substitutions > 0 && oversized > 0
-      : exactFallbacks > 0 && substitutions == 0 && oversized > 0
-        && peakBytes <= UInt64(8 * 1024 * 1024) && peakCount <= 1024)
+      ? finalSubstitutions > 0 && denied > 0 && directBytes == 0
+      : directBytes > 0 && finalSubstitutions == 0 && denied == 0)
     let result: [String: Any] = ["passed": failures.isEmpty && verified == expected
       && metrics["command_errors"] as? Int == 0
-      && visibleDrops == 0 && droppedBuffers == 0 && pressurePassed, "failures": failures,
+      && visibleDrops == 0 && droppedBuffers == 0 && pressurePassed && markedFixturePassed && quiescent, "failures": failures,
       "unique_codepoints": FontCatalog.codepoints.count, "style_codepoints_verified": verified,
       "rendered_pages": renderedPages, "atlas_pressure": pressure, "metal": metrics,
+      "marked_fixture": markedEvidence,
       "note": pressure
         ? "A bounded symbol fixture and oversized preedit exercised the raw cat PTY, native grid, and Metal fallback paths, with successful completion of the pane's page revision. This does not capture display pixels; pixel coverage is checked separately by the shared rasterizer catalog."
         : "Every mapped printable symbol passed through a raw cat PTY and the native grid in all four styles, with a successful Metal command completion for each page. This does not capture display pixels; pixel coverage is checked separately by the shared rasterizer catalog."]

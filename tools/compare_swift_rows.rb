@@ -56,7 +56,13 @@ begin
     run_capture(['/usr/bin/tar', '-xf', archive, '-C', directory], "#{output}/#{label}-extract.log")
     File.delete(archive)
     graph = JSON.parse(File.read("#{directory}/tools/swift-sources.json"))
-    sources = graph.fetch('tests').fetch('swift_core').reject { |path| path == 'tests/SwiftCoreTests.swift' }
+    # Archived checkpoints predate the emulator naming cleanup. Derive their
+    # source group from the archived manifest; callers still supply only refs.
+    groups = graph.fetch('tests')
+    emulator_group = groups.key?('emulator') ? 'emulator' : 'swift_core'
+    sources = groups.fetch(emulator_group).reject do |path|
+      %w[tests/EmulatorTests.swift tests/SwiftCoreTests.swift].include?(path)
+    end
                    .map { |path| "#{directory}/native/#{path}" }
     executable = "#{directory}/probe"
     command = ['xcrun', 'swiftc', '-swift-version', '5', '-O', '-whole-module-optimization', '-target', 'arm64-apple-macosx15.0',

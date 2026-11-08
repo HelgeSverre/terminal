@@ -1,0 +1,24 @@
+{
+  "commit": "7fc6fac",
+  "frozen_fixture": "/Users/helge/code/terminal-swift-experiment/target/swift-host-fixture-7fc6fac.app",
+  "frozen_executable_sha256": "0e16e1aba3b333c56c391721a769941964e25fcb9e66e9d6d01ee1dd601c3e60",
+  "native_smoke": {
+    "passed": true,
+    "report": "/Users/helge/code/terminal-swift-experiment/reports/swift-host-verification-7fc6fac/native-smoke.json"
+  },
+  "external_ax": {
+    "passed": true,
+    "report": "/Users/helge/code/terminal-swift-experiment/reports/swift-host-verification-7fc6fac/accessibility-attributed/external-ax.json",
+    "provenance": "/Users/helge/code/terminal-swift-experiment/reports/swift-host-verification-7fc6fac/accessibility-attributed/provenance.json"
+  },
+  "applescript_preflight": {
+    "passed": true,
+    "report": "/Users/helge/code/terminal-swift-experiment/reports/swift-host-verification-7fc6fac/applescript-preflight.json",
+    "consent_prompt_requested": false
+  },
+  "applescript_full": {
+    "passed": true,
+    "report": "/Users/helge/code/terminal-swift-experiment/reports/swift-host-verification-7fc6fac/applescript-full.json",
+    "consent_prompt_requested": false
+  }
+}

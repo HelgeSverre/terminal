@@ -20,7 +20,7 @@ class AccessibilitySmoke
   def initialize(root, bundle)
     @root = root
     @bundle = bundle
-    @report_directory = File.join(root, REPORT_DIRECTORY)
+    @report_directory = ENV.fetch('TERMINAL_ACCESSIBILITY_REPORT_DIRECTORY', File.join(root, REPORT_DIRECTORY))
     @report_path = File.join(@report_directory, 'external-ax.json')
     @provenance_path = File.join(@report_directory, 'provenance.json')
     @probe_source = File.join(root, 'tools', 'AccessibilityProbe.swift')
