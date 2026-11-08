@@ -110,8 +110,13 @@ enum SwiftUnicode {
             guard second & 0xc0 == 0x80 else { return false }
             switch first { case 0xe0: return second >= 0xa0; case 0xed: return second <= 0x9f; case 0xf0: return second >= 0x90; case 0xf4: return second <= 0x8f; default: return true }
           }()
-          let continuationsAreValid = available.dropFirst(2).allSatisfy { $0 & 0xc0 == 0x80 }
-          if !secondIsPossible || !continuationsAreValid { output.append("\u{fffd}"); offset += 1; continue }
+          let invalidContinuation = available.indices.dropFirst(2).first { available[$0] & 0xc0 != 0x80 }
+          if !secondIsPossible { output.append("\u{fffd}"); offset += 1; continue }
+          if let invalidContinuation {
+            output.append("\u{fffd}")
+            offset += invalidContinuation
+            continue
+          }
           if endOfInput {
             // The remaining bytes form one incomplete maximal subpart.
             output.append("\u{fffd}"); offset = pending.count

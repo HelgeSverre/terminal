@@ -223,14 +223,14 @@ private final class SwiftTerminalCore {
         // ownership in the string state until the following byte decides it;
         // switching to generic Escape would lose APC/OSC context.
         else if byte == 0x1b, sequence.utf8.count < 65_536 { sequence.append("\u{1b}") }
-        else if byte == 0x1b { parser = .discardString(escaped: false, osc: true); sequence = "" }
+        else if byte == 0x1b { parser = .discardString(escaped: true, osc: true); sequence = "" }
         else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
         else if sequence.utf8.count < 65_536 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
         else { parser = .discardString(escaped: false, osc: true); sequence = "" }
       case .apc:
         if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
         else if byte == 0x1b, sequence.utf8.count < 65_536 { sequence.append("\u{1b}") }
-        else if byte == 0x1b { parser = .discardString(escaped: false, osc: false); sequence = "" }
+        else if byte == 0x1b { parser = .discardString(escaped: true, osc: false); sequence = "" }
         else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
         else if sequence.utf8.count < 65_536 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
         else { parser = .discardString(escaped: false, osc: false); sequence = "" }
@@ -630,6 +630,7 @@ private final class SwiftTerminalCore {
     let resizedAlternate = document.resize(oldAlternate, columns: nextColumns, rows: nextRows)
     columns = nextColumns; rowCount = nextRows; alternate = resizedAlternate
     historyByteCount = UInt64(history.reduce(0) { $0 + Int(rowStorageBytes($1)) })
+    enforceHistoryLimits()
     viewAnchor = mapped.anchor ?? viewAnchor
     resolveViewportAnchor(clamp: true)
     syncDeadline = nil
@@ -671,12 +672,17 @@ private final class SwiftTerminalCore {
     UInt64(row.cells.count + row.cells.reduce(0) { $0 + $1.text.utf8.count })
   }
   private func enforceHistoryLimits() {
+    let retainedAnchor = viewAnchor
     var evicted = false
     while history.count > historyLimit || (historyByteCount > UInt64(historyByteLimit) && !history.isEmpty) {
       historyByteCount &-= rowStorageBytes(history.removeFirst())
       evicted = true
     }
-    if evicted { clampViewportAfterEviction() }
+    if evicted, let retainedAnchor,
+       !history.contains(where: { $0.id == retainedAnchor }),
+       !primary.rows.contains(where: { $0.id == retainedAnchor }) {
+      clampViewportAfterEviction()
+    }
   }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
   func setHistoryByteLimit(_ value: Int) { historyByteLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
