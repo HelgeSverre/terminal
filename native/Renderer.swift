@@ -596,6 +596,7 @@ final class TerminalRendering: @unchecked Sendable {
       // no longer invalidates resident glyphs used by other panes.
     }
     let preparationStart = DispatchTime.now().uptimeNanoseconds
+    RendererMetrics.beginGlyphFrame(revision: request.snapshot.revision)
     var quads: [Quad] = []
     var backgrounds: [Quad] = []
     var glyphQuads = Array(repeating: [Quad](), count: atlases.count)
@@ -896,6 +897,7 @@ final class TerminalRendering: @unchecked Sendable {
     residencySubmitted = true
     command.addCompletedHandler { [weak self, retiredFallbackIDs, surface] command in
       self?.executor.async {
+        RendererMetrics.completeGlyphFrame(revision: completedRevision)
         retiredFallbackIDs.forEach { self?.glyphResidency.releaseLegacyTexture($0) }
         self?.glyphResidency.completedSubmission()
         self?.completed(
@@ -927,6 +929,23 @@ final class RendererMetrics: @unchecked Sendable {
   private static var gpu: [Double] = []
   private static var errors = 0
   private static var residency: [String: Any] = [:]
+  private static var currentGlyphRevision: UInt64 = 0
+  private static var currentGlyphSubstitutes: UInt64 = 0
+  private static var completedGlyphRevision: UInt64 = 0
+  private static var completedGlyphSubstitutes: UInt64 = 0
+  static func beginGlyphFrame(revision: UInt64) {
+    lock.lock()
+    currentGlyphRevision = revision
+    currentGlyphSubstitutes = 0
+    lock.unlock()
+  }
+  static func completeGlyphFrame(revision: UInt64) {
+    lock.lock()
+    guard currentGlyphRevision == revision else { lock.unlock(); return }
+    completedGlyphRevision = revision
+    completedGlyphSubstitutes = currentGlyphSubstitutes
+    lock.unlock()
+  }
   static func recordResidency(_ value: GlyphResidency.Diagnostics) {
     lock.lock()
     residency = ["resident_bytes": value.residentBytes, "reservations": value.reservations,
@@ -997,6 +1016,7 @@ final class RendererMetrics: @unchecked Sendable {
   static func recordSubstituteGlyphFallback() {
     lock.lock()
     substituteGlyphFallbacks += 1
+    currentGlyphSubstitutes += 1
     lock.unlock()
   }
   static func recordOversizedGlyphFallback() {
@@ -1043,6 +1063,8 @@ final class RendererMetrics: @unchecked Sendable {
       "peak_glyph_fallback_count": peakGlyphFallbackCount,
       "dropped_quad_buffers": droppedQuadBuffers,
       "peak_atlas_pages": peakAtlasPages,
+      "last_completed_glyph_revision": completedGlyphRevision,
+      "last_completed_substitutes": completedGlyphSubstitutes,
       "glyph_residency": residency,
     ]
   }

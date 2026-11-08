@@ -132,7 +132,8 @@ enum FontCatalog {
     let metrics = RendererMetrics.report()
     let residency = metrics["glyph_residency"] as? [String: Any]
     let quiescent = residency?["quiescent"] as? Bool ?? false
-    if completed >= revision && quiescent {
+    let completedGlyphRevision = metrics["last_completed_glyph_revision"] as? UInt64 ?? 0
+    if completed >= revision && quiescent && completedGlyphRevision >= revision {
       pageRevision = nil
       pageDeadline = nil
       pageRedrawRequested = false
@@ -182,15 +183,15 @@ enum FontCatalog {
     let metrics = RendererMetrics.report()
     let expected = pressure ? min(pageSize, FontCatalog.codepoints.count) : FontCatalog.codepoints.count * 4
     let visibleDrops = metrics["visible_glyph_drops"] as? UInt64 ?? 0
-    let substitutions = metrics["substitute_glyph_fallbacks"] as? UInt64 ?? 0
+    let finalSubstitutions = metrics["last_completed_substitutes"] as? UInt64 ?? 0
     let droppedBuffers = metrics["dropped_quad_buffers"] as? UInt64 ?? 0
     let residency = metrics["glyph_residency"] as? [String: Any] ?? [:]
     let directBytes = residency["direct_bytes"] as? Int ?? 0
     let denied = residency["denied_allocations"] as? UInt64 ?? 0
     let quiescent = residency["quiescent"] as? Bool ?? false
     let pressurePassed = !pressure || (budgetPressure
-      ? substitutions > 0 && denied > 0 && directBytes == 0
-      : directBytes > 0 && substitutions == 0 && denied == 0)
+      ? finalSubstitutions > 0 && denied > 0 && directBytes == 0
+      : directBytes > 0 && finalSubstitutions == 0 && denied == 0)
     let result: [String: Any] = ["passed": failures.isEmpty && verified == expected
       && metrics["command_errors"] as? Int == 0
       && visibleDrops == 0 && droppedBuffers == 0 && pressurePassed && quiescent, "failures": failures,
