@@ -37,9 +37,11 @@ private final class SwiftBorrowedCells {
   deinit { text.forEach { $0.deallocate() }; links.forEach { $0.deallocate() } }
   func copy(_ string: String, into target: inout [UnsafeMutablePointer<UInt8>]) -> UnsafePointer<UInt8>? {
     let bytes = Array(string.utf8)
-    guard !bytes.isEmpty else { return nil }
-    let pointer = UnsafeMutablePointer<UInt8>.allocate(capacity: bytes.count)
+    // A non-nil zero-length link means OSC 8 explicitly supplied an empty
+    // URI; nil means no link. Preserve that distinction over the ABI.
+    let pointer = UnsafeMutablePointer<UInt8>.allocate(capacity: max(1, bytes.count))
     for (offset, byte) in bytes.enumerated() { pointer.advanced(by: offset).initialize(to: byte) }
+    if bytes.isEmpty { pointer.initialize(to: 0) }
     target.append(pointer)
     return UnsafePointer(pointer)
   }
