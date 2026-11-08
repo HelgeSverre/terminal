@@ -1,0 +1,86 @@
+{
+  "passed": true,
+  "failure": null,
+  "source": {
+    "bundle_path": "/Users/helge/code/terminal-swift-experiment/target/swift-host-fixture-7fc6fac.app",
+    "revision": "7fc6fac",
+    "executable_sha256": "0e16e1aba3b333c56c391721a769941964e25fcb9e66e9d6d01ee1dd601c3e60",
+    "code_signature": "Executable=/Users/helge/code/terminal-swift-experiment/target/swift-host-fixture-7fc6fac.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20400 size=14672 flags=0x2(adhoc) hashes=452+3 location=embedded\nSignature=adhoc\nInfo.plist entries=16\nTeamIdentifier=not set\nSealed Resources version=2 rules=13 files=23\nInternal requirements count=0 size=12\n"
+  },
+  "fixture": {
+    "bundle_id": "no.helgesverre.terminal.automation-fixture",
+    "display_name": "Terminal Automation Fixture",
+    "path": "/Users/helge/code/terminal-swift-experiment/target/swift-host-applescript-7fc6fac/Terminal Automation Fixture.app",
+    "pid": 64457,
+    "signing_identity": "Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)",
+    "code_signature": "Executable=/Users/helge/code/terminal-swift-experiment/target/swift-host-applescript-7fc6fac/Terminal Automation Fixture.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal.automation-fixture\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20500 size=14710 flags=0x10000(runtime) hashes=452+3 location=embedded\nSignature size=9059\nAuthority=Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=8 Nov 2026 at 11:50:25\nInfo.plist entries=16\nTeamIdentifier=9Z2L5FBZS3\nRuntime Version=26.2.0\nSealed Resources version=2 rules=13 files=23\nInternal requirements count=1 size=204\n"
+  },
+  "permission": {
+    "status": 0,
+    "outcome": "permitted",
+    "requested_standard_consent": false
+  },
+  "targeting": {
+    "bundle_id": "no.helgesverre.terminal.automation-fixture",
+    "expected_path": "/Users/helge/code/terminal-swift-experiment/target/swift-host-applescript-7fc6fac/Terminal Automation Fixture.app",
+    "running": []
+  },
+  "preflight_only": true,
+  "commands": [
+    {
+      "name": "AppleEvent permission preflight",
+      "language": "JavaScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "JavaScript",
+        "-e",
+        "ObjC.import('Foundation');\nObjC.import('CoreServices');\nObjC.bindFunction('AEDeterminePermissionToAutomateTarget', ['int', ['void*', 'uint32', 'uint32', 'bool']]);\nconst target = $.NSAppleEventDescriptor.descriptorWithBundleIdentifier(\"no.helgesverre.terminal.automation-fixture\");\nconsole.log(String($.AEDeterminePermissionToAutomateTarget(target.aeDesc, 1213490546, 1835426675, false)));\n"
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "e6ec65fc91349c5202224653facd50af9d5b0761c40e4a9d6b1264cf442609e5",
+      "stdout": "0\n",
+      "exit_status": 0,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    }
+  ],
+  "cleanup": {
+    "owned_pids_before_cleanup": [
+      64457,
+      64497
+    ],
+    "owned_pids_after_cleanup": [],
+    "survivors": [],
+    "app_exit_status": {
+      "observed": true,
+      "exited": false,
+      "exit_status": null,
+      "signaled": true,
+      "signal": 15
+    },
+    "recorded_child_pids": [
+      64497
+    ],
+    "recorded_children_exited": true,
+    "active_fixture_pids_after_cleanup": []
+  },
+  "fixture_stdout_stderr": "",
+  "scenarios": [
+    "permission",
+    "invalid-target",
+    "bounded-read",
+    "preferences",
+    "window",
+    "split",
+    "tab",
+    "focus",
+    "settings",
+    "inactive",
+    "large-committed-text",
+    "clear",
+    "close",
+    "cleanup"
+  ]
+}

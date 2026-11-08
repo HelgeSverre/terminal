@@ -1,0 +1,43 @@
+{
+  "runner": "accessibility_smoke.rb",
+  "source_bundle": "/Users/helge/code/terminal-swift-experiment/target/swift-host-fixture-7fc6fac.app",
+  "source_file_sha256": "545b2fe8f3768aa61805da70a78e47337861b1566975688b5870a5e9d8465e67",
+  "permission_prompt_requested": false,
+  "private_fixture_bundle": "/var/folders/xr/z75qc4354_v3lm18m65xkz580000gn/T/terminal-accessibility-attributed-20261108-64210-kig869/Terminal.app",
+  "fixture_bundle_id": "no.helgesverre.terminal.accessibility-fixture.2ab467073a39",
+  "source_executable_sha256": "0e16e1aba3b333c56c391721a769941964e25fcb9e66e9d6d01ee1dd601c3e60",
+  "fixture_executable_sha256": "aa16fc0c6447408894632b439ec6fc6fab01fdd945c2c0e61c4129f0944bf35c",
+  "probe_binary_sha256": "f5db0b3a6d4f95439dd7bbbeeb90e02ad02195aecebd115d1eb3d4e485bba3e7",
+  "command": [
+    "/var/folders/xr/z75qc4354_v3lm18m65xkz580000gn/T/terminal-accessibility-attributed-20261108-64210-kig869/Terminal.app/Contents/MacOS/Terminal",
+    "--columns",
+    "80",
+    "--rows",
+    "24",
+    "--font-size",
+    "14",
+    "--working-directory",
+    "/tmp",
+    "--execute",
+    "/bin/sh",
+    "-c",
+    "printf '\\033[31;44;1;4mAXé🐈\\033[0m \\033]8;;https://example.test/ax\\033\\\\link\\033]8;;\\033\\\\\\n'; printf '%s\\n' \"$$\" > /var/folders/xr/z75qc4354_v3lm18m65xkz580000gn/T/terminal-accessibility-attributed-20261108-64210-kig869/controlled-child.pid; exec /bin/sleep 30"
+  ],
+  "controlled_child_pid_file": "controlled-child.pid",
+  "owned_app_pid": 64264,
+  "controlled_child_pid": 64281,
+  "owned_pids_before_cleanup": [
+    64264,
+    64281
+  ],
+  "owned_pids_after_cleanup": [],
+  "cleanup_survivors": [],
+  "app_exit_status": {
+    "observed": true,
+    "exited": false,
+    "exit_status": null,
+    "signaled": true,
+    "signal": 15
+  },
+  "controlled_child_exited": true
+}
