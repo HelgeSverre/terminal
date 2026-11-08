@@ -36,3 +36,7 @@ and the earlier 65 acceptance evidence remains separate in
 The test-only `5cfe701` follow-up is not part of this runtime result. CI for
 that follow-up is pending, so this report does not claim CI success, promotion,
 or final replacement readiness.
+
+The paired 8.16 GB primary-history SQL stress result is separate:
+[Swift reaches 67.9361% of Rust throughput there](../sql-full-34bd618-evidence/summary.md),
+below the 70% target despite this report's four standard workloads passing.
