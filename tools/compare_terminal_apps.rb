@@ -9,6 +9,8 @@ require_relative 'native_smoke'
 # Both bundles are launched directly into independent, owned processes. Each
 # runs the same PTY driver and must exit naturally with all children reaped.
 class TerminalAppComparison
+  MINIMUM_SWIFT_TO_RUST_RATIO = 0.7
+
   def initialize(output, rust_app, swift_app)
     @output = File.expand_path(output)
     @apps = { 'rust' => File.realpath(rust_app), 'swift' => File.realpath(swift_app) }
@@ -45,8 +47,8 @@ class TerminalAppComparison
       [item.fetch('name'), item.dig('mib_per_second', 'p50') / rust_rates.fetch(item.fetch('name'))]
     end
     @result['performance_gate'] = {
-      'minimum_swift_to_rust_ratio' => 0.9, 'observed_ratios' => ratios,
-      'passed' => ratios.values.all? { |ratio| ratio >= 0.9 }
+      'minimum_swift_to_rust_ratio' => MINIMUM_SWIFT_TO_RUST_RATIO, 'observed_ratios' => ratios,
+      'passed' => ratios.values.all? { |ratio| ratio >= MINIMUM_SWIFT_TO_RUST_RATIO }
     }
     @result['passed'] = true
   rescue StandardError, Interrupt => error

@@ -148,10 +148,17 @@ numbers instead of combining separate runs into a single speedup claim.
 
 ## Swift replacement target
 
-Swift must reach at least **90% of Rust's median throughput on each** shared
+Swift must reach at least **70% of Rust's median throughput on each** shared
 app workload: short ASCII, long ASCII, ANSI truecolor and Unicode. Do not
 average the workloads together to hide a failing case. Correctness, snapshot
 ownership and clean process shutdown must pass alongside performance.
+
+Helge lowered the performance threshold from 90% to 70% on 2026-11-08.
+80% per workload is a stretch target where practical, not an acceptance
+requirement. The last Rust implementation will remain on a snapshot branch
+before the Swift replacement is promoted.
+Archived reports retain the criterion used when they were generated; their
+measured ratios remain available for comparison with the current threshold.
 
 Run a quick app-level diagnostic from the main worktree with:
 
@@ -162,7 +169,7 @@ just benchmark-apps /absolute/path/to/Rust.app /absolute/path/to/Swift.app repor
 The runner compiles one shared driver and launches owned app instances
 sequentially. It checks their grid, corpus, sample counts and report ownership,
 then requires natural app exit and reaped children. Exceptions and interrupts
-clean up only owned processes. `comparison.json` records the 90% performance
+clean up only owned processes. `comparison.json` records the 70% performance
 gate separately from successful measurement. The default 2 MiB × three-sample
 run is a diagnostic pilot.
 
