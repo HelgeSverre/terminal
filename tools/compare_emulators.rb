@@ -9,8 +9,8 @@ require "fileutils"
 require "json"
 require "open3"
 require "optparse"
-require "pathname"
 require "time"
+require "tmpdir"
 
 class ComparisonError < StandardError; end
 
@@ -73,13 +73,16 @@ def terminate_process_group(pid)
   end
 end
 
-def run_harness(executable:, workload:, bytes:, snapshot_path:, log_path:)
+def run_harness(executable:, workload:, bytes:, snapshot_path:, log_path:, timeout_seconds:, on_spawn: nil)
   started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  deadline = started + timeout_seconds
   pid = Process.spawn(executable, "--workload", workload, "--bytes", bytes.to_s,
                       "--snapshot", snapshot_path, pgroup: true, out: log_path,
                       err: "#{log_path}.stderr")
+  on_spawn&.call(pid)
   samples = []
   status = nil
+  timed_out = false
   begin
     loop do
       value = rss_kb(pid)
@@ -89,10 +92,15 @@ def run_harness(executable:, workload:, bytes:, snapshot_path:, log_path:)
         status = waited.last
         break
       end
+      if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+        timed_out = true
+        terminate_process_group(pid)
+        raise ComparisonError, "harness timed out after #{timeout_seconds} seconds: #{executable}"
+      end
       sleep 0.025
     end
   ensure
-    terminate_process_group(pid) if status.nil?
+    terminate_process_group(pid) if status.nil? && !timed_out
   end
   wall_ns = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1_000_000_000).round
   output = File.read(log_path).strip
@@ -107,6 +115,7 @@ def run_harness(executable:, workload:, bytes:, snapshot_path:, log_path:)
     "rss_samples_kb" => samples,
     "rss_last_kb" => samples.last,
     "rss_peak_kb" => samples.max,
+    "rss_scope" => "direct child; includes the allocated replay corpus and runtime allocations",
     "snapshot_sha256" => sha256(snapshot_path),
     "snapshot_path" => snapshot_path
   )
@@ -126,11 +135,12 @@ end
 
 def load_provenance(path, implementation, executable, root)
   provenance = JSON.parse(File.read(path))
-  required = %w[implementation source_commit source_tree_clean executable_sha256 compiler build_wall_seconds build_command]
+  required = %w[implementation source_root source_commit source_tree_clean executable_sha256 compiler build_wall_seconds build_command]
   missing = required.reject { |key| provenance.key?(key) }
   raise ComparisonError, "#{path} lacks #{missing.join(', ')}" unless missing.empty?
   raise ComparisonError, "#{path} describes #{provenance['implementation']}, not #{implementation}" unless provenance["implementation"] == implementation
   raise ComparisonError, "frozen binary hash mismatch for #{executable}" unless provenance["executable_sha256"] == sha256(executable)
+  raise ComparisonError, "provenance source root does not match #{root}" unless File.realpath(provenance["source_root"]) == File.realpath(root)
   assert_current_frozen_source!(root, provenance)
   provenance.merge("executable" => File.realpath(executable), "executable_bytes" => File.size(executable),
                    "provenance_path" => File.realpath(path))
@@ -190,7 +200,43 @@ def hardware
   }
 end
 
-options = { bytes: DEFAULT_BYTES, warmup: 1, pairs: 3, samples_per_turn: 5 }
+def self_test!
+  true_snapshot = normalize_snapshot(JSON.generate("input_ready" => true, "rows" => [])).last
+  false_snapshot = normalize_snapshot(JSON.generate("input_ready" => false, "rows" => [])).last
+  raise "input_ready was incorrectly projected away" if canonical_json(true_snapshot) == canonical_json(false_snapshot)
+
+  Dir.mktmpdir("emulator-comparison-self-test") do |directory|
+    executable = File.join(directory, "hang")
+    File.write(executable, "#!/bin/sh\nsleep 30\n")
+    File.chmod(0o755, executable)
+    child_pid = nil
+    begin
+      run_harness(executable: executable, workload: "ascii", bytes: 1,
+                  snapshot_path: File.join(directory, "snapshot.json"),
+                  log_path: File.join(directory, "hang.log"), timeout_seconds: 0.1,
+                  on_spawn: ->(pid) { child_pid = pid })
+      raise "watchdog did not fire"
+    rescue ComparisonError => error
+      raise error unless error.message.include?("timed out")
+    end
+    raise "watchdog child was never spawned" unless child_pid
+    begin
+      Process.kill(0, child_pid)
+      raise "timed-out child still exists"
+    rescue Errno::ESRCH
+      # Expected: the owned process group was reaped.
+    end
+  end
+  puts "compare_emulators self-test: PASS"
+end
+
+if $PROGRAM_NAME == __FILE__
+  if ARGV == ["--self-test"]
+    self_test!
+    exit
+  end
+
+options = { bytes: DEFAULT_BYTES, warmup: 1, pairs: 3, samples_per_turn: 5, timeout_seconds: 120.0 }
 parser = OptionParser.new do |opts|
   opts.banner = "usage: ruby tools/compare_emulators.rb [options]"
   opts.on("--swift-bin PATH") { |value| options[:swift_bin] = value }
@@ -204,13 +250,14 @@ parser = OptionParser.new do |opts|
   opts.on("--warmup N", Integer) { |value| options[:warmup] = value }
   opts.on("--pairs N", Integer) { |value| options[:pairs] = value }
   opts.on("--samples-per-turn N", Integer) { |value| options[:samples_per_turn] = value }
+  opts.on("--timeout-seconds N", Float) { |value| options[:timeout_seconds] = value }
 end
 parser.parse!
 required = %i[swift_bin rust_bin swift_root rust_root swift_provenance rust_provenance output]
 missing = required.reject { |key| options[key] }
 abort(parser.to_s + "\nmissing: #{missing.join(', ')}") unless missing.empty?
-raise ComparisonError, "bytes, warmup, pairs and samples-per-turn must be positive" unless
-  [options[:bytes], options[:warmup], options[:pairs], options[:samples_per_turn]].all?(&:positive?)
+raise ComparisonError, "bytes, warmup, pairs, samples-per-turn and timeout must be positive" unless
+  [options[:bytes], options[:warmup], options[:pairs], options[:samples_per_turn], options[:timeout_seconds]].all?(&:positive?)
 raise ComparisonError, "refusing to overwrite existing output #{options[:output]}" if File.exist?(options[:output])
 %i[swift_bin rust_bin swift_provenance rust_provenance].each do |key|
   raise ComparisonError, "missing #{key}: #{options[key]}" unless File.file?(options[key])
@@ -232,6 +279,7 @@ result = {
     "geometry" => [160, 50], "history_rows" => 0, "workloads" => WORKLOADS,
     "requested_bytes" => options[:bytes], "warmup_per_implementation" => options[:warmup],
     "alternating_pairs" => options[:pairs], "samples_per_turn" => options[:samples_per_turn],
+    "timeout_seconds_per_harness" => options[:timeout_seconds],
     "timed_operations" => "feed, reply drain, pending-work drain, finish, reply drain, invariant validation, snapshot serialization/copy/free",
     "not_measured" => "GUI, renderer, PTY, process creation, corpus construction and result file I/O"
   },
@@ -246,7 +294,8 @@ begin
       options[:warmup].times do |index|
         prefix = "warmup-#{workload}-#{implementation}-#{index + 1}"
         result["warmups"] << run_harness(executable: implementations.fetch(implementation).fetch("executable"), workload: workload,
-          bytes: options[:bytes], snapshot_path: File.join(snapshots, "#{prefix}.json"), log_path: File.join(options[:output], "#{prefix}.log"))
+          bytes: options[:bytes], snapshot_path: File.join(snapshots, "#{prefix}.json"), log_path: File.join(options[:output], "#{prefix}.log"),
+          timeout_seconds: options[:timeout_seconds])
       end
     end
     options[:pairs].times do |pair|
@@ -255,7 +304,8 @@ begin
         options[:samples_per_turn].times do |sample|
           prefix = "#{workload}-pair#{pair + 1}-#{implementation}-#{sample + 1}"
           record = run_harness(executable: implementations.fetch(implementation).fetch("executable"), workload: workload,
-            bytes: options[:bytes], snapshot_path: File.join(snapshots, "#{prefix}.json"), log_path: File.join(options[:output], "#{prefix}.log"))
+            bytes: options[:bytes], snapshot_path: File.join(snapshots, "#{prefix}.json"), log_path: File.join(options[:output], "#{prefix}.log"),
+            timeout_seconds: options[:timeout_seconds])
           record["implementation"] = implementation
           record["pair"] = pair + 1
           record["sample"] = sample + 1
@@ -284,6 +334,11 @@ begin
       }
     end
   end
+  result["status"] = "complete"
+rescue Exception => error # Interrupted runs must retain an auditable incomplete report.
+  result["status"] = "incomplete"
+  result["failure"] = { "class" => error.class.name, "message" => error.message }
+  raise
 ensure
   result["finished_at_utc"] = Time.now.utc.iso8601
   File.write(File.join(options[:output], "result.json"), JSON.pretty_generate(result) + "\n")
@@ -317,3 +372,4 @@ File.write(File.join(options[:output], "summary.md"), <<~MARKDOWN)
 MARKDOWN
 
 abort "canonical final snapshots differ; see #{options[:output]}/result.json" unless result.dig("snapshot_gate", "passed")
+end

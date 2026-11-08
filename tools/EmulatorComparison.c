@@ -17,7 +17,13 @@
 #include <sys/resource.h>
 #include <time.h>
 
-enum { columns = 160, rows = 50, default_bytes = 32 * 1024 * 1024 };
+enum {
+  columns = 160,
+  rows = 50,
+  default_bytes = 32 * 1024 * 1024,
+  maximum_feed_span = 64 * 1024,
+  maximum_empty_drains = 1 * 1024 * 1024,
+};
 
 typedef struct { uint64_t bytes; uint64_t hash; } Drain;
 
@@ -120,13 +126,29 @@ int main(int argc, char **argv) {
 
   const uint64_t start = monotonic_ns();
   size_t offset = 0;
-  while (offset < payload_size || terminal_has_work(terminal)) {
-    const size_t consumed = terminal_feed(terminal, payload + offset, payload_size - offset, 0);
+  while (offset < payload_size) {
+    const size_t offered = payload_size - offset < maximum_feed_span
+        ? payload_size - offset : maximum_feed_span;
+    const size_t consumed = terminal_feed(terminal, payload + offset, offered, 0);
     terminal_replies(terminal, &drain, drain_reply);
-    if (consumed == 0 && offset < payload_size && !terminal_has_work(terminal)) {
+    if (consumed > offered) {
+      fprintf(stderr, "terminal_feed consumed beyond its offered span\n"); failed = 1; break;
+    }
+    if (consumed == 0 && !terminal_has_work(terminal)) {
       fprintf(stderr, "terminal_feed made no progress\n"); failed = 1; break;
     }
     offset += consumed;
+    size_t empty_drains = 0;
+    while (terminal_has_work(terminal)) {
+      // Empty feeds are used only to ask either core to run its bounded pending
+      // work quantum; ingress is always a fixed 64 KiB-or-less physical span.
+      const size_t drained = terminal_feed(terminal, payload + offset, 0, 0);
+      terminal_replies(terminal, &drain, drain_reply);
+      if (drained != 0 || ++empty_drains > maximum_empty_drains) {
+        fprintf(stderr, "terminal pending-work drain violated its ABI contract\n"); failed = 1; break;
+      }
+    }
+    if (failed) break;
   }
   terminal_finish(terminal);
   terminal_replies(terminal, &drain, drain_reply);

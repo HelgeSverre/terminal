@@ -12,10 +12,12 @@ latency, or retained scrollback.
 
 ## Frozen artifacts first
 
-Create clean, detached worktrees for the selected Swift and Rust commits. Build
-each harness only after recording its source commit; do not call the runner
-against a working tree with uncommitted changes. Keep all cache/output under
-target/emulator-comparison/; do not clear a global cache.
+Create clean, detached source snapshots for the selected Swift and Rust commits.
+Build and run against those snapshots, never a production checkout that may have
+unrelated report WIP or active commits. Keep all cache/output under
+target/emulator-comparison/; do not clear a global cache. Preserve the frozen
+binaries and provenance; remove the temporary source snapshots and their scoped
+caches only after measurement is complete.
 
 The intended recipes are emulator-comparison-build-swift and
 emulator-comparison-build-rust. The Swift recipe must obtain its source list
@@ -37,6 +39,7 @@ Each recipe writes an adjacent provenance file with this required schema:
 ~~~json
 {
   "implementation": "swift",
+  "source_root": "/absolute/frozen/swift-source-snapshot",
   "source_commit": "<full detached commit>",
   "source_tree_clean": true,
   "executable": "target/emulator-comparison/swift/emulator-comparison",
@@ -62,7 +65,9 @@ every repeated record in CRLF after the query, so the requested byte count never
 chooses a partial final escape sequence.
 
 For every invocation the harness creates a 160×50 core, sets the history limit
-to zero, then starts timing. It includes:
+to zero, then starts timing. Physical ingress is always an identical span of at
+most 64 KiB; a zero-length feed is used only to drain already-admitted pending
+work. It includes:
 
 1. terminal_feed and all grid/parser mutation;
 2. terminal_replies after every feed and after terminal_finish;
@@ -84,7 +89,8 @@ implementation/workload, then three alternating pairs. Every turn contains five
 samples: Swift→Rust, Rust→Swift, Swift→Rust. It samples the direct child
 process's RSS every 25 ms and stores each sample, final sample, and peak. The
 C child also records its Darwin getrusage maximum RSS after the timed interval.
-Neither value is application-wide peak memory or GPU memory.
+Both values explicitly include the allocated 32 MiB replay corpus and runtime
+allocations; neither is application-wide peak memory or GPU memory.
 
 ~~~sh
 ruby tools/compare_emulators.rb \
@@ -98,7 +104,7 @@ ruby tools/compare_emulators.rb \
 ~~~
 
 The runner verifies that each artifact SHA-256 matches its provenance, each
-specified worktree is still clean at the recorded commit, and the ABI harness
+specified source snapshot is still clean at the recorded commit, and the ABI harness
 returns protocol version 1. It records OS, kernel, model, CPU, logical CPU
 count, power report, compiler/build provenance, every runtime/RSS sample, and
 both raw snapshot files.
@@ -106,7 +112,10 @@ both raw snapshot files.
 summary.md contains the requested compile/size/median-throughput table.
 result.json contains all samples and provenance. Existing output directories
 are never overwritten. Child harnesses are process-group terminated and reaped
-on an interruption or runner error.
+on an interruption or runner error. A 120-second per-child watchdog is the
+default; timeout or interruption writes result.json with status incomplete and
+the failure before exiting non-zero. The built-in --self-test verifies that a
+timeout reaps its owned child and that input_ready remains canonical.
 
 ## Semantic hard gate
 
