@@ -1,0 +1,53 @@
+{
+  "passed": true,
+  "requested_bytes": 2097152,
+  "runs_per_workload": 10,
+  "geometry": [
+    100,
+    30
+  ],
+  "font": "Obel Mono",
+  "font_size": 14,
+  "runner_sha256": "7e20a8b71bcbce3b24928e657aa9ffddd9a4a88d4e904a19b0d7c344ac05389e",
+  "order": [
+    "swift",
+    "rust"
+  ],
+  "apps": {
+    "swift": {
+      "bundle": "/Users/helge/code/terminal-swift-experiment/target/frozen-1896e42-wmo.app",
+      "executable_sha256": "4bc29a165914f28c9b2946c8470e49e46e21da023191dc402ba53d3e1535f606",
+      "executable_bytes": 1588944,
+      "bundle_regular_file_bytes": 6866640,
+      "natural_exit": true,
+      "cleanup_survivors": [],
+      "pid": 26963,
+      "exit_status": 0,
+      "report": "swift.json"
+    },
+    "rust": {
+      "bundle": "/Users/helge/.codex/artifacts/terminal-swift-app-comparison-20261108/rust-05f1ba2.app",
+      "executable_sha256": "c88793ef2a309a973ad26536b0f3f450b2134e15ce1469a831ef9af2034c5808",
+      "executable_bytes": 3743056,
+      "bundle_regular_file_bytes": 9022529,
+      "natural_exit": true,
+      "cleanup_survivors": [],
+      "pid": 27219,
+      "exit_status": 0,
+      "report": "rust.json"
+    }
+  },
+  "scope": "Sequential visible-app PTY pilot; parser barriers are not display latency. History is excluded by the driver alternate screen.",
+  "driver_sha256": "f9bb09386c0c2c55555fcc24db39ed43aca855693e4630f1520cf0fdaa355420",
+  "driver_source_sha256": "8b2e74d6a02e3b7301d563e67687d7d84aaf7bddf0adf96a17760715b3ac8ce9",
+  "performance_gate": {
+    "minimum_swift_to_rust_ratio": 0.7,
+    "observed_ratios": {
+      "ascii_short_lines": 0.8292045912455833,
+      "ascii_long_lines": 1.0146365221943734,
+      "ansi_truecolor": 0.8007449355969831,
+      "unicode": 0.8453686520894176
+    },
+    "passed": true
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "source_commit": "1896e42ca663a6ba926d3ccbfddd84d6abb6a5da",
+  "input_sha256": "2af54eac60deec84f91cc438325db419646901916988b590db0c989c2542d410",
+  "commands": [
+    {
+      "argv": [
+        "ditto",
+        "target/frozen-4ca-wmo.app",
+        "target/frozen-1896e42-wmo.app"
+      ],
+      "wall_seconds": 0.02945600001839921,
+      "exit_status": 0,
+      "output": ""
+    },
+    {
+      "argv": [
+        "xcrun",
+        "clang",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-mmacosx-version-min=15.0",
+        "-c",
+        "native/Spawn.c",
+        "-o",
+        "target/frozen-1896e42-wmo-build/Spawn.o"
+      ],
+      "wall_seconds": 0.05119099997682497,
+      "exit_status": 0,
+      "output": ""
+    },
+    {
+      "argv": [
+        "xcrun",
+        "swiftc",
+        "-swift-version",
+        "5",
+        "-O",
+        "-whole-module-optimization",
+        "-target",
+        "arm64-apple-macosx15.0",
+        "-module-name",
+        "TerminalIncremental",
+        "-import-objc-header",
+        "native/Bridge.h",
+        "-framework",
+        "AppKit",
+        "-framework",
+        "QuartzCore",
+        "-framework",
+        "Metal",
+        "-framework",
+        "CoreText",
+        "-framework",
+        "ImageIO",
+        "native/TerminalWidth.swift",
+        "native/TerminalWidthTables.swift",
+        "native/SwiftUnicode.swift",
+        "native/SwiftUnicode18Tables.swift",
+        "native/SwiftInputEncoder.swift",
+        "native/ClipboardProtocol.swift",
+        "native/SwiftGraphics.swift",
+        "native/SwiftReflow.swift",
+        "native/SwiftSearchViewport.swift",
+        "native/SwiftMargins.swift",
+        "native/TerminalDocument.swift",
+        "native/DocumentReflow.swift",
+        "native/SwiftTerminalCore.swift",
+        "native/Statistics.swift",
+        "native/Geometry.swift",
+        "native/Font.swift",
+        "native/FontCatalog.swift",
+        "native/Preferences.swift",
+        "native/Transport.swift",
+        "native/Session.swift",
+        "native/ClipboardAccess.swift",
+        "native/SnapshotBridge.swift",
+        "native/CellPalette.swift",
+        "native/AccessibilityProjection.swift",
+        "native/Theme.swift",
+        "native/Settings.swift",
+        "native/Renderer.swift",
+        "native/KeyMap.swift",
+        "native/Canvas.swift",
+        "native/Automation.swift",
+        "native/Smoke.swift",
+        "native/EditingSmoke.swift",
+        "native/ResizeSmoke.swift",
+        "native/main.swift",
+        "target/frozen-1896e42-wmo-build/Spawn.o",
+        "-o",
+        "target/frozen-1896e42-wmo-build/Terminal"
+      ],
+      "wall_seconds": 25.105926000047475,
+      "exit_status": 0,
+      "output": ""
+    },
+    {
+      "argv": [
+        "ditto",
+        "target/frozen-1896e42-wmo-build/Terminal",
+        "target/frozen-1896e42-wmo.app/Contents/MacOS/Terminal"
+      ],
+      "wall_seconds": 0.006110999966040254,
+      "exit_status": 0,
+      "output": ""
+    },
+    {
+      "argv": [
+        "codesign",
+        "--force",
+        "--sign",
+        "-",
+        "target/frozen-1896e42-wmo.app"
+      ],
+      "wall_seconds": 0.04057399998418987,
+      "exit_status": 0,
+      "output": "target/frozen-1896e42-wmo.app: replacing existing signature\n"
+    },
+    {
+      "argv": [
+        "codesign",
+        "--verify",
+        "--deep",
+        "--strict",
+        "target/frozen-1896e42-wmo.app"
+      ],
+      "wall_seconds": 0.0108780000009574,
+      "exit_status": 0,
+      "output": ""
+    }
+  ],
+  "executable_sha256": "4bc29a165914f28c9b2946c8470e49e46e21da023191dc402ba53d3e1535f606",
+  "executable_bytes": 1588944
+}
