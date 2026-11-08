@@ -2,11 +2,25 @@ import Foundation
 
 @main enum SwiftCoreTests {
   private final class Bytes { var value = Data() }
+  private final class Metadata { var value = Data() }
   private static let collect: @convention(c) (
     UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int
   ) -> Void = { context, bytes, count in
     guard let context, let bytes, count > 0 else { return }
     Unmanaged<Bytes>.fromOpaque(context).takeUnretainedValue().value.append(bytes, count: count)
+  }
+  private static let collectMetadata: @convention(c) (
+    UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int,
+    UnsafePointer<TerminalCellView>?, Int, UnsafePointer<UInt8>?, Int
+  ) -> Void = { context, metadata, count, _, _, _, _ in
+    guard let context, let metadata, count > 0 else { return }
+    Unmanaged<Metadata>.fromOpaque(context).takeUnretainedValue().value = Data(bytes: metadata, count: count)
+  }
+  static func binaryHeader(_ core: OpaquePointer, scroll: Int) -> [String: Any] {
+    let capture = Metadata()
+    precondition(terminal_snapshot_binary(
+      core, scroll, 0, Unmanaged.passUnretained(capture).toOpaque(), collectMetadata))
+    return try! JSONSerialization.jsonObject(with: capture.value) as! [String: Any]
   }
   static func snapshot(_ core: OpaquePointer) -> [String: Any] {
     guard let raw = terminal_snapshot(core, Int.max, 0) else { fatalError("missing snapshot") }
@@ -415,11 +429,22 @@ import Foundation
 
     let soft = terminal_create(4, 3)!
     defer { terminal_destroy(soft) }
-    feed(soft, "abcdEFGH\r\nnext")
+    feed(soft, "abcdEFGH\r\nnext  ")
     precondition(run(soft, "dEf") == 5)
     precondition((snapshot(soft)["search"] as! [[String: Int]]).count == 2)
     precondition(run(soft, "GHnext") == 2)
     precondition(run(soft, "GH\nnext") == 5)
+    precondition(run(soft, "next  ") == 5)
+    precondition(run(soft, "\n") == 5) // A zero-width hard-break proof still navigates.
+
+    let history = terminal_create(8, 2)!
+    defer { terminal_destroy(history) }
+    feed(history, "target\r\nsecond\r\nTARGET\r\nlater\r\nlast")
+    precondition(run(history, "target") == 5)
+    let anchored = snapshot(history)
+    precondition(anchored["scroll_offset"] as? Int == 1)
+    precondition((anchored["search"] as! [[String: Int]]) == [["row": 0, "start": 0, "end": 6]])
+    precondition((binaryHeader(history, scroll: 0)["search"] as! [[String: Int]]).isEmpty)
 
     let alternate = terminal_create(8, 2)!
     defer { terminal_destroy(alternate) }
@@ -427,6 +452,29 @@ import Foundation
     feed(alternate, "\u{1b}[?1049hALT")
     precondition(run(alternate, "needle") == 2)
     precondition(run(alternate, "alt") == 5)
+
+    let unicode = terminal_create(5, 3)!
+    defer { terminal_destroy(unicode) }
+    feed(unicode, "Ée\u{301}猫👩🏽‍💻")
+    precondition(run(unicode, "éE\u{301}猫") == 5)
+    precondition(run(unicode, "猫👩🏽‍💻") == 5)
+    precondition((snapshot(unicode)["search"] as! [[String: Int]]).count == 2) // Wrap spacer excluded.
+    precondition(run(unicode, "👩") == 5)
+    precondition((snapshot(unicode)["search"] as! [[String: Int]]).contains {
+      $0["end", default: 0] - $0["start", default: 0] == 2
+    })
+
+    // Accepted decorations retain their complete row proofs: unrelated output
+    // leaves them visible, while a changed matched row silently drops them.
+    let decoration = terminal_create(8, 3)!
+    defer { terminal_destroy(decoration) }
+    feed(decoration, "target\r\nmiddle\r\nlater")
+    precondition(run(decoration, "target") == 5)
+    precondition(!(snapshot(decoration)["search"] as! [[String: Int]]).isEmpty)
+    feed(decoration, "\u{1b}[3;1Hother")
+    precondition(!(snapshot(decoration)["search"] as! [[String: Int]]).isEmpty)
+    feed(decoration, "\u{1b}[1;1HX")
+    precondition((snapshot(decoration)["search"] as! [[String: Int]]).isEmpty)
 
     // A task captures its final row identity at creation. Later output is not
     // chased, while a changed matched row is still rejected by row proof.
@@ -438,14 +486,81 @@ import Foundation
     feed(future, "\r\nfuture")
     precondition(runTask(future, futureTask) == 2)
 
-    guard let stale = create(soft, "abcd") else { preconditionFailure("search create") }
+    let staleCore = terminal_create(8, 2)!
+    defer { terminal_destroy(staleCore) }
+    feed(staleCore, "target")
+    guard let stale = create(staleCore, "target") else { preconditionFailure("search create") }
     defer { terminal_search_destroy(stale) }
     // Fill lends an immutable old row; overwriting that row before its worker
     // step must be rejected by proof at owner acceptance, not mis-highlighted.
-    precondition(terminal_search_fill(soft, stale) == 0)
-    feed(soft, "\u{1b}[HX")
+    precondition(terminal_search_fill(staleCore, stale) == 0)
+    feed(staleCore, "\rX")
     precondition([UInt32(0), 1, 2].contains(terminal_search_step(stale)))
-    precondition(runTask(soft, stale) == 3)
+    precondition(runTask(staleCore, stale) == 3)
+
+    let transition = terminal_create(8, 2)!
+    defer { terminal_destroy(transition) }
+    feed(transition, "target")
+    guard let transitionTask = create(transition, "target") else { preconditionFailure("transition task") }
+    defer { terminal_search_destroy(transitionTask) }
+    precondition(terminal_search_fill(transition, transitionTask) == 0)
+    feed(transition, "\u{1b}[?1049hALT\u{1b}[?1049l")
+    _ = terminal_search_step(transitionTask)
+    precondition(runTask(transition, transitionTask) == 3)
+
+    let cleared = terminal_create(8, 2)!
+    defer { terminal_destroy(cleared) }
+    feed(cleared, "target")
+    guard let clearTask = create(cleared, "target") else { preconditionFailure("clear task") }
+    defer { terminal_search_destroy(clearTask) }
+    precondition(terminal_search_fill(cleared, clearTask) == 0)
+    _ = terminal_clear_display(cleared)
+    _ = terminal_search_step(clearTask)
+    precondition(runTask(cleared, clearTask) == 3)
+
+    let resized = terminal_create(8, 2)!
+    defer { terminal_destroy(resized) }
+    feed(resized, "target")
+    guard let resizedTask = create(resized, "target") else { preconditionFailure("resize task") }
+    defer { terminal_search_destroy(resizedTask) }
+    precondition(terminal_resize(resized, 9, 2))
+    precondition(terminal_search_fill(resized, resizedTask) == 3)
+
+    let pendingResize = terminal_create(8, 2)!
+    defer { terminal_destroy(pendingResize) }
+    feed(pendingResize, "target")
+    guard let pendingResizeTask = create(pendingResize, "target") else { preconditionFailure("pending resize task") }
+    defer { terminal_search_destroy(pendingResizeTask) }
+    precondition(terminal_resize(pendingResize, 9, 2))
+    precondition(terminal_search_accept(pendingResize, pendingResizeTask) == 3)
+
+    let evicted = terminal_create(8, 2)!
+    defer { terminal_destroy(evicted) }
+    feed(evicted, "target\r\none\r\ntwo")
+    guard let evictedTask = create(evicted, "target") else { preconditionFailure("eviction task") }
+    defer { terminal_search_destroy(evictedTask) }
+    terminal_set_history_limit(evicted, 0)
+    precondition(terminal_search_fill(evicted, evictedTask) == 3)
+
+    // Raising or reapplying a scrollback limit without evicting a proven row
+    // does not change Rust's search stamp. The task remains acceptable.
+    let unchangedLimit = terminal_create(8, 2)!
+    defer { terminal_destroy(unchangedLimit) }
+    feed(unchangedLimit, "target")
+    guard let unchangedLimitTask = create(unchangedLimit, "target") else { preconditionFailure("limit task") }
+    defer { terminal_search_destroy(unchangedLimitTask) }
+    terminal_set_history_limit(unchangedLimit, 10_000)
+    precondition(runTask(unchangedLimit, unchangedLimitTask) == 5)
+
+    // A captured final row does not chase later output, but if later output
+    // makes it soft-wrap it still keeps that successor in its proof.
+    let extendedStop = terminal_create(4, 2)!
+    defer { terminal_destroy(extendedStop) }
+    feed(extendedStop, "aaaaBBBB")
+    guard let extendedStopTask = create(extendedStop, "BBBB") else { preconditionFailure("stop task") }
+    defer { terminal_search_destroy(extendedStopTask) }
+    feed(extendedStop, "C")
+    precondition(runTask(extendedStop, extendedStopTask) == 5)
 
     // RIS restarts document row IDs; the dedicated generation prevents an ABA
     // match when a fresh terminal prints identical text into the same grid.
@@ -460,6 +575,14 @@ import Foundation
     precondition(runTask(reset, resetTask) == 3)
     let tooLong = [UInt8](repeating: 120, count: 4_097)
     precondition(tooLong.withUnsafeBufferPointer { terminal_search_create(soft, $0.baseAddress, $0.count) } == nil)
+
+    let overlaps = terminal_create(4_096, 2)!
+    defer { terminal_destroy(overlaps) }
+    feed(overlaps, String(repeating: "a", count: 4_096))
+    precondition(run(overlaps, String(repeating: "a", count: 2_048)) == 5)
+    precondition((snapshot(overlaps)["search"] as! [[String: Int]]) == [
+      ["row": 0, "start": 2_048, "end": 4_096]
+    ])
 
     let detached = terminal_create(80, 2)!
     feed(detached, String(repeating: "x", count: 80))

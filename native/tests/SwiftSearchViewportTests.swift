@@ -20,15 +20,40 @@ import Foundation
     let joined = SwiftSearchDocument(stamp: stamp, rows: [row(1, "abcd", soft: true), row(2, "EFGH"), row(3, "next")])
     var task = try SwiftSearchTask(query: "dEf", source: joined.source)
     run(&task, joined)
-    precondition(task.accept(in: joined.source) == .found([
-      SwiftSearchHighlight(row: 0, start: 3, end: 4), SwiftSearchHighlight(row: 1, start: 0, end: 2),
-    ]))
+    precondition(task.accept(in: joined.source) == .found(
+      anchor: 0,
+      spans: [
+        SwiftSearchResolvedSpan(row: 0, span: SwiftSearchSpan(proof: SwiftSearchProof(joined.rows[0], softNextID: 2), start: 3, end: 4)),
+        SwiftSearchResolvedSpan(row: 1, span: SwiftSearchSpan(proof: SwiftSearchProof(joined.rows[1]), start: 0, end: 2)),
+      ]))
     var hard = try SwiftSearchTask(query: "GHnext", source: joined.source)
     run(&hard, joined)
     precondition(hard.accept(in: joined.source) == .missing)
     var newline = try SwiftSearchTask(query: "GH\nnext", source: joined.source)
     run(&newline, joined)
     precondition(newline.found)
+    var bareNewline = try SwiftSearchTask(query: "\n", source: joined.source)
+    run(&bareNewline, joined)
+    precondition(bareNewline.accept(in: joined.source) == .found(
+      anchor: 1,
+      spans: [SwiftSearchResolvedSpan(row: 1, span: SwiftSearchSpan(
+        proof: SwiftSearchProof(joined.rows[1]), start: 4, end: 4))]))
+
+    // A cross-row match has to retain adjacency, not merely prove each row by
+    // ID somewhere in the document. An inserted physical row breaks it.
+    let across = SwiftSearchDocument(stamp: stamp, rows: [row(10, "A"), row(11, "B")])
+    var disconnected = try SwiftSearchTask(query: "A\nB", source: across.source)
+    run(&disconnected, across)
+    let inserted = SwiftSearchDocument(stamp: stamp, rows: [row(10, "A"), row(12, ""), row(11, "B")])
+    precondition(disconnected.accept(in: inserted.source) == .changed)
+
+    // The successor is part of a soft-wrap proof even if the query happens to
+    // fit entirely in the first row.
+    let softProof = SwiftSearchDocument(stamp: stamp, rows: [row(20, "keep", soft: true), row(21, "next")])
+    var relinked = try SwiftSearchTask(query: "keep", source: softProof.source)
+    run(&relinked, softProof)
+    let newSuccessor = SwiftSearchDocument(stamp: stamp, rows: [row(20, "keep", soft: true), row(22, "next")])
+    precondition(relinked.accept(in: newSuccessor.source) == .changed)
 
     var cancellation = try SwiftSearchTask(query: "abc", source: joined.source)
     cancellation.cancel()
