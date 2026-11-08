@@ -217,6 +217,11 @@ benchmark-core:
 @benchmark-apps rust_app swift_app output="reports/app-comparison":
     ruby tools/compare_terminal_apps.rb "$3" "$1" "$2"
 
+# Drain a full file through an owned app with history, live resize and memory probes.
+[group('bench')]
+@stress-cat app file output:
+    ruby tools/cat_stress.rb "$1" "$2" "$3"
+
 # Compare frozen Swift row behavior with baseline-derived byte-budget thresholds.
 [group('check')]
 @compare-swift-rows baseline candidate output:
