@@ -20,9 +20,13 @@ class TerminalAppProfile
 
   class CleanupFailure < RuntimeError; end
 
-  def initialize(app, output)
+  def initialize(app, output, workload = 'all')
     @app = File.realpath(app)
     @output = File.expand_path(output)
+    @workload = workload == 'all' ? nil : workload
+    # Keep a selected workload running long enough for the five-second sample,
+    # including when ASCII throughput approaches the Rust reference.
+    @driver_bytes = @workload ? 512 * 1024 * 1024 : DRIVER_BYTES
     @executable = File.join(@app, 'Contents/MacOS/Terminal')
     raise "Missing executable in #{@app}" unless File.executable?(@executable)
     raise "Refusing to clobber existing report path #{@output}" if File.exist?(@output)
@@ -32,7 +36,8 @@ class TerminalAppProfile
       'passed' => false,
       'contract' => {
         'columns' => COLUMNS, 'rows' => ROWS, 'font' => FONT, 'font_size' => FONT_SIZE,
-        'bytes_per_workload' => DRIVER_BYTES, 'runs_per_workload' => DRIVER_RUNS,
+        'bytes_per_workload' => @driver_bytes, 'runs_per_workload' => DRIVER_RUNS,
+        'workload' => @workload || 'all',
         'idle_seconds' => DRIVER_IDLE_SECONDS, 'sample_seconds' => SAMPLE_SECONDS,
         'sample_interval_ms' => SAMPLE_INTERVAL_MS
       },
@@ -96,10 +101,11 @@ class TerminalAppProfile
     app_args = [
       @executable, '--columns', COLUMNS.to_s, '--rows', ROWS.to_s,
       '--font-size', FONT_SIZE.to_s, '--exit-after-command', '--execute', @driver,
-      '--output', report, '--terminal', 'profiled-app', '--bytes', DRIVER_BYTES.to_s,
+      '--output', report, '--terminal', 'profiled-app', '--bytes', @driver_bytes.to_s,
       '--runs', DRIVER_RUNS.to_s, '--columns', COLUMNS.to_s, '--rows', ROWS.to_s,
       '--idle-seconds', DRIVER_IDLE_SECONDS.to_s
     ]
+    app_args.concat(['--workload', @workload]) if @workload
     @result['provenance']['app_command'] = app_args
     @app_process = NativeSmokeProcess.new(app_args, log: app_log)
     @result['lifecycle']['app'] = { 'pid' => @app_process.pid, 'natural_exit' => false }
@@ -134,6 +140,9 @@ class TerminalAppProfile
     raise 'Driver report schema mismatch' unless driver_report.fetch('schema') == 2
     raise 'Driver report belongs to another process' unless driver_report.fetch('terminal_pid') == @app_process.pid
     raise 'Driver report geometry mismatch' unless [driver_report.fetch('columns'), driver_report.fetch('rows')] == [COLUMNS, ROWS]
+    if @workload && driver_report.fetch('workloads').map { |workload| workload.fetch('name') } != [@workload]
+      raise 'Driver reported a different workload than the selected profile'
+    end
     @result['lifecycle']['app'].merge!(status_record(app_status), 'natural_exit' => true)
     @result['driver_report_sha256'] = Digest::SHA256.file(report).hexdigest
     @result['driver_report_summary'] = {
@@ -172,7 +181,7 @@ class TerminalAppProfile
 end
 
 if $PROGRAM_NAME == __FILE__
-  abort "Usage: ruby #{$PROGRAM_NAME} APP_BUNDLE NEW_REPORT_DIRECTORY" unless ARGV.length == 2
+  abort "Usage: ruby #{$PROGRAM_NAME} APP_BUNDLE NEW_REPORT_DIRECTORY [WORKLOAD]" unless (2..3).cover?(ARGV.length)
   Signal.trap('TERM') { raise Interrupt, 'Profile runner terminated' }
   Signal.trap('INT') { raise Interrupt, 'Profile runner interrupted' }
   TerminalAppProfile.new(*ARGV).run

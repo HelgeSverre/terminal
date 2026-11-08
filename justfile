@@ -218,8 +218,8 @@ benchmark-core:
 
 # Profile one supplied app through the fixed visible PTY workload and owned sample process.
 [group('bench')]
-@profile-app app output:
-    ruby tools/profile_terminal.rb "$1" "$2"
+@profile-app app output workload="all":
+    ruby tools/profile_terminal.rb "$1" "$2" "$3"
 
 # Compare PTY throughput: just benchmark terminal|ghostty|kitty [new-report-directory]
 [group('bench')]

@@ -187,9 +187,15 @@ For the next diagnostic stack capture, use:
 
 ```sh
 just profile-app /absolute/path/to/Terminal.app reports/new-profile
+just profile-app /absolute/path/to/Terminal.app reports/unicode-profile unicode
 ```
 
 This builds the common driver, launches an owned app, then samples only its
 derived PID after startup. Both sampler and app must exit cleanly; failures
 still clean up both owned trees. The saved driver wall/CPU numbers are
 diagnostic-only because sampling perturbs them.
+
+An optional workload selects `ascii_short_lines`, `ascii_long_lines`,
+`ansi_truecolor` or `unicode`. Selected captures run 512 MiB of that workload
+so the sampler can observe it independently; the default runs all four at
+64 MiB each. These diagnostic sizes are separate from comparison pilots.
