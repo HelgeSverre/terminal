@@ -12,6 +12,7 @@ struct GlyphLease {
   let texture: MTLTexture
   let kind: Kind
   fileprivate let allocation: UUID?
+  fileprivate let allocationGeneration: UInt64?
 }
 
 final class GlyphResidency: @unchecked Sendable {
@@ -42,6 +43,7 @@ final class GlyphResidency: @unchecked Sendable {
     var x: Int = 1
     var y: Int = 0
     var shelf: Int = 0
+    var generation: UInt64 = 0
     var pins = 0
   }
   private struct Entry {
@@ -96,7 +98,13 @@ final class GlyphResidency: @unchecked Sendable {
 
   func resolve(_ recipe: GlyphRasterRecipe) -> GlyphLease? {
     if let entry = entries[recipe] {
-      if let page = entry.page { preparedPins.insert(page) }
+      if let page = entry.page {
+        guard let current = pages[page], current.generation == entry.lease.allocationGeneration else {
+          entries.removeValue(forKey: recipe)
+          return resolve(recipe)
+        }
+        preparedPins.insert(page)
+      }
       return entry.lease
     }
     if pending.insert(recipe).inserted {
@@ -156,7 +164,8 @@ final class GlyphResidency: @unchecked Sendable {
       uv: SIMD4(Float(placement.x) / side, Float(placement.y) / side,
                 Float(recipe.width) / side, Float(recipe.height) / side),
       width: recipe.width, texture: placement.page.texture,
-      kind: kind == .mask ? .mask : .color, allocation: placement.page.id)
+      kind: kind == .mask ? .mask : .color, allocation: placement.page.id,
+      allocationGeneration: placement.page.generation)
     entries[recipe] = Entry(lease: lease, page: placement.page.id, bytes: recipe.width * recipe.height)
   }
 
@@ -171,7 +180,8 @@ final class GlyphResidency: @unchecked Sendable {
                            withBytes: $0.baseAddress!, bytesPerRow: 1)
     }
     let value = GlyphLease(uv: SIMD4(0, 0, 1 / 1024.0, 1 / 1024.0), width: width,
-                           texture: page.texture, kind: .mask, allocation: page.id)
+                           texture: page.texture, kind: .mask, allocation: page.id,
+                           allocationGeneration: page.generation)
     fallback = value
     preparedPins.insert(page.id)
     return value
@@ -238,7 +248,14 @@ final class GlyphResidency: @unchecked Sendable {
       if let result = reserve(on: page, width: width, height: height) { return result }
     }
     guard let page = createPage(kind), let result = reserve(on: page, width: width, height: height) else {
-      return nil
+      // All charged pages are full. Reclaim only a page no submitted frame can
+      // still sample; its generation invalidates every old lease/UV.
+      guard let victim = pages.values.first(where: { $0.kind == kind && $0.pins == 0 }) else {
+        return nil
+      }
+      evict(victim.id)
+      guard let recycled = pages[victim.id] else { return nil }
+      return reserve(on: recycled, width: width, height: height)
     }
     return result
   }
@@ -286,6 +303,25 @@ final class GlyphResidency: @unchecked Sendable {
     pages[page.id] = page
     RendererMetrics.recordAtlasPages(pages.count)
     return page
+  }
+
+  private func evict(_ id: UUID) {
+    guard var page = pages[id], page.pins == 0 else { return }
+    entries = entries.filter { $0.value.page != id }
+    page.x = 1
+    page.y = 0
+    page.shelf = 0
+    page.generation &+= 1
+    // Keep the allocation-free visible fallback valid when its page is the
+    // chosen victim: it always samples the rewritten opaque texel.
+    if page.kind == .mask {
+      var opaque: UInt8 = 255
+      withUnsafeBytes(of: &opaque) {
+        page.texture.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0,
+                             withBytes: $0.baseAddress!, bytesPerRow: 1)
+      }
+    }
+    pages[id] = page
   }
 
   private func convertPremultipliedSRGBToLinear(_ pixels: inout [UInt8]) {
