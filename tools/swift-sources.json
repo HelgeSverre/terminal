@@ -17,6 +17,7 @@
     "Preferences.swift",
     "Transport.swift",
     "Session.swift",
+    "ClipboardAccess.swift",
     "SnapshotBridge.swift",
     "AccessibilityProjection.swift",
     "Theme.swift",
@@ -24,6 +25,7 @@
     "Renderer.swift",
     "KeyMap.swift",
     "Canvas.swift",
+    "Automation.swift",
     "Smoke.swift",
     "EditingSmoke.swift",
     "main.swift"
@@ -112,6 +114,11 @@
     ],
     "swift_input_encoder": [
       "SwiftInputEncoder.swift", "tests/SwiftInputEncoderTests.swift"
+    ],
+    "clipboard_access": [
+      "TerminalDocument.swift", "DocumentReflow.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
+      "SwiftInputEncoder.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift", "Preferences.swift",
+      "Transport.swift", "Session.swift", "ClipboardAccess.swift", "tests/ClipboardAccessTests.swift"
     ]
   }
 }
