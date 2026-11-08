@@ -17,7 +17,7 @@ struct AccessibilityProjection {
   let gridCount: Int
   let truncated: Bool
   var length: Int { (text as NSString).length }
-  init(snapshot: TerminalSnapshot, limit: Int = 262_144, includeCursor: Bool = true) {
+  init(snapshot: TerminalSnapshot, limit: Int = 262_144) {
     columns = snapshot.cols
     gridCount = snapshot.cols * snapshot.rows.count
     var output = ""
@@ -29,7 +29,7 @@ struct AccessibilityProjection {
       let start = count
       var end =
         value.cells.lastIndex { $0.kind != "Empty" && $0.kind != "WrapSpacer" }.map { $0 + 1 } ?? 0
-      if includeCursor && row == snapshot.cursor.row {
+      if snapshot.following_tail && row == snapshot.cursor.row {
         end = max(end, min(value.cells.count, snapshot.cursor.col))
       }
       for column in 0..<end {

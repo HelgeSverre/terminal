@@ -99,7 +99,18 @@ import Foundation
     let caretRange = caretProjection.textRange(gridStart: 5, gridEnd: 5)
     precondition(caretRange == NSRange(location: 5, length: 0))
     precondition(caretProjection.spans(for: caretRange).first?.column == 5)
-    precondition(AccessibilityProjection(snapshot: blank, includeCursor: false).text == "\n\n")
+    // History is a displayed viewport: the live cursor must not manufacture
+    // padding in an unrelated historical row. The projection owns that rule.
+    let historyCore = terminal_create(8, 3)!
+    let historyInput = Data("\r\n\r\n\r\n\u{1b}[1;6H".utf8)
+    historyInput.withUnsafeBytes {
+      _ = terminal_feed(historyCore, $0.bindMemory(to: UInt8.self).baseAddress!, $0.count, 0)
+    }
+    terminal_view_scroll(historyCore, 1)
+    let historyView = SnapshotBridge.readView(historyCore, now: 0).snapshot!
+    precondition(!historyView.following_tail)
+    precondition(AccessibilityProjection(snapshot: historyView).text == "\n\n")
+    terminal_destroy(historyCore)
     feed("\u{1b}c")
     precondition(terminal_resize(core, 1, 3))
     feed("猫")

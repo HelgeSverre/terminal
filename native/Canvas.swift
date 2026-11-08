@@ -110,7 +110,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   private func display(_ value: TerminalSnapshot) {
     snapshot = value
-    accessible = AccessibilityProjection(snapshot: value, includeCursor: value.following_tail)
+    accessible = AccessibilityProjection(snapshot: value)
     onTitle?(value.title)
     setAccessibilityValue(accessible?.text ?? "")
     accessibilityChanged(value: true)
