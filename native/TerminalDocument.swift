@@ -96,16 +96,28 @@ struct TerminalDocument {
                       usingAlternate: Bool, leftRightMargins: Bool,
                       autoWrap: Bool, insertMode: Bool,
                       attributes: PrintAttributes) -> PrintEffect? {
-    let category = SwiftUnicode.category(of: scalar)
+    let category: SwiftUnicode.Category
+    switch scalar.value {
+    case 0x000d: category = .cr
+    case 0x000a: category = .lf
+    case 0x0000...0x001f, 0x007f: category = .control
+    case 0x0000...0x007f: category = .other
+    default: category = SwiftUnicode.category(of: scalar)
+    }
     switch category {
     case .control, .cr, .lf: return nil
     default: break
     }
     let startsCluster = segmenter.push(scalar, category: category)
-    // An ignorable cannot start a printable cluster. Keep an existing owner
-    // only through the normal continuation path; otherwise reset all retained
-    // print state without publishing an epoch-changing effect.
-    if startsCluster && SwiftUnicode.isDefaultIgnorable(scalar) {
+    let screen = usingAlternate ? alternate : primary
+    let hasExtendableOwner = openCluster.map {
+      $0.row == screen.cursorRow && screen.rows.indices.contains($0.row) &&
+        screen.rows[$0.row].cells.indices.contains($0.column)
+    } ?? false
+    // An ignorable may continue only a live physical owner. A cursor restore
+    // can leave segmentation after B while the owner still names an old row;
+    // that is an orphan even when the segmenter reports a continuation.
+    if SwiftUnicode.isDefaultIgnorable(scalar) && (startsCluster || !hasExtendableOwner) {
       resetPrintCluster()
       return nil
     }

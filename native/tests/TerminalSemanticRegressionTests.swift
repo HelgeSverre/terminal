@@ -269,6 +269,20 @@ import Foundation
     precondition(input(legacy, text: "a", key: 200, modifiers: 2 | 64, associated: "å", legacy: "A") == Data("\u{1b}A".utf8))
   }
 
+  static func cursorRestoreOrphansDefaultIgnorable() {
+    let terminal = make(); defer { terminal_destroy(terminal) }
+    // CSI u intentionally does not reset Core's cluster boundary. It leaves
+    // the segmenter after B while restoring the cursor before A, so FE0F is a
+    // continuation with no extendable physical owner. The frozen a19 ABI
+    // behavior resets it: the following acute is visible at the restored
+    // cursor rather than silently dropped, then X follows it.
+    feed(terminal, "\u{1b}[sA\r\nB\u{1b}[u\u{fe0f}\u{301}X")
+    let value = snapshot(terminal)
+    precondition(cell(value, 0, 0)["text"] as? String == "\u{301}")
+    precondition(cell(value, 0, 1)["text"] as? String == "X")
+    precondition(cell(value, 1, 0)["text"] as? String == "B")
+  }
+
   static func snapshotsAreImmutableAndIngressIsPartitionIndependent() {
     let immutable = make(); defer { terminal_destroy(immutable) }
     feed(immutable, "abc")
@@ -322,6 +336,7 @@ import Foundation
     viewportStaysAnchoredWithoutEviction()
     cappedGraphemeKeepsIncrementalBoundaryState()
     physicalKeyMetadataUsesABI()
+    cursorRestoreOrphansDefaultIgnorable()
     snapshotsAreImmutableAndIngressIsPartitionIndependent()
     randomPartitionsRetainInvariants()
     repRetainsOriginalClusterAttributesAfterExtension()
