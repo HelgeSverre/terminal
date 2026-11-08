@@ -351,10 +351,13 @@ final class TerminalRendering: @unchecked Sendable {
     var displayLinks: [SurfaceDisplayLink] = []
     surfacesLock.lock()
     for id in surfaces.keys {
-      guard var surface = surfaces[id], surface.latest == nil,
+      guard var surface = surfaces[id],
         let previous = surface.lastRendered
       else { continue }
-      surface.latest = previous
+      // A result can arrive while this surface's fallback frame is in flight.
+      // Bump the demand generation even when latest is already nonnil, so that
+      // completion cannot clear the replacement request as if it were old.
+      if surface.latest == nil { surface.latest = previous }
       surface.generation &+= 1
       surfaces[id] = surface
     }
@@ -555,11 +558,7 @@ final class TerminalRendering: @unchecked Sendable {
     let width = request.cellWidth * cells; let height = request.cellHeight
     if width + 1 >= atlasSize || height + 1 >= atlasSize { RendererMetrics.recordOversizedGlyphFallback() }
     guard let placement = placement(width, height) else {
-      if let glyph = directGlyph(key, width: width, height: height) { return glyph }
-      let replacementKey = GlyphKey(text: "□", cells: 1, bold: false, italic: false, width: request.cellWidth, height: request.cellHeight, pointSize: Int(request.fontSize.rounded()), fontIdentity: CTFontCopyPostScriptName(font) as String)
-      if replacementGlyph == nil { replacementGlyph = directGlyph(replacementKey, width: request.cellWidth, height: request.cellHeight, limited: false) }
-      if replacementGlyph != nil { RendererMetrics.recordSubstituteGlyphFallback() }
-      return replacementGlyph
+      return directGlyph(key, width: width, height: height)
     }
     let pixels = glyphPixels(key, width: width, height: height)
     let kind = glyphKind(pixels)
@@ -573,7 +572,13 @@ final class TerminalRendering: @unchecked Sendable {
     guard request.width > 0, request.height > 0 else { return false }
     glyphResidency.beginFrame()
     var residencySubmitted = false
-    defer { if !residencySubmitted { glyphResidency.abandonedPreparedFrame() } }
+    var frameLegacyIDs: Set<UUID> = []
+    defer {
+      if !residencySubmitted {
+        glyphResidency.abandonedPreparedFrame()
+        frameLegacyIDs.forEach { glyphResidency.releaseLegacyTexture($0) }
+      }
+    }
     if metrics != SIMD2(request.cellWidth, request.cellHeight) || fontSize != request.fontSize {
       metrics = SIMD2(request.cellWidth, request.cellHeight)
       fontSize = request.fontSize
@@ -607,6 +612,7 @@ final class TerminalRendering: @unchecked Sendable {
         glyphQuads[page].append(quad)
       } else if let texture = glyph.texture {
         directGlyphQuads.append((quad, texture, glyph.heap, glyph.legacyID))
+        if let id = glyph.legacyID { frameLegacyIDs.insert(id) }
       }
     }
     var needsReset = false
@@ -746,7 +752,15 @@ final class TerminalRendering: @unchecked Sendable {
           x, y + request.cellHeight - 2, cells * request.cellWidth, 1,
           TerminalTheme.linear(TerminalTheme.accent))
       } else {
-        RendererMetrics.recordVisibleGlyphDrop()
+        let x = request.inset + snap.cursor.col * request.cellWidth
+        let y = request.inset + snap.cursor.row * request.cellHeight
+        let span = cells * request.cellWidth
+        let tint = TerminalTheme.linear(TerminalTheme.text)
+        rect(x, y, span, 1, tint)
+        rect(x, y + request.cellHeight - 1, span, 1, tint)
+        rect(x, y, 1, request.cellHeight, tint)
+        rect(x + span - 1, y, 1, request.cellHeight, tint)
+        RendererMetrics.recordSubstituteGlyphFallback()
       }
     }
     let overlayQuads = quads
@@ -869,23 +883,16 @@ final class TerminalRendering: @unchecked Sendable {
       requestWidth: request.width, requestHeight: request.height,
       drawableWidth: drawableWidth, drawableHeight: drawableHeight)
     command.present(drawable)
-    let retainedFallbackTextures =
-      textDirectGlyphQuads.map(\.texture) + overlayDirectGlyphQuads.map(\.texture)
-    let retainedFallbackHeaps =
-      textDirectGlyphQuads.compactMap(\.heap) + overlayDirectGlyphQuads.compactMap(\.heap)
-    let retiredFallbackIDs = Set(textDirectGlyphQuads.compactMap(\.legacyID)
-      + overlayDirectGlyphQuads.compactMap(\.legacyID))
+    let retiredFallbackIDs = frameLegacyIDs
     let completedRevision = snap.revision
     glyphResidency.submitted()
     residencySubmitted = true
-    command.addCompletedHandler { [weak self, retainedFallbackTextures, retainedFallbackHeaps, retiredFallbackIDs, surface] command in
+    command.addCompletedHandler { [weak self, retiredFallbackIDs, surface] command in
       self?.executor.async {
         retiredFallbackIDs.forEach { self?.glyphResidency.releaseLegacyTexture($0) }
         self?.glyphResidency.completedSubmission()
         self?.completed(
           surface: surface, generation: generation, revision: completedRevision, command: command)
-        _ = retainedFallbackTextures
-        _ = retainedFallbackHeaps
       }
     }
     command.commit()

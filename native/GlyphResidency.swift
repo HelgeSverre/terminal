@@ -60,6 +60,7 @@ final class GlyphResidency: @unchecked Sendable {
   private var pages: [UUID: Page] = [:]
   private var entries: [GlyphRasterRecipe: Entry] = [:]
   private var pending: Set<GlyphRasterRecipe> = []
+  private var failed: Set<GlyphRasterRecipe> = []
   // Results wait until the next safe frame boundary: an async CPU replace
   // must never overwrite a page sampled by the sole submitted command buffer.
   private struct QueuedUpload {
@@ -107,6 +108,7 @@ final class GlyphResidency: @unchecked Sendable {
       }
       return entry.lease
     }
+    guard !failed.contains(recipe) else { return nil }
     if pending.insert(recipe).inserted {
       reservations += recipe.width * recipe.height * 4
       let accepted = worker.request(recipe) { [weak self] result, release in
@@ -130,6 +132,7 @@ final class GlyphResidency: @unchecked Sendable {
     // A raster failure remains a miss: the visible fallback is retained and a
     // future request may retry instead of caching a blank texture.
     guard let result, !result.pixels.isEmpty, !result.glyphIDs.contains(0) else {
+      failed.insert(recipe)
       release()
       onReady()
       return
@@ -144,7 +147,10 @@ final class GlyphResidency: @unchecked Sendable {
     let recipe = result.recipe
     let kind: PageKind = result.kind == .mask ? .mask : .color
     guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height) else {
-      onReady()
+      // Capacity pressure uses the allocation-free outline this frame. A new
+      // font/device recipe is a new key and can retry; this key does not spin
+      // an idle terminal with identical raster work.
+      failed.insert(recipe)
       return
     }
     var pixels = result.pixels
