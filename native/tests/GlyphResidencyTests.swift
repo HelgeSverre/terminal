@@ -35,6 +35,23 @@ final class RendererMetrics {
     precondition(makeResidency().testingOversizeWorkingSetStabilizes())
     precondition(makeResidency().testingNegativeCacheIsBoundedAndRecipeScoped())
     precondition(makeResidency().testingTwoGlyphWorkingSetSettles())
+    // Real raster-worker → owner-queue delivery, with an empty frame boundary
+    // before B completes. This catches the old permit-reset race.
+    let callbackOwner = DispatchQueue(label: "glyph-residency-async-test")
+    let callbackResidency = GlyphResidency(device: device, owner: callbackOwner, budget: budget) {}
+    let callbackReady = DispatchSemaphore(value: 0)
+    let delayedB = callbackOwner.sync { callbackResidency.testingPrepareDelayedBRecovery() }
+    guard let delayedB else { fatalError("async recovery setup") }
+    callbackResidency.setOnReady { callbackReady.signal() }
+    callbackOwner.sync {
+      precondition(callbackResidency.resolve(delayedB) == nil)
+      callbackResidency.beginFrame() // empty upload boundary before worker completion
+    }
+    precondition(callbackReady.wait(timeout: .now() + 5) == .success, "worker callback")
+    callbackOwner.sync {
+      callbackResidency.beginFrame()
+      precondition(callbackResidency.testingHasResident(delayedB), "delayed B recovers")
+    }
     let maskDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
       width: 3, height: 1, mipmapped: false)
     maskDescriptor.storageMode = .shared

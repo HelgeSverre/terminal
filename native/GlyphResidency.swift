@@ -556,5 +556,23 @@ final class GlyphResidency: @unchecked Sendable {
     guard install(resultB) == .installed, entries[b] != nil, entries[a] == nil else { return false }
     return true
   }
+
+  func testingPrepareDelayedBRecovery() -> GlyphRasterRecipe? {
+    let a = GlyphRasterRecipe(text: "A", width: 600, height: 600, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
+    let b = GlyphRasterRecipe(text: "B", width: 600, height: 600, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
+    let bitmap = [UInt8](repeating: 255, count: 600 * 600 * 4)
+    guard install(GlyphRasterResult(recipe: a, pixels: bitmap, kind: .mask,
+      resolvedFonts: ["Menlo-Regular"], glyphIDs: [1])) == .installed,
+      install(GlyphRasterResult(recipe: b, pixels: bitmap, kind: .mask,
+      resolvedFonts: ["Menlo-Regular"], glyphIDs: [2])) == .impossible
+    else { return nil }
+    _ = resolve(a); _ = resolve(b); finishFrameDemand() // establish A+B
+    currentDemand = [b]; finishFrameDemand() // A detached, B eligible
+    return b
+  }
+
+  func testingHasResident(_ recipe: GlyphRasterRecipe) -> Bool { entries[recipe] != nil }
   #endif
 }
