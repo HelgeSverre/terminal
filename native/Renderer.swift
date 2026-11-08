@@ -618,10 +618,11 @@ final class MetalRenderer: @unchecked Sendable {
     let semaphore = inFlight
     let retainedFallbackTextures =
       textDirectGlyphQuads.map(\.texture) + overlayDirectGlyphQuads.map(\.texture)
+    let completedRevision = snap.revision
     command.addCompletedHandler { [self, retainedFallbackTextures] command in
       RendererMetrics.completed(
         gpuMs: (command.gpuEndTime - command.gpuStartTime) * 1000, error: command.error != nil)
-      if command.error == nil { recordCompletedRevision(snap.revision) }
+      if command.error == nil { recordCompletedRevision(completedRevision) }
       _ = retainedFallbackTextures
       semaphore.signal()
     }
