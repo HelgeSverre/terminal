@@ -63,8 +63,119 @@ import Foundation
   static func cells(_ snapshot: [String: Any], _ row: Int) -> [[String: Any]] {
     ((snapshot["rows"] as! [[String: Any]])[row]["cells"] as! [[String: Any]])
   }
+  static func stableSnapshot(_ core: OpaquePointer) -> Data {
+    try! JSONSerialization.data(withJSONObject: snapshot(core), options: [.sortedKeys])
+  }
+  static func feed(_ core: OpaquePointer, bytes: Data, partitions: [Int]) {
+    var offset = 0
+    for requested in partitions where offset < bytes.count {
+      let end = min(bytes.count, offset + requested)
+      while offset < end || terminal_has_work(core) {
+        let wasWorking = terminal_has_work(core)
+        let count: Int = bytes.withUnsafeBytes { buffer in
+          let pointer = offset < end ? buffer.bindMemory(to: UInt8.self).baseAddress!.advanced(by: offset) : nil
+          return terminal_feed(core, pointer, end - offset, 0)
+        }
+        precondition(count >= 0 && count <= end - offset)
+        precondition(count > 0 || wasWorking)
+        offset += count
+      }
+    }
+    while offset < bytes.count || terminal_has_work(core) {
+      let wasWorking = terminal_has_work(core)
+      let count: Int = bytes.withUnsafeBytes { buffer in
+        let pointer = offset < bytes.count ? buffer.bindMemory(to: UInt8.self).baseAddress!.advanced(by: offset) : nil
+        return terminal_feed(core, pointer, bytes.count - offset, 0)
+      }
+      precondition(count >= 0 && count <= bytes.count - offset)
+      precondition(count > 0 || wasWorking)
+      offset += count
+    }
+  }
+  static func decodedBatchEquivalence() {
+    // The whole-buffer case reaches the <=1024 decoded scalar writer, while
+    // the byte and irregular cases force ordinary feed boundaries.  A full
+    // snapshot comparison includes rich cells/styles/links, cursor, wrap,
+    // row IDs, revisions/epochs, history and viewport anchors.
+    let long = String(repeating: "x", count: 1023) + "\u{600}A" +
+      String(repeating: "\u{301}", count: 64) + "👩क्‍ष"
+    let text = "\u{1b}(0q\u{1b}(B\u{1b}[31m\u{1b}]8;;https://example.test/batch\u{7}" +
+      long + "\u{1b}]8;;\u{7}\u{1b}[0m\r\nZ\u{1b}[2b\u{1b}[5n"
+    let payload = Data(text.utf8)
+    let all = terminal_create(8, 2)!
+    let bytewise = terminal_create(8, 2)!
+    let irregular = terminal_create(8, 2)!
+    defer { terminal_destroy(all); terminal_destroy(bytewise); terminal_destroy(irregular) }
+    feed(all, bytes: payload, partitions: [payload.count])
+    feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
+    feed(irregular, bytes: payload, partitions: [3, 1021, 2, 17, 5, 31, 7, 509])
+    let expected = stableSnapshot(all)
+    precondition(stableSnapshot(bytewise) == expected)
+    precondition(stableSnapshot(irregular) == expected)
+    let expectedReplies = replies(all)
+    precondition(replies(bytewise) == expectedReplies && replies(irregular) == expectedReplies)
+
+    // Extending a styled/hyperlinked cluster must retain its base attributes
+    // for REP, rather than using the SGR/OSC 8 state current at the mark.
+    let richRepeat = terminal_create(16, 2)!
+    defer { terminal_destroy(richRepeat) }
+    feed(richRepeat, bytes: Data("\u{1b}]8;;https://one.example\u{1b}\\\u{1b}[31mA\u{1b}]8;;https://two.example\u{1b}\\\u{1b}[32m\u{301}\u{1b}[2b".utf8), partitions: [4, 1, 7, 2, 99])
+    let repeated = cells(snapshot(richRepeat), 0)
+    for index in 0..<3 {
+      precondition(repeated[index]["text"] as? String == "A\u{301}")
+      precondition(repeated[index]["link"] as? String == "https://one.example")
+      precondition((repeated[index]["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 1])
+    }
+
+    // An incomplete UTF-8 prefix is only finished by an actual control/ESC,
+    // never by an ordinary scratch/feed boundary.
+    let interrupted = Data([0xf0, 0x9f, 0x1b, 0x5b, 0x33, 0x31, 0x6d, 0x41])
+    let once = terminal_create(8, 2)!, split = terminal_create(8, 2)!
+    defer { terminal_destroy(once); terminal_destroy(split) }
+    feed(once, bytes: interrupted, partitions: [interrupted.count])
+    feed(split, bytes: interrupted, partitions: [1, 1, 1, 2, 3])
+    precondition(stableSnapshot(once) == stableSnapshot(split))
+
+    // E1 80 + B emits two scalars (replacement and B).  The replacement
+    // lands exactly at capacity after 1023 ASCII scalars, so this guards the
+    // decoder's `.two` path when its emission straddles scratch draining.
+    let twoEmission = Data(repeating: UInt8(ascii: "x"), count: 1023) + Data([0xe1, 0x80, 0x42])
+    let twoWhole = terminal_create(8, 2)!, twoBytes = terminal_create(8, 2)!, twoIrregular = terminal_create(8, 2)!
+    defer { terminal_destroy(twoWhole); terminal_destroy(twoBytes); terminal_destroy(twoIrregular) }
+    feed(twoWhole, bytes: twoEmission, partitions: [twoEmission.count])
+    feed(twoBytes, bytes: twoEmission, partitions: Array(repeating: 1, count: twoEmission.count))
+    feed(twoIrregular, bytes: twoEmission, partitions: [1023, 1, 2])
+    let twoExpected = stableSnapshot(twoWhole)
+    precondition(stableSnapshot(twoBytes) == twoExpected && stableSnapshot(twoIrregular) == twoExpected)
+
+    // Exercise a pinned viewport while every newly scrolled row is evicted
+    // by a zero/tiny byte budget.  Snapshot equality covers history bytes,
+    // anchors, clamp revision and all epochs in addition to rich cells.
+    let bufferedWrap = Data((String(repeating: "w", count: 1_129) + "\u{1b}[5n").utf8)
+    for budget: UInt64 in [0, 1] {
+      func constrained() -> OpaquePointer {
+        let core = terminal_create(4, 2)!
+        terminal_set_history_limit(core, 8)
+        feed(core, bytes: Data("0\r\n1\r\n2\r\n3".utf8), partitions: [8])
+        terminal_view_scroll(core, 1)
+        terminal_set_history_byte_limit(core, budget)
+        return core
+      }
+      let whole = constrained(), bytewise = constrained(), irregular = constrained()
+      defer { terminal_destroy(whole); terminal_destroy(bytewise); terminal_destroy(irregular) }
+      feed(whole, bytes: bufferedWrap, partitions: [bufferedWrap.count])
+      feed(bytewise, bytes: bufferedWrap, partitions: Array(repeating: 1, count: bufferedWrap.count))
+      feed(irregular, bytes: bufferedWrap, partitions: [5, 1023, 2, 17, 11, 71])
+      let expected = stableSnapshot(whole)
+      precondition(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
+      precondition((snapshot(whole)["history_rows"] as? Int) == 0)
+      let reply = replies(whole)
+      precondition(replies(bytewise) == reply && replies(irregular) == reply)
+    }
+  }
   static func main() {
     nativeModifierWire()
+    decodedBatchEquivalence()
     guard let core = terminal_create(8, 3) else { fatalError("create") }
     defer { terminal_destroy(core) }
     feed(core, "one\ntwo")

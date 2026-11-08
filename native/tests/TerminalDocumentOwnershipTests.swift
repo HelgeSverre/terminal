@@ -193,15 +193,106 @@ import Foundation
     precondition(document.hasValidInvariants(document.primary))
   }
 
+  // The decoder drains this API in bounded pieces.  Keep an oracle that
+  // compares every rich cell, row identity, history row and cursor outcome
+  // against the scalar entry point; this catches a tempting but incorrect
+  // implementation that treats a batch as an independent grapheme stream.
+  static func batchWriterMatchesScalarTransactions() {
+    let attributes = TerminalDocument.PrintAttributes(
+      style: TerminalStyle(foreground: 0x0102_0304, background: 0x0506_0708, flags: 3),
+      link: "https://example.test/batch", protected: true)
+    func same(_ lhs: TerminalDocument, _ rhs: TerminalDocument) {
+      precondition(lhs.primary == rhs.primary && lhs.alternate == rhs.alternate)
+      precondition(lhs.history == rhs.history)
+      precondition(lhs.hasValidInvariants(lhs.primary) && lhs.hasValidInvariants(lhs.alternate))
+    }
+    func scalar(_ values: [Unicode.Scalar], alternate: Bool, setup: (inout TerminalDocument) -> Void = { _ in }) -> (document: TerminalDocument, mutations: Int) {
+      var document = TerminalDocument(columns: 2, rows: 1); setup(&document)
+      var mutations = 0
+      for value in values {
+        if document.print(value, usingAlternate: alternate, leftRightMargins: true,
+                          autoWrap: true, insertMode: true, attributes: attributes) != nil { mutations += 1 }
+      }
+      return (document, mutations)
+    }
+    func batch(_ values: [Unicode.Scalar], alternate: Bool, chunks: [Int] = [Int.max], setup: (inout TerminalDocument) -> Void = { _ in }) -> (document: TerminalDocument, mutations: Int) {
+      var document = TerminalDocument(columns: 2, rows: 1); setup(&document)
+      var offset = 0, mutations = 0
+      var chunk = 0
+      while offset < values.count {
+        let end = min(values.count, offset + chunks[chunk % chunks.count])
+        while offset < end {
+          let effect = document.print(values[offset..<end], usingAlternate: alternate,
+                                      leftRightMargins: true, autoWrap: true,
+                                      insertMode: true, attributes: attributes)
+          precondition(effect.consumedScalarCount > 0)
+          offset += effect.consumedScalarCount; mutations += effect.mutationCount
+        }
+        chunk += 1
+      }
+      return (document, mutations)
+    }
+    func matches(_ values: [Unicode.Scalar], alternate: Bool, chunks: [Int] = [Int.max], setup: (inout TerminalDocument) -> Void = { _ in }) {
+      let expected = scalar(values, alternate: alternate, setup: setup)
+      let actual = batch(values, alternate: alternate, chunks: chunks, setup: setup)
+      same(expected.document, actual.document)
+      precondition(expected.mutations == actual.mutations)
+    }
+
+    // 1023/1024 crosses the Core scratch boundary.  Prepend joins the ASCII
+    // that follows it, and the long combining run must preserve cap state.
+    let boundary = Array((String(repeating: "x", count: 1023) + "\u{600}A" +
+                          String(repeating: "\u{301}", count: 64) + "👩" + "क्‍ष").unicodeScalars)
+    matches(boundary, alternate: false)
+    matches(boundary, alternate: false, chunks: [1, 17, 2, 401, 3, 64, 7])
+    // Controls and orphan ignorables are admitted (so stream offsets stay
+    // exact) but have the same zero mutation count as scalar printing.
+    matches(Array("\u{fe0f}A\u{301}\u{7}B".unicodeScalars), alternate: false)
+
+    // Full-width primary and alternate scrolls must install replacement IDs
+    // before the next bounded call; partial margins and a one-column wide
+    // glyph cover the placement helper's non-scroll paths too.
+    let scrolling = Array("abcdefghijkl".unicodeScalars)
+    matches(scrolling, alternate: false)
+    matches(scrolling, alternate: true)
+    let marginSetup: (inout TerminalDocument) -> Void = { document in
+      document.primary.leftMargin = 1; document.primary.rightMargin = 1
+    }
+    matches(Array("猫A".unicodeScalars), alternate: false, setup: marginSetup)
+
+    var oneScalar = TerminalDocument(columns: 1, rows: 1)
+    var oneBatch = TerminalDocument(columns: 1, rows: 1)
+    for value in "猫A".unicodeScalars { _ = oneScalar.print(value, usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes) }
+    var offset = 0; let oneValues = Array("猫A".unicodeScalars)
+    while offset < oneValues.count {
+      let effect = oneBatch.print(oneValues[offset...], usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+      precondition(effect.consumedScalarCount > 0); offset += effect.consumedScalarCount
+    }
+    same(oneScalar, oneBatch)
+
+    // A retained rich snapshot must stay immutable after the batch updates a
+    // joining cluster and then scrolls a replacement into the same screen.
+    var retained = TerminalDocument(columns: 2, rows: 1)
+    _ = retained.print(Array("A".unicodeScalars), usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+    let primarySnapshot = retained.primary
+    _ = retained.print(Array("\u{301}BC".unicodeScalars), usingAlternate: false, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+    precondition(primarySnapshot.rows[0].cells[0].text == "A")
+    retained.resetPrintCluster()
+    let alternateSnapshot = retained.alternate
+    _ = retained.print(Array("XYZ".unicodeScalars), usingAlternate: true, leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+    precondition(alternateSnapshot.rows[0].cells[0].text.isEmpty)
+  }
+
   static func main() {
     let old = retainedSnapshot()
     populatedSnapshotsRemainImmutable()
     rangeLocalWidePairRepairPreservesSnapshots()
     documentOwnsSegmentationAndOrphans()
+    batchWriterMatchesScalarTransactions()
     // `document` has been destroyed. Retention is real value/COW retention,
     // not a borrowed mutable grid whose lifetime happens to extend this call.
     precondition(old.rows[0].cells[0].text.isEmpty)
     precondition(old.rows[0].cells[0].kind == 0)
-    print("PASS TerminalDocument ownership: snapshots, document segmentation, local wide-pair repair, cluster width, margin insert and clipped cells")
+    print("PASS TerminalDocument ownership: snapshots, document segmentation, batch transactions, local wide-pair repair, cluster width, margin insert and clipped cells")
   }
 }

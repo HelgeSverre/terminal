@@ -108,11 +108,14 @@ private final class SwiftTerminalCore {
   private var repeatRemaining = 0
   private var charsetSpecial = [false, false]
   private var charsetSlot = 0
+  private var decodedScalars: [Unicode.Scalar] = []
+  private var decodedScalarStart = 0
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
     self.rowCount = max(1, min(4096, rows))
     document = TerminalDocument(columns: self.columns, rows: self.rowCount)
+    decodedScalars.reserveCapacity(1024)
   }
 
   private var screen: SwiftScreen {
@@ -140,20 +143,55 @@ private final class SwiftTerminalCore {
     if history { historyEpoch &+= 1 }
     if geometry { geometryEpoch &+= 1 }
   }
-  private func flushText(final: Bool = false) {
+  private func finishDecodedText() {
     // Escape/control input interrupts an incomplete UTF-8 sequence. Emit its
     // maximal invalid prefix now so that the control byte is still parsed.
+    flushDecodedScalars()
     emitDecoded(utf8.finish())
+    flushDecodedScalars()
   }
   @inline(__always)
   private func emitDecoded(_ emission: SwiftUnicode.UTF8Decoder.Emission) {
     switch emission {
     case .none: break
-    case .one(let scalar): put(charsetSpecial[charsetSlot] ? decSpecialGraphics(scalar) : scalar)
+    case .one(let scalar): appendDecoded(charsetSpecial[charsetSlot] ? decSpecialGraphics(scalar) : scalar)
     case .two(let first, let second):
-      put(charsetSpecial[charsetSlot] ? decSpecialGraphics(first) : first)
-      put(charsetSpecial[charsetSlot] ? decSpecialGraphics(second) : second)
+      appendDecoded(charsetSpecial[charsetSlot] ? decSpecialGraphics(first) : first)
+      appendDecoded(charsetSpecial[charsetSlot] ? decSpecialGraphics(second) : second)
     }
+  }
+  private func appendDecoded(_ scalar: Unicode.Scalar) {
+    decodedScalars.append(scalar)
+    if decodedScalars.count - decodedScalarStart == 1024 { flushDecodedScalars() }
+  }
+  private func flushDecodedScalars() {
+    while decodedScalarStart < decodedScalars.count {
+      let batch = document.print(decodedScalars[decodedScalarStart...], usingAlternate: usingAlternate,
+                                 leftRightMargins: leftRightMargins, autoWrap: autoWrap,
+                                 insertMode: insertMode,
+                                 attributes: TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput))
+      guard batch.consumedScalarCount > 0 else { return }
+      decodedScalarStart += batch.consumedScalarCount
+      apply(batch.effect, mutations: batch.mutationCount)
+    }
+    decodedScalars.removeAll(keepingCapacity: true)
+    decodedScalarStart = 0
+  }
+  private func apply(_ effect: TerminalDocument.PrintEffect, mutations: Int = 1) {
+    guard mutations > 0 else { return }
+    if !effect.appendedHistory.isEmpty {
+      for row in effect.appendedHistory { historyByteCount &+= row.retainedStorageCost }
+      if viewAnchor != nil { viewOffset += effect.appendedHistory.count }
+      enforceHistoryLimits()
+      historyEpoch &+= 1
+    }
+    if let printed = effect.lastPrinted {
+      lastPrinted = printed
+      let attributes = effect.repeatAttributes ?? TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)
+      lastPrintedStyle = attributes.style; lastPrintedLink = attributes.link
+      lastPrintedFlags = attributes.protected ? 2 : 0
+    }
+    revision &+= UInt64(mutations); documentEpoch &+= UInt64(mutations); screenEpoch &+= UInt64(mutations)
   }
   private func resetClusterBoundary() { document.resetPrintCluster() }
   private func tick(_ now: UInt64) {
@@ -187,14 +225,14 @@ private final class SwiftTerminalCore {
       switch parser {
       case .ground:
         switch byte {
-        case 0x1b: flushText(); parser = .escape
-        case 0x00...0x07: flushText(); if byte == 0x07 { /* bell belongs to host */ }
-        case 0x08: flushText(); backspace()
-        case 0x09: flushText(); tab()
-        case 0x0a, 0x0b, 0x0c: flushText(); lineFeed()
-        case 0x0d: flushText(); carriageReturn()
-        case 0x0e: flushText(); charsetSlot = 1
-        case 0x0f: flushText(); charsetSlot = 0
+        case 0x1b: finishDecodedText(); parser = .escape
+        case 0x00...0x07: finishDecodedText(); if byte == 0x07 { /* bell belongs to host */ }
+        case 0x08: finishDecodedText(); backspace()
+        case 0x09: finishDecodedText(); tab()
+        case 0x0a, 0x0b, 0x0c: finishDecodedText(); lineFeed()
+        case 0x0d: finishDecodedText(); carriageReturn()
+        case 0x0e: finishDecodedText(); charsetSlot = 1
+        case 0x0f: finishDecodedText(); charsetSlot = 0
         default:
           emitDecoded(utf8.push(byte))
         }
@@ -263,6 +301,7 @@ private final class SwiftTerminalCore {
         else { parser = .discardString(escaped: byte == 0x1b, osc: osc) }
       }
     }
+    flushDecodedScalars()
     return limit
   }
   private func handleEscapedByte(_ byte: UInt8) {
@@ -290,20 +329,7 @@ private final class SwiftTerminalCore {
       scalar, usingAlternate: usingAlternate,
       leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
       attributes: TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)) else { return }
-    if !effect.appendedHistory.isEmpty {
-      for row in effect.appendedHistory { historyByteCount &+= row.retainedStorageCost }
-      if viewAnchor != nil { viewOffset += effect.appendedHistory.count }
-      enforceHistoryLimits()
-      historyEpoch &+= 1
-    }
-    if let printed = effect.lastPrinted {
-      lastPrinted = printed
-      let attributes = effect.repeatAttributes ?? TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)
-      lastPrintedStyle = attributes.style
-      lastPrintedLink = attributes.link
-      lastPrintedFlags = attributes.protected ? 2 : 0
-    }
-    changed()
+    apply(effect)
   }
 
   private func index(_ s: inout SwiftScreen, reverse: Bool, allowHistory: Bool) {
@@ -811,7 +837,7 @@ private final class SwiftTerminalCore {
     pendingClipboardRequests.remove(requestID) != nil
   }
   func finish() {
-    flushText(final: true)
+    finishDecodedText()
     // OSC 52 writes require BEL/ST framing. EOF is an abort, never an
     // implicit successful terminator.
     parser = .ground

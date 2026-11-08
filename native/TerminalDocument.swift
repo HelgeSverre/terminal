@@ -71,15 +71,34 @@ struct TerminalDocument {
     var lastPrinted: String?
     var repeatAttributes: PrintAttributes?
   }
+  struct PrintBatchEffect {
+    var effect: PrintEffect
+    var consumedScalarCount: Int
+    var mutationCount: Int
+  }
+  // All state needed to continue a grapheme across decoder batches lives in
+  // one value.  Keeping it disjoint from the selected screen lets the batch
+  // writer hold that screen exactly once without accidentally extending an
+  // inout row borrow across a wrap or scroll.
+  private struct PrintState {
+    var segmenter = SwiftUnicode.Segmenter()
+    var openCluster: (row: Int, column: Int)?
+    var retainedScalars = 0
+    var capped = false
+
+    mutating func reset() {
+      segmenter = SwiftUnicode.Segmenter()
+      openCluster = nil
+      retainedScalars = 0
+      capped = false
+    }
+  }
   private(set) var columns: Int; private(set) var rowCount: Int
   var history: [TerminalRow] = []; var primary: TerminalScreen; var alternate: TerminalScreen
   fileprivate var nextRowID: UInt64 = 1
   // Print/segmentation state belongs beside the cells it identifies. This
   // keeps the scalar transaction self-contained across cursor/edit resets.
-  private var segmenter = SwiftUnicode.Segmenter()
-  private var openCluster: (row: Int, column: Int)?
-  private var retainedClusterScalars = 0
-  private var cappedCluster = false
+  private var printState = PrintState()
   init(columns: Int, rows: Int) {
     self.columns = columns; rowCount = rows
     primary = TerminalScreen(rows: [], columns: columns); alternate = TerminalScreen(rows: [], columns: columns)
@@ -96,8 +115,7 @@ struct TerminalDocument {
   mutating func setSize(columns: Int, rows: Int) { self.columns = columns; rowCount = rows }
 
   mutating func resetPrintCluster() {
-    segmenter = SwiftUnicode.Segmenter()
-    openCluster = nil; retainedClusterScalars = 0; cappedCluster = false
+    printState.reset()
   }
 
   // This is the document's scalar-print transaction. It is intentionally a
@@ -108,52 +126,79 @@ struct TerminalDocument {
                       usingAlternate: Bool, leftRightMargins: Bool,
                       autoWrap: Bool, insertMode: Bool,
                       attributes: PrintAttributes) -> PrintEffect? {
-    let category: SwiftUnicode.Category
+    let batch = print(CollectionOfOne(scalar), usingAlternate: usingAlternate,
+                      leftRightMargins: leftRightMargins, autoWrap: autoWrap,
+                      insertMode: insertMode, attributes: attributes)
+    return batch.mutationCount == 0 ? nil : batch.effect
+  }
+
+  // Bounded text transaction for the ordinary decoder path. It deliberately
+  // stops after a row replacement: IDs/history must become visible to Core
+  // before the next scalar can scroll again.
+  mutating func print<C: Collection>(_ scalars: C, usingAlternate: Bool,
+                      leftRightMargins: Bool, autoWrap: Bool, insertMode: Bool,
+                      attributes: borrowing PrintAttributes) -> PrintBatchEffect where C.Element == Unicode.Scalar {
+    if usingAlternate {
+      return Self.printBatch(scalars, in: &alternate, columns: columns,
+                             leftRightMargins: leftRightMargins, autoWrap: autoWrap,
+                             insertMode: insertMode, attributes: attributes, history: &history,
+                             retainHistory: false, state: &printState, nextRowID: &nextRowID)
+    }
+    return Self.printBatch(scalars, in: &primary, columns: columns,
+                           leftRightMargins: leftRightMargins, autoWrap: autoWrap,
+                           insertMode: insertMode, attributes: attributes, history: &history,
+                           retainHistory: true, state: &printState, nextRowID: &nextRowID)
+  }
+
+  private static func category(for scalar: Unicode.Scalar) -> SwiftUnicode.Category {
     switch scalar.value {
-    case 0x000d: category = .cr
-    case 0x000a: category = .lf
-    case 0x0000...0x001f, 0x007f: category = .control
-    case 0x0000...0x007f: category = .other
-    default: category = SwiftUnicode.category(of: scalar)
+    case 0x000d: return .cr
+    case 0x000a: return .lf
+    case 0x0000...0x001f, 0x007f: return .control
+    case 0x0000...0x007f: return .other
+    default: return SwiftUnicode.category(of: scalar)
     }
-    switch category {
-    case .control, .cr, .lf: return nil
-    default: break
-    }
-    let startsCluster = segmenter.push(scalar, category: category)
-    // An ignorable may continue only a live physical owner. A cursor restore
-    // can leave segmentation after B while the owner still names an old row;
-    // that is an orphan even when the segmenter reports a continuation.
-    if SwiftUnicode.isDefaultIgnorable(scalar) {
-      let hasExtendableOwner = usingAlternate
-        ? Self.hasExtendablePrintOwner(openCluster, in: alternate)
-        : Self.hasExtendablePrintOwner(openCluster, in: primary)
-      if startsCluster || !hasExtendableOwner {
-        resetPrintCluster()
-        return nil
-      }
-    }
+  }
+
+  private static func printBatch<C: Collection>(_ scalars: C, in screen: inout TerminalScreen,
+                                                columns: Int, leftRightMargins: Bool,
+                                                autoWrap: Bool, insertMode: Bool,
+                                                attributes: borrowing PrintAttributes,
+                                                history: inout [TerminalRow], retainHistory: Bool,
+                                                state: inout PrintState,
+                                                nextRowID: inout UInt64) -> PrintBatchEffect
+  where C.Element == Unicode.Scalar {
     var appended: [TerminalRow] = []
     var replacements: [Int] = []
     var effect = PrintEffect(appendedHistory: [], lastPrinted: nil, repeatAttributes: nil)
-    if usingAlternate {
-      Self.print(scalar, category: category, startsCluster: startsCluster, in: &alternate, columns: columns,
+    var consumed = 0, mutations = 0
+    for scalar in scalars {
+      consumed += 1
+      let category = category(for: scalar)
+      switch category { case .control, .cr, .lf: continue; default: break }
+      let startsCluster = state.segmenter.push(scalar, category: category)
+      if SwiftUnicode.isDefaultIgnorable(scalar) {
+        if startsCluster || !hasExtendablePrintOwner(state.openCluster, in: screen) {
+          state.reset()
+          continue
+        }
+      }
+      Self.print(scalar, category: category, startsCluster: startsCluster, in: &screen, columns: columns,
                  leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
                  attributes: attributes, history: &appended, replacementRows: &replacements,
-                 retainHistory: false, openCluster: &openCluster,
-                 retainedScalars: &retainedClusterScalars, capped: &cappedCluster, effect: &effect)
-      Self.assignRowIDs(&alternate, at: replacements, nextRowID: &nextRowID)
-    } else {
-      Self.print(scalar, category: category, startsCluster: startsCluster, in: &primary, columns: columns,
-                 leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
-                 attributes: attributes, history: &appended, replacementRows: &replacements,
-                 retainHistory: true, openCluster: &openCluster,
-                 retainedScalars: &retainedClusterScalars, capped: &cappedCluster, effect: &effect)
-      Self.assignRowIDs(&primary, at: replacements, nextRowID: &nextRowID)
-      history.append(contentsOf: appended)
+                 retainHistory: retainHistory, state: &state, effect: &effect)
+      mutations += 1
+      // A replacement has no identity while the row is being edited. Install
+      // it before Core can admit a further scalar (which may scroll again).
+      if !replacements.isEmpty || !appended.isEmpty {
+        assignRowIDs(&screen, at: replacements, nextRowID: &nextRowID)
+        if retainHistory { history.append(contentsOf: appended) }
+        effect.appendedHistory = appended
+        return PrintBatchEffect(effect: effect, consumedScalarCount: consumed, mutationCount: mutations)
+      }
     }
     effect.appendedHistory = appended
-    return effect
+    return PrintBatchEffect(effect: effect, consumedScalarCount: consumed, mutationCount: mutations)
   }
 
   private static func hasExtendablePrintOwner(_ owner: (row: Int, column: Int)?,
@@ -176,10 +221,9 @@ struct TerminalDocument {
   private static func print(_ scalar: Unicode.Scalar, category: SwiftUnicode.Category, startsCluster: Bool,
                             in screen: inout TerminalScreen, columns: Int,
                             leftRightMargins: Bool, autoWrap: Bool, insertMode: Bool,
-                            attributes: PrintAttributes, history: inout [TerminalRow],
+                            attributes: borrowing PrintAttributes, history: inout [TerminalRow],
                             replacementRows: inout [Int], retainHistory: Bool,
-                            openCluster: inout (row: Int, column: Int)?,
-                            retainedScalars: inout Int, capped: inout Bool,
+                            state: inout PrintState,
                             effect: inout PrintEffect) {
     let horizontal = leftRightMargins ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
     func writeBounds(_ column: Int) -> (left: Int, right: Int) {
@@ -233,16 +277,16 @@ struct TerminalDocument {
       screen.pendingWrap = false
     }
 
-    if !startsCluster, let owner = openCluster, owner.row == screen.cursorRow,
+    if !startsCluster, let owner = state.openCluster, owner.row == screen.cursorRow,
        screen.rows[owner.row].cells.indices.contains(owner.column) {
       let cell = screen.rows[owner.row].cells[owner.column]
-      if capped || retainedScalars + 1 > 64 {
-        capped = true
+      if state.capped || state.retainedScalars + 1 > 64 {
+        state.capped = true
         screen.rows[owner.row].cells[owner.column].flags |= 4
         return
       }
       screen.rows[owner.row].cells[owner.column].text.unicodeScalars.append(scalar)
-      retainedScalars += 1
+      state.retainedScalars += 1
       let combined = screen.rows[owner.row].cells[owner.column].text
       let nominal = min(2, max(1, SwiftUnicode.cellWidth(of: combined)))
       let oldWidth = cell.kind == 2 ? 2 : 1
@@ -258,7 +302,7 @@ struct TerminalDocument {
         erase(row, column..<(column + occupied), cell.style.erased())
         screen.rows[row].cells[column] = TerminalCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1, style: cell.style, link: cell.link, flags: cell.flags | (nominal > occupied ? 1 : 0), protected: cell.protected)
         if nominal == 2 && occupied == 2 { screen.rows[row].cells[column + 1] = TerminalCell(text: "", kind: 3, style: cell.style, link: cell.link, flags: cell.flags, protected: cell.protected) }
-        openCluster = (row, column)
+        state.openCluster = (row, column)
         screen.cursorColumn = min(newRight, column + occupied); screen.pendingWrap = column + occupied > newRight && autoWrap
       } else {
         let occupied = min(nominal, right + 1 - owner.column)
@@ -274,7 +318,7 @@ struct TerminalDocument {
       effect.repeatAttributes = PrintAttributes(style: cell.style, link: cell.link, protected: cell.protected)
       return
     }
-    openCluster = nil; retainedScalars = 0
+    state.openCluster = nil; state.retainedScalars = 0
     let text = String(scalar)
     let measuredWidth = scalar.value < 0x80 && category == .other ? 1 : SwiftUnicode.cellWidth(of: text)
     if measuredWidth == 0 {
@@ -292,7 +336,7 @@ struct TerminalDocument {
       if !startsCluster { return }
     }
     let width = min(2, max(1, measuredWidth))
-    capped = false
+    state.capped = false
     if screen.pendingWrap && autoWrap { wrap() }
     guard screen.rows.indices.contains(screen.cursorRow),
           (0..<columns).contains(screen.cursorColumn) else { return }
@@ -313,9 +357,10 @@ struct TerminalDocument {
     let truncated = width == 2 && occupied < width
     screen.rows[row].cells[column] = TerminalCell(text: text, kind: width == 2 && occupied == 2 ? 2 : 1, style: attributes.style, link: attributes.link, flags: (attributes.protected ? 2 : 0) | (truncated ? 1 : 0), protected: attributes.protected)
     if width == 2 && occupied == 2 { screen.rows[row].cells[column + 1] = TerminalCell(text: "", kind: 3, style: attributes.style, link: attributes.link, flags: attributes.protected ? 2 : 0, protected: attributes.protected) }
-    openCluster = (row, column); retainedScalars = 1
+    state.openCluster = (row, column); state.retainedScalars = 1
     effect.lastPrinted = text
-    effect.repeatAttributes = attributes
+    effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link,
+                                              protected: attributes.protected)
     screen.cursorColumn = min(right, column + occupied)
     screen.pendingWrap = column + occupied > right && autoWrap
   }
