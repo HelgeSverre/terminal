@@ -1,6 +1,24 @@
 import Foundation
 
 @main enum EmulatorTests {
+  // Optimized Swift preconditions otherwise terminate with an unlabelled
+  // SIGTRAP, hiding which smoke-test contract failed in CI.
+  private static func precondition(
+    _ condition: @autoclosure () -> Bool, _ message: @autoclosure () -> String = "",
+    file: StaticString = #fileID, line: UInt = #line
+  ) {
+    guard condition() else {
+      preconditionFailure(message(), file: file, line: line)
+    }
+  }
+  private static func preconditionFailure(
+    _ message: @autoclosure () -> String = "", file: StaticString = #fileID, line: UInt = #line
+  ) -> Never {
+    let detail = message()
+    let suffix = detail.isEmpty ? "" : ": \(detail)"
+    FileHandle.standardError.write(Data("FAIL emulator assertion at \(file):\(line)\(suffix)\n".utf8))
+    Foundation.exit(1)
+  }
   private final class Bytes { var value = Data() }
   private final class Metadata { var value = Data() }
   private static let collect: @convention(c) (
@@ -342,7 +360,10 @@ import Foundation
     // Keyboard prefixes and private/intermediate CSI syntax remain byte
     // syntax, rather than becoming Unicode Character classification work.
     feed(core, "\u{1b}[>31u")
-    precondition(nativeInput(core, text: "a", key: 200) == Data("\u{1b}[97;1:1;97u".utf8))
+    precondition(nativeInput(core, text: "a", key: 200) == Data("\u{1b}[97;1:1u".utf8),
+      "explicit absent metadata must omit associated text")
+    precondition(input(core, text: "a", key: 200) == Data("\u{1b}[97;1:1;97u".utf8),
+      "convenience input must synthesize associated text")
     // Kitty's set-flags command parses its first field before generic CSI
     // filtering. Colons make that field invalid rather than concatenating it.
     feed(core, "\u{1b}[>1:1u")
