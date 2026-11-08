@@ -155,7 +155,7 @@ lint:
 [group('check')]
 swift-core-test:
     mkdir -p target/native
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftGraphics.swift native/SwiftTerminalCore.swift native/tests/SwiftCoreTests.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/swift-core-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/TerminalDocument.swift native/SwiftUnicode18Tables.swift native/SwiftUnicode.swift native/SwiftInputEncoder.swift native/SwiftGraphics.swift native/SwiftTerminalCore.swift native/tests/SwiftCoreTests.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/swift-core-tests
     target/native/swift-core-tests
 
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
