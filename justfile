@@ -34,40 +34,7 @@ automation-smoke: build
 # Close the last window; require both the app and its HUP-resistant child to exit
 [group('check')]
 close-smoke: build
-    #!/usr/bin/env ruby
-    require 'json'
-    require 'timeout'
-    ['window', 'shortcut'].each do |mode|
-      report_path = File.join(Dir.pwd, "reports/close-#{mode}-smoke.json")
-      File.delete(report_path) if File.exist?(report_path)
-      app = File.join(Dir.pwd, 'dist/Terminal.app/Contents/MacOS/Terminal')
-      flags = mode == 'shortcut' ? ['--quit-shortcut'] : []
-      pid = Process.spawn(app, '--close-smoke', report_path, *flags, '--execute', '/bin/sh', '-c', "trap '' HUP; printf CLOSE_SMOKE_READY; exec /bin/sleep 30", out: File::NULL, err: File::NULL)
-      app_reaped = false
-      child = nil
-      gone = true
-      begin
-        Timeout.timeout(8) { Process.wait(pid) }
-        app_reaped = true
-        report = JSON.parse(File.read(report_path))
-        child = report.fetch('child_pid')
-        raise 'invalid child PID' unless child > 0
-        begin; Process.kill(0, child); gone = false; rescue Errno::ESRCH; gone = true; end
-        report['app_exited'] = true
-        report['child_exited'] = gone
-        report['passed'] = gone && report.fetch('trigger') == (mode == 'shortcut' ? 'cmd+q' : 'last-window-close')
-        File.write(report_path, JSON.pretty_generate(report) + "\n")
-        abort 'Child survived window closure' unless report['passed']
-        puts "PASS #{mode} closure: application exited and PTY child reaped"
-      ensure
-        unless app_reaped
-          begin; Process.kill('KILL', pid); Process.wait(pid); rescue Errno::ESRCH, Errno::ECHILD; end
-        end
-        if defined?(child) && child && child > 0 && defined?(gone) && !gone
-          begin; Process.kill('KILL', child); rescue Errno::ESRCH; end
-        end
-      end
-    end
+    ruby tools/close_smoke.rb
 
 # Build the Rust core, native host, Metal shaders and signed development bundle
 [group('build')]
@@ -83,7 +50,9 @@ close-smoke: build
     xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
     xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
     xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
-    xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx15.0 -import-objc-header native/Bridge.h native/Statistics.swift native/Geometry.swift native/Font.swift native/FontCatalog.swift native/Preferences.swift native/Transport.swift native/Session.swift native/ClipboardAccess.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/Theme.swift native/Settings.swift native/Renderer.swift native/KeyMap.swift native/Canvas.swift native/Automation.swift native/Smoke.swift native/EditingSmoke.swift native/ResizeSmoke.swift native/main.swift "$BUILD_DIR/Spawn.o" target/release/libterminal_core.a -framework AppKit -framework QuartzCore -framework Metal -framework CoreText -o "$APP_BUNDLE/Contents/MacOS/Terminal"
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swift tools/SwiftIncrementalBuild.swift
+    cp "$ROOT_DIR/target/swift-host-incremental/Terminal" "$APP_BUNDLE/Contents/MacOS/Terminal"
     cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
     cp native/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
     /usr/bin/tic -x -o "$APP_BUNDLE/Contents/Resources/terminfo" native/Terminal.terminfo
@@ -143,10 +112,20 @@ lint:
     cargo fmt --all -- --check
     cargo clippy --locked --workspace --all-targets -- -D warnings
 
+# Rebuild the host cache from scratch, then prove a true no-op without opening an app.
+[group('check')]
+swift-host-build-test: build
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    output="$(xcrun swift tools/SwiftIncrementalBuild.swift --clean)"; test "$output" = "Swift host cache removed"
+    output="$(xcrun swift tools/SwiftIncrementalBuild.swift)"; test "$output" = "Swift host incremental compile + link"
+    output="$(xcrun swift tools/SwiftIncrementalBuild.swift)"; test "$output" = "Swift host no-op"
+
 # Run the complete Rust and native transport/session/bridge test suite
 [group('check')]
 @test: lint build
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
     ruby tools/native_smoke_test.rb
+    ruby tools/close_smoke_test.rb
     xcrun swiftc -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/DistributionTests.swift -o target/native/distribution-tests
     target/native/distribution-tests
     mkdir -p target/native/automation-dictionary
@@ -156,21 +135,21 @@ lint:
     cargo test --locked --workspace
     xcrun clang -Wall -Wextra -Werror -I native native/tests/pty.c native/Spawn.c target/release/libterminal_core.a -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
     target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
-    xcrun swiftc native/Transport.swift native/tests/TransportTests.swift -o target/native/transport-tests
+    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print transport) -o target/native/transport-tests
     target/native/transport-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SessionTests.swift target/native/Spawn.o target/release/libterminal_core.a -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/session-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print session) target/native/Spawn.o target/release/libterminal_core.a -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/session-tests
     target/native/session-tests "$PWD"
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/Transport.swift native/Session.swift native/ClipboardAccess.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/ClipboardAccessTests.swift target/native/Spawn.o target/release/libterminal_core.a -framework AppKit -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/clipboard-access-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print clipboard_access) target/native/Spawn.o target/release/libterminal_core.a -framework AppKit -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/clipboard-access-tests
     target/native/clipboard-access-tests "$PWD"
-    xcrun swiftc native/Geometry.swift native/tests/GeometryTests.swift -o target/native/geometry-tests
+    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print geometry) -o target/native/geometry-tests
     target/native/geometry-tests
-    xcrun swiftc native/Statistics.swift native/tests/StatisticsTests.swift -o target/native/statistics-tests
+    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print statistics) -o target/native/statistics-tests
     target/native/statistics-tests
-    xcrun swiftc native/Preferences.swift native/tests/PreferencesTests.swift -o target/native/preferences-tests
+    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print preferences) -o target/native/preferences-tests
     target/native/preferences-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/Transport.swift native/Session.swift native/SnapshotBridge.swift native/AccessibilityProjection.swift native/tests/SnapshotBridgeTests.swift target/native/Spawn.o target/release/libterminal_core.a -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/snapshot-bridge-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print snapshot_bridge) target/native/Spawn.o target/release/libterminal_core.a -framework Foundation -framework CoreFoundation -framework Security -liconv -o target/native/snapshot-bridge-tests
     target/native/snapshot-bridge-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h native/Preferences.swift native/KeyMap.swift native/tests/KeyMapTests.swift target/release/libterminal_core.a -framework AppKit -framework CoreText -framework Security -liconv -o target/native/keymap-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print keymap) target/release/libterminal_core.a -framework AppKit -framework CoreText -framework Security -liconv -o target/native/keymap-tests
     target/native/keymap-tests
 
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
