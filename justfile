@@ -168,7 +168,7 @@ lint:
     target/native/statistics-tests
     xcrun swiftc native/Font.swift native/GlyphRasterWorker.swift native/tests/GlyphRasterWorkerTests.swift -framework AppKit -framework CoreText -o target/native/glyph-raster-worker-tests
     target/native/glyph-raster-worker-tests
-    xcrun swiftc -D GLYPH_RESIDENCY_TESTING native/Font.swift native/GlyphRasterWorker.swift native/GlyphResidency.swift native/tests/GlyphResidencyTests.swift -framework AppKit -framework CoreText -framework Metal -o target/native/glyph-residency-tests
+    xcrun swiftc -D GLYPH_RESIDENCY_TESTING native/Font.swift native/GlyphRasterWorker.swift native/GlyphResidency.swift native/tests/GlyphResidencyScenarioTests.swift native/tests/GlyphResidencyTests.swift -framework AppKit -framework CoreText -framework Metal -o target/native/glyph-residency-tests
     target/native/glyph-residency-tests
     xcrun swiftc native/Preferences.swift native/tests/PreferencesTests.swift -o target/native/preferences-tests
     target/native/preferences-tests

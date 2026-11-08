@@ -110,7 +110,7 @@ final class GlyphResidency: @unchecked Sendable {
     for upload in uploads {
       switch install(upload.result) {
       case .installed, .impossible: upload.release()
-      case .waitingForPins: uploadQueue.append(upload)
+      case .waitingForCapacity: uploadQueue.append(upload)
       }
     }
   }
@@ -198,7 +198,7 @@ final class GlyphResidency: @unchecked Sendable {
 
   // Called only by beginFrame, after the preceding one-in-flight submission
   // has completed and released its pins.
-  private enum InstallOutcome { case installed, waitingForPins, impossible }
+  private enum InstallOutcome { case installed, waitingForCapacity, impossible }
   private func install(_ result: GlyphRasterResult) -> InstallOutcome {
     let recipe = result.recipe
     let kind: PageKind = result.kind == .mask ? .mask : .color
@@ -211,16 +211,15 @@ final class GlyphResidency: @unchecked Sendable {
     // must settle on resident+outline, not alternate eviction every frame.
     guard let placement = reserve(kind: kind, width: recipe.width, height: recipe.height,
       allowEviction: true) else {
+      // Other bounded CPU jobs still reserve worst-case RGBA capacity. Their
+      // acceptance releases those reservations and requests another frame.
+      if reservations > 0 { return .waitingForCapacity }
       guard pages.values.contains(where: { $0.kind == kind && $0.pins > 0 }) else {
-        if pages.values.contains(where: { $0.kind == kind }) {
-          suppressedForDemand.insert(recipe)
-          return .impossible
-        }
-        rememberFailure(recipe)
+        suppressedForDemand.insert(recipe)
         return .impossible
       }
       capacityWait = true
-      return .waitingForPins
+      return .waitingForCapacity
     }
     var pixels = result.pixels
     if kind == .mask {
@@ -250,10 +249,20 @@ final class GlyphResidency: @unchecked Sendable {
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: kind.format,
       width: recipe.width, height: recipe.height, mipmapped: false)
     descriptor.storageMode = .shared; descriptor.usage = .shaderRead
-    guard let allocation = makeLegacyTexture(descriptor) ?? reclaimDirectAndAllocate(descriptor) else {
-      // Keep the normal outline under pressure. This is a real GPU budget
-      // denial, not a synchronous render-owner raster fallback.
-      rememberFailure(recipe)
+    let available = makeLegacyTexture(descriptor)
+    // Do not retire cached GPU allocations when another CPU reservation
+    // would prevent their replacement anyway. Its callback will wake us.
+    if available == nil && reservations > 0 { return .waitingForCapacity }
+    guard let allocation = available ?? reclaimDirectAndAllocate(descriptor) else {
+      // Pin pressure is temporary: preserve the bitmap until completion,
+      // rather than putting a successfully rasterized glyph in failed.
+      if directResident.values.contains(where: { $0.pins > 0 && !visibleDemand.contains($0.recipe) }) {
+        capacityWait = true
+        return .waitingForCapacity
+      }
+      // An unchanged oversized working set settles on resident+outline.
+      // A later scene change/detach clears this capacity suppression.
+      suppressedForDemand.insert(recipe)
       return .impossible
     }
     var pixels = result.pixels
@@ -274,14 +283,23 @@ final class GlyphResidency: @unchecked Sendable {
   }
 
   private func reclaimDirectAndAllocate(_ descriptor: MTLTextureDescriptor) -> LegacyTexture? {
+    while reclaimUnusedDirect() {
+      if let allocation = makeLegacyTexture(descriptor) { return allocation }
+    }
+    return nil
+  }
+
+  private func reclaimUnusedDirect() -> Bool {
     guard let victim = directResident.values.first(where: {
       $0.pins == 0 && !visibleDemand.contains($0.recipe)
-    }) else { return nil }
+    }) else { return false }
     directResident.removeValue(forKey: victim.allocation.id)
     entries.removeValue(forKey: victim.recipe)
-    directFallbackBytes = max(0, directFallbackBytes - victim.allocation.capacity)
+    directFallbackBytes -= victim.allocation.capacity
     releaseLegacyTexture(victim.allocation.id)
-    return makeLegacyTexture(descriptor)
+    // The local heap/texture reference dies when this helper returns, before
+    // its caller allocates the replacement capacity.
+    return true
   }
 
   func fallbackGlyph(width: Int, height: Int) -> GlyphLease? {
@@ -317,7 +335,7 @@ final class GlyphResidency: @unchecked Sendable {
   }
 
   func completedSubmission() {
-    let releasedPins = !submittedPins.isEmpty
+    let releasedPins = !submittedPins.isEmpty || !submittedDirect.isEmpty
     for id in submittedPins {
       guard var page = pages[id] else { continue }
       page.pins = max(0, page.pins - 1)
@@ -491,6 +509,11 @@ final class GlyphResidency: @unchecked Sendable {
   }
 
   #if GLYPH_RESIDENCY_TESTING
+  func testingWorkIsIdle() -> Bool { pending.isEmpty && uploadQueue.isEmpty }
+  func testingUploadCount() -> Int { uploadQueue.count }
+  func testingSummary() -> String {
+    "resident=\(entries.keys.map(\.text).sorted()) visible=\(visibleDemand.map(\.text).sorted()) suppressed=\(suppressedForDemand.map(\.text).sorted()) failed=\(failed.map(\.text).sorted()) bytes=\(residentBytes)/\(byteBudget) reserved=\(reservations)"
+  }
   // Narrow headless probes keep the production API free of allocator knobs
   // while exercising real MTLHeap admission/reclaim behavior.
   func testingRecycleAndGeneration() -> Bool {
@@ -642,28 +665,6 @@ final class GlyphResidency: @unchecked Sendable {
     else { return false }
     return lease.width == recipe.width && lease.uv == SIMD4(0, 0, 1, 1)
       && directFallbackBytes > 0
-  }
-
-  func testingOversizeRecoveryAndPins() -> Bool {
-    let a = GlyphRasterRecipe(text: "A", width: 1024, height: 1024, pointSize: 12,
-      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
-    let b = GlyphRasterRecipe(text: "B", width: 1024, height: 1024, pointSize: 12,
-      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
-    let pixels = [UInt8](repeating: 255, count: a.width * a.height * 4)
-    let resultA = GlyphRasterResult(recipe: a, pixels: pixels, kind: .mask,
-      resolvedFonts: ["Menlo-Regular"], glyphIDs: [1])
-    let resultB = GlyphRasterResult(recipe: b, pixels: pixels, kind: .mask,
-      resolvedFonts: ["Menlo-Regular"], glyphIDs: [2])
-    guard install(resultA) == .installed, resolve(a) != nil else { return false }
-    finishFrameDemand() // A is visible and therefore protected.
-    submitted()
-    currentDemand = [b]; finishFrameDemand()
-    // B cannot reclaim the still-submitted A direct texture.
-    guard install(resultB) == .impossible else { return false }
-    completedSubmission()
-    // Same B result recovers once A's completion pin drains.
-    guard install(resultB) == .installed, entries[a] == nil, entries[b] != nil else { return false }
-    return directResident.values.allSatisfy { $0.pins == 0 }
   }
 
   func testingHasResident(_ recipe: GlyphRasterRecipe) -> Bool { entries[recipe] != nil }

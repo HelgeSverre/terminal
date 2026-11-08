@@ -43,6 +43,11 @@ final class GlyphRasterWorker: @unchecked Sendable {
   private var queuedBytes = 0
   private let maxJobs = 256
   private let maxQueuedBytes = 8 * 1024 * 1024
+  private let rasterizer: @Sendable (GlyphRasterRecipe) -> GlyphRasterResult?
+
+  init(rasterizer: (@Sendable (GlyphRasterRecipe) -> GlyphRasterResult?)? = nil) {
+    self.rasterizer = rasterizer ?? { Self.rasterize($0) }
+  }
 
   @discardableResult
   func request(
@@ -62,7 +67,8 @@ final class GlyphRasterWorker: @unchecked Sendable {
     lock.unlock()
     queue.addOperation { [weak self] in
       autoreleasepool {
-        let result = Self.rasterize(recipe)
+        guard let self else { return }
+        let result = self.rasterizer(recipe)
         completion(result) { [weak self] in self?.complete(recipe, bytes: bytes) }
       }
     }
