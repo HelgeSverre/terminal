@@ -22,6 +22,7 @@ import Foundation
         "closed_focus_and_key_releases_are_quiet",
         "closed_text_input_is_reported", "committed_text_round_trip", "all_owned_children_reaped",
         "finished_pty_refuses_text", "finished_pty_retains_search",
+        "physical_key_reaches_pty",
       ].map { ($0, false) })
     checks["split_inherits_cwd"] = false
     checks["split_children_reaped"] = false
@@ -185,6 +186,25 @@ import Foundation
       RunLoop.main.run(until: Date().addingTimeInterval(0.01))
     }
     finished.close()
+    let physical = own(Session(launch: spec(
+      #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; print "PHYSICAL_READY"; key=STDIN.read(1); print(key=="!" ? "\r\nPHYSICAL_KEY_OK" : "\r\nPHYSICAL_KEY_BAD")'"#)))
+    var physicalSent = false, physicalDone = false
+    physical.onSnapshot = { snapshot in
+      let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
+      if !physicalSent && text.contains("PHYSICAL_READY") {
+        physicalSent = true
+        checks["physical_key_reaches_pty"] = physical.input(TerminalKeyEvent(
+          text: "!", logical: "1", shifted: "!", baseLayout: "1", legacyText: "!", key: 200,
+          modifiers: 1, event: 0))
+      }
+      physicalDone = physicalDone || text.contains("PHYSICAL_KEY_OK")
+    }
+    let physicalDeadline = Date().addingTimeInterval(5)
+    while !physicalDone && Date() < physicalDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["physical_key_reaches_pty"] = checks["physical_key_reaches_pty"] == true && physicalDone
+    physical.close()
     // These events pass through the real owner FIFO and typed snapshot bridge.
     // Focus reports and a paired release must not make history jump to the tail.
     let view = own(Session(launch: spec(
