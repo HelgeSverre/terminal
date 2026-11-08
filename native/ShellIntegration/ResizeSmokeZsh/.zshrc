@@ -17,6 +17,8 @@ function _helge_resize_fixture_line_init() {
     _helge_resize_fixture_seeded=1
   fi
 }
+# Keep the redraw contract deterministic while still letting Starship render
+# the actual prompt; production shells may install their own WINCH behavior.
 function TRAPWINCH() {
   if zle; then
     zle reset-prompt

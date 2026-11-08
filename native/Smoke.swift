@@ -36,13 +36,19 @@ import Darwin
     uniqueKeysWithValues: [
       "pty_input_and_output", "unicode_text", "sgr_red", "ime_marked_state", "ime_unmarked_state",
       "ime_commit_once", "resize_epoch", "split_panes", "metal_submitted",
-      "completed_without_timeout", "accessibility_text_ranges",
+      "split_resize_frames_match_drawables",
+      "split_resize_drops_stale_frames",
+      "split_resize_layer_placement_configured",
+      "completed_without_timeout", "accessibility_text_ranges", "accessibility_attributed_text",
+      "startup_input_ready",
       "native_keypad_enter",
       "pane_focus_consistent", "settings_window",
       "preedit_cancelled_on_resize", "preedit_cancelled_on_focus", "cancel_did_not_commit_preedit",
       "search_navigated_and_highlighted",
       "command_left_begins_line", "command_right_accepts_zsh_suggestion",
+      "command_k_shortcut_registered",
       "command_k_clears_history_and_redraws_prompt",
+      "modifier_keys_preserve_selection",
       "starting_directory",
     ].map { ($0, false) })
   var measurements: [String: Any] = [:]
@@ -51,6 +57,12 @@ import Darwin
   var resizeEpoch: UInt64 = 0
   var oldCols = 0
   var maximumIMEMarkerLines = 0
+  var geometryMismatchedPresents: UInt64 = 0
+  var geometryMismatchedDrawables: UInt64 = 0
+  var geometryDroppedStaleFrames: UInt64 = 0
+  var startupSnapshots = 0
+  var startupPromptSnapshots = 0
+  var startupReadySnapshots = 0
   init(window: TerminalWindow, path: String) {
     controller = window
     self.path = path
@@ -58,7 +70,7 @@ import Darwin
   static func start(window: TerminalWindow, path: String) {
     let test = NativeSmokeTest(window: window, path: path)
     active = test
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { test.run() }
+    DispatchQueue.main.async { test.run() }
     DispatchQueue.main.asyncAfter(deadline: .now() + (test.idle ? 80 : 12)) {
       if active != nil { test.finish(timedOut: true) }
     }
@@ -71,28 +83,70 @@ import Darwin
     pane.onObservedSnapshot = { [weak self] snapshot in self?.observe(snapshot) }
     pane.session.semanticProbe { _ in }
   }
+  private func modifierKeysPreserveSelection(_ pane: TerminalCanvasView) -> Bool {
+    let selection = pane.accessibilityRange(for: 0)
+    guard selection.location != NSNotFound, selection.length > 0 else { return false }
+    pane.setAccessibilitySelectedTextRange(selection)
+    let event = { (flags: NSEvent.ModifierFlags, key: UInt16) in
+      NSEvent.keyEvent(
+        with: .flagsChanged, location: .zero, modifierFlags: flags,
+        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: pane.window?.windowNumber ?? 0,
+        context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: key)
+    }
+    guard let shiftDown = event(.shift, 56),
+      let commandDown = event([.shift, .command], 55),
+      let commandUp = event(.shift, 55),
+      let shiftUp = event([], 56)
+    else { return false }
+    for value in [shiftDown, commandDown, commandUp, shiftUp] {
+      pane.flagsChanged(with: value)
+      guard pane.accessibilitySelectedTextRange() == selection else { return false }
+    }
+    return true
+  }
   private func runCommand() {
     guard let pane = controller.panes.first else { return }
     pane.insertText(
-      "printf '\\033[2J\\033[H\\033[31mRED\\033[0m Unicode: 猫 é 👩🏽‍💻 🇳🇴\\nSTARTUP_PWD=%s\\nSMOKE_SENTINEL\\n' \"$PWD\"",
+      #"printf '\033[2J\033[H\033[31mRED\033[0m Unicode: 猫 é 👩🏽‍💻 🇳🇴\nSTARTUP_PWD=%s\nSMOKE_SENTINEL\n' "$PWD""#,
       replacementRange: NSRange(location: NSNotFound, length: 0))
-    if let down = NSEvent.keyEvent(
-      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
-      windowNumber: pane.window?.windowNumber ?? 0, context: nil, characters: "\r",
-      charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 76),
+    pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+  }
+  private func startKeypadProbe() {
+    guard let pane = controller.panes.first else { return }
+    pane.insertText(
+      #"printf '\033>\033[=0u'; stty raw -echo min 0 time 10; printf 'KEYPAD_READY\n'; bytes=$(dd bs=1 count=64 2>/dev/null | od -An -tx1 | tr -d ' \n'); stty sane; printf 'KEYPAD_BYTES_%s\n' "$bytes""#,
+      replacementRange: NSRange(location: NSNotFound, length: 0))
+    pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+  }
+  private func deliverKeypadEnter() -> Bool {
+    guard let pane = controller.panes.first,
+      let down = NSEvent.keyEvent(
+        with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: pane.window?.windowNumber ?? 0, context: nil, characters: "\r",
+        charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 76),
       let up = NSEvent.keyEvent(
         with: .keyUp, location: .zero, modifierFlags: [], timestamp: 0,
         windowNumber: pane.window?.windowNumber ?? 0, context: nil, characters: "",
         charactersIgnoringModifiers: "", isARepeat: false, keyCode: 76)
-    {
-      pane.keyDown(with: down)
-      pane.keyUp(with: up)
-      checks["native_keypad_enter"] = true
-    }
+    else { return false }
+    pane.keyDown(with: down)
+    pane.keyUp(with: up)
+    return true
   }
   func observe(_ snapshot: TerminalSnapshot) {
     if phase == -1 {
-      guard snapshot.at_prompt && snapshot.modes.bracketed_paste else { return }
+      startupSnapshots += 1
+      if snapshot.at_prompt { startupPromptSnapshots += 1 }
+      if snapshot.input_ready == true { startupReadySnapshots += 1 }
+      guard snapshot.input_ready == true && snapshot.at_prompt && snapshot.modes.bracketed_paste else {
+        return
+      }
+      checks["startup_input_ready"] = true
+      measurements["startup_gate_at_prompt"] = snapshot.at_prompt
+      measurements["startup_gate_bracketed_paste"] = snapshot.modes.bracketed_paste
+      if let pane = controller.panes.first {
+        checks["modifier_keys_preserve_selection"] = modifierKeysPreserveSelection(pane)
+      }
       phase = 0
       runCommand()
       return
@@ -115,6 +169,20 @@ import Darwin
       checks["sgr_red"] = snapshot.rows.flatMap { $0.cells }.contains {
         $0.text == "R" && $0.style.foreground.index == 1
       }
+      phase = -3
+      startKeypadProbe()
+    } else if phase == -3,
+      lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "KEYPAD_READY" })
+    {
+      phase = -2
+      measurements["native_keypad_dispatch_accepted"] = deliverKeypadEnter()
+    } else if phase == -2,
+      let line = lines.first(where: { $0.hasPrefix("KEYPAD_BYTES_") })
+    {
+      let bytes = String(line.dropFirst("KEYPAD_BYTES_".count))
+      measurements["native_keypad_bytes"] = bytes
+      measurements["native_keypad_expected_bytes"] = "0d"
+      checks["native_keypad_enter"] = bytes == "0d"
       phase = 1
       if let pane = controller.panes.first {
         pane.setMarkedText(
@@ -145,6 +213,9 @@ import Darwin
         controller.panes.first?.setMarkedText(
           "FOCUS_DISCARDED_PREEDIT", selectedRange: NSRange(location: 0, length: 0),
           replacementRange: NSRange(location: NSNotFound, length: 0))
+        geometryMismatchedPresents = RendererMetrics.mismatchedPresentations()
+        geometryMismatchedDrawables = RendererMetrics.report()["mismatched_drawables"] as? UInt64 ?? 0
+        geometryDroppedStaleFrames = RendererMetrics.staleFrameDropCount()
         controller.splitVertical(nil)
         checks["preedit_cancelled_on_focus"] = controller.panes.first?.hasMarkedText() == false
         checks["split_panes"] =
@@ -155,7 +226,20 @@ import Darwin
             controller.window?.isKeyWindow == true && controller.window?.firstResponder === pane
           return pane.geometryReport()["focused"] as? Bool == expected
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [self] in
+        checks["split_resize_layer_placement_configured"] = controller.panes.allSatisfy {
+          $0.layerContentsPlacement == .topLeft
+        }
+        exerciseSplitResizeStress { [self] in
+          let mismatches = RendererMetrics.report()["mismatched_drawables"] as? UInt64 ?? 0
+          let drops = RendererMetrics.staleFrameDropCount()
+          checks["split_resize_frames_match_drawables"] =
+            RendererMetrics.mismatchedPresentations() == geometryMismatchedPresents
+          // A fast or occluded renderer may acquire no stale drawable. Require
+          // drops when a mismatch was observed, rather than requiring a race.
+          checks["split_resize_drops_stale_frames"] =
+            mismatches == geometryMismatchedDrawables || drops > geometryDroppedStaleFrames
+          measurements["split_resize_mismatched_drawables"] = mismatches - geometryMismatchedDrawables
+          measurements["split_resize_stale_frames_dropped"] = drops - geometryDroppedStaleFrames
           checks["metal_submitted"] = RendererMetrics.submissions() > 0
           phase = 4
           controller.panes.first?.session.find("SMOKE_SENTINEL") { [weak self] outcome in
@@ -168,6 +252,13 @@ import Darwin
         snapshot.rows[hit.row].cells[hit.start..<hit.end].map { $0.text }.joined() == "SMOKE_SENTINEL"
       }
       phase = 5
+    }
+    if phase == 5 {
+      measurements["navigation_prompt_at_prompt"] = snapshot.at_prompt
+      measurements["navigation_prompt_input_ready"] = snapshot.input_ready == true
+      measurements["navigation_prompt_bracketed_paste"] = snapshot.modes.bracketed_paste
+      guard snapshot.at_prompt && snapshot.input_ready == true && snapshot.modes.bracketed_paste else { return }
+      phase = 6
       DispatchQueue.main.async { [self] in testCommandNavigation() }
     } else if phase == 6 && lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "CMD_LEFT_OK" }) {
       checks["command_left_begins_line"] = true
@@ -195,16 +286,30 @@ import Darwin
       clearHistoryEpoch = snapshot.history_epoch
       measurements["clear_key_window"] = controller.window?.isKeyWindow == true
       measurements["clear_app_key_window"] = NSApp.keyWindow === controller.window
-      if let window = controller.window, let event = NSEvent.keyEvent(
-        with: .keyDown, location: .zero, modifierFlags: [.command],
-        timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
-        context: nil, characters: "k", charactersIgnoringModifiers: "k", isARepeat: false, keyCode: 40)
-      { NSApp.sendEvent(event) }
+      checks["command_k_shortcut_registered"] = hasClearScreenShortcut()
+      // NSApp's synthetic key routing needs an active key window. The smoke
+      // owns this pane, so exercise the action directly and assert the menu
+      // registration separately; the two contracts remain independently testable.
+      controller.panes.first?.clearScreen(nil)
     } else if phase == 10 && snapshot.at_prompt && snapshot.modes.bracketed_paste && snapshot.history_epoch > clearHistoryEpoch
       && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       checks["command_k_clears_history_and_redraws_prompt"] = snapshot.history_rows == 0
         && !text.contains("CMD_SUGGEST_OK") && !text.contains("SMOKE_SENTINEL")
       phase = 11
+      if let pane = controller.panes.first {
+        pane.insertText(
+          "printf '\\033[=8uKITTY_SELECTION_%s\\n' READY",
+          replacementRange: NSRange(location: NSNotFound, length: 0))
+        pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+      }
+    } else if phase == 11
+      && lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "KITTY_SELECTION_READY" })
+    {
+      if let pane = controller.panes.first {
+        checks["modifier_keys_preserve_selection"] =
+          checks["modifier_keys_preserve_selection"] == true && modifierKeysPreserveSelection(pane)
+      }
+      phase = 12
       if idle {
         controller.closePane(nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [self] in measureIdle() }
@@ -217,15 +322,63 @@ import Darwin
       measurements["clear_bracketed_paste"] = snapshot.modes.bracketed_paste
     }
   }
+  private func exerciseSplitResizeStress(completion: @escaping @MainActor @Sendable () -> Void) {
+    guard let window = controller.window else {
+      completion()
+      return
+    }
+    let sizes = (0..<48).map { index in
+      NSSize(
+        width: index.isMultiple(of: 2) ? 820 : 1180,
+        height: index.isMultiple(of: 3) ? 460 : 760)
+    }
+    func resize(_ index: Int) {
+      guard index < sizes.count else {
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(300)) { completion() }
+        return
+      }
+      window.setContentSize(sizes[index])
+      window.contentView?.layoutSubtreeIfNeeded()
+      DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(2)) { resize(index + 1) }
+    }
+    resize(0)
+  }
   private func testCommandNavigation() {
-    guard let pane = controller.panes.first else { return }
-    controller.window?.makeFirstResponder(pane)
+    guard let pane = controller.panes.first, let window = controller.window else { return }
+    NSApp.activate(ignoringOtherApps: true)
+    window.makeKeyAndOrderFront(nil)
+    window.makeFirstResponder(pane)
     controller.panes.forEach { $0.updateFocus() }
-    phase = 6
-    pane.insertText(" : ", replacementRange: NSRange(location: NSNotFound, length: 0))
-    deliverCommandArrow(left: true)
-    pane.insertText("printf 'CMD_LEFT_OK\\n';", replacementRange: NSRange(location: NSNotFound, length: 0))
-    pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+    DispatchQueue.main.async { [self] in
+      measurements["navigation_app_active"] = NSApp.isActive
+      measurements["navigation_key_window"] = window.isKeyWindow
+      measurements["navigation_app_key_window"] = NSApp.keyWindow === window
+      measurements["navigation_first_responder"] = window.firstResponder === pane
+      let ready = NSApp.isActive && window.isKeyWindow && NSApp.keyWindow === window
+        && window.firstResponder === pane
+      measurements["navigation_route_ready"] = ready
+      guard ready else {
+        finish(timedOut: true)
+        return
+      }
+      pane.insertText(" : ", replacementRange: NSRange(location: NSNotFound, length: 0))
+      deliverCommandArrow(left: true)
+      pane.insertText("printf 'CMD_LEFT_OK\\n';", replacementRange: NSRange(location: NSNotFound, length: 0))
+      pane.doCommand(by: NSSelectorFromString("insertNewline:"))
+    }
+  }
+  private func hasClearScreenShortcut() -> Bool {
+    func containsShortcut(in menu: NSMenu) -> Bool {
+      for item in menu.items {
+        if item.action == #selector(TerminalCanvasView.clearScreen(_:))
+          && item.keyEquivalent == "k" && item.keyEquivalentModifierMask == .command
+        { return true }
+        if let submenu = item.submenu, containsShortcut(in: submenu) { return true }
+      }
+      return false
+    }
+    guard let menu = NSApp.mainMenu else { return false }
+    return containsShortcut(in: menu)
   }
   private func deliverCommandArrow(left: Bool) {
     guard let window = controller.window else { return }
@@ -282,6 +435,10 @@ import Darwin
     // executes the semicolon-terminated command twice and must fail this check.
     checks["ime_commit_once"] = maximumIMEMarkerLines == 1
     measurements["maximum_ime_output_marker_lines"] = maximumIMEMarkerLines
+    measurements["startup_snapshot_count"] = startupSnapshots
+    measurements["startup_prompt_snapshot_count"] = startupPromptSnapshots
+    measurements["startup_input_ready_snapshot_count"] = startupReadySnapshots
+    measurements["startup_timeout_phase"] = phase
     if let pane = controller.panes.first {
       let visible = pane.accessibilityVisibleCharacterRange()
       let first = pane.accessibilityRange(for: 0)
@@ -301,6 +458,18 @@ import Darwin
           && frame.width > 0 && frame.height > 0
         measurements["accessibility_utf16_count"] = visible.length
         measurements["accessibility_first_range_frame"] = NSStringFromRect(frame)
+      }
+      if let text {
+        let styled = (text as NSString).rangeOfCharacter(from: CharacterSet.newlines.inverted)
+        if styled.location != NSNotFound, let attributed = pane.accessibilityAttributedString(for: styled) {
+          let attributes = attributed.attributes(at: 0, effectiveRange: nil)
+          let run = pane.accessibilityStyleRange(for: styled.location)
+          checks["accessibility_attributed_text"] = attributed.string == pane.accessibilityString(for: styled)
+            && attributes[.accessibilityFont] is [String: Any]
+            && attributes[.accessibilityForegroundColor].map { CFGetTypeID($0 as CFTypeRef) == CGColor.typeID } == true
+            && attributes[.accessibilityBackgroundColor].map { CFGetTypeID($0 as CFTypeRef) == CGColor.typeID } == true
+            && run.location != NSNotFound && NSLocationInRange(styled.location, run)
+        }
       }
     }
     (NSApp.delegate as? AppDelegate)?.settings(nil)

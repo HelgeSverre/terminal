@@ -164,12 +164,55 @@ final class ClipboardWriteRequest {
   var isLive: Bool { live() }
   func resolve(_ allowed: Bool, _ result: @escaping @MainActor (Bool) -> Void) { completion(allowed, result) }
 }
+
+/// Immutable physical-key facts that survive queueing until the SwiftCore
+/// adapter emits the negotiated terminal sequence.
+struct TerminalKeyEvent {
+  private static let retainedOverhead = 128
+  private static let wireOverhead = 256
+  let text: String
+  let logical: String
+  let shifted: String
+  let baseLayout: String
+  let legacyText: String
+  let key: UInt32
+  let modifiers: UInt32
+  let event: UInt32
+  private var isModifierOnly: Bool { (400...412).contains(key) }
+  var isKeyAction: Bool { event != 2 && !isModifierOnly }
+  var retainedCost: Int? {
+    var total = Self.retainedOverhead
+    for value in [text, logical, shifted, baseLayout, legacyText] {
+      let bytes = value.utf8.count
+      guard bytes <= Int.max - total else { return nil }
+      total += bytes
+    }
+    return total
+  }
+  var maximumWireBytes: Int? {
+    let (expandedText, overflow) = text.utf8.count.multipliedReportingOverflow(by: 4)
+    guard !overflow else { return nil }
+    let payload = max(expandedText, legacyText.utf8.count)
+    let (total, overheadOverflow) = payload.addingReportingOverflow(Self.wireOverhead)
+    return overheadOverflow ? nil : total
+  }
+  /// Numeric keypad legacy input is AppKit's committed text. Other keys use
+  /// their unmodified current-layout key as the negotiated primary value.
+  var adapterText: String { (300...317).contains(key) ? text : logical }
+  var shiftedScalar: UInt32 {
+    shifted.unicodeScalars.count == 1 ? shifted.unicodeScalars.first!.value : 0
+  }
+  var baseLayoutScalar: UInt32 {
+    baseLayout.unicodeScalars.count == 1 ? baseLayout.unicodeScalars.first!.value : 0
+  }
+}
 // The PTY and Rust handle are confined to this queue. Main receives immutable decoded values.
 final class Session: @unchecked Sendable {
   let queue = DispatchQueue(label: "no.helgesverre.terminal.owner", qos: .userInteractive)
   private enum Event {
     case output(Data, Int)
     case input(String, UInt32, UInt32, UInt32, Int)
+    case keyInput(TerminalKeyEvent, Int)
     case raw(Data, Int)
     case shortcut(Data, Int)
     case resize(Int, Int, Int, Int)
@@ -481,6 +524,27 @@ final class Session: @unchecked Sendable {
       release(cost)
       if !accepted { report("Input rejected by encoding policy") }
       if accepted && key != 2 && event != 2 && configuration.followTailOnInput { terminal_view_follow_tail(core) }
+    case .keyInput(let input, let cost):
+      if writeEnded {
+        release(cost)
+        report("Input closed before delivery")
+        break
+      }
+      guard let wireBytes = input.maximumWireBytes, wireBytes <= 3 * 1024 * 1024 else {
+        release(cost)
+        report("Key input exceeds write limit")
+        break
+      }
+      guard writeBytes <= 3 * 1024 * 1024 - wireBytes else { return }
+      let accepted = terminal_input_with_metadata(
+        core, input.adapterText, input.key, input.modifiers, input.event,
+        input.text, input.legacyText, input.shiftedScalar, input.baseLayoutScalar,
+        Unmanaged.passUnretained(self).toOpaque(), Self.collect)
+      release(cost)
+      if !accepted { report("Input rejected by encoding policy") }
+      if accepted && input.isKeyAction && configuration.followTailOnInput {
+        terminal_view_follow_tail(core)
+      }
     case .clipboardDecision(let requestID, let allowed, let completion):
       let accepted = !closed && pendingClipboardIDs.remove(requestID) != nil && terminal_complete_clipboard_request(core, requestID)
       DispatchQueue.main.async { completion(accepted && allowed) }
@@ -704,6 +768,32 @@ final class Session: @unchecked Sendable {
     }
     return true
   }
+  @discardableResult func input(_ input: TerminalKeyEvent) -> Bool {
+    guard let cost = input.retainedCost else {
+      report("Key input metadata is too large")
+      return false
+    }
+    guard let wireBytes = input.maximumWireBytes, wireBytes <= 3 * 1024 * 1024 else {
+      report("Key input exceeds write limit")
+      return false
+    }
+    let lifecycle = input.event == 2
+    let control = cost <= 256 && input.event == 2
+    let admission = reserve(cost, control: control)
+    guard admission == .accepted else {
+      if admission != .closed || !lifecycle { report(admission.message) }
+      return false
+    }
+    queue.async { [self] in
+      guard !closed, !writeEnded else {
+        release(cost)
+        if !lifecycle { report("Input closed") }
+        return
+      }
+      enqueue(.keyInput(input, cost))
+    }
+    return true
+  }
   func rawInput(_ bytes: Data) {
     _ = submitRaw(bytes, event: Event.raw)
   }
@@ -865,7 +955,7 @@ final class Session: @unchecked Sendable {
       historySearch.cancel()
       for index in head..<events.count {
         switch events[index] {
-        case .input(_, _, _, _, let cost), .raw(_, let cost), .shortcut(_, let cost): release(cost)
+        case .input(_, _, _, _, let cost), .keyInput(_, let cost), .raw(_, let cost), .shortcut(_, let cost): release(cost)
         case .find(_, let completion): DispatchQueue.main.async { completion(.cancelled) }
         default: break
         }

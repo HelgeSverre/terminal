@@ -18,9 +18,14 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   private struct DeliveredKey {
     let key: UInt32
     let text: String
+    let logical: String
+    let shifted: String
+    let baseLayout: String
+    let legacyText: String
     let consumedModifiers: UInt32
   }
   private var terminalKeys: [UInt16: DeliveredKey] = [:]
+  private var modifierState = NativeKeyMap.ModifierState()
   private var marked = NSMutableAttributedString(string: "")
   private var cancellingComposition = false
   private var markedSelection = NSRange(location: 0, length: 0)
@@ -45,7 +50,11 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       "frame": NSStringFromRect(frame), "bounds": NSStringFromRect(bounds),
       "layer_frame": NSStringFromRect(layer?.frame ?? .zero),
       "drawable_size": NSStringFromSize(metal?.drawableSize ?? .zero),
+      "contents_gravity": layer?.contentsGravity.rawValue ?? "",
+      "contents_placement": layerContentsPlacement.rawValue,
+      "contents_are_flipped": layer?.contentsAreFlipped() ?? false,
       "renderer_matches_layer": renderer?.layer === layer,
+      "completed_snapshot_revision": renderer?.completedRevision() ?? 0,
       "focused": focused,
       "first_responder": window?.firstResponder === self,
     ]
@@ -63,6 +72,9 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     fontPoints = TerminalPreferences.load().fontSize
     session.configure(TerminalPreferences.load().session)
     wantsLayer = true
+    // Let AppKit map top-left placement into the backing layer's coordinate
+    // system. Direct layer gravity has different vertical meaning when flipped.
+    layerContentsPlacement = .topLeft
     layer?.masksToBounds = true
     if let layer = layer as? CAMetalLayer {
       do { renderer = try MetalRenderer(layer: layer) } catch {
@@ -114,7 +126,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   private func display(_ value: TerminalSnapshot) {
     snapshot = value
-    accessible = AccessibilityProjection(snapshot: value, includeCursor: value.following_tail)
+    accessible = AccessibilityProjection(snapshot: value)
     onTitle?(value.title)
     setAccessibilityValue(accessible?.text ?? "")
     accessibilityChanged(value: true)
@@ -162,6 +174,12 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     accessible?.string(in: accessibilitySelectedTextRange())
   }
   override func accessibilityString(for range: NSRange) -> String? { accessible?.string(in: range) }
+  override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
+    accessible?.attributedString(in: range, fontSize: fontPoints, parent: self)
+  }
+  override func accessibilityStyleRange(for index: Int) -> NSRange {
+    accessible?.styleRange(for: index) ?? NSRange(location: NSNotFound, length: 0)
+  }
   override func accessibilityRange(for index: Int) -> NSRange {
     accessible?.range(for: index) ?? NSRange(location: NSNotFound, length: 0)
   }
@@ -217,13 +235,14 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   func updateFocus() {
     let value = window?.isKeyWindow == true && window?.firstResponder === self
+    if !value {
+      releaseOwnedKeys()
+      if hasMarkedText() { cancelComposition() }
+    }
     if focused != value {
-      if !value { releaseOwnedKeys() }
+      if value { modifierState.beginFocus(modifiers: modifiers(NSEvent.modifierFlags)) }
       focused = value
       session.input(key: 2, event: value ? 1 : 0)
-      if !value {
-        cancelComposition()
-      }
       redraw()
     }
   }
@@ -328,8 +347,21 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     redraw()
     return accepted
   }
-  // Scripted text is a committed text operation, not a simulated key event.
-  // Canvas owns the accompanying input-method and selection transition.
+  private func physicalEvent(_ mapped: NativeKeyMap.KeyEvent, event: UInt32) -> TerminalKeyEvent {
+    TerminalKeyEvent(
+      text: mapped.text, logical: mapped.logical, shifted: mapped.shifted,
+      baseLayout: mapped.baseLayout, legacyText: mapped.legacyText, key: mapped.key,
+      modifiers: mapped.modifiers, event: event)
+  }
+  @discardableResult private func sendKey(_ mapped: NativeKeyMap.KeyEvent, event: UInt32) -> Bool {
+    let input = physicalEvent(mapped, event: event)
+    let accepted = session.input(input)
+    if accepted && input.isKeyAction { clearSelection() }
+    redraw()
+    return accepted
+  }
+  // Scripted text is a committed text operation, not a synthetic key event.
+  // Keep the input-method and selection transitions owned by the canvas.
   @discardableResult func submitAutomationText(_ text: String) -> Bool {
     let accepted = send(text)
     if accepted { cancelComposition() }
@@ -349,9 +381,11 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     case .shortcut(let text):
       if session.shortcut(text) { clearSelection() }
       redraw()
-    case .encoded(let key, let text, let flags):
-      if send(text, key: key, mods: flags, event: event.isARepeat ? 1 : 0) {
-        terminalKeys[event.keyCode] = DeliveredKey(key: key, text: text, consumedModifiers: 0)
+    case .encoded(let mapped):
+      if sendKey(mapped, event: event.isARepeat ? 1 : 0) {
+        terminalKeys[event.keyCode] = DeliveredKey(
+          key: mapped.key, text: mapped.text, logical: mapped.logical, shifted: mapped.shifted,
+          baseLayout: mapped.baseLayout, legacyText: mapped.legacyText, consumedModifiers: 0)
       }
     case .inputMethod:
       interpretKeyEvents([event])
@@ -359,18 +393,30 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   override func keyUp(with event: NSEvent) {
     guard let delivered = terminalKeys.removeValue(forKey: event.keyCode) else { return }
-    session.input(
-      delivered.text, key: delivered.key,
-      modifiers: modifiers(event.modifierFlags) & ~delivered.consumedModifiers, event: 2)
+    session.input(TerminalKeyEvent(
+      text: delivered.text, logical: delivered.logical, shifted: delivered.shifted,
+      baseLayout: delivered.baseLayout, legacyText: delivered.legacyText, key: delivered.key,
+      modifiers: modifiers(event.modifierFlags) & ~delivered.consumedModifiers, event: 2))
+  }
+  override func flagsChanged(with event: NSEvent) {
+    guard let modifier = NativeKeyMap.modifierEvent(event) else { return }
+    guard let resolved = modifierState.resolve(modifier) else { return }
+    _ = sendKey(resolved.event, event: resolved.release ? 2 : 0)
   }
   private func releaseOwnedKeys() {
     let flags = modifiers(NSEvent.modifierFlags)
     for delivered in terminalKeys.values {
-      session.input(
-        delivered.text, key: delivered.key, modifiers: flags & ~delivered.consumedModifiers,
-        event: 2)
+      session.input(TerminalKeyEvent(
+        text: delivered.text, logical: delivered.logical, shifted: delivered.shifted,
+        baseLayout: delivered.baseLayout, legacyText: delivered.legacyText, key: delivered.key,
+        modifiers: flags & ~delivered.consumedModifiers, event: 2))
     }
     terminalKeys.removeAll()
+    for release in modifierState.releaseAll(modifiers: flags) {
+      session.input(TerminalKeyEvent(
+        text: "", logical: "", shifted: "", baseLayout: "", legacyText: "", key: release.key,
+        modifiers: release.modifiers, event: 2))
+    }
   }
   func insertText(_ string: Any, replacementRange: NSRange) {
     guard !cancellingComposition else { return }
@@ -383,9 +429,11 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
         !TerminalPreferences.load().optionSendsEscape && event.modifierFlags.contains(.option)
         ? 2 : 0
       let mods = modifiers(event.modifierFlags) & ~consumed
-      if send(text, key: 200, mods: mods, event: event.isARepeat ? 1 : 0) {
+      let mapped = NativeKeyMap.textEvent(event, text: text, modifiers: mods)
+      if sendKey(mapped, event: event.isARepeat ? 1 : 0) {
         terminalKeys[event.keyCode] = DeliveredKey(
-          key: 200, text: text, consumedModifiers: consumed)
+          key: mapped.key, text: mapped.text, logical: mapped.logical, shifted: mapped.shifted,
+          baseLayout: mapped.baseLayout, legacyText: mapped.legacyText, consumedModifiers: consumed)
       }
     } else {
       send(text)
@@ -498,7 +546,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     }
     if event.modifierFlags.contains(.command), let value = snapshot,
       let link = value.rows[index / value.cols].cells[index % value.cols].link,
-      let url = URL(string: link), ["https", "http", "mailto"].contains(url.scheme ?? "")
+      let url = AccessibleTerminalLink.url(link)
     {
       NSWorkspace.shared.open(url)
     }

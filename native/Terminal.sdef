@@ -39,10 +39,22 @@
       <parameter name="pane id" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
       <result type="boolean" description="True when the close operation was accepted."/>
     </command>
-    <command name="new window" code="HTermnww" description="Open a new terminal window and return its first pane identifier."><cocoa class="TerminalNewWindowCommand"/><result type="text" description="The new pane identifier."/></command>
-    <command name="new tab" code="HTermntb" description="Open a new terminal tab and return its first pane identifier."><cocoa class="TerminalNewTabCommand"/><result type="text" description="The new pane identifier."/></command>
-    <command name="list panes" code="HTermlsp" description="Return stable identifiers for every open terminal pane."><cocoa class="TerminalListPanesCommand"/><result description="Stable pane identifiers."><type type="text" list="yes"/></result></command>
-    <command name="show settings" code="HTermset" description="Present Terminal's Settings window."><cocoa class="TerminalShowSettingsCommand"/><result type="boolean"/></command>
+    <command name="new window" code="HTermnww" description="Open a new terminal window and return its first pane identifier.">
+      <cocoa class="TerminalNewWindowCommand"/>
+      <result type="text" description="The new pane identifier."/>
+    </command>
+    <command name="new tab" code="HTermntb" description="Open a new terminal tab and return its first pane identifier.">
+      <cocoa class="TerminalNewTabCommand"/>
+      <result type="text" description="The new pane identifier."/>
+    </command>
+    <command name="list panes" code="HTermlsp" description="Return stable identifiers for every open terminal pane.">
+      <cocoa class="TerminalListPanesCommand"/>
+      <result description="Stable pane identifiers."><type type="text" list="yes"/></result>
+    </command>
+    <command name="show settings" code="HTermset" description="Present Terminal's Settings window.">
+      <cocoa class="TerminalShowSettingsCommand"/>
+      <result type="boolean"/>
+    </command>
     <command name="configure preferences" code="HTermcfg" description="Validate, save and apply the supplied Terminal preferences.">
       <cocoa class="TerminalConfigurePreferencesCommand"/>
       <parameter name="font size" code="Hfnt" type="real" optional="yes"><cocoa key="FontSize"/></parameter>

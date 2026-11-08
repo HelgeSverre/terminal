@@ -597,6 +597,66 @@ private final class SwiftTerminalCore {
     s.cursorRow = originMode ? s.topMargin : 0; s.cursorColumn = originMode ? left : 0; s.pendingWrap = false; screen = s
   }
   private func applySGR(_ p: [Int], colonSyntax raw: String? = nil) {
+    // Colon-form SGR parameters cannot pass through the general CSI integer
+    // parser: removing ':' turns `4:3` into 43. Handle each colon group at
+    // the SGR boundary, while delegating ordinary semicolon groups to the
+    // established parser so mixed sequences retain their ordering.
+    if let raw, raw.contains(":") {
+      let groups = raw.split(separator: ";", omittingEmptySubsequences: false)
+      var group = 0
+      while group < groups.count {
+        let value = groups[group]
+        guard value.contains(":") else {
+          guard let code = Int(value) else { group += 1; continue }
+          // Keep extended semicolon colors together; handling them as single
+          // values would lose the RGB/index operands beside a colon group.
+          if [38, 48, 58].contains(code), group + 1 < groups.count,
+            let mode = Int(groups[group + 1])
+          {
+            let count = mode == 2 ? 5 : mode == 5 ? 3 : 1
+            if group + count <= groups.count {
+              applySGR(parameters(groups[group..<(group + count)].joined(separator: ";")), colonSyntax: nil)
+              group += count
+              continue
+            }
+          }
+          applySGR([code], colonSyntax: nil)
+          group += 1
+          continue
+        }
+        let fields = value.split(separator: ":", omittingEmptySubsequences: false)
+        guard let code = fields.first.flatMap({ Int($0) }) else { group += 1; continue }
+        if code == 4, let subtype = fields.dropFirst().first.flatMap({ Int($0) }), (0...5).contains(subtype) {
+          pen.underlineKind = UInt8(subtype)
+          group += 1
+          continue
+        }
+        guard [38, 48, 58].contains(code), fields.count >= 3,
+          let mode = Int(fields[1])
+        else { group += 1; continue }
+        switch mode {
+        case 5:
+          guard let index = fields.dropFirst(2).first.flatMap({ Int($0) }) else { group += 1; continue }
+          let color = 0x0100_0000 | UInt32(max(0, min(255, index)))
+          if code == 38 { pen.foreground = color }
+          else if code == 48 { pen.background = color }
+          else { pen.underline = color }
+        case 2:
+          // ECMA-48 permits an optional color-space field between `2` and
+          // RGB. Using the final three fields supports both forms.
+          let rgb = fields.suffix(3).compactMap { Int($0) }
+          guard rgb.count == 3 else { group += 1; continue }
+          let color = 0x0200_0000 | UInt32(max(0, min(255, rgb[0])) << 16)
+            | UInt32(max(0, min(255, rgb[1])) << 8) | UInt32(max(0, min(255, rgb[2])))
+          if code == 38 { pen.foreground = color }
+          else if code == 48 { pen.background = color }
+          else { pen.underline = color }
+        default: group += 1; continue
+        }
+        group += 1
+      }
+      return
+    }
     let values = p.isEmpty ? [0] : p
     var i = 0
     while i < values.count {

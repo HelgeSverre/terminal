@@ -12,6 +12,9 @@ import AppKit
   private var baseline = (row: 0, col: 0)
   private var checks: [String: Bool] = [:]
   private var measurements: [String: Any] = [:]
+  private var startupSnapshots = 0
+  private var startupPromptSnapshots = 0
+  private var startupReadySnapshots = 0
   init(window: TerminalWindow, path: String) { controller = window; self.path = path }
   static func start(window: TerminalWindow, path: String) {
     let test = EditingSmokeTest(window: window, path: path)
@@ -25,34 +28,39 @@ import AppKit
   private func observe(_ snapshot: TerminalSnapshot) {
     latest = snapshot
     let lines = snapshot.rows.map { $0.cells.map { $0.text }.joined().trimmingCharacters(in: .whitespaces) }
-    if stage == 0 && snapshot.at_prompt && snapshot.modes.bracketed_paste {
+    if stage == 0 {
+      startupSnapshots += 1
+      if snapshot.at_prompt { startupPromptSnapshots += 1 }
+      if snapshot.input_ready == true { startupReadySnapshots += 1 }
+    }
+    if stage == 0 && snapshot.input_ready == true && snapshot.modes.bracketed_paste
+      && promptIsVisible(in: snapshot)
+    {
+      checks["startup_input_ready"] = true
       stage = -1
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-        guard let snapshot = latest else { return }
-        let initial = snapshot.cursor.col
-        measurements["fresh_initial_col"] = initial
-        if let prompt = snapshot.rows[snapshot.cursor.row].cells.firstIndex(where: { $0.text == "❯" }) {
-          checks["fresh_starship_cursor_alignment"] = initial == prompt + 2
-        }
-        key(8, "c"); key(2, "d")
+      let initial = snapshot.cursor.col
+      measurements["fresh_initial_col"] = initial
+      if let prompt = snapshot.rows[snapshot.cursor.row].cells.firstIndex(where: { $0.text == "❯" }) {
+        checks["fresh_starship_cursor_alignment"] = initial == prompt + 2
+      }
+      key(8, "c"); key(2, "d")
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [self] in
+        measurements["fresh_typed_col"] = latest?.cursor.col
+        checks["fresh_typed_cursor"] = latest?.cursor.col == initial + 2
+        key(51, "\u{7f}"); key(51, "\u{7f}")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [self] in
-          measurements["fresh_typed_col"] = latest?.cursor.col
-          checks["fresh_typed_cursor"] = latest?.cursor.col == initial + 2
-          key(51, "\u{7f}"); key(51, "\u{7f}")
-          DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [self] in
-            measurements["fresh_erased_col"] = latest?.cursor.col
-            checks["fresh_erased_cursor"] = latest?.cursor.col == initial
-            if let snapshot = latest {
-              checks["fresh_no_stuck_cd"] = !snapshot.rows[snapshot.cursor.row].cells.map { $0.text }.joined().contains("cd")
-            }
-            setupProbe()
+          measurements["fresh_erased_col"] = latest?.cursor.col
+          checks["fresh_erased_cursor"] = latest?.cursor.col == initial
+          if let snapshot = latest {
+            checks["fresh_no_stuck_cd"] = !snapshot.rows[snapshot.cursor.row].cells.map { $0.text }.joined().contains("cd")
           }
+          setupProbe()
         }
       }
-    } else if stage == 1 && snapshot.at_prompt && snapshot.modes.bracketed_paste
-      && lines.contains("HT_EDIT_READY") {
+    } else if stage == 1 && snapshot.input_ready == true && snapshot.modes.bracketed_paste
+      && promptIsVisible(in: snapshot) && lines.contains("HT_EDIT_READY") {
       stage = 2
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [self] in beginRound() }
+      DispatchQueue.main.async { [self] in beginRound() }
     } else if stage == 4 {
       let prefix = "HT_EDIT_BUFFER_\(round + 1):"
       if let line = lines.last(where: { $0.hasPrefix(prefix) }) {
@@ -72,6 +80,10 @@ import AppKit
       let setup = #"HISTFILE=/dev/null; typeset _ht_probe_number=0; function _ht_edit_probe() { ((_ht_probe_number++)); zle -I; print -r -- "HT_EDIT_BUFFER_${_ht_probe_number}:<${BUFFER}>:${CURSOR}"; zle redisplay; }; zle -N _ht_edit_probe; bindkey '^X^V' _ht_edit_probe; printf 'HT_EDIT_READY\n'"#
       controller.panes.first?.insertText(setup, replacementRange: NSRange(location: NSNotFound, length: 0))
       key(36, "\r")
+  }
+  private func promptIsVisible(in snapshot: TerminalSnapshot) -> Bool {
+    guard snapshot.rows.indices.contains(snapshot.cursor.row) else { return false }
+    return snapshot.rows[snapshot.cursor.row].cells.contains { $0.text == "❯" }
   }
   private func beginRound() {
     guard let snapshot = latest else { finish(); return }
@@ -114,6 +126,10 @@ import AppKit
   private func finish() {
     guard Self.active === self else { return }
     Self.active = nil
+    measurements["startup_snapshot_count"] = startupSnapshots
+    measurements["startup_prompt_snapshot_count"] = startupPromptSnapshots
+    measurements["startup_input_ready_snapshot_count"] = startupReadySnapshots
+    measurements["startup_timeout_phase"] = stage
     controller.panes.first?.onObservedSnapshot = nil
     let result: [String: Any] = ["passed": checks["completed"] == true && checks.values.allSatisfy { $0 },
       "checks": checks, "measurements": measurements,

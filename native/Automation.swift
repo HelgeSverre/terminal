@@ -31,6 +31,7 @@ private enum TerminalAutomation {
     delegate?.rememberFocus(pane)
     pane.updateFocus()
   }
+
 }
 
 class TerminalScriptCommand: NSScriptCommand {
@@ -44,14 +45,14 @@ class TerminalScriptCommand: NSScriptCommand {
   func pane() -> TerminalCanvasView? {
     let target = evaluatedArguments?["PaneID"] as? String
     guard let pane = TerminalAutomation.pane(id: target) else {
-      fail(target == nil
-        ? "No terminal pane has focus. Focus a pane or pass its pane id."
-        : "The requested terminal pane is closed or does not exist.")
+      fail(
+        target == nil
+          ? "No terminal pane has focus. Focus a pane or pass its pane id."
+          : "The requested terminal pane is closed or does not exist.")
       return nil
     }
     return pane
   }
-
   func screenLimit() -> Int? {
     guard let value = evaluatedArguments?["MaxCharacters"] else {
       return TerminalAutomation.defaultScreenLimit

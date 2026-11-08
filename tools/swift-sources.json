@@ -22,6 +22,7 @@
     "Session.swift",
     "ClipboardAccess.swift",
     "SnapshotBridge.swift",
+    "CellPalette.swift",
     "AccessibilityProjection.swift",
     "Theme.swift",
     "Settings.swift",
@@ -58,8 +59,8 @@
     "session": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
       "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift",
-      "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
-      "AccessibilityProjection.swift", "tests/SessionTests.swift"
+      "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
+      "CellPalette.swift", "AccessibilityProjection.swift", "tests/SessionTests.swift"
     ],
     "geometry": ["Geometry.swift", "tests/GeometryTests.swift"],
     "statistics": ["Statistics.swift", "tests/StatisticsTests.swift"],
@@ -67,8 +68,8 @@
     "snapshot_bridge": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
       "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift",
-      "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
-      "AccessibilityProjection.swift", "tests/SnapshotBridgeTests.swift"
+      "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
+      "CellPalette.swift", "AccessibilityProjection.swift", "tests/SnapshotBridgeTests.swift"
     ],
     "keymap": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
@@ -131,8 +132,8 @@
     "clipboard_access": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
       "SwiftInputEncoder.swift", "ClipboardProtocol.swift", "SwiftGraphics.swift", "SwiftTerminalCore.swift", "Preferences.swift",
-      "Transport.swift", "Session.swift", "ClipboardAccess.swift", "SnapshotBridge.swift",
-      "AccessibilityProjection.swift", "tests/ClipboardAccessTests.swift"
+      "Font.swift", "Transport.swift", "Session.swift", "ClipboardAccess.swift", "SnapshotBridge.swift",
+      "CellPalette.swift", "AccessibilityProjection.swift", "tests/ClipboardAccessTests.swift"
     ],
     "terminal_boundary_regression": [
       "TerminalDocument.swift", "DocumentReflow.swift", "TerminalWidth.swift", "TerminalWidthTables.swift", "SwiftUnicode18Tables.swift", "SwiftUnicode.swift",
