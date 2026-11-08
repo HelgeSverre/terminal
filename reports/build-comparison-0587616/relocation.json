@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "reason": "Signed .app bundles are retained outside Git after manifest hash and strict deep code-signature verification.",
+  "artifact_root": "/Users/helge/.codex/artifacts/terminal-build-comparison-0587616",
+  "runs": {
+    "rust": {
+      "original_bundle": "reports/build-comparison-0587616/artifacts/rust-9cc6f926be9f68f91293efc0cf319bf5e7f09d83.app",
+      "relocated_bundle": "/Users/helge/.codex/artifacts/terminal-build-comparison-0587616/rust-9cc6f926be9f68f91293efc0cf319bf5e7f09d83.app",
+      "bundle_tree_sha256": "8fedbcd513c4aeb3cf0091718392045cadb0809301aed0f289bdbdd1e1c9c3c9",
+      "executable_sha256": "3aed00702827508d1c4c86ee836690d0f0e7a3a0d191ff605474f096cf2ffceb"
+    },
+    "swift": {
+      "original_bundle": "reports/build-comparison-0587616/artifacts/swift-0587616eb25ed9b53efaee227524dc2580f7be86.app",
+      "relocated_bundle": "/Users/helge/.codex/artifacts/terminal-build-comparison-0587616/swift-0587616eb25ed9b53efaee227524dc2580f7be86.app",
+      "bundle_tree_sha256": "49ede2d8874c29d8fa560a899b0c6819f96832d4dd27a948ace5560bb1a55a95",
+      "executable_sha256": "101bf5fc51850e60d2f9013ca408d26bd9291f06cc25e299cb1716d6b05ee6db"
+    }
+  }
+}

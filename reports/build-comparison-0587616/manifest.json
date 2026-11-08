@@ -1,0 +1,143 @@
+{
+  "schema": 1,
+  "purpose": "One sequential complete-app build pair with immutable archived sources.",
+  "comparison_limitations": [
+    "This is one paired observation, not a statistical benchmark.",
+    "It is not a language-only compiler comparison: the Rust and Swift recipes intentionally perform different project work.",
+    "Both runs use fresh project outputs while sharing the host external compiler and dependency caches."
+  ],
+  "runner_sha256": "f195fe5239bc763979330bfd9a7be01b74221bdb8b0902d01a65839fbe15f580",
+  "started_at": "2026-11-08T22:58:08Z",
+  "toolchains": {
+    "swift": {
+      "command": [
+        "xcrun",
+        "swift",
+        "--version"
+      ],
+      "exit_status": 0,
+      "success": true,
+      "output": "swift-driver version: 1.127.15 Apple Swift version 6.2.4 (swiftlang-6.2.4.1.4 clang-1700.6.4.2)\nTarget: arm64-apple-macosx15.0\n"
+    },
+    "rustc": {
+      "command": [
+        "rustc",
+        "--version"
+      ],
+      "exit_status": 0,
+      "success": true,
+      "output": "rustc 1.99.0 (b940084d7 2026-09-28)\n"
+    },
+    "cargo": {
+      "command": [
+        "cargo",
+        "--version"
+      ],
+      "exit_status": 0,
+      "success": true,
+      "output": "cargo 1.99.0 (5f94df478 2026-08-27)\n"
+    }
+  },
+  "runs": {
+    "rust": {
+      "requested_revision": "9cc6f92",
+      "log": "rust-build.log",
+      "resolved_revision": "9cc6f926be9f68f91293efc0cf319bf5e7f09d83",
+      "source_archive_sha256": "4d18499e342effc9771aaf0047f2da22b7bf0e0e67a9a0af435007b2d7f9a9a1",
+      "command": [
+        "env",
+        "CARGO_TARGET_DIR=/Users/helge/code/terminal/reports/build-comparison-0587616/work/rust/target",
+        "just",
+        "build"
+      ],
+      "elapsed_seconds": 29.470696999982465,
+      "exit_status": 0,
+      "success": true,
+      "copied_bundle": "rust-9cc6f926be9f68f91293efc0cf319bf5e7f09d83.app",
+      "bundle_regular_file_bytes": 9024940,
+      "source_bundle_tree_sha256": "8fedbcd513c4aeb3cf0091718392045cadb0809301aed0f289bdbdd1e1c9c3c9",
+      "bundle_tree_sha256": "8fedbcd513c4aeb3cf0091718392045cadb0809301aed0f289bdbdd1e1c9c3c9",
+      "code_signing": {
+        "source": {
+          "command": [
+            "codesign",
+            "--verify",
+            "--deep",
+            "--strict",
+            "--verbose=2",
+            "/Users/helge/code/terminal/reports/build-comparison-0587616/work/rust/dist/Terminal.app"
+          ],
+          "exit_status": 0,
+          "success": true,
+          "output": "--prepared:/Users/helge/code/terminal/reports/build-comparison-0587616/work/rust/dist/Terminal.app/Contents/MacOS/TerminalLauncher\n--validated:/Users/helge/code/terminal/reports/build-comparison-0587616/work/rust/dist/Terminal.app/Contents/MacOS/TerminalLauncher\n/Users/helge/code/terminal/reports/build-comparison-0587616/work/rust/dist/Terminal.app: valid on disk\n/Users/helge/code/terminal/reports/build-comparison-0587616/work/rust/dist/Terminal.app: satisfies its Designated Requirement\n"
+        },
+        "copy": {
+          "command": [
+            "codesign",
+            "--verify",
+            "--deep",
+            "--strict",
+            "--verbose=2",
+            "/Users/helge/code/terminal/reports/build-comparison-0587616/artifacts/rust-9cc6f926be9f68f91293efc0cf319bf5e7f09d83.app"
+          ],
+          "exit_status": 0,
+          "success": true,
+          "output": "--prepared:/Users/helge/code/terminal/reports/build-comparison-0587616/artifacts/rust-9cc6f926be9f68f91293efc0cf319bf5e7f09d83.app/Contents/MacOS/TerminalLauncher\n--validated:/Users/helge/code/terminal/reports/build-comparison-0587616/artifacts/rust-9cc6f926be9f68f91293efc0cf319bf5e7f09d83.app/Contents/MacOS/TerminalLauncher\n/Users/helge/code/terminal/reports/build-comparison-0587616/artifacts/rust-9cc6f926be9f68f91293efc0cf319bf5e7f09d83.app: valid on disk\n/Users/helge/code/terminal/reports/build-comparison-0587616/artifacts/rust-9cc6f926be9f68f91293efc0cf319bf5e7f09d83.app: satisfies its Designated Requirement\n"
+        }
+      },
+      "bundle_verified": true,
+      "executable_sha256": "3aed00702827508d1c4c86ee836690d0f0e7a3a0d191ff605474f096cf2ffceb",
+      "executable_bytes": 3745088
+    },
+    "swift": {
+      "requested_revision": "0587616",
+      "log": "swift-build.log",
+      "resolved_revision": "0587616eb25ed9b53efaee227524dc2580f7be86",
+      "source_archive_sha256": "56e99fcd7a9cbbcb3126e5418379a504922dd223c494374f63a8ae6d13a29117",
+      "command": [
+        "just",
+        "release-build"
+      ],
+      "elapsed_seconds": 32.43397700000787,
+      "exit_status": 0,
+      "success": true,
+      "copied_bundle": "swift-0587616eb25ed9b53efaee227524dc2580f7be86.app",
+      "bundle_regular_file_bytes": 7297852,
+      "source_bundle_tree_sha256": "49ede2d8874c29d8fa560a899b0c6819f96832d4dd27a948ace5560bb1a55a95",
+      "bundle_tree_sha256": "49ede2d8874c29d8fa560a899b0c6819f96832d4dd27a948ace5560bb1a55a95",
+      "code_signing": {
+        "source": {
+          "command": [
+            "codesign",
+            "--verify",
+            "--deep",
+            "--strict",
+            "--verbose=2",
+            "/Users/helge/code/terminal/reports/build-comparison-0587616/work/swift/dist/Terminal.app"
+          ],
+          "exit_status": 0,
+          "success": true,
+          "output": "--prepared:/Users/helge/code/terminal/reports/build-comparison-0587616/work/swift/dist/Terminal.app/Contents/MacOS/TerminalLauncher\n--validated:/Users/helge/code/terminal/reports/build-comparison-0587616/work/swift/dist/Terminal.app/Contents/MacOS/TerminalLauncher\n/Users/helge/code/terminal/reports/build-comparison-0587616/work/swift/dist/Terminal.app: valid on disk\n/Users/helge/code/terminal/reports/build-comparison-0587616/work/swift/dist/Terminal.app: satisfies its Designated Requirement\n"
+        },
+        "copy": {
+          "command": [
+            "codesign",
+            "--verify",
+            "--deep",
+            "--strict",
+            "--verbose=2",
+            "/Users/helge/code/terminal/reports/build-comparison-0587616/artifacts/swift-0587616eb25ed9b53efaee227524dc2580f7be86.app"
+          ],
+          "exit_status": 0,
+          "success": true,
+          "output": "--prepared:/Users/helge/code/terminal/reports/build-comparison-0587616/artifacts/swift-0587616eb25ed9b53efaee227524dc2580f7be86.app/Contents/MacOS/TerminalLauncher\n--validated:/Users/helge/code/terminal/reports/build-comparison-0587616/artifacts/swift-0587616eb25ed9b53efaee227524dc2580f7be86.app/Contents/MacOS/TerminalLauncher\n/Users/helge/code/terminal/reports/build-comparison-0587616/artifacts/swift-0587616eb25ed9b53efaee227524dc2580f7be86.app: valid on disk\n/Users/helge/code/terminal/reports/build-comparison-0587616/artifacts/swift-0587616eb25ed9b53efaee227524dc2580f7be86.app: satisfies its Designated Requirement\n"
+        }
+      },
+      "bundle_verified": true,
+      "executable_sha256": "101bf5fc51850e60d2f9013ca408d26bd9291f06cc25e299cb1716d6b05ee6db",
+      "executable_bytes": 2017712
+    }
+  },
+  "finished_at": "2026-11-08T22:59:11Z",
+  "success": true
+}
