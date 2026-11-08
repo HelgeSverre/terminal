@@ -314,6 +314,28 @@ struct PromptAnchor: Equatable {
   var column: Int
   var pendingWrap: Bool
 }
+struct TerminalHistory: Equatable {
+  private(set) var rows: [TerminalRow] = []
+  private(set) var byteCount: UInt64 = 0
+  var count: Int { rows.count }
+  var isEmpty: Bool { rows.isEmpty }
+  subscript(_ index: Int) -> TerminalRow { rows[index] }
+  mutating func append(_ row: TerminalRow) { rows.append(row); byteCount &+= row.retainedStorageCost }
+  mutating func append(contentsOf values: [TerminalRow]) { for row in values { append(row) } }
+  mutating func removeAll() { rows.removeAll(); byteCount = 0 }
+  mutating func replace(_ values: [TerminalRow]) { rows = values; byteCount = values.reduce(0) { $0 + $1.retainedStorageCost } }
+  mutating func trim(rows limit: Int, bytes: Int) -> Int {
+    var remove = 0; let cap = UInt64(max(0, bytes)); var total = byteCount
+    while rows.count - remove > max(0, limit) || (total > cap && remove < rows.count) {
+      total &-= rows[remove].retainedStorageCost; remove += 1
+    }
+    if remove > 0 { rows.removeFirst(remove); byteCount = total }
+    return remove
+  }
+  static func == (lhs: TerminalHistory, rhs: TerminalHistory) -> Bool {
+    lhs.rows == rhs.rows && lhs.byteCount == rhs.byteCount
+  }
+}
 struct TerminalScreen: Equatable {
   enum PromptPhase { case none, drawing, inputReady }
   var rows: [TerminalRow]; var cursorRow = 0; var cursorColumn = 0; var pendingWrap = false
@@ -374,7 +396,10 @@ struct TerminalDocument {
   }
   private(set) var columns: Int; private(set) var rowCount: Int
   private var blankCellCapacity: Int
-  var history: [TerminalRow] = []; var primary: TerminalScreen; var alternate: TerminalScreen
+  var history = TerminalHistory()
+  var primary: TerminalScreen; var alternate: TerminalScreen
+  mutating func clearHistory() { history.removeAll() }
+  mutating func trimHistory(rowLimit: Int, byteLimit: Int) -> Int { history.trim(rows: rowLimit, bytes: byteLimit) }
   fileprivate var nextRowID: UInt64 = 1
   // Print/segmentation state belongs beside the cells it identifies. This
   // keeps the scalar transaction self-contained across cursor/edit resets.
@@ -531,7 +556,7 @@ struct TerminalDocument {
                                                 columns: Int, blankCellCapacity: Int, leftRightMargins: Bool,
                                                 autoWrap: Bool, insertMode: Bool,
                                                 attributes: borrowing PrintAttributes,
-                                                history: inout [TerminalRow], retainHistory: Bool,
+                                                history: inout TerminalHistory, retainHistory: Bool,
                                                 state: inout PrintState,
                                                 nextRowID: inout UInt64) -> PrintBatchEffect
   where C.Element == Unicode.Scalar {

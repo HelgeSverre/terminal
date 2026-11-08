@@ -17,7 +17,7 @@ extension TerminalDocument {
     let oldHistoryCount = history.count
     let oldPrimary = primary
     let oldPromptAnchor = oldPrimary.promptAnchor
-    let input = history + primary.rows
+    let input = history.rows + primary.rows
     let cursorSource = oldHistoryCount + oldPrimary.cursorRow
     let savedSource = oldHistoryCount + oldPrimary.savedRow
     let lastRelevant = input.indices.last(where: { index in
@@ -123,7 +123,7 @@ extension TerminalDocument {
     var start = max(0, output.count - nextRows)
     if nextRows > oldRows { start = max(0, start - (nextRows - oldRows)) }
     start = min(start, max(0, output.count - 1))
-    history = Array(output.prefix(start))
+    history.replace(Array(output.prefix(start)))
     var screenRows = Array(output.dropFirst(start).prefix(nextRows))
     while screenRows.count < nextRows { screenRows.append(blankRow()) }
     primary = TerminalScreen(rows: screenRows, columns: nextColumns)

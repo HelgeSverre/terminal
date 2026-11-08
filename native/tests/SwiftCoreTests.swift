@@ -22,6 +22,11 @@ import Foundation
       core, scroll, 0, Unmanaged.passUnretained(capture).toOpaque(), collectMetadata))
     return try! JSONSerialization.jsonObject(with: capture.value) as! [String: Any]
   }
+  static func viewHeader(_ core: OpaquePointer) -> [String: Any] {
+    let capture = Metadata()
+    precondition(terminal_view_snapshot_binary(core, 0, Unmanaged.passUnretained(capture).toOpaque(), collectMetadata))
+    return try! JSONSerialization.jsonObject(with: capture.value) as! [String: Any]
+  }
   static func snapshot(_ core: OpaquePointer) -> [String: Any] {
     guard let raw = terminal_snapshot(core, Int.max, 0) else { fatalError("missing snapshot") }
     defer { terminal_string_free(raw) }
@@ -613,6 +618,45 @@ import Foundation
     precondition([UInt32(0), 1, 2].contains(terminal_search_step(workerOnly)))
     terminal_search_destroy(workerOnly)
   }
+  static func binarySnapshotOffsetsRemainIndependentOfOwnerViewport() {
+    let core = terminal_create(4, 2)!
+    defer { terminal_destroy(core) }
+    feed(core, "A\r\nB\r\nC")
+    precondition(binaryHeader(core, scroll: 1)["scroll_offset"] as? Int == 1)
+    terminal_view_scroll(core, 1)
+    precondition(viewHeader(core)["following_tail"] as? Bool == false)
+    precondition(binaryHeader(core, scroll: 0)["following_tail"] as? Bool == true)
+    precondition(terminal_resize(core, 4, 3)) // The anchor moves into the live grid.
+    precondition(viewHeader(core)["scroll_offset"] as? Int == 0)
+    precondition(viewHeader(core)["following_tail"] as? Bool == false)
+    precondition(binaryHeader(core, scroll: 0)["following_tail"] as? Bool == true)
+  }
+  static func defaultHistoryBudgetSurvivesContinuousOutput() {
+    let core = terminal_create(4_096, 1)!
+    defer { terminal_destroy(core) }
+    let limit: UInt64 = 64 * 1_048_576
+    let line = Data((String(repeating: "x", count: 4_096) + "\r\n").utf8)
+    for _ in 0..<200 {
+      precondition(rawFeed(core, line) == line.count)
+      precondition(terminal_history_bytes(core) <= limit)
+    }
+    terminal_view_scroll(core, Int64.max) // Retain the oldest available row.
+    let before = binaryHeader(core, scroll: Int.max)["viewport_clamp_revision"] as! Int
+    for _ in 0..<300 {
+      precondition(rawFeed(core, line) == line.count)
+      precondition(terminal_history_bytes(core) <= limit)
+    }
+    let after = binaryHeader(core, scroll: Int.max)
+    precondition((after["viewport_clamp_revision"] as! Int) > before)
+    precondition(after["following_tail"] as? Bool == false)
+    precondition((after["history_rows"] as! Int) < 500)
+    precondition(terminal_resize(core, 2_048, 2))
+    precondition(terminal_history_bytes(core) <= limit)
+    precondition(terminal_resize(core, 4_096, 1))
+    precondition(terminal_history_bytes(core) <= limit)
+    precondition(terminal_validate(core))
+  }
+
   static func main() {
     nativeModifierWire()
     asciiByteAdmission()
@@ -622,6 +666,8 @@ import Foundation
     csiScratchReuseEquivalence()
     carriageReturnEquivalence()
     searchABI()
+    binarySnapshotOffsetsRemainIndependentOfOwnerViewport()
+    defaultHistoryBudgetSurvivesContinuousOutput()
     guard let core = terminal_create(8, 3) else { fatalError("create") }
     defer { terminal_destroy(core) }
     feed(core, "one\ntwo")

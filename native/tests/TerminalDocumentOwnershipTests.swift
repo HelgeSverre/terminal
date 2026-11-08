@@ -578,6 +578,42 @@ import Foundation
     precondition(reverse.cells.allSatisfy { $0.style.background == 7 && $0.kind == 0 })
   }
 
+  static func historyOwnerChargesAndTrimsOnce() {
+    var history = TerminalHistory()
+    let row = TerminalRow(columns: 3)
+    history.append(row); history.append(row); history.append(row)
+    let charge = row.retainedStorageCost
+    precondition(history.byteCount == charge * 3 && history.count == 3)
+    let retained = history[0]
+    precondition(history.trim(rows: 10, bytes: Int(charge * 2)) == 1)
+    precondition(history.count == 2 && history.byteCount == charge * 2 && retained == row)
+    precondition(history.trim(rows: 10, bytes: Int(charge * 2 - 1)) == 1)
+    precondition(history.count == 1 && history.byteCount == charge)
+    precondition(history.trim(rows: 0, bytes: 0) == 1 && history.count == 0 && history.byteCount == 0)
+    history.replace([row, row]); precondition(history.byteCount == charge * 2)
+    history.removeAll(); precondition(history.count == 0 && history.byteCount == 0)
+  }
+
+  static func historyOwnerRetainsSnapshotsAndHeterogeneousBoundaries() {
+    var plain = TerminalRow(columns: 2)
+    plain.setCell(TerminalCell(text: "A", kind: 1), at: 0)
+    var rich = TerminalRow(columns: 2)
+    rich.setCell(TerminalCell(text: "a\u{301}", kind: 1, style: TerminalStyle(background: 7),
+                              link: "https://example.test/history", flags: 2, protected: true), at: 0)
+    let plainCost = plain.retainedStorageCost, richCost = rich.retainedStorageCost
+    var history = TerminalHistory(); history.append(plain); history.append(rich); history.append(plain)
+    let retained = history
+    precondition(history.trim(rows: 10, bytes: Int(richCost + plainCost)) == 1)
+    precondition(history.rows == [rich, plain] && history.byteCount == richCost + plainCost)
+    history.append(rich)
+    precondition(retained.rows == [plain, rich, plain] && retained.byteCount == plainCost * 2 + richCost)
+    var exact = TerminalHistory(); exact.append(plain); exact.append(rich)
+    let total = exact.byteCount
+    precondition(exact.trim(rows: 10, bytes: Int(total)) == 0)
+    precondition(exact.trim(rows: 10, bytes: Int(total - 1)) == 1)
+    precondition(exact.rows == [rich] && exact.byteCount == richCost)
+  }
+
   static func sparsePayloadsBoundStorageAndKeepLogicalBudget() {
     var row = TerminalRow(columns: 3)
     // Scalar text has no retained String payload; only the exceptional link
@@ -690,6 +726,8 @@ import Foundation
     asciiSpanMatchesScalarTransactions()
     alternateMultiwrapBatchDoesNotYieldForReplacements()
     discardedAlternateReuseRespectsSnapshots()
+    historyOwnerChargesAndTrimsOnce()
+    historyOwnerRetainsSnapshotsAndHeterogeneousBoundaries()
     sparsePayloadsBoundStorageAndKeepLogicalBudget()
     logicalCapacityMatchesFormerRichArray()
     richPayloadMovesAndProjectionsRemainIndependent()

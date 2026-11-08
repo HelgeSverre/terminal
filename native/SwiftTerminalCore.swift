@@ -78,10 +78,9 @@ private final class SwiftTerminalCore {
   private var primary: SwiftScreen { get { document.primary } set { document.primary = newValue } }
   private var alternate: SwiftScreen { get { document.alternate } set { document.alternate = newValue } }
   private var usingAlternate = false
-  private var history: [SwiftRow] { get { document.history } set { document.history = newValue } }
-  private var historyLimit = 10_000
-  private var historyByteLimit = Int.max
-  private var historyByteCount: UInt64 = 0
+  private var history: [SwiftRow] { document.history.rows }
+  private var historyLimit = 50_000
+  private var historyByteLimit = 64 * 1024 * 1024
   private var viewOffset = 0
   // Nil means follow-tail. A retained row identity keeps a viewport stable as
   // output appends history and is remapped during document reflow.
@@ -268,7 +267,6 @@ private final class SwiftTerminalCore {
   }
   private func applyAppendedHistory(_ rows: [SwiftRow]) {
     guard !rows.isEmpty else { return }
-    for row in rows { historyByteCount &+= row.retainedStorageCost }
     if viewAnchor != nil { viewOffset += rows.count }
     enforceHistoryLimits()
     historyEpoch &+= 1
@@ -450,7 +448,7 @@ private final class SwiftTerminalCore {
   private func reverseIndex() { index(reverse: true) }
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
-  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); advanceSearchGeneration(); usingAlternate = false; history.removeAll(); historyByteCount = 0; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
+  private func reset() { document = TerminalDocument(columns: columns, rows: rowCount); advanceSearchGeneration(); usingAlternate = false; viewAnchor = nil; viewOffset = 0; pen = SwiftStyle(); originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false; protectedOutput = false; syncDeadline = nil; cursorVisible = true; cursorShape = 0; charsetSpecial = [false, false]; charsetSlot = 0; resetClusterBoundary(); changed(history: true) }
   private struct CSIParameterPacket {
     var values: [Int]
     // CSI > ... u and CSI = ... u historically parsed their first field
@@ -595,7 +593,7 @@ private final class SwiftTerminalCore {
     if !changedActiveScreen { if clearsPending { s.pendingWrap = false }; screen = s }
     if semanticChange { changed() }
   }
-  private func eraseDisplay(_ mode: Int, selective: Bool = false) { var s = screen; switch mode { case 2, 3: if selective { for row in 0..<rowCount { document.erase(&s, row: row, columns: 0..<columns, style: eraseStyle(), selective: true) } } else { s.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) } }; if mode == 3 && !usingAlternate { history.removeAll(); historyByteCount = 0; advanceSearchGeneration(); historyEpoch &+= 1 }; case 1: for row in 0...s.cursorRow { document.erase(&s, row: row, columns: 0..<(row == s.cursorRow ? s.cursorColumn + 1 : columns), style: eraseStyle(), selective: selective) }; default: for row in s.cursorRow..<rowCount { document.erase(&s, row: row, columns: (row == s.cursorRow ? s.cursorColumn : 0)..<columns, style: eraseStyle(), selective: selective) } }; s.pendingWrap = false; screen = s }
+  private func eraseDisplay(_ mode: Int, selective: Bool = false) { var s = screen; switch mode { case 2, 3: if selective { for row in 0..<rowCount { document.erase(&s, row: row, columns: 0..<columns, style: eraseStyle(), selective: true) } } else { s.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) } }; if mode == 3 && !usingAlternate { document.clearHistory(); advanceSearchGeneration(); historyEpoch &+= 1 }; case 1: for row in 0...s.cursorRow { document.erase(&s, row: row, columns: 0..<(row == s.cursorRow ? s.cursorColumn + 1 : columns), style: eraseStyle(), selective: selective) }; default: for row in s.cursorRow..<rowCount { document.erase(&s, row: row, columns: (row == s.cursorRow ? s.cursorColumn : 0)..<columns, style: eraseStyle(), selective: selective) } }; s.pendingWrap = false; screen = s }
   private func eraseLine(_ mode: Int) { var s = screen; let range: Range<Int>; switch mode { case 1: range = 0..<(s.cursorColumn + 1); case 2: range = 0..<columns; default: range = s.cursorColumn..<columns }; document.erase(&s, row: s.cursorRow, columns: range, style: eraseStyle()); s.pendingWrap = false; screen = s }
   private func insertCharacters(_ count: Int) {
     var s = screen; let margins = horizontalMargins
@@ -629,8 +627,7 @@ private final class SwiftTerminalCore {
       if up { removed = s.rows.remove(at: top); s.rows.insert(document.eraseRow(eraseStyle()), at: bottom) }
       else { removed = s.rows.remove(at: bottom); s.rows.insert(document.eraseRow(eraseStyle()), at: top) }
       if up && allowHistory && !usingAlternate && top == 0 && bottom == rowCount - 1 {
-        history.append(removed)
-        historyByteCount &+= removed.retainedStorageCost
+        document.history.append(removed)
         if viewAnchor != nil { viewOffset += 1 }
         enforceHistoryLimits()
         historyEpoch &+= 1
@@ -878,7 +875,6 @@ private final class SwiftTerminalCore {
     let mapped = document.reflowPrimary(columns: nextColumns, rows: nextRows, anchor: viewAnchor)
     let resizedAlternate = document.resize(oldAlternate, columns: nextColumns, rows: nextRows)
     columns = nextColumns; rowCount = nextRows; alternate = resizedAlternate
-    historyByteCount = history.reduce(0) { $0 + $1.retainedStorageCost }
     enforceHistoryLimits()
     viewAnchor = mapped.anchor ?? viewAnchor
     resolveViewportAnchor(clamp: true)
@@ -919,11 +915,7 @@ private final class SwiftTerminalCore {
   }
   private func enforceHistoryLimits() {
     let retainedAnchor = viewAnchor
-    var evicted = false
-    while history.count > historyLimit || (historyByteCount > UInt64(historyByteLimit) && !history.isEmpty) {
-      historyByteCount &-= history.removeFirst().retainedStorageCost
-      evicted = true
-    }
+    let evicted = document.trimHistory(rowLimit: historyLimit, byteLimit: historyByteLimit) > 0
     if evicted, let retainedAnchor,
        !history.contains(where: { $0.id == retainedAnchor }),
        !primary.rows.contains(where: { $0.id == retainedAnchor }) {
@@ -936,7 +928,7 @@ private final class SwiftTerminalCore {
     guard !usingAlternate else { return DisplayClearAction.ignoredAlternate.rawValue }
     var current = primary
     let action: DisplayClearAction = current.atPrompt ? .redrawPrompt : .cleared
-    history.removeAll(); historyByteCount = 0
+    document.clearHistory()
     viewAnchor = nil; viewOffset = 0; viewportWasClamped = false
     if current.atPrompt {
       let margins = (current.topMargin, current.bottomMargin, current.leftMargin, current.rightMargin)
@@ -1016,7 +1008,7 @@ private final class SwiftTerminalCore {
     document.hasValidInvariants(primary) && document.hasValidInvariants(alternate) &&
       history.allSatisfy { $0.cells.count == columns }
   }
-  func historyBytes() -> UInt64 { historyByteCount }
+  func historyBytes() -> UInt64 { document.history.byteCount }
   func imageRGBA(id: UInt32, generation: UInt64) -> Data? { graphics.imageRGBA(id: id, generation: generation) }
   private func searchKind(_ kind: UInt8) -> SwiftSearchCellKind {
     switch kind {
@@ -1135,7 +1127,7 @@ private final class SwiftTerminalCore {
   }
   private func rowsForSnapshot(view: Bool, scroll: Int? = nil) -> (rows: [SwiftRow], offset: Int) {
     let requested = max(0, scroll ?? viewOffset)
-    guard view, !usingAlternate, requested > 0 else { return (screen.rows, 0) }
+    guard !usingAlternate, requested > 0 else { return (screen.rows, 0) }
     let all = history + primary.rows
     let end = max(rowCount, all.count - min(requested, history.count))
     return (Array(all[max(0, end - rowCount)..<end]), min(requested, history.count))
@@ -1171,7 +1163,7 @@ private final class SwiftTerminalCore {
     guard let callback else { return false }
     let selected = rowsForSnapshot(view: view, scroll: view ? nil : scroll)
     let metadataObject = snapshotMetadata(cursor: screen, offset: selected.offset,
-                                          followingTail: selected.offset == 0,
+                                          followingTail: view ? (usingAlternate || viewAnchor == nil) : selected.offset == 0,
                                           search: visibleSearchHighlights(in: selected.rows))
     guard let metadata = try? JSONSerialization.data(withJSONObject: metadataObject) else { return false }
     let borrowed = SwiftBorrowedCells()
