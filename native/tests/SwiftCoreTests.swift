@@ -702,6 +702,37 @@ import Foundation
     precondition(terminal_validate(core))
   }
 
+  static func geometryABIContract() {
+    // Rust returns a null ABI handle for invalid creation geometry; silently
+    // clamping here would make a malformed host request look valid.
+    let invalid: [(UInt32, UInt32)] = [(0, 1), (1, 0), (4_097, 1), (1, 4_097), (4_096, 257)]
+    for (columns, rows) in invalid {
+      if let terminal = terminal_create(columns, rows) {
+        terminal_destroy(terminal)
+        preconditionFailure("terminal_create accepted invalid geometry \(columns)x\(rows)")
+      }
+    }
+    // Exercise Rust's exact maximum once, releasing it before the rejection
+    // checks so the ABI contract does not retain a large fixture.
+    guard let maximum = terminal_create(4_096, 256) else {
+      preconditionFailure("terminal_create rejected valid maximum geometry")
+    }
+    terminal_destroy(maximum)
+    let resized = terminal_create(8, 2)!
+    defer { terminal_destroy(resized) }
+    for (columns, rows) in invalid {
+      precondition(!terminal_resize(resized, columns, rows))
+    }
+    precondition(viewHeader(resized)["cols"] as? Int == 8)
+    // Rust validates pixel metrics before applying either geometry or cell
+    // dimensions; malformed metrics must not be normalized into a resize.
+    let invalidPixels: [(UInt32, UInt32)] = [(0, 16), (16, 0), (1_025, 16), (16, 1_025)]
+    for (width, height) in invalidPixels {
+      precondition(!terminal_resize_pixels(resized, 8, 2, width, height))
+    }
+    precondition(viewHeader(resized)["cols"] as? Int == 8)
+  }
+
   static func main() {
     nativeModifierWire()
     asciiByteAdmission()
@@ -714,6 +745,7 @@ import Foundation
     binarySnapshotOffsetsRemainIndependentOfOwnerViewport()
     legacySnapshotHonorsExplicitNumericScroll()
     defaultHistoryBudgetSurvivesContinuousOutput()
+    geometryABIContract()
     guard let core = terminal_create(8, 3) else { fatalError("create") }
     defer { terminal_destroy(core) }
     feed(core, "one\ntwo")
