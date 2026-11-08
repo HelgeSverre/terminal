@@ -314,10 +314,12 @@ struct PromptAnchor: Equatable {
   var column: Int
   var pendingWrap: Bool
 }
-struct TerminalHistory: Equatable {
+struct TerminalHistory: RandomAccessCollection, Equatable {
   private(set) var rows: [TerminalRow] = []
   private(set) var byteCount: UInt64 = 0
   var count: Int { rows.count }
+  var startIndex: Int { rows.startIndex }
+  var endIndex: Int { rows.endIndex }
   var isEmpty: Bool { rows.isEmpty }
   subscript(_ index: Int) -> TerminalRow { rows[index] }
   mutating func append(_ row: TerminalRow) { rows.append(row); byteCount &+= row.retainedStorageCost }
