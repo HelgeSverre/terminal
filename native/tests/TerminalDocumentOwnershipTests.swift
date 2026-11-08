@@ -578,6 +578,102 @@ import Foundation
     precondition(reverse.cells.allSatisfy { $0.style.background == 7 && $0.kind == 0 })
   }
 
+  static func evictedPrimaryReuseRespectsSnapshots() {
+    final class WeakStorage {
+      weak var value: AnyObject?
+      init(_ value: AnyObject) { self.value = value }
+    }
+    func storage(_ row: TerminalRow) -> AnyObject {
+      Mirror(reflecting: row).children.first { $0.label == "storage" }!.value as AnyObject
+    }
+    func identity(_ row: TerminalRow) -> ObjectIdentifier { ObjectIdentifier(storage(row)) }
+    let attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(background: 7),
+                                                       link: "https://example.test/retired", protected: true)
+    func print(_ text: String, into document: inout TerminalDocument) {
+      _ = document.print(Array(text.unicodeScalars), usingAlternate: false,
+                         leftRightMargins: false, autoWrap: true, insertMode: false, attributes: attributes)
+    }
+    var document = TerminalDocument(columns: 3, rows: 1)
+    print("abcD", into: &document)
+    let evictedID = document.history[0].id
+    let evictedStorage = identity(document.history[0])
+    let liveStorage = WeakStorage(storage(document.history[0]))
+    precondition(document.trimHistory(rowLimit: 0, byteLimit: 0) == 1)
+    precondition(document.history.isEmpty && document.history.byteCount == 0)
+    // The single evicted row stays alive without retaining it in this test.
+    // This fails on the former allocate-every-primary-wrap implementation.
+    precondition(liveStorage.value != nil)
+    print("EFG", into: &document)
+    precondition(identity(document.primary.rows[0]) == evictedStorage)
+    precondition(document.primary.rows[0].id != evictedID && !document.primary.rows[0].softWrapped)
+    precondition(document.primary.rows[0].cells[0].text == "G")
+    precondition(document.primary.rows[0].cells.dropFirst().allSatisfy {
+      $0.text.isEmpty && $0.link == nil && $0.flags == 0 && !$0.protected && $0.style.background == 7
+    })
+    precondition(document.history.count == 1 && document.history[0].cells.map(\.text) == ["D", "E", "F"])
+    precondition(document.history.byteCount == document.history[0].retainedStorageCost)
+
+    var shared = TerminalDocument(columns: 3, rows: 1)
+    print("abcD", into: &shared)
+    let heldHistory = shared.history
+    let heldCells = shared.history[0].cells
+    let sharedStorage = identity(shared.history[0])
+    _ = shared.trimHistory(rowLimit: 0, byteLimit: 0)
+    print("EFG", into: &shared)
+    precondition(identity(shared.primary.rows[0]) != sharedStorage)
+    precondition(heldHistory[0].cells.map(\.text) == ["a", "b", "c"])
+    precondition(heldCells.map(\.text) == ["a", "b", "c"])
+    precondition(heldHistory.byteCount == heldHistory[0].retainedStorageCost)
+
+    var indexed = TerminalDocument(columns: 3, rows: 1)
+    print("abcD", into: &indexed)
+    let indexStorage = identity(indexed.history[0])
+    _ = indexed.trimHistory(rowLimit: 0, byteLimit: 0)
+    _ = indexed.index(usingAlternate: false, reverse: false, leftRightMargins: false,
+                      eraseStyle: TerminalStyle(background: 9))
+    precondition(identity(indexed.primary.rows[0]) == indexStorage)
+    precondition(indexed.primary.rows[0].revision == 0 && !indexed.primary.rows[0].softWrapped)
+    precondition(indexed.primary.rows[0].cells.allSatisfy {
+      $0.text.isEmpty && $0.kind == 0 && $0.link == nil && $0.flags == 0 && !$0.protected && $0.style.background == 9
+    })
+    precondition(indexed.primary.rows[0].retainedStorageCost == 32 + UInt64(indexed.primary.rows[0].retainedCellCapacity) * 64)
+
+    // Geometry changes consume the same bounded cache but allocate a correctly
+    // shaped row; clearHistory releases even that one retirement candidate.
+    _ = indexed.trimHistory(rowLimit: 0, byteLimit: 0)
+    indexed.setSize(columns: 4, rows: 1)
+    let resized = indexed.eraseRow(TerminalStyle(background: 5))
+    precondition(resized.count == 4 && resized.cells.allSatisfy { $0.kind == 0 && $0.style.background == 5 })
+    var clearing = TerminalDocument(columns: 3, rows: 1)
+    print("abcD", into: &clearing)
+    let clearedStorage = WeakStorage(storage(clearing.history[0]))
+    _ = clearing.trimHistory(rowLimit: 0, byteLimit: 0)
+    precondition(clearedStorage.value != nil)
+    clearing.clearHistory()
+    precondition(clearedStorage.value == nil)
+
+    // A large trim keeps exactly one candidate, not the entire evicted prefix.
+    var many = TerminalDocument(columns: 3, rows: 1)
+    var oldOwners: [WeakStorage] = []
+    for _ in 0..<8 {
+      _ = many.index(usingAlternate: false, reverse: false, leftRightMargins: false, eraseStyle: TerminalStyle())
+      oldOwners.append(WeakStorage(storage(many.history.last!)))
+    }
+    precondition(many.trimHistory(rowLimit: 0, byteLimit: 0) == 8)
+    precondition(oldOwners.dropLast().allSatisfy { $0.value == nil } && oldOwners.last!.value != nil)
+
+    // After warmup, repeated cap-pressure LF alternates two storage objects.
+    // These IDs do not retain storage and therefore cannot manufacture COW.
+    var steady = TerminalDocument(columns: 512, rows: 1)
+    var owners: Set<ObjectIdentifier> = [identity(steady.primary.rows[0])]
+    for _ in 0..<2_000 {
+      _ = steady.index(usingAlternate: false, reverse: false, leftRightMargins: false, eraseStyle: TerminalStyle())
+      owners.insert(identity(steady.primary.rows[0]))
+      precondition(steady.trimHistory(rowLimit: 0, byteLimit: 0) == 1)
+    }
+    precondition(owners.count == 2)
+  }
+
   static func historyOwnerChargesAndTrimsOnce() {
     var history = TerminalHistory()
     let row = TerminalRow(columns: 3)
@@ -749,6 +845,7 @@ import Foundation
     asciiSpanMatchesScalarTransactions()
     alternateMultiwrapBatchDoesNotYieldForReplacements()
     discardedAlternateReuseRespectsSnapshots()
+    evictedPrimaryReuseRespectsSnapshots()
     historyOwnerChargesAndTrimsOnce()
     scalarStorageChargesUTF8WithoutRichText()
     historyOwnerRetainsSnapshotsAndHeterogeneousBoundaries()
