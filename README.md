@@ -13,7 +13,7 @@ window with bundled Obel Mono. Requires Apple Silicon and macOS 15 or later.
 
 ## Install
 
-```sh
+```shell
 brew install --cask helgesverre/tap/helge-terminal
 open -a "Helge Terminal"
 ```
@@ -26,13 +26,13 @@ The package is listed on [tap.helgesver.re](https://tap.helgesver.re/).
 Install Xcode with its Metal compiler and [just](https://github.com/casey/just),
 then build and open a development instance:
 
-```sh
+```shell
 just dev
 ```
 
 To install your local build:
 
-```sh
+```shell
 just install  # Build an optimized app in ~/Applications/Helge Terminal.app
 just open
 ```
@@ -130,7 +130,7 @@ the app.
 
 The integration tests also need fish, Neovim, tmux, and fzf:
 
-```sh
+```shell
 brew install just fish neovim tmux fzf
 just test
 ```

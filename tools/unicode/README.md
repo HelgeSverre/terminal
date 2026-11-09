@@ -32,7 +32,7 @@ The Unicode test fixture retains its separate original notice.
 
 From the repository root, regenerate the checked-in runtime sources with:
 
-```sh
+```shell
 mkdir -p target/native
 xcrun swiftc -parse-as-library tools/GenerateUnicode18.swift -o target/native/generate-unicode18
 target/native/generate-unicode18
@@ -55,7 +55,7 @@ The checked-in Swift generator validates that checksum and writes
 `native/Text/UnicodeLowercase.swift`. A clean clone can reproduce the runtime table
 without Rust or Foundation Unicode data:
 
-```sh
+```shell
 xcrun swiftc -parse-as-library tools/unicode/GenerateUnicodeLowercase.swift \
   -o target/native/generate-unicode-lowercase
 target/native/generate-unicode-lowercase \

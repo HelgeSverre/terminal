@@ -10,7 +10,7 @@ and removes only processes that it started.
 Run preparation first. It compiles the small native helpers and tests the inner
 PTY relay; it does not launch an app, workload, capture, or GUI input.
 
-```console
+```shell
 just tui-stress-prepare
 ```
 
@@ -19,7 +19,7 @@ receipt whose executable hash matches `~/Applications/Helge Terminal.app`.
 It refuses a changed or ambiguous install and creates a fresh timestamped
 report in `/tmp`:
 
-```console
+```shell
 just tui-stress files
 just tui-stress codex
 ```
@@ -30,7 +30,7 @@ directory and checks both the input and copied app bundle against the provided
 executable hash. Run the workloads separately so every run has a fresh shell,
 private working directory, and private Codex state directory:
 
-```console
+```shell
 app=/path/to/Terminal.app
 source_sha=$(git rev-parse HEAD)
 app_sha=$(shasum -a 256 "$app/Contents/MacOS/Terminal" | awk '{print $1}')

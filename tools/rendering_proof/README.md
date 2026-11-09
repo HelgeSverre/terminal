@@ -4,7 +4,7 @@ This tool is prepared for an exclusive, root-coordinated GUI slot. Do not run it
 while another GUI test or the user is interacting with the desktop. Preparation
 and self-tests create no windows and send no input:
 
-```sh
+```shell
 ruby tools/rendering_proof/run.rb --prepare
 ```
 
@@ -13,7 +13,7 @@ executable SHA-256 from its provenance. These are inputs, not inferred from the
 possibly changing worktree. Run the two commands sequentially with distinct fresh
 output directories:
 
-```sh
+```shell
 ruby tools/rendering_proof/run.rb \
   --app "$FINAL_RENDER_APP" \
   --source-sha "$FINAL_RENDER_SOURCE_SHA" \
