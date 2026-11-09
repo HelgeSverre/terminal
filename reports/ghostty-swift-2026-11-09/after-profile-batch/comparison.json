@@ -1,0 +1,1558 @@
+{
+  "passed": true,
+  "source_sha": "d4788dfd492f5d68dfa2e2c37d57845477ecf3bb",
+  "bytes_per_run": 16777216,
+  "runs_per_workload": 10,
+  "geometry": [
+    100,
+    30
+  ],
+  "font": "Obel Mono 14",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t15.6\nBuildVersion:\t\t24G84\n",
+  "hardware": "Apple M2 Max\n",
+  "power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=7340131)\t100%; charged; 0:00 remaining present: true\n",
+  "load_before": "{ 6.72 5.36 5.49 }\n",
+  "scope": "Sequential visible-app PTY throughput and ordered parser replies; alternate screen excludes history. Same cell grid/configured font; native cell-pixel metrics are recorded, not normalized. Not display FPS, presentation/input latency, peak memory, or a SQL benchmark.",
+  "trials": [
+    {
+      "order": [
+        "terminal",
+        "ghostty"
+      ],
+      "apps": {
+        "terminal": {
+          "natural_exit": true,
+          "pid": 65401,
+          "report_pid": 65401,
+          "report": {
+            "schema": 2,
+            "driver_version": "0.3.0",
+            "terminal": "terminal",
+            "terminal_pid": 65401,
+            "columns": 100,
+            "rows": 30,
+            "pixel_width": 900,
+            "pixel_height": 630,
+            "output_post_processing": true,
+            "idle_seconds": 3.005067,
+            "cpu_timebase": {
+              "numer": 125,
+              "denom": 3
+            },
+            "resource_usage_available": true,
+            "resource_usage_errno": 0,
+            "idle_cpu_percent_one_core": 1.217082,
+            "idle_physical_bytes": 54840192,
+            "workloads": [
+              {
+                "name": "ascii_short_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 31.921855,
+                    "elapsed_seconds": 0.501224,
+                    "terminal_cpu_seconds": 0.327937
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 51.850076,
+                    "elapsed_seconds": 0.308582,
+                    "terminal_cpu_seconds": 0.311921
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 53.993312,
+                    "elapsed_seconds": 0.296333,
+                    "terminal_cpu_seconds": 0.303404
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 53.145905,
+                    "elapsed_seconds": 0.301058,
+                    "terminal_cpu_seconds": 0.305828
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 53.656165,
+                    "elapsed_seconds": 0.298195,
+                    "terminal_cpu_seconds": 0.307799
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 34.51199,
+                    "elapsed_seconds": 0.463607,
+                    "terminal_cpu_seconds": 0.327803
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 48.9162,
+                    "elapsed_seconds": 0.32709,
+                    "terminal_cpu_seconds": 0.303187
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 30.072192,
+                    "elapsed_seconds": 0.532053,
+                    "terminal_cpu_seconds": 0.334241
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 37.470287,
+                    "elapsed_seconds": 0.427005,
+                    "terminal_cpu_seconds": 0.318794
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 38.684532,
+                    "elapsed_seconds": 0.413602,
+                    "terminal_cpu_seconds": 0.320949
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 38.684532,
+                  "p95": 53.656165,
+                  "p99": 53.656165,
+                  "max": 53.993312
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.32709,
+                  "p95": 0.501224,
+                  "p99": 0.501224,
+                  "max": 0.532053
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.311921,
+                  "p95": 0.327937,
+                  "p99": 0.327937,
+                  "max": 0.334241
+                },
+                "max_run_end_physical_bytes": 57723776
+              },
+              {
+                "name": "ascii_long_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 34.362342,
+                    "elapsed_seconds": 0.465626,
+                    "terminal_cpu_seconds": 0.283231
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 46.877793,
+                    "elapsed_seconds": 0.341313,
+                    "terminal_cpu_seconds": 0.26692
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 28.887541,
+                    "elapsed_seconds": 0.553872,
+                    "terminal_cpu_seconds": 0.308569
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 37.459585,
+                    "elapsed_seconds": 0.427127,
+                    "terminal_cpu_seconds": 0.28074
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 32.260276,
+                    "elapsed_seconds": 0.495966,
+                    "terminal_cpu_seconds": 0.309082
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 37.616788,
+                    "elapsed_seconds": 0.425342,
+                    "terminal_cpu_seconds": 0.272854
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 51.950413,
+                    "elapsed_seconds": 0.307986,
+                    "terminal_cpu_seconds": 0.271864
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 47.037657,
+                    "elapsed_seconds": 0.340153,
+                    "terminal_cpu_seconds": 0.281807
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 40.866367,
+                    "elapsed_seconds": 0.39152,
+                    "terminal_cpu_seconds": 0.287987
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 36.113958,
+                    "elapsed_seconds": 0.443042,
+                    "terminal_cpu_seconds": 0.294346
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 37.459585,
+                  "p95": 47.037657,
+                  "p99": 47.037657,
+                  "max": 51.950413
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.425342,
+                  "p95": 0.495966,
+                  "p99": 0.495966,
+                  "max": 0.553872
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.281807,
+                  "p95": 0.308569,
+                  "p99": 0.308569,
+                  "max": 0.309082
+                },
+                "max_run_end_physical_bytes": 58723200
+              },
+              {
+                "name": "ansi_truecolor",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 30.079372,
+                    "elapsed_seconds": 0.531926,
+                    "terminal_cpu_seconds": 0.525888
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 23.848028,
+                    "elapsed_seconds": 0.670915,
+                    "terminal_cpu_seconds": 0.553914
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 30.143748,
+                    "elapsed_seconds": 0.53079,
+                    "terminal_cpu_seconds": 0.521715
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 23.958014,
+                    "elapsed_seconds": 0.667835,
+                    "terminal_cpu_seconds": 0.553066
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 21.920391,
+                    "elapsed_seconds": 0.729914,
+                    "terminal_cpu_seconds": 0.561975
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 24.846032,
+                    "elapsed_seconds": 0.643966,
+                    "terminal_cpu_seconds": 0.559553
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 25.973309,
+                    "elapsed_seconds": 0.616017,
+                    "terminal_cpu_seconds": 0.536337
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 27.936375,
+                    "elapsed_seconds": 0.57273,
+                    "terminal_cpu_seconds": 0.536701
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 27.806502,
+                    "elapsed_seconds": 0.575405,
+                    "terminal_cpu_seconds": 0.547563
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 22.325259,
+                    "elapsed_seconds": 0.716677,
+                    "terminal_cpu_seconds": 0.565851
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 24.846032,
+                  "p95": 30.079372,
+                  "p99": 30.079372,
+                  "max": 30.143748
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.616017,
+                  "p95": 0.716677,
+                  "p99": 0.716677,
+                  "max": 0.729914
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.547563,
+                  "p95": 0.561975,
+                  "p99": 0.561975,
+                  "max": 0.565851
+                },
+                "max_run_end_physical_bytes": 60738432
+              },
+              {
+                "name": "unicode",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 16.247762,
+                    "elapsed_seconds": 0.984751,
+                    "terminal_cpu_seconds": 1.037898
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 15.816857,
+                    "elapsed_seconds": 1.011579,
+                    "terminal_cpu_seconds": 1.044234
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 15.180251,
+                    "elapsed_seconds": 1.054001,
+                    "terminal_cpu_seconds": 1.048552
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 14.541542,
+                    "elapsed_seconds": 1.100296,
+                    "terminal_cpu_seconds": 1.056768
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 16.929515,
+                    "elapsed_seconds": 0.945095,
+                    "terminal_cpu_seconds": 1.025406
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 16.796877,
+                    "elapsed_seconds": 0.952558,
+                    "terminal_cpu_seconds": 1.020208
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 16.929748,
+                    "elapsed_seconds": 0.945082,
+                    "terminal_cpu_seconds": 1.020229
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 16.705542,
+                    "elapsed_seconds": 0.957766,
+                    "terminal_cpu_seconds": 1.029742
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 15.69734,
+                    "elapsed_seconds": 1.019281,
+                    "terminal_cpu_seconds": 1.043935
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 16.578078,
+                    "elapsed_seconds": 0.96513,
+                    "terminal_cpu_seconds": 1.02657
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 16.247762,
+                  "p95": 16.929515,
+                  "p99": 16.929515,
+                  "max": 16.929748
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.96513,
+                  "p95": 1.054001,
+                  "p99": 1.054001,
+                  "max": 1.100296
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 1.029742,
+                  "p95": 1.048552,
+                  "p99": 1.048552,
+                  "max": 1.056768
+                },
+                "max_run_end_physical_bytes": 58936192
+              }
+            ],
+            "dsr_roundtrip_ms": {
+              "samples": 100,
+              "p50": 0.03,
+              "p95": 0.057,
+              "p99": 0.066,
+              "max": 0.225
+            },
+            "note": "Same PTY payloads and ordered DSR drain; alternate screen excludes scrollback. CPU and footprint are terminal parent process only. Footprint is sampled at run ends, not peak. This measures parsing/backpressure, not display FPS or input-to-photon latency."
+          },
+          "cleanup_survivors": []
+        },
+        "ghostty": {
+          "natural_exit": true,
+          "pid": 65913,
+          "report_pid": 65917,
+          "report": {
+            "schema": 2,
+            "driver_version": "0.3.0",
+            "terminal": "ghostty",
+            "terminal_pid": 65917,
+            "columns": 100,
+            "rows": 30,
+            "pixel_width": 800,
+            "pixel_height": 540,
+            "output_post_processing": true,
+            "idle_seconds": 3.0012,
+            "cpu_timebase": {
+              "numer": 125,
+              "denom": 3
+            },
+            "resource_usage_available": false,
+            "resource_usage_errno": 1,
+            "idle_cpu_percent_one_core": null,
+            "idle_physical_bytes": null,
+            "workloads": [
+              {
+                "name": "ascii_short_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 89.537038,
+                    "elapsed_seconds": 0.178697,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 97.663999,
+                    "elapsed_seconds": 0.163827,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 69.394146,
+                    "elapsed_seconds": 0.230567,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 135.328298,
+                    "elapsed_seconds": 0.118231,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 157.559405,
+                    "elapsed_seconds": 0.101549,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 135.711681,
+                    "elapsed_seconds": 0.117897,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 143.335782,
+                    "elapsed_seconds": 0.111626,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 129.601879,
+                    "elapsed_seconds": 0.123455,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 158.096518,
+                    "elapsed_seconds": 0.101204,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 142.384224,
+                    "elapsed_seconds": 0.112372,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 135.328298,
+                  "p95": 157.559405,
+                  "p99": 157.559405,
+                  "max": 158.096518
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.117897,
+                  "p95": 0.178697,
+                  "p99": 0.178697,
+                  "max": 0.230567
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              },
+              {
+                "name": "ascii_long_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 169.417943,
+                    "elapsed_seconds": 0.094441,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 132.254358,
+                    "elapsed_seconds": 0.120979,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 164.812526,
+                    "elapsed_seconds": 0.09708,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 142.054282,
+                    "elapsed_seconds": 0.112633,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 145.944122,
+                    "elapsed_seconds": 0.109631,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 146.526856,
+                    "elapsed_seconds": 0.109195,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 138.738348,
+                    "elapsed_seconds": 0.115325,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 146.082701,
+                    "elapsed_seconds": 0.109527,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 155.931741,
+                    "elapsed_seconds": 0.102609,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 146.220208,
+                    "elapsed_seconds": 0.109424,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 146.082701,
+                  "p95": 164.812526,
+                  "p99": 164.812526,
+                  "max": 169.417943
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.109424,
+                  "p95": 0.115325,
+                  "p99": 0.115325,
+                  "max": 0.120979
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              },
+              {
+                "name": "ansi_truecolor",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 115.853879,
+                    "elapsed_seconds": 0.138105,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 123.172619,
+                    "elapsed_seconds": 0.129899,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 119.448447,
+                    "elapsed_seconds": 0.133949,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 167.64108,
+                    "elapsed_seconds": 0.095442,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 111.61415,
+                    "elapsed_seconds": 0.143351,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 134.448132,
+                    "elapsed_seconds": 0.119005,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 107.360934,
+                    "elapsed_seconds": 0.14903,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 60.509337,
+                    "elapsed_seconds": 0.264422,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 136.593362,
+                    "elapsed_seconds": 0.117136,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 124.736883,
+                    "elapsed_seconds": 0.12827,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 119.448447,
+                  "p95": 136.593362,
+                  "p99": 136.593362,
+                  "max": 167.64108
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.129899,
+                  "p95": 0.14903,
+                  "p99": 0.14903,
+                  "max": 0.264422
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              },
+              {
+                "name": "unicode",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 117.351953,
+                    "elapsed_seconds": 0.136342,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 128.201019,
+                    "elapsed_seconds": 0.124804,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 90.522314,
+                    "elapsed_seconds": 0.176752,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 121.892689,
+                    "elapsed_seconds": 0.131263,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 126.52222,
+                    "elapsed_seconds": 0.12646,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 110.185249,
+                    "elapsed_seconds": 0.14521,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 123.174515,
+                    "elapsed_seconds": 0.129897,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 114.243281,
+                    "elapsed_seconds": 0.140052,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 130.556825,
+                    "elapsed_seconds": 0.122552,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 101.700302,
+                    "elapsed_seconds": 0.157325,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 117.351953,
+                  "p95": 128.201019,
+                  "p99": 128.201019,
+                  "max": 130.556825
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.131263,
+                  "p95": 0.157325,
+                  "p99": 0.157325,
+                  "max": 0.176752
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              }
+            ],
+            "dsr_roundtrip_ms": {
+              "samples": 100,
+              "p50": 0.04,
+              "p95": 0.064,
+              "p99": 0.121,
+              "max": 0.143
+            },
+            "note": "Same PTY payloads and ordered DSR drain; alternate screen excludes scrollback. CPU and footprint are terminal parent process only. Footprint is sampled at run ends, not peak. This measures parsing/backpressure, not display FPS or input-to-photon latency."
+          },
+          "cleanup_survivors": []
+        }
+      }
+    },
+    {
+      "order": [
+        "ghostty",
+        "terminal"
+      ],
+      "apps": {
+        "ghostty": {
+          "natural_exit": true,
+          "pid": 66106,
+          "report_pid": 66109,
+          "report": {
+            "schema": 2,
+            "driver_version": "0.3.0",
+            "terminal": "ghostty",
+            "terminal_pid": 66109,
+            "columns": 100,
+            "rows": 30,
+            "pixel_width": 800,
+            "pixel_height": 540,
+            "output_post_processing": true,
+            "idle_seconds": 3.000474,
+            "cpu_timebase": {
+              "numer": 125,
+              "denom": 3
+            },
+            "resource_usage_available": false,
+            "resource_usage_errno": 1,
+            "idle_cpu_percent_one_core": null,
+            "idle_physical_bytes": null,
+            "workloads": [
+              {
+                "name": "ascii_short_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 72.15235,
+                    "elapsed_seconds": 0.221753,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 94.635358,
+                    "elapsed_seconds": 0.16907,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 93.620358,
+                    "elapsed_seconds": 0.170903,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 104.850653,
+                    "elapsed_seconds": 0.152598,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 100.492413,
+                    "elapsed_seconds": 0.159216,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 93.451939,
+                    "elapsed_seconds": 0.171211,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 119.121183,
+                    "elapsed_seconds": 0.134317,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 136.149356,
+                    "elapsed_seconds": 0.117518,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 138.279116,
+                    "elapsed_seconds": 0.115708,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 109.710775,
+                    "elapsed_seconds": 0.145838,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 100.492413,
+                  "p95": 136.149356,
+                  "p99": 136.149356,
+                  "max": 138.279116
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.152598,
+                  "p95": 0.171211,
+                  "p99": 0.171211,
+                  "max": 0.221753
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              },
+              {
+                "name": "ascii_long_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 98.287343,
+                    "elapsed_seconds": 0.162788,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 127.685383,
+                    "elapsed_seconds": 0.125308,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 98.220973,
+                    "elapsed_seconds": 0.162898,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 62.267228,
+                    "elapsed_seconds": 0.256957,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 121.83607,
+                    "elapsed_seconds": 0.131324,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 142.895418,
+                    "elapsed_seconds": 0.11197,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 121.404345,
+                    "elapsed_seconds": 0.131791,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 155.443938,
+                    "elapsed_seconds": 0.102931,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 149.035461,
+                    "elapsed_seconds": 0.107357,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 152.918351,
+                    "elapsed_seconds": 0.104631,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 121.83607,
+                  "p95": 152.918351,
+                  "p99": 152.918351,
+                  "max": 155.443938
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.125308,
+                  "p95": 0.162898,
+                  "p99": 0.162898,
+                  "max": 0.256957
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              },
+              {
+                "name": "ansi_truecolor",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 113.667041,
+                    "elapsed_seconds": 0.140762,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 106.412695,
+                    "elapsed_seconds": 0.150358,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 106.114869,
+                    "elapsed_seconds": 0.15078,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 86.560414,
+                    "elapsed_seconds": 0.184842,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 85.849345,
+                    "elapsed_seconds": 0.186373,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 78.01453,
+                    "elapsed_seconds": 0.20509,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 93.540447,
+                    "elapsed_seconds": 0.171049,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 111.370977,
+                    "elapsed_seconds": 0.143664,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 155.895277,
+                    "elapsed_seconds": 0.102633,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 148.650532,
+                    "elapsed_seconds": 0.107635,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 106.114869,
+                  "p95": 148.650532,
+                  "p99": 148.650532,
+                  "max": 155.895277
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.150358,
+                  "p95": 0.186373,
+                  "p99": 0.186373,
+                  "max": 0.20509
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              },
+              {
+                "name": "unicode",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 145.352798,
+                    "elapsed_seconds": 0.110077,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 138.120355,
+                    "elapsed_seconds": 0.115841,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 141.707038,
+                    "elapsed_seconds": 0.112909,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 134.096566,
+                    "elapsed_seconds": 0.119317,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 134.469601,
+                    "elapsed_seconds": 0.118986,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 138.874423,
+                    "elapsed_seconds": 0.115212,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 132.780083,
+                    "elapsed_seconds": 0.1205,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 136.501301,
+                    "elapsed_seconds": 0.117215,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 116.250345,
+                    "elapsed_seconds": 0.137634,
+                    "terminal_cpu_seconds": null
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 134.726631,
+                    "elapsed_seconds": 0.118759,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 134.726631,
+                  "p95": 141.707038,
+                  "p99": 141.707038,
+                  "max": 145.352798
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.117215,
+                  "p95": 0.1205,
+                  "p99": 0.1205,
+                  "max": 0.137634
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              }
+            ],
+            "dsr_roundtrip_ms": {
+              "samples": 100,
+              "p50": 0.036,
+              "p95": 0.06,
+              "p99": 0.113,
+              "max": 0.137
+            },
+            "note": "Same PTY payloads and ordered DSR drain; alternate screen excludes scrollback. CPU and footprint are terminal parent process only. Footprint is sampled at run ends, not peak. This measures parsing/backpressure, not display FPS or input-to-photon latency."
+          },
+          "cleanup_survivors": []
+        },
+        "terminal": {
+          "natural_exit": true,
+          "pid": 66221,
+          "report_pid": 66221,
+          "report": {
+            "schema": 2,
+            "driver_version": "0.3.0",
+            "terminal": "terminal",
+            "terminal_pid": 66221,
+            "columns": 100,
+            "rows": 30,
+            "pixel_width": 900,
+            "pixel_height": 630,
+            "output_post_processing": true,
+            "idle_seconds": 3.005017,
+            "cpu_timebase": {
+              "numer": 125,
+              "denom": 3
+            },
+            "resource_usage_available": true,
+            "resource_usage_errno": 0,
+            "idle_cpu_percent_one_core": 1.709556,
+            "idle_physical_bytes": 43207360,
+            "workloads": [
+              {
+                "name": "ascii_short_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 59.25092,
+                    "elapsed_seconds": 0.270038,
+                    "terminal_cpu_seconds": 0.300593
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 59.547735,
+                    "elapsed_seconds": 0.268692,
+                    "terminal_cpu_seconds": 0.300591
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 59.730912,
+                    "elapsed_seconds": 0.267868,
+                    "terminal_cpu_seconds": 0.299643
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 59.874637,
+                    "elapsed_seconds": 0.267225,
+                    "terminal_cpu_seconds": 0.29764
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 61.26231,
+                    "elapsed_seconds": 0.261172,
+                    "terminal_cpu_seconds": 0.293304
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 62.621329,
+                    "elapsed_seconds": 0.255504,
+                    "terminal_cpu_seconds": 0.288279
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 62.253418,
+                    "elapsed_seconds": 0.257014,
+                    "terminal_cpu_seconds": 0.290025
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 61.751266,
+                    "elapsed_seconds": 0.259104,
+                    "terminal_cpu_seconds": 0.292227
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 59.855822,
+                    "elapsed_seconds": 0.267309,
+                    "terminal_cpu_seconds": 0.298264
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 60.924066,
+                    "elapsed_seconds": 0.262622,
+                    "terminal_cpu_seconds": 0.294518
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 59.874637,
+                  "p95": 62.253418,
+                  "p99": 62.253418,
+                  "max": 62.621329
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.262622,
+                  "p95": 0.268692,
+                  "p99": 0.268692,
+                  "max": 0.270038
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.294518,
+                  "p95": 0.300591,
+                  "p99": 0.300591,
+                  "max": 0.300593
+                },
+                "max_run_end_physical_bytes": 50449152
+              },
+              {
+                "name": "ascii_long_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 79.209097,
+                    "elapsed_seconds": 0.201997,
+                    "terminal_cpu_seconds": 0.227067
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 74.593466,
+                    "elapsed_seconds": 0.214496,
+                    "terminal_cpu_seconds": 0.236652
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 79.957622,
+                    "elapsed_seconds": 0.200106,
+                    "terminal_cpu_seconds": 0.226247
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 79.434427,
+                    "elapsed_seconds": 0.201424,
+                    "terminal_cpu_seconds": 0.228064
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 80.053636,
+                    "elapsed_seconds": 0.199866,
+                    "terminal_cpu_seconds": 0.227562
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 80.563136,
+                    "elapsed_seconds": 0.198602,
+                    "terminal_cpu_seconds": 0.225924
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 80.387871,
+                    "elapsed_seconds": 0.199035,
+                    "terminal_cpu_seconds": 0.22705
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 76.29038,
+                    "elapsed_seconds": 0.209725,
+                    "terminal_cpu_seconds": 0.235281
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 74.569478,
+                    "elapsed_seconds": 0.214565,
+                    "terminal_cpu_seconds": 0.236559
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 79.280136,
+                    "elapsed_seconds": 0.201816,
+                    "terminal_cpu_seconds": 0.229339
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 79.280136,
+                  "p95": 80.387871,
+                  "p99": 80.387871,
+                  "max": 80.563136
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.201424,
+                  "p95": 0.214496,
+                  "p99": 0.214496,
+                  "max": 0.214565
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.227562,
+                  "p95": 0.236559,
+                  "p99": 0.236559,
+                  "max": 0.236652
+                },
+                "max_run_end_physical_bytes": 51743488
+              },
+              {
+                "name": "ansi_truecolor",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 32.102213,
+                    "elapsed_seconds": 0.498408,
+                    "terminal_cpu_seconds": 0.548035
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 32.196463,
+                    "elapsed_seconds": 0.496949,
+                    "terminal_cpu_seconds": 0.539192
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 31.891696,
+                    "elapsed_seconds": 0.501698,
+                    "terminal_cpu_seconds": 0.552926
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 31.952519,
+                    "elapsed_seconds": 0.500743,
+                    "terminal_cpu_seconds": 0.550677
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 31.38892,
+                    "elapsed_seconds": 0.509734,
+                    "terminal_cpu_seconds": 0.562024
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 31.441721,
+                    "elapsed_seconds": 0.508878,
+                    "terminal_cpu_seconds": 0.559931
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 31.898117,
+                    "elapsed_seconds": 0.501597,
+                    "terminal_cpu_seconds": 0.549533
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 31.398653,
+                    "elapsed_seconds": 0.509576,
+                    "terminal_cpu_seconds": 0.557068
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 31.695909,
+                    "elapsed_seconds": 0.504797,
+                    "terminal_cpu_seconds": 0.554374
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 31.768976,
+                    "elapsed_seconds": 0.503636,
+                    "terminal_cpu_seconds": 0.553992
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 31.768976,
+                  "p95": 32.102213,
+                  "p99": 32.102213,
+                  "max": 32.196463
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.501698,
+                  "p95": 0.509576,
+                  "p99": 0.509576,
+                  "max": 0.509734
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.552926,
+                  "p95": 0.559931,
+                  "p99": 0.559931,
+                  "max": 0.562024
+                },
+                "max_run_end_physical_bytes": 51628800
+              },
+              {
+                "name": "unicode",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 16.747561,
+                    "elapsed_seconds": 0.955363,
+                    "terminal_cpu_seconds": 1.06441
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 16.663768,
+                    "elapsed_seconds": 0.960167,
+                    "terminal_cpu_seconds": 1.07191
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 16.69301,
+                    "elapsed_seconds": 0.958485,
+                    "terminal_cpu_seconds": 1.074735
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 16.6008,
+                    "elapsed_seconds": 0.963809,
+                    "terminal_cpu_seconds": 1.078544
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 16.664566,
+                    "elapsed_seconds": 0.960121,
+                    "terminal_cpu_seconds": 1.075591
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 16.689615,
+                    "elapsed_seconds": 0.95868,
+                    "terminal_cpu_seconds": 1.073027
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 16.725555,
+                    "elapsed_seconds": 0.95662,
+                    "terminal_cpu_seconds": 1.070211
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 16.420783,
+                    "elapsed_seconds": 0.974375,
+                    "terminal_cpu_seconds": 1.089002
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 16.535895,
+                    "elapsed_seconds": 0.967592,
+                    "terminal_cpu_seconds": 1.084134
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 16.753804,
+                    "elapsed_seconds": 0.955007,
+                    "terminal_cpu_seconds": 1.067418
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 16.664566,
+                  "p95": 16.747561,
+                  "p99": 16.747561,
+                  "max": 16.753804
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.95868,
+                  "p95": 0.967592,
+                  "p99": 0.967592,
+                  "max": 0.974375
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 1.073027,
+                  "p95": 1.084134,
+                  "p99": 1.084134,
+                  "max": 1.089002
+                },
+                "max_run_end_physical_bytes": 51251968
+              }
+            ],
+            "dsr_roundtrip_ms": {
+              "samples": 100,
+              "p50": 0.022,
+              "p95": 0.032,
+              "p99": 0.05,
+              "max": 0.152
+            },
+            "note": "Same PTY payloads and ordered DSR drain; alternate screen excludes scrollback. CPU and footprint are terminal parent process only. Footprint is sampled at run ends, not peak. This measures parsing/backpressure, not display FPS or input-to-photon latency."
+          },
+          "cleanup_survivors": []
+        }
+      }
+    }
+  ],
+  "stage": "finished",
+  "driver_source_sha256": "cbe52cd535960db64083aa08d6928e9ec6037e5c7d37caa6b1a680051e25577e",
+  "driver_sha256": "fea221df7dc59de890e2d1849958d3386c2c32185ee2f4087fefe37d678d7f9e",
+  "runner_sha256": "58cea082807620cee76d7eb6797e2b612f3474cdfb73f70fcd5f45a0f4f95649",
+  "apps": {
+    "terminal": {
+      "executable_sha256": "6a6144ae3e098349e31118c2a2b68fe9e3e9b3c7a4285a5cd05ffbbdba0dd289",
+      "executable_bytes": 2814864,
+      "bundle_bytes": 8093035,
+      "frozen_executable_sha256": "6a6144ae3e098349e31118c2a2b68fe9e3e9b3c7a4285a5cd05ffbbdba0dd289"
+    },
+    "ghostty": {
+      "executable_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b",
+      "executable_bytes": 45165232,
+      "bundle_bytes": 67296342,
+      "frozen_executable_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b"
+    }
+  },
+  "ghostty_version": "Ghostty 1.4.0\n\nVersion\n  - version: 1.4.0\n  - channel: stable\nBuild Config\n  - Zig version   : 0.17.0\n  - build mode    : .fast\n  - app runtime   : .none\n  - font engine   : .coretext\n  - renderer      : renderer.generic.Renderer(renderer.Metal)\n  - libxev        : kqueue\n",
+  "load_after": "{ 8.89 6.66 5.99 }\n"
+}

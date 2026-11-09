@@ -115,3 +115,35 @@ Both orders exit naturally without owned survivors. This batch replaces CSI
 string accumulation, avoids unchanged screen copies for SGR, measures singleton
 width without strings and batches narrowly admitted fresh Unicode row spans.
 A separate payload-bit prototype had mixed timings and remains experimental.
+
+## Profile-guided batch and approved settings
+
+The [next app comparison](after-profile-batch/comparison.json) uses the same
+contract at `d4788df`. It includes indexed Unicode category pages, reused
+whitespace classification for visible links, owner-confined PTY read storage,
+and the approved settings sidebar. The release-WMO app was built at `96c2eb7`;
+the following `d4788df` commit adds only settings tests, their recipe/source
+group and documentation. Its application source is identical.
+
+| Workload | Swift terminal MiB/s | Ghostty MiB/s | Matched Swift / Ghostty |
+| --- | ---: | ---: | ---: |
+| Short ASCII | 38.7–59.9 | 100.5–135.3 | 28.6–59.6% |
+| Long ASCII | 37.5–79.3 | 121.8–146.1 | 25.6–65.1% |
+| ANSI truecolor | 24.8–31.8 | 106.1–119.4 | 20.8–29.9% |
+| Unicode | 16.2–16.7 | 117.4–134.7 | 12.4–13.8% |
+
+Ranges are the two reversed-order trial medians, not confidence intervals.
+Desktop load varied markedly: system load averages rose from 6.72/5.36/5.49
+to 8.89/6.66/5.99, and both apps differed from earlier measurements. The Mac
+remained on AC power and reported no recorded thermal/performance warning.
+The ASCII variation prevents a useful causal comparison with earlier app runs;
+even matched ratios span a wide range. These trials confirm the remaining
+performance gap, not its precise size or an app-level speedup for this batch.
+All four app runs completed naturally with no owned survivors.
+
+The independent, narrower experiments retain stronger evidence about their
+specific changes: [Unicode lookup](../unicode-lookup-ea16eb9/README.md),
+[visible links](../visible-link-classification-ea16eb9/README.md), and
+[instrumented PTY reads](../pty-read-reuse-ea16eb9/README.md). The repeated read
+diagnostic records its initially slower candidate as well as the subsequent
+matched observations. Comparable Ghostty speed remains an open goal.
