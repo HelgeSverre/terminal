@@ -1,0 +1,9 @@
+{
+  "app_pid": 65768,
+  "child_pid": 65770,
+  "trigger": "cmd+q",
+  "passed": true,
+  "app_exited": true,
+  "child_exited": true,
+  "bundle_path": "/Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/Terminal.app"
+}

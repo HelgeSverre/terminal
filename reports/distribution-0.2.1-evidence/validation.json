@@ -1,0 +1,72 @@
+[
+  {
+    "argv": [
+      "codesign",
+      "--verify",
+      "--strict",
+      "--deep",
+      "/Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/Helge Terminal.app"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "spctl",
+      "--assess",
+      "--type",
+      "execute",
+      "--verbose=2",
+      "/Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/Helge Terminal.app"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": "/Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/Helge Terminal.app: accepted\nsource=Notarized Developer ID\n"
+  },
+  {
+    "argv": [
+      "xcrun",
+      "stapler",
+      "validate",
+      "/Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/Helge Terminal.app"
+    ],
+    "exit": 0,
+    "stdout": "Processing: /Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/Helge Terminal.app\nThe validate action worked!\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "pkgutil",
+      "--check-signature",
+      "/Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/HelgeTerminal-0.2.1-arm64.pkg"
+    ],
+    "exit": 0,
+    "stdout": "Package \"HelgeTerminal-0.2.1-arm64.pkg\":\n   Status: signed by a developer certificate issued by Apple for distribution\n   Notarization: trusted by the Apple notary service\n   Signed with a trusted timestamp on: 2026-11-09 02:20:23 +0000\n   Certificate Chain:\n    1. Developer ID Installer: Liseth Solutions AS (9Z2L5FBZS3)\n       Expires: 2027-02-01 22:12:15 +0000\n       SHA256 Fingerprint:\n           91 A3 BC B8 2A 87 92 B2 93 7A 02 84 4C 01 A3 84 1B 6D 5F 96 26 D3 \n           D5 05 B5 49 32 26 33 80 3F 9E\n       ------------------------------------------------------------------------\n    2. Developer ID Certification Authority\n       Expires: 2027-02-01 22:12:15 +0000\n       SHA256 Fingerprint:\n           7A FC 9D 01 A6 2F 03 A2 DE 96 37 93 6D 4A FE 68 09 0D 2D E1 8D 03 \n           F2 9C 88 CF B0 B1 BA 63 58 7F\n       ------------------------------------------------------------------------\n    3. Apple Root CA\n       Expires: 2035-02-09 21:40:36 +0000\n       SHA256 Fingerprint:\n           B0 B1 73 0E CB C7 FF 45 05 14 2C 49 F1 29 5E 6E DA 6B CA ED 7E 2C \n           68 C5 BE 91 B5 A1 10 01 F0 24\n\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "xcrun",
+      "stapler",
+      "validate",
+      "/Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/HelgeTerminal-0.2.1-arm64.pkg"
+    ],
+    "exit": 0,
+    "stdout": "Processing: /Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/HelgeTerminal-0.2.1-arm64.pkg\nThe validate action worked!\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "spctl",
+      "--assess",
+      "--type",
+      "install",
+      "--verbose=2",
+      "/Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/HelgeTerminal-0.2.1-arm64.pkg"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": "/Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/HelgeTerminal-0.2.1-arm64.pkg: accepted\nsource=Notarized Developer ID\n"
+  }
+]

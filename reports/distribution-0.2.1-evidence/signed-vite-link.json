@@ -1,0 +1,130 @@
+{
+  "mode": "dev",
+  "candidate": "release021-desktopax",
+  "expect_navigation": true,
+  "app": "/Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/Helge Terminal.app/Contents/MacOS/Terminal",
+  "pid": 74196,
+  "target": "http://127.0.0.1:59002",
+  "browser_before": [],
+  "steps": [
+    {
+      "action": "inspect",
+      "delivered": true,
+      "pid": 74196,
+      "point": [
+        647,
+        256.25
+      ],
+      "range": [
+        47,
+        22
+      ],
+      "url": "http://127.0.0.1:59002",
+      "url_frame": [
+        526,
+        243.5,
+        242,
+        25.5
+      ],
+      "window_frame": [
+        364,
+        131,
+        1116,
+        809
+      ]
+    },
+    {
+      "action": "clear",
+      "delivered": true,
+      "pid": 74196,
+      "point": [
+        647,
+        256.25
+      ],
+      "range": [
+        47,
+        22
+      ],
+      "url": "http://127.0.0.1:59002",
+      "url_frame": [
+        526,
+        243.5,
+        242,
+        25.5
+      ],
+      "window_frame": [
+        364,
+        131,
+        1116,
+        809
+      ]
+    },
+    {
+      "action": "hover",
+      "delivered": true,
+      "pid": 74196,
+      "point": [
+        647,
+        256.25
+      ],
+      "range": [
+        47,
+        22
+      ],
+      "url": "http://127.0.0.1:59002",
+      "url_frame": [
+        526,
+        243.5,
+        242,
+        25.5
+      ],
+      "window_frame": [
+        364,
+        131,
+        1116,
+        809
+      ]
+    },
+    {
+      "command": "click",
+      "data": {
+        "action": "click",
+        "details": {
+          "auto_wait": {
+            "lease_contention_count": 0,
+            "lease_hold_ms": 54,
+            "read_only_preflight_attempts": 1,
+            "read_only_resolve_attempts": 1
+          }
+        },
+        "disposition": {
+          "delivery": "delivered_unverified",
+          "retry": "unsafe"
+        },
+        "steps": [
+          {
+            "label": "AXPress",
+            "mechanism": "semantic_api",
+            "outcome": "succeeded",
+            "verified": false
+          }
+        ]
+      },
+      "ok": true,
+      "version": "2.5"
+    }
+  ],
+  "browser_after": [
+    {
+      "pid": 20366,
+      "id": "1602968911",
+      "url": "http://127.0.0.1:59002/"
+    }
+  ],
+  "browser_navigation_verified": true,
+  "passed": true,
+  "owned_browser_tabs_closed": true,
+  "normal_window_close_delivered": true,
+  "normal_exit": true,
+  "cleanup_survivors": []
+}

@@ -30,3 +30,12 @@ The source manifest records the exact five Emulation/source-test hashes plus the
 The final frozen candidate (`accepted-candidate`, manifest SHA-256 `b44bff57cf9ffb422e3f2a583bdc8f749e69b4b615114e887e781a547ce79686`) used the same 10,000-row, 160→120-column public-ABI fixture as D7. Resize plus typed snapshot projection took **33.67–37.99 ms wall / 33.65–37.97 ms thread CPU**, versus D7 **97.88–110.53 ms wall / 86.52–91.91 ms CPU**, across five samples each. All five full snapshots match byte-for-byte. These are headless diagnostic samples, not end-to-end GUI latency or statistical p95 proof. Earlier pre-affinity measurements are retained as labelled checkpoints and are not substituted for this final source.
 
 Limits: the deadline is cooperative and cannot prevent OS preemption or allocator latency. Checked reservations do not make Swift's allocator OOM recoverable. The headless timing fixture includes typed snapshot projection but not AppKit rendering or Session dispatch scheduling. This change retains the existing selection/search invalidation interfaces and does not add a public crop-event schema or complete the separate owner-confined selection/global-admission v1 work.
+
+CI follow-up `25dc31e` corrects the Session cancellation fixture without changing
+the product. The earlier 10 ms timer plus main-queue callbacks could send close
+after a resize had legitimately committed; CI `42549643929` exposed that race.
+The replacement posts admission and a close marker from one owner turn, forcing
+close after begin and before the first continuation. It needs no timer or large
+workload. Four local runs pass with no WINCH and all 17 children reaped; the
+50k-history commit case still checks owner fairness. Final release evidence is
+recorded in `../distribution-0.2.1-evidence/`.

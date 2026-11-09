@@ -1,0 +1,9 @@
+{
+  "app_pid": 73367,
+  "child_pid": 73374,
+  "trigger": "last-window-close",
+  "passed": true,
+  "app_exited": true,
+  "child_exited": true,
+  "bundle_path": "/Users/helge/.codex/artifacts/terminal-release-0.2.1-b9d3a81/source/dist/release/Helge Terminal.app"
+}

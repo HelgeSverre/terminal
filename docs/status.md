@@ -114,6 +114,18 @@ Implemented and locally exercised:
 
 Current automated evidence:
 
+- Version 0.2.1 runtime `b9d3a81` passes full macOS CI at test-only correction
+  `25dc31e` (run `42551103822`), signed normal/editing/quit fixtures and actual
+  Vite AX-link browser navigation. App and PKG notarization, stapling and trust
+  validation pass. The prepared release awaits clean closure of the installed
+  app's live sessions; `reports/distribution-0.2.1.json` records installation.
+- Its full 8.16 GB motion stress passes in 190.08 seconds with 11,402 movement/
+  resize ticks, complete output drain, no Metal command/dimension errors and
+  natural app/child exit. A fresh two-resize SQL pair measures Swift 47.0196
+  MiB/s versus Rust 68.0108 MiB/s (69.1355%); Swift peak footprint is 201 MiB
+  versus Rust's 104 MiB. This single development pair remains below 70% and is
+  separate from the standard-workload gate. Raw results are under
+  `reports/distribution-0.2.1-evidence/`.
 - Final Swift runtime validation is green in macOS CI run `42535806699` at
   `5cfe701`. The earlier `0587616` source has a 501-second local full-suite pass;
   the runtime-34 input changes have focused Encoder/KeyMap coverage and eight
@@ -225,8 +237,10 @@ Required work remaining before the requested completion gate:
 - Sustained idle/GPU/startup/latency/memory measurements and complete application
   interaction corpus, multi-display/sleep/scale and resource-retirement stress.
 - Performance: the runtime-34 standard visible-app gate passes in both orders,
-  but the paired full-SQL workload is 67.9361% of Rust and remains below the
-  70% target. Measurements must guide further changes.
+  but the latest 0.2.1 full-SQL pair is 69.1355% of Rust (previous runtime-34
+  pair: 67.9361%) and remains below the 70% target. Sustained SQL throughput
+  and Swift's higher footprint still need profiling; faster reflow does not
+  materially improve this sustained-output case.
 - Clean-machine installation, update/rollback and broader signed-distribution
   lifecycle tests. Final app/PKG notarization, stapling and trust validation
   pass; development builds remain distinct from those distribution artifacts.

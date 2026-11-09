@@ -1,0 +1,40 @@
+{
+  "order": [
+    "swift",
+    "rust"
+  ],
+  "runtimes": {
+    "swift": {
+      "wall_seconds": 165.987156084,
+      "stream_seconds": 165.991759667,
+      "parsed_mib_s": 47.01959836492468,
+      "peak_bytes": 210521216,
+      "main_p95_ms": 4.679625,
+      "owner_p95_ms": 0.133667,
+      "source_identity": [
+        16777231,
+        732076605,
+        8162501113,
+        1792592227,
+        931268800
+      ]
+    },
+    "rust": {
+      "wall_seconds": 114.751054834,
+      "stream_seconds": 114.759262667,
+      "parsed_mib_s": 68.01077253777423,
+      "peak_bytes": 109366208,
+      "main_p95_ms": 4.667667,
+      "owner_p95_ms": 0.782,
+      "source_identity": [
+        16777231,
+        732076605,
+        8162501113,
+        1792592227,
+        931268800
+      ]
+    }
+  },
+  "swift_to_rust": 0.6913551575790331,
+  "scope": "One full-file development stress pair with two scheduled resizes, not a statistical or parser-only benchmark."
+}
