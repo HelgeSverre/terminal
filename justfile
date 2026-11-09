@@ -162,7 +162,6 @@ lint:
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print transport) -o target/native/transport-tests
     target/native/transport-tests
     just _session-test
-    just _native-smoke pane-lifecycle
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print geometry) -o target/native/geometry-tests
     target/native/geometry-tests
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print statistics) -o target/native/statistics-tests
@@ -428,7 +427,7 @@ idle: build (_native-smoke "idle")
 
 # Full local gate, including the GUI smoke
 [group('check')]
-check: test smoke
+check: test smoke pane-lifecycle-smoke
 
 # Compare PTY throughput: just benchmark terminal|ghostty|kitty [new-report-directory]
 [group('bench')]

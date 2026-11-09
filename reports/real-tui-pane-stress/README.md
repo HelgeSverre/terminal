@@ -30,7 +30,11 @@ The investigation found two layout defects:
 
 `just pane-lifecycle-smoke` exercises these actual AppKit paths, promotion,
 attachment, containment, non-overlap, and shrink/grow minimums. It also runs in
-`just test`. Headless fixture, provider, driver-topology, provenance, capture-wait,
+`just check`, alongside the native renderer smoke on a local Mac. Hosted CI
+runs the headless suite with `just test` under the existing virtual-GPU policy.
+The initial attempt to run this GUI fixture there exited with SIGSEGV; no crash
+report was retained, so its cause is unconfirmed. Headless fixture, provider,
+driver-topology, provenance, capture-wait,
 and child-cleanup checks run in `just workflow-tests`.
 
 Use `just tui-stress files` or `just tui-stress codex` to repeat the desktop
