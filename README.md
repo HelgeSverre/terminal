@@ -100,6 +100,7 @@ flowchart LR
 | Owner | Responsibility |
 | --- | --- |
 | [Window and pane tree](native/main.swift) | Windows, tabs, splits, focus, and minimum sizes |
+| [Pane presentation](native/PanePresentation.swift) | Pane headers, colors, and inactive dimming |
 | [Canvas](native/Canvas.swift) | Native input, selection, geometry, and accessibility |
 | [Session](native/Session.swift) | Child process, PTY transport, ordering, and snapshot publication |
 | [Emulation](native/Emulation) | VT parsing, screens, history, reflow, and graphics state |

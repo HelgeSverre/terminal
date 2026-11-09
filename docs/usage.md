@@ -32,6 +32,19 @@ just dev --working-directory /tmp
 
 Closing the last window quits the app and shuts down its terminal sessions.
 
+## Pane titles and focus
+
+The window title follows the active pane. Background programs can update their
+own pane titles without changing the window title.
+
+Split panes show a thin title header. Right-click it, or click its color button,
+to choose one of 16 muted colors or enter a custom hex value. Click outside the
+palette to dismiss it. Colors belong to the open pane.
+
+**Settings → Panes** can hide the headers and set inactive dimming to Off, 5%,
+or 10%. The default is 5%; the focused pane and any hovered pane stay fully
+visible.
+
 ## Keyboard
 
 | Action | Shortcut |

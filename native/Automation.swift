@@ -212,7 +212,8 @@ final class TerminalConfigurePreferencesCommand: TerminalScriptCommand {
       let preferences = try TerminalPreferences.edited(
         fontSize: fontSize, historyRows: historyRows, optionSendsEscape: optionSendsEscape,
         followTailOnInput: followTailOnInput, startingDirectory: startingDirectory,
-        selectionWordCharacters: selectionWordCharacters)
+        selectionWordCharacters: selectionWordCharacters, showPaneTitles: current.showPaneTitles,
+        inactivePaneDim: current.inactivePaneDim)
       delegate.applyPreferences(preferences)
       return "font size \(String(format: "%.15g", Double(preferences.fontSize))), scrollback rows \(preferences.historyRows), starting directory \(preferences.startingDirectory), word characters \(preferences.selectionWordProfile.punctuation)"
     } catch {

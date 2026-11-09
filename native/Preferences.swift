@@ -1,5 +1,18 @@
 import Foundation
 
+enum PaneInactiveDim: Int, CaseIterable {
+  case off = 0
+  case five = 5
+  case ten = 10
+
+  init(storedValue: Int) {
+    self = Self(rawValue: storedValue) ?? .five
+  }
+
+  var alpha: CGFloat { 1 - CGFloat(rawValue) / 100 }
+  var label: String { rawValue == 0 ? "Off" : "\(rawValue)%" }
+}
+
 struct TerminalPreferences {
   let fontSize: CGFloat
   let historyRows: Int
@@ -7,6 +20,8 @@ struct TerminalPreferences {
   let followTailOnInput: Bool
   let startingDirectory: String
   let selectionWordProfile: TerminalSelectionWordProfile
+  let showPaneTitles: Bool
+  let inactivePaneDim: PaneInactiveDim
   enum ValidationError: LocalizedError {
     case font, history, directory, wordCharacters
     var errorDescription: String? {
@@ -56,7 +71,8 @@ struct TerminalPreferences {
   }
   static func edited(fontSize: String, historyRows: String, optionSendsEscape: Bool,
                      followTailOnInput: Bool, startingDirectory: String,
-                     selectionWordCharacters: String) throws -> Self {
+                     selectionWordCharacters: String, showPaneTitles: Bool,
+                     inactivePaneDim: PaneInactiveDim) throws -> Self {
     guard let font = Double(fontSize), font.isFinite, (8...40).contains(font) else { throw ValidationError.font }
     guard let rows = Int(historyRows), (0...50_000).contains(rows) else { throw ValidationError.history }
     guard let directory = Self.directory(startingDirectory) else { throw ValidationError.directory }
@@ -64,7 +80,8 @@ struct TerminalPreferences {
     else { throw ValidationError.wordCharacters }
     return Self(fontSize: font, historyRows: rows, optionSendsEscape: optionSendsEscape,
                 followTailOnInput: followTailOnInput, startingDirectory: directory,
-                selectionWordProfile: profile)
+                selectionWordProfile: profile, showPaneTitles: showPaneTitles,
+                inactivePaneDim: inactivePaneDim)
   }
   // Transient launch options never modify saved preferences, nor inspect child argv.
   static func launchInteger(_ name: String, within range: ClosedRange<Int>) -> Int? {
@@ -74,9 +91,13 @@ struct TerminalPreferences {
     else { return nil }
     return value
   }
-  static func load() -> Self {
-    let defaults = UserDefaults.standard
+  static func load() -> Self { load(from: .standard, migrateLegacyDomain: true) }
+
+  // Tests and isolated tools can inject a private defaults suite; only the app
+  // performs the one-time bundle migration.
+  static func load(from defaults: UserDefaults, migrateLegacyDomain: Bool = false) -> Self {
     if Bundle.main.bundleIdentifier == "no.helgesverre.terminal",
+      migrateLegacyDomain,
       let previous = defaults.persistentDomain(forName: "no.helge.terminal") {
       for key in ["fontSize", "historyRows", "optionSendsEscape"] where defaults.object(forKey: key) == nil {
         if let value = previous[key] { defaults.set(value, forKey: key) }
@@ -96,16 +117,22 @@ struct TerminalPreferences {
         || defaults.bool(forKey: "followTailOnInput"),
       startingDirectory: defaults.string(forKey: "startingDirectory") ?? Self.home,
       selectionWordProfile: defaults.string(forKey: "selectionWordCharacters")
-        .flatMap { TerminalSelectionWordProfile(punctuation: $0) } ?? .standard)
+        .flatMap { TerminalSelectionWordProfile(punctuation: $0) } ?? .standard,
+      showPaneTitles: defaults.object(forKey: "showPaneTitles") == nil
+        || defaults.bool(forKey: "showPaneTitles"),
+      inactivePaneDim: PaneInactiveDim(storedValue: defaults.object(forKey: "inactivePaneDim") == nil
+        ? PaneInactiveDim.five.rawValue : defaults.integer(forKey: "inactivePaneDim")))
   }
-  func save() {
-    let d = UserDefaults.standard
+  func save() { save(to: .standard) }
+  func save(to d: UserDefaults) {
     d.set(fontSize, forKey: "fontSize")
     d.set(historyRows, forKey: "historyRows")
     d.set(optionSendsEscape, forKey: "optionSendsEscape")
     d.set(followTailOnInput, forKey: "followTailOnInput")
     d.set(startingDirectory, forKey: "startingDirectory")
     d.set(selectionWordProfile.punctuation, forKey: "selectionWordCharacters")
+    d.set(showPaneTitles, forKey: "showPaneTitles")
+    d.set(inactivePaneDim.rawValue, forKey: "inactivePaneDim")
   }
 }
 

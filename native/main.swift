@@ -17,8 +17,9 @@ func paneLifecycleSmokeReportPath() -> String? {
 }
 
 private func terminalMinimumSize(_ view: NSView) -> NSSize {
+  if let pane = view as? TerminalPanePresentationView { return pane.minimumSize }
   guard let split = view as? NSSplitView, split.arrangedSubviews.count == 2 else {
-    return NSSize(width: 200, height: 120)
+    return TerminalPanePresentationView.terminalMinimum
   }
   let first = terminalMinimumSize(split.arrangedSubviews[0])
   let second = terminalMinimumSize(split.arrangedSubviews[1])
@@ -40,6 +41,18 @@ func selectionSmokePasteboardName(reportPath: String) -> NSPasteboard.Name {
 }
 
 final class TerminalWindow: NSWindowController, NSWindowDelegate {
+  private struct PaneTitle {
+    var reported = ""
+    var finished = false
+
+    var windowTitle: String {
+      if finished { return "Terminal — Finished" }
+      return reported.isEmpty ? "Terminal" : reported
+    }
+
+    var headerTitle: String { windowTitle }
+  }
+
   let automationID = UUID().uuidString
   private(set) var panes: [TerminalCanvasView] = []
   private let container = NSView()
@@ -47,6 +60,9 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   private var initialLaunch: LaunchSpec?
   private let diagnosticSplitLaunch: LaunchSpec?
   private var reconcilingLayout = false
+  private weak var activePane: TerminalCanvasView?
+  private var paneTitles: [ObjectIdentifier: PaneTitle] = [:]
+  private var panePresentations: [ObjectIdentifier: TerminalPanePresentationView] = [:]
   init(launch: LaunchSpec? = nil) {
     initialLaunch = launch
     diagnosticSplitLaunch =
@@ -58,7 +74,6 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     )
     super.init(window: window)
     TerminalTheme.apply(to: window)
-    window.title = "Terminal"
     window.setAccessibilityIdentifier("no.helgesverre.terminal.window." + automationID)
     window.minSize = NSSize(width: 320, height: 180)
     window.tabbingMode = .preferred
@@ -67,14 +82,54 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     container.wantsLayer = true
     window.contentView = container
     let pane = makePane()
-    root = pane
-    container.addSubview(pane)
-    pane.frame = NSRect(x: 0, y: 0, width: 1000, height: 680)
-    pane.autoresizingMask = [.width, .height]
+    let presentation = panePresentation(for: pane)!
+    root = presentation
+    container.addSubview(presentation)
+    presentation.frame = NSRect(x: 0, y: 0, width: 1000, height: 680)
+    presentation.autoresizingMask = [.width, .height]
     window.center()
+    selectActivePane(pane)
     window.makeFirstResponder(pane)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
+
+  /// A window's title belongs to its most recently active pane.  AppKit can
+  /// temporarily give another control first responder status (for example a
+  /// find field), so responder state is intentionally not consulted here.
+  private func publishWindowTitle() {
+    let title = activePane.flatMap { paneTitles[ObjectIdentifier($0)]?.windowTitle } ?? "Terminal"
+    if window?.title != title { window?.title = title }
+  }
+
+  private func selectActivePane(_ pane: TerminalCanvasView?) {
+    activePane = pane
+    publishWindowTitle()
+    updatePanePresentation()
+  }
+
+  private func recordTitle(_ title: String, from pane: TerminalCanvasView) {
+    guard panes.contains(where: { $0 === pane }) else { return }
+    var state = paneTitles[ObjectIdentifier(pane)] ?? PaneTitle()
+    state.reported = title
+    paneTitles[ObjectIdentifier(pane)] = state
+    panePresentation(for: pane)?.setTitle(state.headerTitle)
+    publishWindowTitle()
+  }
+
+  private func recordSessionFinished(for pane: TerminalCanvasView) {
+    guard panes.contains(where: { $0 === pane }) else { return }
+    var state = paneTitles[ObjectIdentifier(pane)] ?? PaneTitle()
+    state.finished = true
+    paneTitles[ObjectIdentifier(pane)] = state
+    panePresentation(for: pane)?.setTitle(state.headerTitle)
+    publishWindowTitle()
+  }
+
+  func paneDidBecomeActive(_ pane: TerminalCanvasView) {
+    guard panes.contains(where: { $0 === pane }) else { return }
+    selectActivePane(pane)
+  }
+
   private func makePane(launch: LaunchSpec? = nil) -> TerminalCanvasView {
     let pane = TerminalCanvasView(
       frame: .zero, session: Session(launch: initialLaunch ?? diagnosticSplitLaunch ?? launch))
@@ -96,7 +151,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
         alert.beginSheetModal(for: window)
       }
       if text == "Session finished" {
-        self?.window?.title = "Terminal — Finished"
+        if let pane { self?.recordSessionFinished(for: pane) }
         if CommandLine.arguments.contains("--exit-after-command") {
           let arguments = Array(CommandLine.arguments.prefix { $0 != "--execute" })
           if let index = arguments.firstIndex(of: "--session-statistics-file"), index + 1 < arguments.count, let pane {
@@ -115,34 +170,78 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
         }
       }
     }
-    pane.onTitle = { [weak self] title in if !title.isEmpty { self?.window?.title = title } }
+    pane.onTitle = { [weak self, weak pane] title in
+      if let pane { self?.recordTitle(title, from: pane) }
+    }
+    pane.onActivated = { [weak self, weak pane] in
+      if let pane { self?.paneDidBecomeActive(pane) }
+    }
     panes.append(pane)
+    let presentation = TerminalPanePresentationView(canvas: pane)
+    presentation.onSelect = { [weak self, weak pane] in
+      guard let self, let pane else { return }
+      self.selectActivePane(pane)
+      self.window?.makeFirstResponder(pane)
+    }
+    panePresentations[ObjectIdentifier(pane)] = presentation
     return pane
+  }
+
+  private func panePresentation(for pane: TerminalCanvasView) -> TerminalPanePresentationView? {
+    panePresentations[ObjectIdentifier(pane)]
+  }
+
+  /// Header visibility is a window-layout concern: it changes leaf minima, so
+  /// update it before every reconciliation rather than drawing over a canvas.
+  @discardableResult
+  func updatePanePresentation(_ preferences: TerminalPreferences = .load()) -> Bool {
+    let previousMinimum = root.map(terminalMinimumSize)
+    let showHeader = preferences.showPaneTitles && panes.count > 1
+    for pane in panes {
+      let title = paneTitles[ObjectIdentifier(pane)]?.headerTitle ?? "Terminal"
+      panePresentation(for: pane)?.setTitle(title)
+      panePresentation(for: pane)?.configure(
+        showHeader: showHeader, active: pane === activePane, inactiveDim: preferences.inactivePaneDim)
+    }
+    guard let previousMinimum, let root else { return false }
+    let currentMinimum = terminalMinimumSize(root)
+    return abs(previousMinimum.width - currentMinimum.width) > 0.5
+      || abs(previousMinimum.height - currentMinimum.height) > 0.5
+  }
+
+  /// Preference changes can grow a nested leaf by a header height. Reconcile
+  /// immediately so neither the content minimum nor a divider keeps the old
+  /// smaller allocation.
+  func applyPanePresentationPreferences(_ preferences: TerminalPreferences) {
+    if updatePanePresentation(preferences) { reconcileLayout() }
   }
   @objc func splitVertical(_ sender: Any?) { split(vertical: true) }
   @objc func splitHorizontal(_ sender: Any?) { split(vertical: false) }
   private func split(vertical: Bool) {
     guard let current = window?.firstResponder as? TerminalCanvasView,
-      let parent = current.superview
+      let currentPresentation = panePresentation(for: current), let parent = currentPresentation.superview
     else { return }
-    let frame = current.frame
-    let mask = current.autoresizingMask
+    let frame = currentPresentation.frame
+    let mask = currentPresentation.autoresizingMask
     let split = TerminalSplitView(frame: frame)
     split.wantsLayer = true
     split.isVertical = vertical
     split.dividerStyle = .thin
-    parent.replaceSubview(current, with: split)
+    parent.replaceSubview(currentPresentation, with: split)
     split.autoresizingMask = mask
-    if root === current { root = split }
-    current.frame = split.bounds
-    current.autoresizingMask = [.width, .height]
-    split.addArrangedSubview(current)
+    if root === currentPresentation { root = split }
+    currentPresentation.frame = split.bounds
+    currentPresentation.autoresizingMask = [.width, .height]
+    split.addArrangedSubview(currentPresentation)
     let pane = makePane(launch: current.session.siblingLaunch)
-    pane.frame = split.bounds
-    split.addArrangedSubview(pane)
+    guard let presentation = panePresentation(for: pane) else { return }
+    presentation.frame = split.bounds
+    presentation.autoresizingMask = [.width, .height]
+    split.addArrangedSubview(presentation)
     // Divider constraints depend on valid child frames. Establish tiling before
     // selecting the initial midpoint, as a user drag would.
     split.adjustSubviews()
+    selectActivePane(pane)
     // A new nested split can raise an ancestor's minimum. Allocate that space
     // before computing this split's midpoint so it never starts clipped.
     reconcileLayout()
@@ -186,7 +285,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   }
   @objc func closePane(_ sender: Any?) {
     guard panes.count > 1, let pane = window?.firstResponder as? TerminalCanvasView,
-      let split = pane.superview as? NSSplitView
+      let presentation = panePresentation(for: pane), let split = presentation.superview as? NSSplitView
     else {
       window?.performClose(sender)
       return
@@ -194,7 +293,9 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     pane.session.close()
     pane.detachRenderingSurface()
     panes.removeAll { $0 === pane }
-    pane.removeFromSuperview()
+    paneTitles[ObjectIdentifier(pane)] = nil
+    panePresentations[ObjectIdentifier(pane)] = nil
+    presentation.removeFromSuperview()
     if split.arrangedSubviews.count == 1, let survivor = split.arrangedSubviews.first,
       let parent = split.superview
     {
@@ -205,6 +306,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       survivor.autoresizingMask = [.width, .height]
       if root === split { root = survivor }
     }
+    selectActivePane(panes.last)
     reconcileLayout()
     window?.makeFirstResponder(panes.last)
     panes.forEach { $0.updateFocus() }
@@ -227,10 +329,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   }
   func windowDidBecomeKey(_ notification: Notification) {
     panes.forEach { $0.updateFocus() }
-    if !(window?.firstResponder is TerminalCanvasView) { window?.makeFirstResponder(panes.first) }
-    if let pane = window?.firstResponder as? TerminalCanvasView {
-      (NSApp.delegate as? AppDelegate)?.rememberFocus(pane)
-    }
+    publishWindowTitle()
   }
 }
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -394,6 +493,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applyPreferences(_ preferences: TerminalPreferences) {
     preferences.save()
     windows.lazy.flatMap(\.panes).forEach { $0.applyPreferences() }
+    windows.forEach { $0.applyPanePresentationPreferences(preferences) }
     preferencesWindow?.reload()
   }
   func remove(_ window: TerminalWindow) { windows.removeAll { $0 === window } }

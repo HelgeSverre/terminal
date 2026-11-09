@@ -1,12 +1,14 @@
+import AppKit
 import Foundation
 
 @main struct PreferencesTests {
   static func main() throws {
     func edited(_ path: String, size: String = "14", history: String = "50000",
-                words: String = TerminalSelectionWordProfile.standard.punctuation) throws -> TerminalPreferences {
+                words: String = TerminalSelectionWordProfile.standard.punctuation,
+                showPaneTitles: Bool = true, inactivePaneDim: PaneInactiveDim = .five) throws -> TerminalPreferences {
       try TerminalPreferences.edited(fontSize: size, historyRows: history,
         optionSendsEscape: false, followTailOnInput: true, startingDirectory: path,
-        selectionWordCharacters: words)
+        selectionWordCharacters: words, showPaneTitles: showPaneTitles, inactivePaneDim: inactivePaneDim)
     }
     let home = FileManager.default.homeDirectoryForCurrentUser.path
     let blank = try edited("")
@@ -72,8 +74,54 @@ import Foundation
     try Data().write(to: file)
     do { _ = try edited(file.path); preconditionFailure("file accepted as directory") }
     catch TerminalPreferences.ValidationError.directory {}
+    let suite = "no.helgesverre.terminal.preferences-tests.\(UUID().uuidString)"
+    let isolatedDefaults = UserDefaults(suiteName: suite)!
+    defer { isolatedDefaults.removePersistentDomain(forName: suite) }
+    precondition(TerminalPreferences.load(from: isolatedDefaults).showPaneTitles)
+    precondition(TerminalPreferences.load(from: isolatedDefaults).inactivePaneDim == .five)
+    let presentationPreferences = try TerminalPreferences.edited(
+      fontSize: "14", historyRows: "120", optionSendsEscape: true, followTailOnInput: false,
+      startingDirectory: folder.path, selectionWordCharacters: "-_",
+      showPaneTitles: false, inactivePaneDim: .ten)
+    presentationPreferences.save(to: isolatedDefaults)
+    let restoredPresentationPreferences = TerminalPreferences.load(from: isolatedDefaults)
+    precondition(!restoredPresentationPreferences.showPaneTitles)
+    precondition(restoredPresentationPreferences.inactivePaneDim == .ten)
+    precondition(restoredPresentationPreferences.optionSendsEscape)
+    let changedFontKeepingPresentation = try TerminalPreferences.edited(
+      fontSize: "16", historyRows: String(restoredPresentationPreferences.historyRows),
+      optionSendsEscape: restoredPresentationPreferences.optionSendsEscape,
+      followTailOnInput: restoredPresentationPreferences.followTailOnInput,
+      startingDirectory: restoredPresentationPreferences.startingDirectory,
+      selectionWordCharacters: restoredPresentationPreferences.selectionWordProfile.punctuation,
+      showPaneTitles: restoredPresentationPreferences.showPaneTitles,
+      inactivePaneDim: restoredPresentationPreferences.inactivePaneDim)
+    precondition(!changedFontKeepingPresentation.showPaneTitles && changedFontKeepingPresentation.inactivePaneDim == .ten)
+
+    precondition(PaneColorChoice.palette.count == 16)
+    precondition(Set(PaneColorChoice.palette.map(\.name)).count == 16)
+    precondition(PaneChromeColor(hex: "#f08")?.hex == "#FF0088")
+    precondition(PaneChromeColor(hex: " #2c6a65 ")?.hex == "#2C6A65")
+    for invalidHex in ["2C6A65", "#12", "#1234", "#00112233", "#GG0011"] {
+      precondition(PaneChromeColor(hex: invalidHex) == nil, "accepted invalid pane color \(invalidHex)")
+    }
+    precondition(PaneChromeColor(hex: "#101010")?.readableForeground == .white)
+    precondition(PaneChromeColor(hex: "#F0F0F0")?.readableForeground == .black)
+    let viewport = NSView(frame: .zero)
+    let panePresentation = TerminalPanePresentationView(canvas: viewport)
+    panePresentation.frame = NSRect(x: 0, y: 0, width: 320, height: 220)
+    panePresentation.configure(showHeader: true, active: false, inactiveDim: .five)
+    panePresentation.layoutSubtreeIfNeeded()
+    precondition(panePresentation.minimumSize == NSSize(width: 200, height: 140))
+    precondition(viewport.frame == NSRect(x: 0, y: 20, width: 320, height: 200))
+    precondition(abs(viewport.alphaValue - 0.95) < 0.001)
+    panePresentation.configure(showHeader: false, active: true, inactiveDim: .ten)
+    panePresentation.layoutSubtreeIfNeeded()
+    precondition(panePresentation.minimumSize == NSSize(width: 200, height: 120))
+    precondition(viewport.frame == NSRect(x: 0, y: 0, width: 320, height: 220))
+    precondition(abs(viewport.alphaValue - 1) < 0.001)
     try FileManager.default.removeItem(at: folder)
     precondition(value.launchDirectory == home) // A saved folder may disappear later.
-    print("PASS preferences: home, tilde, absolute folders/spaces, fractional size, bounds, invalid paths and file rejection")
+    print("PASS preferences: home, tilde, paths, pane settings, private defaults, color validation and viewport geometry")
   }
 }

@@ -40,13 +40,20 @@ private func nestedDividers(_ frames: [CGRect]) throws -> (outer: CGPoint, inner
   guard left.count == 2, right.count == 1 else { throw TUIStressFailure.invalid("expected two left panes and one right pane") }
   let top = left[0], bottom = left[1], spanning = right[0]
   func near(_ lhs: CGFloat, _ rhs: CGFloat) -> Bool { abs(lhs - rhs) <= 1 }
-  func dividerGap(_ start: CGFloat, _ end: CGFloat) -> Bool { (0...2).contains(end - start) }
+  // AX exposes the terminal canvas rather than its pane wrapper. A split below
+  // a title header therefore has a 21pt canvas seam (20pt header plus divider).
+  func horizontalDividerGap(_ start: CGFloat, _ end: CGFloat) -> Bool { (0...2).contains(end - start) }
+  func verticalDividerGap(_ start: CGFloat, _ end: CGFloat) -> Bool { (0...24).contains(end - start) }
+  func dividerCoordinate(_ start: CGFloat, _ end: CGFloat) -> CGFloat {
+    start + min(0.5, (end - start) / 2)
+  }
   guard near(top.maxX, bottom.maxX), near(top.minY, spanning.minY), near(bottom.maxY, spanning.maxY),
-    dividerGap(top.maxX, spanning.minX), dividerGap(bottom.maxX, spanning.minX), dividerGap(top.maxY, bottom.minY) else {
+    horizontalDividerGap(top.maxX, spanning.minX), horizontalDividerGap(bottom.maxX, spanning.minX),
+    verticalDividerGap(top.maxY, bottom.minY) else {
     throw TUIStressFailure.invalid("expected nested left layout adjacency")
   }
   return (CGPoint(x: (top.maxX + spanning.minX) / 2, y: spanning.midY),
-    CGPoint(x: top.midX, y: (top.maxY + bottom.minY) / 2))
+    CGPoint(x: top.midX, y: dividerCoordinate(top.maxY, bottom.minY)))
 }
 
 private struct VerticalStackLayout {
@@ -64,7 +71,7 @@ private func verticalStackLayout(_ frames: [CGRect]) throws -> VerticalStackLayo
   }
   guard (0..<2).allSatisfy({ index in
     let gap = ordered[index + 1].minY - ordered[index].maxY
-    return (0...2).contains(gap)
+    return (0...24).contains(gap)
   }) else { throw TUIStressFailure.invalid("final stack is overlapping or has a missing divider adjacency") }
   guard Set(ordered.map { "\($0.minX.rounded())/\($0.minY.rounded())/\($0.width.rounded())/\($0.height.rounded())" }).count == 3 else {
     throw TUIStressFailure.invalid("final stack has duplicate pane geometry")
@@ -72,8 +79,8 @@ private func verticalStackLayout(_ frames: [CGRect]) throws -> VerticalStackLayo
   let top = ordered[0].minY, bottom = ordered[2].maxY
   let target = [top + (bottom - top) / 3, top + 2 * (bottom - top) / 3]
   return VerticalStackLayout(leaves: ordered,
-    dividerPoints: [CGPoint(x: first.midX, y: (ordered[0].maxY + ordered[1].minY) / 2),
-      CGPoint(x: first.midX, y: (ordered[1].maxY + ordered[2].minY) / 2)], targetDividerY: target)
+    dividerPoints: [CGPoint(x: first.midX, y: ordered[0].maxY + min(0.5, (ordered[1].minY - ordered[0].maxY) / 2)),
+      CGPoint(x: first.midX, y: ordered[1].maxY + min(0.5, (ordered[2].minY - ordered[1].maxY) / 2))], targetDividerY: target)
 }
 
 private func verticalStack(_ frames: [CGRect]) throws {
@@ -450,9 +457,11 @@ private func balancedInspectionStack(_ frames: [CGRect]) throws -> VerticalStack
       catch TUIStressFailure.invalid { }
       let stack = [CGRect(x: 10, y: 20, width: 190, height: 70), CGRect(x: 10, y: 91, width: 190, height: 70), CGRect(x: 10, y: 162, width: 190, height: 70)]
       try verticalStack(stack)
+      try verticalStack([CGRect(x: 10, y: 20, width: 190, height: 70),
+        CGRect(x: 10, y: 111, width: 190, height: 70), CGRect(x: 10, y: 202, width: 190, height: 70)])
       do { try verticalStack([top, right, bottom]); preconditionFailure("old T layout accepted as final stack") }
       catch TUIStressFailure.invalid { }
-      do { try verticalStack([stack[0], CGRect(x: 10, y: 95, width: 190, height: 70), stack[2]]); preconditionFailure("gapped stack accepted") }
+      do { try verticalStack([stack[0], CGRect(x: 10, y: 121, width: 190, height: 70), stack[2]]); preconditionFailure("gapped stack accepted") }
       catch TUIStressFailure.invalid { }
       let inspection = [CGRect(x: 10, y: 20, width: 190, height: 390), CGRect(x: 10, y: 411, width: 190, height: 390), CGRect(x: 10, y: 802, width: 190, height: 390)]
       let balanced = try balancedInspectionStack(inspection)

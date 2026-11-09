@@ -39,6 +39,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   private var tracking: NSTrackingArea?
   var onStatus: ((String) -> Void)?
   var onTitle: ((String) -> Void)?
+  var onActivated: (() -> Void)?
   var onObservedSnapshot: ((TerminalSnapshot) -> Void)?
   func refresh() { redraw() }
   func contentSize(columns: Int, rows: Int) -> NSSize {
@@ -376,6 +377,10 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     updateGeometry()
   }
   override func becomeFirstResponder() -> Bool {
+    // The window owns title publication.  Notify it synchronously so changing
+    // panes immediately restores this pane's cached title, even if a later
+    // responder change moves focus into a transient control.
+    onActivated?()
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       self.updateFocus()

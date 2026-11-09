@@ -11,13 +11,17 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     checkboxWithTitle: "Option key sends Escape", target: nil, action: nil)
   private let followTail = NSButton(
     checkboxWithTitle: "Scroll to bottom when typing", target: nil, action: nil)
+  private let showPaneTitles = NSButton(
+    checkboxWithTitle: "Show pane titles when split", target: nil, action: nil)
+  private let inactivePaneDim = NSSegmentedControl(
+    labels: PaneInactiveDim.allCases.map(\.label), trackingMode: .selectOne, target: nil, action: nil)
   private let error = NSTextField(wrappingLabelWithString: "")
   private let apply = NSButton(title: "Apply", target: nil, action: nil)
   private let onApply: (TerminalPreferences) -> Void
   init(onApply: @escaping (TerminalPreferences) -> Void) {
     self.onApply = onApply
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 440, height: 560),
+      contentRect: NSRect(x: 0, y: 0, width: 440, height: 650),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     super.init(window: window)
     window.title = "Settings"
@@ -115,6 +119,18 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     followTail.setAccessibilityIdentifier("no.helgesverre.terminal.settings.follow-tail-on-input")
     stack.addArrangedSubview(followTail)
     stack.setCustomSpacing(24, after: followTail)
+    section("Panes")
+    showPaneTitles.font = .systemFont(ofSize: 13)
+    showPaneTitles.setAccessibilityLabel("Show pane titles when split")
+    showPaneTitles.setAccessibilityIdentifier("no.helgesverre.terminal.settings.show-pane-titles")
+    stack.addArrangedSubview(showPaneTitles)
+    stack.setCustomSpacing(12, after: showPaneTitles)
+    inactivePaneDim.setAccessibilityLabel("Inactive pane dimming")
+    inactivePaneDim.setAccessibilityIdentifier("no.helgesverre.terminal.settings.inactive-pane-dim")
+    inactivePaneDim.selectedSegment = PaneInactiveDim.five.rawValue / 5
+    let dimRow = row("Inactive dim", control: inactivePaneDim, unit: "")
+    stack.addArrangedSubview(dimRow)
+    stack.setCustomSpacing(24, after: dimRow)
     section("Keyboard")
     option.font = .systemFont(ofSize: 13)
     option.setAccessibilityIdentifier("no.helgesverre.terminal.settings.option-sends-escape")
@@ -161,6 +177,8 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     historyRows.stringValue = String(prefs.historyRows)
     option.state = prefs.optionSendsEscape ? .on : .off
     followTail.state = prefs.followTailOnInput ? .on : .off
+    showPaneTitles.state = prefs.showPaneTitles ? .on : .off
+    inactivePaneDim.selectedSegment = PaneInactiveDim.allCases.firstIndex(of: prefs.inactivePaneDim) ?? 1
     startingDirectory.stringValue = prefs.startingDirectoryText
     wordCharacters.stringValue = prefs.selectionWordProfile.punctuation
     validate()
@@ -172,11 +190,16 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   }
   func controlTextDidChange(_ notification: Notification) { validate() }
   private func value() throws -> TerminalPreferences {
-    try TerminalPreferences.edited(
+    let dimIndex = inactivePaneDim.selectedSegment
+    let dim = PaneInactiveDim.allCases.indices.contains(dimIndex)
+      ? PaneInactiveDim.allCases[dimIndex] : .five
+    return try TerminalPreferences.edited(
       fontSize: fontSize.stringValue, historyRows: historyRows.stringValue,
       optionSendsEscape: option.state == .on, followTailOnInput: followTail.state == .on,
       startingDirectory: startingDirectory.stringValue,
-      selectionWordCharacters: wordCharacters.stringValue)
+      selectionWordCharacters: wordCharacters.stringValue,
+      showPaneTitles: showPaneTitles.state == .on,
+      inactivePaneDim: dim)
   }
   private func validate() {
     do {
