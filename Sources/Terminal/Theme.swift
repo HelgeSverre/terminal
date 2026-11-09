@@ -34,3 +34,19 @@ enum TerminalTheme {
     window.titlebarSeparatorStyle = .line
   }
 }
+
+extension TerminalTheme {
+  // Settings prototype tokens are scoped here; the terminal rendering palette
+  // and the rest of the application's chrome remain unchanged.
+  enum Settings {
+    static let background: UInt32 = 0x0d0d0f
+    static let surface: UInt32 = 0x161619
+    static let selected: UInt32 = 0x2a2a30
+    static let border: UInt32 = 0x2e2e34
+    static let text: UInt32 = 0xececf1
+    static let secondary: UInt32 = 0xb4b4bd
+    static let muted: UInt32 = 0x8a8a94
+    static let sidebarWidth: CGFloat = 216
+    static let labelWidth: CGFloat = 132
+  }
+}
