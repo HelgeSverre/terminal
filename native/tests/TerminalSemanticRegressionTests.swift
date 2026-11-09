@@ -113,6 +113,121 @@ import Foundation
     precondition(repaired["kind"] as? String == "Lead2" && ((repaired["flags"] as! Int) & 1) == 0)
   }
 
+  static func eraseCharactersAndLineRelativeCursorMotion() {
+    // ECH is deliberately checked at the emulator boundary: prompt redraws
+    // commonly use it after moving onto a wide glyph, where a text-only test
+    // could miss an orphaned continuation cell.
+    for sequence in ["\u{1b}[X", "\u{1b}[0X", "\u{1b}[1X"] {
+      let terminal = make(8, 2); defer { terminal_destroy(terminal) }
+      feed(terminal, "A猫BC\u{1b}[1;2H\(sequence)")
+      let value = snapshot(terminal), cursor = value["cursor"] as! [String: Any]
+      precondition(cell(value, 0, 0)["text"] as? String == "A")
+      precondition(cell(value, 0, 1)["kind"] as? String == "Empty")
+      precondition(cell(value, 0, 2)["kind"] as? String == "Empty")
+      precondition(cell(value, 0, 3)["text"] as? String == "B")
+      precondition(cursor["row"] as? Int == 0 && cursor["col"] as? Int == 1)
+    }
+    let continuation = make(8, 2); defer { terminal_destroy(continuation) }
+    feed(continuation, "A猫BC\u{1b}[1;3H\u{1b}[2X")
+    let continuationValue = snapshot(continuation)
+    precondition((1...3).allSatisfy { cell(continuationValue, 0, $0)["kind"] as? String == "Empty" })
+    precondition(cell(continuationValue, 0, 4)["text"] as? String == "C")
+    precondition(terminal_resize(continuation, 10, 2))
+    let reflowed = snapshot(continuation)
+    precondition((1...3).allSatisfy { cell(reflowed, 0, $0)["kind"] as? String == "Empty" })
+    precondition(cell(reflowed, 0, 4)["text"] as? String == "C" && terminal_validate(continuation))
+
+    let clamped = make(8, 2); defer { terminal_destroy(clamped) }
+    feed(clamped, "abcdef\u{1b}[1;5H\u{1b}[999X")
+    let clampedValue = snapshot(clamped)
+    precondition(line(clampedValue, 0).hasPrefix("abcd    "))
+    precondition((clampedValue["cursor"] as! [String: Any])["col"] as? Int == 4)
+
+    let deferredWrap = make(4, 2); defer { terminal_destroy(deferredWrap) }
+    feed(deferredWrap, "abcd\u{1b}[X")
+    let deferredValue = snapshot(deferredWrap), deferredCursor = deferredValue["cursor"] as! [String: Any]
+    precondition(cell(deferredValue, 0, 3)["kind"] as? String == "Empty")
+    precondition(deferredCursor["row"] as? Int == 0 && deferredCursor["col"] as? Int == 3
+      && deferredCursor["pending_wrap"] as? Bool == false)
+
+    let styled = make(8, 2); defer { terminal_destroy(styled) }
+    feed(styled, "abcdef\u{1b}[1;3H\u{1b}[31;44m\u{1b}[2X")
+    let styledValue = snapshot(styled)
+    for column in 2...3 {
+      let cellStyle = cell(styledValue, 0, column)["style"] as! [String: Any]
+      precondition(cell(styledValue, 0, column)["kind"] as? String == "Empty")
+      precondition(cellStyle["foreground"] as? String == "Default")
+      precondition(cellStyle["background"] as? [String: Int] == ["Indexed": 4])
+    }
+
+    // Splitting anywhere in the cursor/edit sequence is equivalent to feeding
+    // it whole, including splits between ESC, parameter bytes and the final X.
+    let fixture = Data("A猫BC\u{1b}[1;3H\u{1b}[2X".utf8)
+    let whole = make(8, 2); defer { terminal_destroy(whole) }; feed(whole, fixture)
+    let expected = stable(snapshot(whole)) as! NSDictionary
+    for split in 0...fixture.count {
+      let terminal = make(8, 2); defer { terminal_destroy(terminal) }
+      feed(terminal, Data(fixture.prefix(split))); feed(terminal, Data(fixture.suffix(fixture.count - split)))
+      precondition(expected.isEqual(stable(snapshot(terminal))))
+    }
+
+    let vertical = make(8, 4); defer { terminal_destroy(vertical) }
+    feed(vertical, "\u{1b}[2;5H\u{1b}[E")
+    var cursor = snapshot(vertical)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 2 && cursor["col"] as? Int == 0)
+    feed(vertical, "\u{1b}[0F")
+    cursor = snapshot(vertical)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 0)
+    feed(vertical, "\u{1b}[999F")
+    cursor = snapshot(vertical)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 0 && cursor["col"] as? Int == 0)
+
+    // CNL/CPL share CUD/CUU's region-aware bounds, then apply CR's margin
+    // policy. They must neither scroll nor leap over a scrolling margin when
+    // origin mode is disabled.
+    let margins = make(8, 5); defer { terminal_destroy(margins) }
+    feed(margins, "\u{1b}[2;4r\u{1b}[?69h\u{1b}[3;6s\u{1b}[2;4H\u{1b}[99E")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 2)
+    feed(margins, "\u{1b}[99F")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 2)
+    feed(margins, "\u{1b}[?6h\u{1b}[99E")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 2)
+    feed(margins, "\u{1b}[99F")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 2)
+
+    // CUU/CUD use those same bounds without applying CR. Check each direction
+    // from both sides of the region while DECOM is disabled.
+    feed(margins, "\u{1b}[?6l")
+    feed(margins, "\u{1b}[2;4H\u{1b}[99B")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 3)
+    feed(margins, "\u{1b}[99A")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 3)
+    feed(margins, "\u{1b}[5;4H\u{1b}[99B")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 4 && cursor["col"] as? Int == 3)
+    feed(margins, "\u{1b}[5;4H\u{1b}[99A")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 3)
+    feed(margins, "\u{1b}[1;4H\u{1b}[99B")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 3)
+    feed(margins, "\u{1b}[1;4H\u{1b}[99A")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 0 && cursor["col"] as? Int == 3)
+    feed(margins, "\u{1b}[?6h\u{1b}[99B")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 2)
+    feed(margins, "\u{1b}[99A")
+    cursor = snapshot(margins)["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 2)
+  }
+
   static func decCharsetPartitionsAndHistoryBounds() {
     let source = "_`abcdefghijklmnopqrstuvwxyz{|}~"
     let expected = "\u{a0}◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·"
@@ -328,7 +443,7 @@ import Foundation
 
   static func main() {
     deferredWrapLFAndUTF8(); renditionSaveEraseAndOverflow(); alternateAndStringSafety(); cursorAppearanceAndClippedWideRepair()
-    decCharsetPartitionsAndHistoryBounds(); utf8EOFEditingAndResetSemantics(); displayClusterAndMalformedOSC()
+    decCharsetPartitionsAndHistoryBounds(); utf8EOFEditingAndResetSemantics(); displayClusterAndMalformedOSC(); eraseCharactersAndLineRelativeCursorMotion()
     bytePartitionsAgree()
     clustersAndDiscardBound()
     viewportStaysAnchoredWithoutEviction()
@@ -338,6 +453,6 @@ import Foundation
     snapshotsAreImmutableAndIngressIsPartitionIndependent()
     randomPartitionsRetainInvariants()
     repRetainsOriginalClusterAttributesAfterExtension()
-    print("PASS Terminal semantic regression oracle: wrap, UTF-8, rendition, alternates, strings, cursor, wide repair")
+    print("PASS Terminal semantic regression oracle: wrap, UTF-8, rendition, alternates, strings, cursor, wide repair, ECH")
   }
 }

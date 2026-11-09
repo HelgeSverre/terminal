@@ -622,10 +622,18 @@ private final class TerminalEmulator {
     var semanticChange = true
     var clearsPending = true
     switch final {
-    case "A": s.cursorRow = max(originMode ? s.topMargin : 0, s.cursorRow - n)
-    case "B": s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, s.cursorRow + n)
+    case "A": moveCursorVertically(&s, up: true, count: n)
+    case "B": moveCursorVertically(&s, up: false, count: n)
     case "C": s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, s.cursorColumn + n)
     case "D": s.cursorColumn = max(originMode ? horizontalMargins.left : 0, s.cursorColumn - n)
+    case "E":
+      moveCursorVertically(&s, up: false, count: n)
+      let left = horizontalMargins.left
+      s.cursorColumn = s.cursorColumn >= left ? left : 0
+    case "F":
+      moveCursorVertically(&s, up: true, count: n)
+      let left = horizontalMargins.left
+      s.cursorColumn = s.cursorColumn >= left ? left : 0
     case "G": s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + n - 1)
     case "d": s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + n - 1)
     case "H", "f": s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + max(0, (params.first ?? 1) - 1)); s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + max(0, (params.dropFirst().first ?? 1) - 1))
@@ -633,6 +641,7 @@ private final class TerminalEmulator {
     case "K": eraseLine(params.first ?? 0); changedActiveScreen = true
     case "@": insertCharacters(n); changedActiveScreen = true
     case "P": deleteCharacters(n); changedActiveScreen = true
+    case "X": eraseCharacters(n); changedActiveScreen = true
     case "L": insertLines(n); changedActiveScreen = true
     case "M": deleteLines(n); changedActiveScreen = true
     case "I": tab(false, count: n); changedActiveScreen = true
@@ -694,8 +703,28 @@ private final class TerminalEmulator {
     }
     if semanticChange { changed() }
   }
+  // Moving up stops at the top margin unless already above it; moving down
+  // stops at the bottom margin unless already below it. Otherwise use the
+  // corresponding screen edge, independently of origin mode.
+  // Keeping this policy here prevents redraw commands from drifting apart.
+  private func moveCursorVertically(_ screen: inout TerminalScreen, up: Bool, count: Int) {
+    if up {
+      let limit = screen.cursorRow < screen.topMargin ? 0 : screen.topMargin
+      screen.cursorRow -= min(count, screen.cursorRow - limit)
+    } else {
+      let limit = screen.cursorRow > screen.bottomMargin ? rowCount - 1 : screen.bottomMargin
+      screen.cursorRow += min(count, limit - screen.cursorRow)
+    }
+  }
   private func eraseDisplay(_ mode: Int, selective: Bool = false) { if mode == 2 { graphics.clear(alternate: usingAlternate) }; var s = screen; switch mode { case 2, 3: if selective { for row in 0..<rowCount { document.erase(&s, row: row, columns: 0..<columns, style: eraseStyle(), selective: true) } } else { s.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) } }; if mode == 3 && !usingAlternate { document.clearHistory(); advanceSearchGeneration(); historyEpoch &+= 1 }; case 1: for row in 0...s.cursorRow { document.erase(&s, row: row, columns: 0..<(row == s.cursorRow ? s.cursorColumn + 1 : columns), style: eraseStyle(), selective: selective) }; default: for row in s.cursorRow..<rowCount { document.erase(&s, row: row, columns: (row == s.cursorRow ? s.cursorColumn : 0)..<columns, style: eraseStyle(), selective: selective) } }; s.pendingWrap = false; screen = s }
   private func eraseLine(_ mode: Int) { var s = screen; let range: Range<Int>; switch mode { case 1: range = 0..<(s.cursorColumn + 1); case 2: range = 0..<columns; default: range = s.cursorColumn..<columns }; document.erase(&s, row: s.cursorRow, columns: range, style: eraseStyle()); s.pendingWrap = false; screen = s }
+  private func eraseCharacters(_ count: Int) {
+    var s = screen
+    let end = s.cursorColumn + min(count, columns - s.cursorColumn)
+    document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<end, style: eraseStyle())
+    s.pendingWrap = false
+    screen = s
+  }
   private func insertCharacters(_ count: Int) {
     var s = screen; let margins = horizontalMargins
     if (margins.left...margins.right).contains(s.cursorColumn) { document.shift(&s, row: s.cursorRow, column: s.cursorColumn, right: margins.right, count: count, inserting: true, eraseStyle: eraseStyle()); s.pendingWrap = false }
