@@ -60,6 +60,8 @@ A failed build keeps the installed copy. Only this app's bundle identifier is
 eligible for replacement or removal.
 When a matching notarized build exists, installation uses it automatically;
 otherwise it installs the locally built optimized bundle.
+Programs honor an inherited `NO_COLOR` setting. When opening from an automation
+shell that sets it implicitly, use `env -u NO_COLOR just open` for normal colors.
 
 ## Packaging
 
@@ -142,10 +144,16 @@ printf '\033[31mhello\033[0m\r\n' | just replay 80 24
 
 The last Rust implementation is preserved on
 [`archive/rust-2026-11-08`](https://github.com/HelgeSverre/terminal/tree/archive/rust-2026-11-08)
-at `a7076261ad216658c6fd89d8dab5d756f75de5ca`. Historical comparisons can consume
+at `91908204c4f8b56b795b4fc51da74813cd9125a7`, also tagged
+`rust-before-swift-9190820`. Historical comparisons can consume
 explicit frozen binaries; the active repository contains no Rust implementation.
 Pinned Unicode data, licenses and reproduction commands live in
 [tools/unicode](tools/unicode/README.md).
+
+The Swift cutover reached 86.9–92.2% of Rust throughput across the four standard
+visible-app workloads. The full SQL stress case reached 67.9%; that gap remains
+open. See the [cutover measurements and validation](docs/swift-cutover.md) for
+the paired results, build sizes and distribution evidence.
 
 The native sources share one Swift compiler module. `native/Emulation` owns
 VT interpretation, document/history, input encoding, search, graphics protocol

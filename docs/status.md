@@ -5,7 +5,8 @@ The goal remains active. This is a working development milestone, not v1 complet
 Implemented and locally exercised:
 
 - Native macOS 15 AppKit bundle, precompiled Metal shaders, ad-hoc signing, Run action.
-- 16-byte cells, copy-on-write physical rows, symbolic styles, bounded history.
+- Swift-owned rows with stable identities, direct immutable snapshots, indexed
+  history, symbolic styles and bounded history retention.
 - Streaming VT/UTF-8, bounded CSI/OSC and constant-memory unsupported string discard.
 - Deferred wrap, wide repair, SGR, cursor/margins, erase/insert/delete/scroll/tab/REP,
   DEC save/restore, normal/alternate screens, reset, replies, title/links/palette.
@@ -30,8 +31,8 @@ Implemented and locally exercised:
 - Metal glyph atlas/instanced quads, demand-only rendering, Retina metrics.
   Atlas pages grow lazily. Pressure uses bounded direct glyph textures, then a
   visible replacement after the exact-glyph budget is exhausted; oversized
-  glyphs bypass atlas allocation. Per-renderer limits are implemented, while a
-  process-wide GPU budget remains work.
+  glyphs bypass atlas allocation. Global glyph residency accounting and the
+  process-wide glyph budget are enforced across renderers.
 - Explicitly redrawable OSC 133 prompts retain their row/column/pending-wrap
   boundary. Width reflow clears only the marked prompt suffix before the shell
   redraws, preserving earlier output; unmarked prompts and inactive primary
@@ -43,8 +44,9 @@ Implemented and locally exercised:
   basic literal search, windows/tabs/nested splits and font size controls.
 - Minimal pane-only content with Obel Mono; geometric block and common box glyphs.
 - App icon, bundle identity `no.helgesverre.terminal`, Developer ID signing,
-  notarized/stapled app and PKG, transactional personal Applications installation,
-  private GitHub repository and a passing macOS CI test run.
+  notarized/stapled app and PKG distribution artifacts, private GitHub repository
+  and a passing macOS CI test run. The matching notarized Swift app is installed
+  in the user's personal Applications folder.
 - Graphite/yellow visual style drawn from Helge's Trace/Splash/Glue/Shepherd
   projects, with backing-scale-aware 8-point insets, native dark window chrome,
   and a separate settings window with inline validation. Two visual rounds
@@ -54,8 +56,9 @@ Implemented and locally exercised:
   Files/shared memory, image numbers, relative/Unicode placements and protocol
   animation are not supported. Primary width reflow clears placements; image
   anchor remapping and complete deletion/scroll-region semantics remain work.
-- Typed binary cell snapshot bridge with small JSON metadata and binary image
-  bytes; exact old/new bridge equivalence and copy lifetime tests pass.
+- Direct immutable Swift snapshots carry screen, history, viewport and image
+  state without the former binary-cell bridge; indexed history/anchor lookups
+  keep retained-snapshot and viewport work inside the document owner.
 - Bounded visible accessibility projection with UTF-16↔cluster/cell maps,
   line/range/selection lookup, screen-coordinate geometry and local selection
   changes. Attributed text reports fonts, colors, underlines, strikethrough and
@@ -99,12 +102,26 @@ Implemented and locally exercised:
 
 Current automated evidence:
 
-- `just test`: 54 core semantic/property-style fixtures, 6 display-clear fixtures,
-  9 margin fixtures,
-  3 keypad fixtures, 7 viewport fixtures, 7 search fixtures, 13 graphics fixtures,
-  6 clipboard fixtures and the full official Unicode 18 break suite; strict Clippy;
-  native build; ten real PTY scenarios including bash/fish/Neovim/tmux/fzf output
-  replayed through the core with invariant checks and ordered protocol replies.
+- Final Swift runtime validation is green in macOS CI run `42535806699` at
+  `5cfe701`. The earlier `0587616` source has a 501-second local full-suite pass;
+  the runtime-34 input changes have focused Encoder/KeyMap coverage and eight
+  native fixtures. The final Emulator assertion correction changes tests only.
+- `reports/runtime34-evidence/summary.md`: both 16 MiB × ten-run visible-app
+  orders pass every standard workload. Swift/Rust throughput ratios range from
+  86.8797% to 92.2243%; both apps exit naturally with no survivors. These are
+  alternate-screen parser/barrier measurements, not display latency.
+- `reports/sql-full-34bd618-evidence/summary.md`: the paired 8.16 GB primary
+  SQL stress run completes and drains in both implementations, but Swift is
+  47.093159 MiB/s versus Rust's 69.319794 MiB/s (67.9361%). This remains below
+  the 70% target and is not hidden by the standard-workload result.
+- `reports/build-comparison-0587616/summary.md`: one immutable, warm-cache,
+  complete-app build pair measured Rust `just build` at 29.470697 seconds and
+  Swift `just release-build` at 32.433977 seconds. The recipes intentionally
+  do different work, so this is provenance rather than a language-only or
+  statistical compile-speed comparison.
+- `reports/runtime34-evidence/summary.md` retains eight passing owned native
+  fixtures, including Kitty demo coverage after muting macOS output; all record
+  natural exit and empty cleanup.
 - Native clipboard tests use private named pasteboards for allow/deny, queued
   cancellation, stale/closed callbacks, prompt bounds and a real PTY read-denial
   exchange. An explicit child handshake makes the pending-request EOF case
@@ -140,14 +157,6 @@ Current automated evidence:
   replacement glyphs without omitted glyph quads or Metal command errors. The
   test waits for the target pane revision's GPU completion; it does not capture
   compositor pixels. Replacement counts include repeated uses across frames.
-- `reports/core-benchmark.json`: actual five-run release headless throughput and
-  one 10k-row resize measurement, including parser finish and final snapshot.
-- `reports/core-benchmark-prune.json`: three alternating baseline/candidate pairs
-  of five samples, with immutable binary/source identity. Deferred row-resource
-  maintenance and scalar width lookup improved median ASCII replay from 115.52
-  to 125.74 MiB/s and mixed replay from 14.13 to 16.47 MiB/s. These measurements
-  cover the recorded candidate, before subsequent buffer-reuse and sharing
-  corrections; they do not establish the throughput of the combined main build.
 - `reports/metal-shell.png`: observed local native shell window.
 - `reports/dmscene-kitty-hakkuh.json`: real native player, 640×400 Kitty image,
   controls, resize, successful child exit and no Metal command errors.
@@ -157,21 +166,9 @@ Current automated evidence:
   setup is marked failed and superseded, since it fell back to text.
 - `reports/dmscene-kitty-960-binary.json` repeats the high-resolution image test
   after the typed bridge and accessibility implementation; all checks pass.
-- `reports/sql-cat-stress.json`: actual 8,162,501,113-byte SQL file through `/bin/cat`:
-  312.19 seconds, 25.00 MiB/s PTY stream throughput, 95.3 MiB peak sampled physical
-  footprint, bounded 64 MiB history, two live resizes, all output drained and parsed,
-  exit 0, zero Metal errors. Main heartbeat p95 5.05 ms, maximum 5.87 ms; ordered
-  owner probe p95 18.22 ms, maximum 131.67 ms. No SQL contents saved in report.
-- After the typed bridge, `reports/sql-cat-stress-binary.json` repeats the same
-  full file in 113.51 seconds at 68.77 MiB/s wire throughput, with 112.5 MiB
-  peak sampled footprint, zero Metal errors, bounded history, both resizes and
-  complete drain/parse/exit. Main heartbeat p95 4.38 ms, max 5.05 ms; ordered
-  owner probes p95 0.72 ms, max 125.98 ms (including resize).
-- `just benchmark`: identical PTY payloads plus ordered DSR drain in isolated
-  app configurations; separates parser throughput from display-latency claims.
-  `reports/comparison-002` records the initial three-app pilot. After the typed
-  cell bridge, `reports/comparison-003` records ~2.5× improvement here, with fresh
-  reference runs; both reference apps still lead all four throughput workloads.
+- Earlier three-app pilots in `reports/comparison-002` and
+  `reports/comparison-003` are retained as historical parser evidence, not as
+  claims about the frozen Swift runtime.
 
 Required work remaining before the requested completion gate:
 
@@ -195,34 +192,38 @@ Required work remaining before the requested completion gate:
   The bundled custom terminfo is available;
   switching the default identity still needs local/remote compatibility evidence.
 - Resumable reflow work quanta and fallible temporary-memory allowances. REP now yields in bounded quanta; actor/input ordering during REP is tested.
-- Complete typed epoch/anchor lifetimes and owner-confined, eviction-aware selection;
-  richer search navigation/options and broader live-edit validation coverage.
-  The primary viewport now uses stable anchors, but fractional pixel scrolling,
-  unseen-output accounting and indexed anchor lookup remain work. Selected content
-  is still held in one bounded host snapshot rather than owner-validated endpoints.
+- Broader selection/search navigation, live-edit and fractional pixel-scrolling
+  validation. Indexed history and stable viewport anchors are implemented, but
+  selection still holds a bounded host snapshot rather than owner-validated,
+  eviction-aware endpoints. Multi-display and long-lived interaction coverage
+  remains incomplete.
 - Shared reactor/owner lanes, complete end-to-end admission accounting, global
   memory budgets and broader queue-race tests. Transactional paste cancellation
   with bracket closure is implemented and tested at every partial-write offset.
-- Retained row snapshot ABI/revision reuse, row/run shaping caches, asynchronous raster service,
-  ligatures, complete geometric glyph coverage, global GPU budgets and GPU recovery testing.
+- Row/run shaping caches, asynchronous raster service, ligatures, complete
+  geometric glyph coverage, GPU recovery testing and broader resource-retirement
+  stress.
 - Accessibility history fetching and real VoiceOver
   validation, real CJK input methods and dead keys/layout/Option-policy testing,
   composition routing during focus/resize.
 - Broader configuration validation and lifecycle/configuration tests. Persisted font size/history/Option settings are implemented.
 - Sustained idle/GPU/startup/latency/memory measurements and complete application
   interaction corpus, multi-display/sleep/scale and resource-retirement stress.
-- Performance targets: current ASCII/mixed replay and reflow measurements do not
-  meet all original acceptance targets. Measurements must guide further changes.
-- Clean-machine installation and broader signed-distribution lifecycle tests.
-  Local Developer ID signing and app/PKG notarization now pass; development
-  builds remain distinct from those distribution artifacts.
+- Performance: the runtime-34 standard visible-app gate passes in both orders,
+  but the paired full-SQL workload is 67.9361% of Rust and remains below the
+  70% target. Measurements must guide further changes.
+- Clean-machine installation, update/rollback and broader signed-distribution
+  lifecycle tests. Final app/PKG notarization, stapling and trust validation
+  pass; development builds remain distinct from those distribution artifacts.
 
-The signed 0.1.3/build 4 milestone was built from clean source `240bced`.
-Both app and PKG were accepted by Apple's notary service, stapled and validated;
-independent signature and Gatekeeper checks also pass. Signed-app final-window
-and Command–Q fixtures exited and reaped their HUP-resistant PTY children.
-`reports/distribution-0.1.3.json` records artifact hashes and the passing source
-CI run. Installation remains deferred while the installed 0.1.1 has user sessions.
+The signed `0.2.0`/build `5` runtime milestone is frozen at source `34bd618`.
+Its app and PKG were accepted by Apple's notary service, stapled and passed
+trust validation. The final runtime's close fixtures exit and reap their owned
+PTY children. `reports/distribution-0.2.0.json` records the independent signature,
+stapling, Gatekeeper and signed-app shutdown checks. After the user closed their
+old sessions, installation completed and every regular file was verified against
+the notarized source. Separate signed native and editing smoke tests pass; an
+earlier inactive/key-window failure is retained with its cause unresolved.
 
 The Vulkan-specific requirements have been superseded by the authorized Metal
 platform decision; the terminal behavior and native quality gates remain the goal.

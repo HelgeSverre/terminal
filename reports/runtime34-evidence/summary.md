@@ -33,9 +33,10 @@ This is runtime-34 evidence only. The immutable 058 build pair remains
 separate in [build-comparison-0587616](../build-comparison-0587616/summary.md),
 and the earlier 65 acceptance evidence remains separate in
 [swift-app-acceptance-65cb446-evidence](../swift-app-acceptance-65cb446-evidence/summary.md).
-The test-only `5cfe701` follow-up is not part of this runtime result. CI for
-that follow-up is pending, so this report does not claim CI success, promotion,
-or final replacement readiness.
+The test-only `5cfe701` follow-up is not part of this runtime measurement.
+Subsequent CI and promotion are recorded separately in the
+[cutover record](../../docs/swift-cutover.md); the raw runtime evidence remains
+unchanged.
 
 The paired 8.16 GB primary-history SQL stress result is separate:
 [Swift reaches 67.9361% of Rust throughput there](../sql-full-34bd618-evidence/summary.md),

@@ -1,5 +1,10 @@
 # Swift replacement: promotion and remaining v1 work
 
+Promotion completed on Main at `3b1fbb7`; the final validated candidate is
+`5cfe701` (runtime `34bd618`). See [the cutover record](swift-cutover.md) for the
+completed gates and actual measurements. The planning checkpoint below is
+historical; its remaining v1 priorities still inform subsequent work.
+
 Source review: Swift `65cb446`, Rust Main `3b18531`. This plan supersedes the
 current-status portions of `swift-replacement-audit.md`; that document and
 `swift-architecture-plan.md` retain the earlier design history. No runtime

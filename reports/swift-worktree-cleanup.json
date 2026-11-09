@@ -1,0 +1,19 @@
+{
+  "completed_at": "2026-11-09T00:20:30Z",
+  "removed_worktree": "/Users/helge/code/terminal-swift-experiment",
+  "removed_head": "5cfe7017e2b8dd6bf20e315ee3ce4df3da4e5a3f",
+  "archive": "/Users/helge/.codex/artifacts/terminal-swift-worktree-5cfe701.tar.gz",
+  "archive_sha256": "a86e29ad3ef31c65327dd315f5f445b266803041546d0b4a41b643fe9ddfcd9c",
+  "manifest": "/Users/helge/.codex/artifacts/terminal-swift-worktree-5cfe701.manifest.jsonl",
+  "manifest_sha256": "7e60729e48bab17582098a9124623c300ec45c7546ce4cb58fec22fad5c13eea",
+  "archive_entries": 5967,
+  "verification": "Every entry/type/mode/content digest/link compared after temporary extraction before removal; only .git excluded. Three dirty generated report files explicitly verified against the archive before removal.",
+  "removed_logical_bytes": 1005768704,
+  "archive_and_manifest_bytes": 295694350,
+  "net_logical_reclaim_bytes": 710074354,
+  "physical_reclaim_caveat": "APFS clones/compression/snapshots can change physical reclaimed space.",
+  "remaining_worktree": "/Users/helge/code/terminal",
+  "rust_reference_retained": "/Users/helge/code/terminal/target/frozen-main-9cc6f92.app",
+  "release_relocation": "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618",
+  "additional_unused_cargo_cache_removed": "/Users/helge/code/terminal/target/release"
+}

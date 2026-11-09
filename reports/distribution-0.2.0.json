@@ -1,0 +1,220 @@
+{
+  "verified_at": "2026-11-08T23:53:02Z",
+  "version": "0.2.0",
+  "build": "5",
+  "source_commit": "34bd618195fb5f18fca00ca6e20df0aa098955b4",
+  "validated_source_commit": "5cfe7017e2b8dd6bf20e315ee3ce4df3da4e5a3f",
+  "main_merge_commit": "3b1fbb784babb9419010ad7f2344f410ad5cde6b",
+  "bundle_identifier": "no.helgesverre.terminal",
+  "ci_run": "https://github.com/HelgeSverre/terminal/actions/runs/42535806699",
+  "ci_conclusion": "success",
+  "artifact_directory": "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618",
+  "artifact_manifest_sha256": "8cc6bd0c667dff90623ccedcae2c29a14d7f11b0883647aae59969793d71742c",
+  "notarized_app": {
+    "status": "Accepted",
+    "id": "2567c183-f3db-4a92-884c-06229a713030",
+    "message": "Processing complete"
+  },
+  "notarized_pkg": {
+    "id": "0a76e124-ce78-430e-bab4-0ba6ed09612d",
+    "status": "Accepted",
+    "message": "Processing complete"
+  },
+  "verification_commands": [
+    {
+      "argv": [
+        "codesign",
+        "--verify",
+        "--strict",
+        "--deep",
+        "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/Helge Terminal.app"
+      ],
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "codesign",
+        "-d",
+        "--verbose=4",
+        "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/Helge Terminal.app"
+      ],
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": "Executable=/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/Helge Terminal.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20500 size=15747 flags=0x10000(runtime) hashes=485+3 location=embedded\nVersionPlatform=1\nVersionMin=983040\nVersionSDK=1704448\nHash type=sha256 size=32\nCandidateCDHash sha256=cb50a93f7c0ccb86bd3c8c6467d2b80a99c93506\nCandidateCDHashFull sha256=cb50a93f7c0ccb86bd3c8c6467d2b80a99c93506c6562b23a4c09b138e9f6ee7\nHash choices=sha256\nCMSDigest=cb50a93f7c0ccb86bd3c8c6467d2b80a99c93506c6562b23a4c09b138e9f6ee7\nCMSDigestType=2\nExecutable Segment base=0\nExecutable Segment limit=1130496\nExecutable Segment flags=0x1\nPage size=4096\nCDHash=cb50a93f7c0ccb86bd3c8c6467d2b80a99c93506\nSignature size=9058\nAuthority=Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=9 Nov 2026 at 00:43:25\nNotarization Ticket=stapled\nInfo.plist entries=16\nTeamIdentifier=9Z2L5FBZS3\nRuntime Version=26.2.0\nSealed Resources version=2 rules=13 files=24\nInternal requirements count=1 size=184\n"
+    },
+    {
+      "argv": [
+        "xcrun",
+        "stapler",
+        "validate",
+        "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/Helge Terminal.app"
+      ],
+      "exit_status": 0,
+      "stdout": "Processing: /Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/Helge Terminal.app\nThe validate action worked!\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "spctl",
+        "--assess",
+        "--type",
+        "execute",
+        "--verbose=2",
+        "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/Helge Terminal.app"
+      ],
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/Helge Terminal.app: accepted\nsource=Notarized Developer ID\n"
+    },
+    {
+      "argv": [
+        "pkgutil",
+        "--check-signature",
+        "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/HelgeTerminal-0.2.0-arm64.pkg"
+      ],
+      "exit_status": 0,
+      "stdout": "Package \"HelgeTerminal-0.2.0-arm64.pkg\":\n   Status: signed by a developer certificate issued by Apple for distribution\n   Notarization: trusted by the Apple notary service\n   Signed with a trusted timestamp on: 2026-11-08 23:43:52 +0000\n   Certificate Chain:\n    1. Developer ID Installer: Liseth Solutions AS (9Z2L5FBZS3)\n       Expires: 2027-02-01 22:12:15 +0000\n       SHA256 Fingerprint:\n           91 A3 BC B8 2A 87 92 B2 93 7A 02 84 4C 01 A3 84 1B 6D 5F 96 26 D3 \n           D5 05 B5 49 32 26 33 80 3F 9E\n       ------------------------------------------------------------------------\n    2. Developer ID Certification Authority\n       Expires: 2027-02-01 22:12:15 +0000\n       SHA256 Fingerprint:\n           7A FC 9D 01 A6 2F 03 A2 DE 96 37 93 6D 4A FE 68 09 0D 2D E1 8D 03 \n           F2 9C 88 CF B0 B1 BA 63 58 7F\n       ------------------------------------------------------------------------\n    3. Apple Root CA\n       Expires: 2035-02-09 21:40:36 +0000\n       SHA256 Fingerprint:\n           B0 B1 73 0E CB C7 FF 45 05 14 2C 49 F1 29 5E 6E DA 6B CA ED 7E 2C \n           68 C5 BE 91 B5 A1 10 01 F0 24\n\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "xcrun",
+        "stapler",
+        "validate",
+        "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/HelgeTerminal-0.2.0-arm64.pkg"
+      ],
+      "exit_status": 0,
+      "stdout": "Processing: /Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/HelgeTerminal-0.2.0-arm64.pkg\nThe validate action worked!\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "spctl",
+        "--assess",
+        "--type",
+        "install",
+        "--verbose=2",
+        "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/HelgeTerminal-0.2.0-arm64.pkg"
+      ],
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/HelgeTerminal-0.2.0-arm64.pkg: accepted\nsource=Notarized Developer ID\n"
+    }
+  ],
+  "shutdown_checks": {
+    "window": {
+      "app_pid": 38092,
+      "child_pid": 38095,
+      "trigger": "last-window-close",
+      "passed": true,
+      "app_exited": true,
+      "child_exited": true,
+      "bundle_path": "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/Helge Terminal.app"
+    },
+    "shortcut": {
+      "app_pid": 38212,
+      "child_pid": 38214,
+      "trigger": "cmd+q",
+      "passed": true,
+      "app_exited": true,
+      "child_exited": true,
+      "bundle_path": "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/Helge Terminal.app"
+    }
+  },
+  "artifact_sha256": {
+    "app_executable": "070795fdd413fdc44d428a1fd13d1d413836e3fe763fbb5cf63db0e94c66d0d7",
+    "pkg": "5a4134791a8c6e293096dc1a354cf126a6d59faf8e04eb6c14c8ea788cba767e",
+    "zip": "723f7dde72aef286dbbeafe501fa9bc198c6fb0c966b1d851953bf25a1537da3"
+  },
+  "installation": {
+    "status": "installed",
+    "verified_at": "2026-11-09T00:09:15Z",
+    "path": "/Users/helge/Applications/Helge Terminal.app",
+    "notarized_source": "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/Helge Terminal.app",
+    "every_regular_file_sha256_matches": true,
+    "user_confirmed_old_sessions_closed": true
+  },
+  "fixture_preparation_failure": {
+    "reason": "First isolated closure runner launch lacked its reports directory. The owned app exited and cleanup ran; prepared the directory and reran both checks successfully.",
+    "not_a_passing_attempt": true
+  },
+  "main_ci_run": "https://github.com/HelgeSverre/terminal/actions/runs/42537105929",
+  "main_ci_conclusion": "success",
+  "signed_native_checks": {
+    "native-smoke": {
+      "report": "/Users/helge/.codex/artifacts/terminal-signed-activation-diagnostic/signed-after-controls/native-smoke.json",
+      "sha256": "8b9b87381554686a0ad081015f752bb0a613c48150302c4260edf00e120ebf7d",
+      "passed": true,
+      "committed_report": "reports/distribution-0.2.0-evidence/signed-normal.json"
+    },
+    "editing-smoke": {
+      "report": "/Users/helge/.codex/artifacts/terminal-signed-activation-diagnostic/signed-after-controls/editing-smoke.json",
+      "sha256": "5ae1117514d90e8abb10e4c5a30d2cd9c229b410389acf0a239524ab08628c03",
+      "passed": true,
+      "committed_report": "reports/distribution-0.2.0-evidence/signed-editing.json"
+    }
+  },
+  "additional_activation_observation": {
+    "initial_report": "/Users/helge/.codex/artifacts/terminal-signed-activation-diagnostic/signed-direct-inactive.json",
+    "initial_sha256": "38140e0de662619fe5a983ce1c0cd426c356295e4290ce96a5309148a9ce2606",
+    "initial_passed": false,
+    "observed": "App inactive, no key window, no Metal submissions; navigation stopped at phase6. Later isolated signed native and editing tests passed. Cause not conclusively established.",
+    "overlapping_controls_are_not_causal_evidence": true,
+    "runtime_change_made": false,
+    "committed_initial_report": "reports/distribution-0.2.0-evidence/initial-inactive.json"
+  },
+  "installed_verification_commands": [
+    {
+      "argv": [
+        "codesign",
+        "--verify",
+        "--strict",
+        "--deep",
+        "/Users/helge/Applications/Helge Terminal.app"
+      ],
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "xcrun",
+        "stapler",
+        "validate",
+        "/Users/helge/Applications/Helge Terminal.app"
+      ],
+      "exit_status": 0,
+      "stdout": "Processing: /Users/helge/Applications/Helge Terminal.app\nThe validate action worked!\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "spctl",
+        "--assess",
+        "--type",
+        "execute",
+        "--verbose=2",
+        "/Users/helge/Applications/Helge Terminal.app"
+      ],
+      "exit_status": 0,
+      "stdout": "",
+      "stderr": "/Users/helge/Applications/Helge Terminal.app: accepted\nsource=Notarized Developer ID\n"
+    }
+  ],
+  "launch_environment_incident": {
+    "observed_at": "2026-11-09T00:19:50Z",
+    "affected_app_pid": 46765,
+    "inherited_color_variables": {
+      "NO_COLOR": "1",
+      "TERM": "dumb",
+      "COLORTERM": ""
+    },
+    "cause": "Root opened the app from an automation environment with NO_COLOR=1; its child applications honor the variable.",
+    "clean_app_pid": 54839,
+    "clean_launch_color_override_present": false,
+    "existing_sessions_preserved": true,
+    "evidence": "reports/distribution-0.2.0-evidence/files-color-proof.json"
+  }
+}

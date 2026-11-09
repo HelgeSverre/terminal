@@ -1,0 +1,37 @@
+{
+  "pty": {
+    "disabled": {
+      "exit_status": 0,
+      "sgr_count": 0,
+      "tty": true
+    },
+    "enabled": {
+      "exit_status": 0,
+      "sgr_count": 25,
+      "tty": true
+    }
+  },
+  "visual": {
+    "disabled": {
+      "pid": 56564,
+      "sgr_sequences": 0,
+      "screenshot": "/Users/helge/.codex/artifacts/terminal-codex-rendering-regression/files-disabled.png",
+      "exit_status": 0,
+      "natural_exit": true
+    },
+    "clean": {
+      "pid": 56739,
+      "sgr_sequences": 25,
+      "screenshot": "/Users/helge/.codex/artifacts/terminal-codex-rendering-regression/files-clean.png",
+      "exit_status": 0,
+      "natural_exit": true
+    }
+  },
+  "note": "Same notarized Swift runtime; controlled NO_COLOR=1 versus unset. Screenshots inspected locally: monochrome versus colored folders. Both fixture apps exited naturally; no user processes targeted.",
+  "raw_files": {
+    "/Users/helge/.codex/artifacts/terminal-codex-rendering-regression/files-disabled.ansi": "6aeb53fd513e100d03f0109f89de991b2fb6ce047047742cba18e07749647017",
+    "/Users/helge/.codex/artifacts/terminal-codex-rendering-regression/files-clean.ansi": "1f06b15ac9f1a742b7d3fa9ee1177705cd3bb955dd3a874e6b7feec7b2be614a",
+    "/Users/helge/.codex/artifacts/terminal-codex-rendering-regression/files-disabled.png": "b894e540338585628329716f1dbc71dbb5b85647b21a727d4a7f7ed0bed4c30e",
+    "/Users/helge/.codex/artifacts/terminal-codex-rendering-regression/files-clean.png": "e9a3b5160338797887e920eaddf5c5e8bb186eba112776fa85a3456062dad889"
+  }
+}
