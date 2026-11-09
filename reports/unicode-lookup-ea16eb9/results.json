@@ -1,0 +1,309 @@
+{
+  "baseline_revision": "ea16eb90b403147a9983a8d98a39199ec422c432",
+  "patch_sha256": "2edde8e5c4cd890e79249e579df63bb991a8c2976386025e67dcdc69144eca38",
+  "checks": {
+    "baseline-unicode18_corpus": "pass",
+    "baseline-unicode_decoder": "pass",
+    "baseline-emulator": "pass",
+    "baseline-terminal_document_ownership": "pass",
+    "candidate-unicode18_corpus": "pass",
+    "candidate-unicode_decoder": "pass",
+    "candidate-emulator": "pass",
+    "candidate-terminal_document_ownership": "pass"
+  },
+  "category_code_points_checked": 1114112,
+  "invalid_high_values_checked": [
+    1114112,
+    4294967295
+  ],
+  "corpus_cases": 853,
+  "timing": {
+    "ascii chunk=1": {
+      "bytes": 448000,
+      "baseline": [
+        83.119,
+        79.869,
+        79.259,
+        80.444,
+        80.77,
+        77.765,
+        79.145,
+        81.395,
+        79.57,
+        79.543,
+        82.855,
+        79.79,
+        79.528,
+        79.284
+      ],
+      "candidate": [
+        83.742,
+        81.17,
+        83.982,
+        81.401,
+        80.925,
+        80.687,
+        80.64,
+        83.179,
+        82.178,
+        79.273,
+        80.051,
+        79.114,
+        80.612,
+        80.047
+      ],
+      "baseline_median_ms": 79.68,
+      "candidate_median_ms": 80.806,
+      "speedup": 0.9860653911838231
+    },
+    "ascii chunk=4096": {
+      "bytes": 448000,
+      "baseline": [
+        14.836,
+        14.794,
+        15.319,
+        14.859,
+        14.56,
+        15.466,
+        14.55,
+        15.695,
+        15.328,
+        14.015,
+        15.588,
+        15.203,
+        14.196,
+        15.002
+      ],
+      "candidate": [
+        15.652,
+        15.256,
+        15.571,
+        15.222,
+        14.499,
+        15.302,
+        15.891,
+        15.471,
+        15.092,
+        14.75,
+        14.585,
+        14.494,
+        15.044,
+        14.856
+      ],
+      "baseline_median_ms": 14.9305,
+      "candidate_median_ms": 15.157,
+      "speedup": 0.9850564095797322
+    },
+    "clusters chunk=1": {
+      "bytes": 672000,
+      "baseline": [
+        106.712,
+        106.336,
+        105.299,
+        106.723,
+        105.672,
+        104.367,
+        105.859,
+        105.126,
+        107.546,
+        105.417,
+        105.756,
+        105.934,
+        105.4,
+        107.084
+      ],
+      "candidate": [
+        99.934,
+        99.744,
+        99.492,
+        99.528,
+        99.798,
+        100.202,
+        101.735,
+        99.55,
+        99.074,
+        98.669,
+        99.403,
+        98.6,
+        101.444,
+        100.256
+      ],
+      "baseline_median_ms": 105.8075,
+      "candidate_median_ms": 99.64699999999999,
+      "speedup": 1.0618232360231619
+    },
+    "clusters chunk=4096": {
+      "bytes": 672000,
+      "baseline": [
+        63.485,
+        64.317,
+        65.286,
+        64.626,
+        64.137,
+        64.108,
+        63.896,
+        64.676,
+        64.349,
+        64.247,
+        64.094,
+        64.41,
+        63.701,
+        63.872
+      ],
+      "candidate": [
+        59.232,
+        58.288,
+        58.872,
+        58.272,
+        58.054,
+        58.898,
+        59.375,
+        58.958,
+        59.484,
+        60.315,
+        58.933,
+        58.906,
+        57.032,
+        58.498
+      ],
+      "baseline_median_ms": 64.19200000000001,
+      "candidate_median_ms": 58.902,
+      "speedup": 1.0898101932022684
+    },
+    "unicode chunk=1": {
+      "bytes": 1120000,
+      "baseline": [
+        144.196,
+        145.105,
+        145.647,
+        145.821,
+        143.073,
+        146.336,
+        145.799,
+        145.469,
+        144.653,
+        145.023,
+        147.138,
+        147.065,
+        145.033,
+        144.871
+      ],
+      "candidate": [
+        132.29,
+        130.89,
+        130.078,
+        129.72,
+        132.229,
+        133.785,
+        132.807,
+        130.87,
+        130.013,
+        129.552,
+        131.967,
+        130.76,
+        131.675,
+        130.531
+      ],
+      "baseline_median_ms": 145.28699999999998,
+      "candidate_median_ms": 130.88,
+      "speedup": 1.11007793398533
+    },
+    "unicode chunk=4096": {
+      "bytes": 1120000,
+      "baseline": [
+        40.042,
+        40.851,
+        39.859,
+        39.653,
+        39.74,
+        40.737,
+        41.312,
+        40.394,
+        40.271,
+        41.649,
+        41.085,
+        41.029,
+        40.856,
+        42.022
+      ],
+      "candidate": [
+        29.476,
+        28.728,
+        28.756,
+        29.376,
+        29.234,
+        29.064,
+        28.547,
+        29.235,
+        29.047,
+        28.823,
+        29.123,
+        29.833,
+        29.018,
+        27.824
+      ],
+      "baseline_median_ms": 40.794,
+      "candidate_median_ms": 29.055500000000002,
+      "speedup": 1.404002684517561
+    }
+  },
+  "generation": {
+    "baseline": {
+      "compile_seconds": 0.405932000001485,
+      "run_seconds": [
+        0.17965499999991152,
+        0.011199000000488013,
+        0.010625000002619345
+      ],
+      "command": [
+        "xcrun",
+        "swiftc",
+        "-parse-as-library",
+        "/private/tmp/terminal-astra-unicode-lookup-ea16eb9/baseline/tools/GenerateUnicode18.swift",
+        "-module-cache-path",
+        "/private/tmp/terminal-astra-unicode-lookup-ea16eb9/module-cache",
+        "-o",
+        "/private/tmp/terminal-astra-unicode-lookup-ea16eb9/generate-baseline"
+      ],
+      "generated_source_bytes": 52926,
+      "generated_source_sha256": "a739bd57c1964b5a2e7b634cf23287a560d380f7cefd4e5875e44600105337d9"
+    },
+    "candidate": {
+      "compile_seconds": 1.0070939999968687,
+      "run_seconds": [
+        0.295522999997047,
+        0.09697700000106124,
+        0.09780099999989034
+      ],
+      "command": [
+        "xcrun",
+        "swiftc",
+        "-parse-as-library",
+        "/private/tmp/terminal-astra-unicode-lookup-ea16eb9/candidate/tools/GenerateUnicode18.swift",
+        "-module-cache-path",
+        "/private/tmp/terminal-astra-unicode-lookup-ea16eb9/module-cache",
+        "-o",
+        "/private/tmp/terminal-astra-unicode-lookup-ea16eb9/generate-candidate"
+      ],
+      "generated_source_bytes": 117309,
+      "generated_source_sha256": "ee56570a04c0bcad3d9d6ea288fba2bd841c82fc320be48efebf6130445c81f4"
+    }
+  },
+  "bench_builds": {
+    "baseline": {
+      "seconds": 21.47653999999966,
+      "binary_bytes": 1076736
+    },
+    "candidate": {
+      "seconds": 19.41859100000147,
+      "binary_bytes": 1077008
+    }
+  },
+  "runtime_table_payload_bytes": {
+    "baseline": 19512,
+    "candidate": 18560
+  },
+  "unique_pages": 111,
+  "binary_delta_bytes": 272,
+  "build_timing_caveat": "One sequential baseline then candidate build with a shared warmed module cache; not an unbiased build-speed comparison."
+}

@@ -1,0 +1,2 @@
+PASS Unicode span scalar differential: 2400 cases
+PASS TerminalDocument ownership: snapshots, document segmentation, batch transactions, local wide-pair repair, cluster width, margin insert and clipped cells

@@ -14,30 +14,67 @@ import CryptoKit
     guard recordsDigest == "df81b11f8af22806c3d5f0fecd8ca93537e129d4b8cd7a3270dfb3fc83babec5" else {
       fatalError("grapheme input checksum changed: \(recordsDigest)")
     }
-    let entries = String(decoding: records, as: UTF8.self).split(separator: "\n").map { record -> String in
-      let fields = record.split(separator: ";")
-      guard fields.count == 3, UInt32(fields[0], radix: 16) != nil,
-        UInt32(fields[1], radix: 16) != nil else { fatalError("malformed grapheme range") }
-      return "    (0x\(fields[0]), 0x\(fields[1]), .\(fields[2])),"
-    }
+    let categories = ["Other", "CR", "Control", "Extend", "Extended_Pictographic", "InCB_Consonant",
+                      "L", "LF", "LV", "LVT", "Prepend", "Regional_Indicator", "SpacingMark", "T", "V", "ZWJ"]
+    precondition(categories.count <= 16, "grapheme categories require wider encoding")
+    let categoryCodes = Dictionary(uniqueKeysWithValues: categories.enumerated().map { ($0.element, UInt8($0.offset)) })
+    var dense = [UInt8](repeating: 0, count: 0x110000)
+    let entries = String(decoding: records, as: UTF8.self).split(separator: "\n")
     guard entries.count == 1626 else { fatalError("incomplete grapheme ranges") }
+    var previousUpper = -1
+    for record in entries {
+      let fields = record.split(separator: ";")
+      guard fields.count == 3, let lower = Int(fields[0], radix: 16),
+            let upper = Int(fields[1], radix: 16), let category = categoryCodes[String(fields[2])],
+            lower > previousUpper, lower <= upper, upper < dense.count else {
+        fatalError("malformed or overlapping grapheme range")
+      }
+      for scalar in lower...upper { dense[scalar] = category }
+      previousUpper = upper
+    }
+    // Four bits encode the existing sixteen categories. Identical 256-scalar
+    // pages share one leaf; all gaps retain the input's default Other value.
+    var pageIndex: [UInt8] = []
+    var leaves: [UInt8] = []
+    var pageIDs: [[UInt8]: UInt8] = [:]
+    for start in stride(from: 0, to: dense.count, by: 256) {
+      let page = stride(from: start, to: start + 256, by: 2).map { dense[$0] | (dense[$0 + 1] << 4) }
+      if let existing = pageIDs[page] {
+        pageIndex.append(existing)
+      } else {
+        guard pageIDs.count < 256 else { fatalError("grapheme page index requires widening") }
+        let index = UInt8(pageIDs.count)
+        pageIDs[page] = index
+        pageIndex.append(index)
+        leaves.append(contentsOf: page)
+      }
+    }
+    func literal(_ values: [UInt8]) -> String {
+      stride(from: 0, to: values.count, by: 16).map { start in
+        "    " + values[start..<min(start + 16, values.count)].map { String(format: "0x%02X", $0) }.joined(separator: ", ") + ","
+      }.joined(separator: "\n")
+    }
     let generated = """
     // Generated from tools/unicode/grapheme-ranges-18.0.0.txt (Unicode 18.0.0).
     // Do not edit: regeneration commands are in tools/unicode/README.md.
     enum Unicode18GraphemeTables {
-      enum Category: UInt8 { case Other, CR, Control, Extend, Extended_Pictographic, InCB_Consonant, L, LF, LV, LVT, Prepend, Regional_Indicator, SpacingMark, T, V, ZWJ }
+      enum Category: UInt8 { case \(categories.joined(separator: ", ")) }
       static let unicodeVersion = "18.0.0"
       static let uaxRevision = 49
       static let fixtureSHA256 = "\(digest)"
       static let completeGeneratedRanges = true
-      static let ranges: [(UInt32, UInt32, Category)] = [
-    \(entries.joined(separator: "\n"))
+      private static let pageIndex: [UInt8] = [
+    \(literal(pageIndex))
+      ]
+      private static let leaves: [UInt8] = [
+    \(literal(leaves))
       ]
       static func category(_ value: UInt32) -> Category {
-        var low = 0, high = ranges.count
-        while low < high { let mid = (low + high) / 2; if ranges[mid].1 < value { low = mid + 1 } else { high = mid } }
-        guard ranges.indices.contains(low), ranges[low].0 <= value else { return .Other }
-        return ranges[low].2
+        guard value <= 0x10FFFF else { return .Other }
+        let page = Int(pageIndex[Int(value >> 8)])
+        let packed = leaves[page * 128 + Int((value & 0xFF) >> 1)]
+        let code = (packed >> UInt8((value & 1) * 4)) & 0x0F
+        return Category(rawValue: code)!
       }
       static func isIncbLinker(_ value: UInt32) -> Bool {
         switch value {
@@ -51,6 +88,6 @@ import CryptoKit
     }
     """
     try (generated + "\n").write(to: output, atomically: true, encoding: .utf8)
-    print("Generated \(entries.count) pinned Unicode 18 grapheme ranges")
+    print("Generated \(entries.count) pinned Unicode 18 ranges as \(pageIDs.count) deduplicated pages (\(pageIndex.count + leaves.count) bytes)")
   }
 }

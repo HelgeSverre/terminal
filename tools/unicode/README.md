@@ -40,8 +40,10 @@ xcrun swiftc -parse-as-library tools/GenerateTerminalWidth.swift -o target/nativ
 target/native/generate-terminal-width
 ```
 
-The migration changes only provenance comments in the generated runtime files;
-all table values and runtime algorithms remain identical.
+The grapheme generator stores the exact categories in deduplicated 256-scalar
+pages, with two four-bit categories per byte. The pinned range input remains
+the exhaustive test oracle; it is not duplicated in the runtime table. Width
+tables and Unicode semantics are unchanged.
 
 ## Unicode17 search lowercase
 

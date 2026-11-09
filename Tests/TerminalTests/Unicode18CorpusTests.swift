@@ -2,8 +2,46 @@ import CryptoKit
 import Foundation
 
 @main enum Unicode18CorpusTests {
+  private static func verifyEveryCategory(root: String) throws {
+    let url = URL(fileURLWithPath: root).appendingPathComponent("tools/unicode/grapheme-ranges-18.0.0.txt")
+    let data = try Data(contentsOf: url)
+    let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    precondition(digest == "df81b11f8af22806c3d5f0fecd8ca93537e129d4b8cd7a3270dfb3fc83babec5")
+    let categories: [String: Unicode18GraphemeTables.Category] = [
+      "Other": .Other, "CR": .CR, "Control": .Control, "Extend": .Extend,
+      "Extended_Pictographic": .Extended_Pictographic, "InCB_Consonant": .InCB_Consonant,
+      "L": .L, "LF": .LF, "LV": .LV, "LVT": .LVT, "Prepend": .Prepend,
+      "Regional_Indicator": .Regional_Indicator, "SpacingMark": .SpacingMark,
+      "T": .T, "V": .V, "ZWJ": .ZWJ,
+    ]
+    let ranges = String(decoding: data, as: UTF8.self).split(separator: "\n").map {
+      record -> (UInt32, UInt32, Unicode18GraphemeTables.Category) in
+      let fields = record.split(separator: ";")
+      return (UInt32(fields[0], radix: 16)!, UInt32(fields[1], radix: 16)!, categories[String(fields[2])]!)
+    }
+    var checked = 0
+    for value in UInt32(0)...0x10FFFF {
+      // Independent range oracle: retain the previous lookup algorithm in
+      // tests, using the pinned neutral input rather than generated pages.
+      var low = 0, high = ranges.count
+      while low < high {
+        let mid = (low + high) / 2
+        if ranges[mid].1 < value { low = mid + 1 } else { high = mid }
+      }
+      let expected: Unicode18GraphemeTables.Category =
+        low < ranges.count && ranges[low].0 <= value ? ranges[low].2 : .Other
+      precondition(Unicode18GraphemeTables.category(value) == expected,
+                   "category mismatch at U+\(String(value, radix: 16))")
+      checked += 1
+    }
+    precondition(Unicode18GraphemeTables.category(0x110000) == .Other)
+    precondition(Unicode18GraphemeTables.category(UInt32.max) == .Other)
+    print("PASS Unicode category oracle: \(checked) code points (including surrogates)")
+  }
+
   static func main() throws {
     let root = CommandLine.arguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
+    try verifyEveryCategory(root: root)
     let fixture = URL(fileURLWithPath: root).appendingPathComponent(
       "tools/unicode/GraphemeBreakTest-18.0.0.txt")
     let bytes = try Data(contentsOf: fixture)

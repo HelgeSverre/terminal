@@ -1,0 +1,18 @@
+{
+  "Sources/Terminal/Text/Unicode18GraphemeTables.swift": {
+    "baseline_sha256": "a739bd57c1964b5a2e7b634cf23287a560d380f7cefd4e5875e44600105337d9",
+    "candidate_sha256": "ee56570a04c0bcad3d9d6ea288fba2bd841c82fc320be48efebf6130445c81f4"
+  },
+  "tools/GenerateUnicode18.swift": {
+    "baseline_sha256": "deefbb653b91070eb78e4e48bde7b2f9ed0dab034ff42f670bd2c75881df42d5",
+    "candidate_sha256": "5ba0862d4f99482ca2f8bb033e3fcfbc86e4a9ce378755b2023cb239f1cb2a4e"
+  },
+  "Tests/TerminalTests/Unicode18CorpusTests.swift": {
+    "baseline_sha256": "907abcc1212c3746b4c245710d15829e3dc1aa4363b78fb625b6b20cb2518965",
+    "candidate_sha256": "927a43f8e66d6902a948811db45453fe94d89e0db8c0581b7d26f6afe89c1ecd"
+  },
+  "tools/unicode/README.md": {
+    "baseline_sha256": "122f33efd375ce212390f79b03e836572dabe1cc162d3a0b601620855a310f48",
+    "candidate_sha256": "71573d61d83d949d1ca2deda4b53698bb1cb818db6d41c2ecf883e620334b5a9"
+  }
+}
