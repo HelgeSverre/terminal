@@ -1,0 +1,10 @@
+{
+  "stage-a.patch": "e522b0e51403aa7b41e28ebf2a0f4803ed45612d1644cc345c22aa18614e1d4a",
+  "stage-b.patch": "d8111ad440d60b5923613c832c979193d47ef693b75c24173d1c9a4d7fba6893",
+  "stage-b-full.patch": "f7636247ecbf922c3ad32e46f52b342619170db8a1b9bf30b7601a2cc5225fef",
+  "stage-a.app/Contents/MacOS/Terminal": "354bb3c5b79cedc7212e76392e8a431145d009400f706264873af7404dc14192",
+  "stage-b.app/Contents/MacOS/Terminal": "f121c243bac7356d4a23fff91eed030baac29d622e0249375f5bca1489e07c71",
+  "stage-b-session-tests": "843d2ced1d0cd885a895ed8a584b3a565af484e9d86dc25884b64622bd342614",
+  "stage-b-endpoint-tests": "20802e487d9ee5c301aad7a5f0a399d236bb720bfbd29eff16a5441bfecd9a46",
+  "stage-b-broker-tests": "43f5d46c2daaea7ebc92de2a3d26406a1ae270a00182d23b078f7cbb8fde656d"
+}

@@ -45,7 +45,11 @@
     "Sources/Terminal/ResizeSmoke.swift",
     "Sources/Terminal/PaneLifecycleSmoke.swift",
     "Sources/Terminal/TabNavigation.swift",
-    "Sources/Terminal/main.swift"
+    "Sources/Terminal/main.swift",
+    "Sources/Terminal/IO/SessionEventQueue.swift",
+    "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+    "Sources/Terminal/IO/PTYReadBroker.swift",
+    "Sources/Terminal/IO/PTYReadEndpoint.swift"
   ],
   "emulation": [
     "Sources/Terminal/Text/TerminalWidth.swift",
@@ -163,7 +167,11 @@
       "Sources/Terminal/CellPalette.swift",
       "Sources/Terminal/VisibleLinkProjection.swift",
       "Sources/Terminal/AccessibilityProjection.swift",
-      "Tests/TerminalTests/SessionTests.swift"
+      "Tests/TerminalTests/SessionTests.swift",
+      "Sources/Terminal/IO/SessionEventQueue.swift",
+      "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+      "Sources/Terminal/IO/PTYReadBroker.swift",
+      "Sources/Terminal/IO/PTYReadEndpoint.swift"
     ],
     "shell_editing": [
       "Sources/Terminal/Emulation/TerminalDocument.swift",
@@ -191,7 +199,11 @@
       "Sources/Terminal/CellPalette.swift",
       "Sources/Terminal/VisibleLinkProjection.swift",
       "Sources/Terminal/AccessibilityProjection.swift",
-      "Tests/TerminalTests/ShellEditingTests.swift"
+      "Tests/TerminalTests/ShellEditingTests.swift",
+      "Sources/Terminal/IO/SessionEventQueue.swift",
+      "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+      "Sources/Terminal/IO/PTYReadBroker.swift",
+      "Sources/Terminal/IO/PTYReadEndpoint.swift"
     ],
     "geometry": [
       "Sources/Terminal/Geometry.swift",
@@ -247,7 +259,11 @@
       "Sources/Terminal/VisibleLinkProjection.swift",
       "Sources/Terminal/AccessibilityProjection.swift",
       "Tests/TerminalTests/BinarySnapshotOracle.swift",
-      "Tests/TerminalTests/SnapshotBridgeTests.swift"
+      "Tests/TerminalTests/SnapshotBridgeTests.swift",
+      "Sources/Terminal/IO/SessionEventQueue.swift",
+      "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+      "Sources/Terminal/IO/PTYReadBroker.swift",
+      "Sources/Terminal/IO/PTYReadEndpoint.swift"
     ],
     "keymap": [
       "Sources/Terminal/Emulation/TerminalDocument.swift",
@@ -475,7 +491,11 @@
       "Sources/Terminal/CellPalette.swift",
       "Sources/Terminal/VisibleLinkProjection.swift",
       "Sources/Terminal/AccessibilityProjection.swift",
-      "Tests/TerminalTests/ClipboardAccessTests.swift"
+      "Tests/TerminalTests/ClipboardAccessTests.swift",
+      "Sources/Terminal/IO/SessionEventQueue.swift",
+      "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+      "Sources/Terminal/IO/PTYReadBroker.swift",
+      "Sources/Terminal/IO/PTYReadEndpoint.swift"
     ],
     "terminal_boundary_regression": [
       "Sources/Terminal/Emulation/TerminalDocument.swift",
@@ -612,6 +632,29 @@
       "Sources/Terminal/Font.swift",
       "Sources/Terminal/Settings.swift",
       "Tests/TerminalTests/SettingsWindowTests.swift"
+    ],
+    "session_ingress": [
+      "Sources/Terminal/IO/SessionEventQueue.swift",
+      "Tests/TerminalTests/SessionIngressTests.swift"
+    ],
+    "pty_descriptor_lifetime": [
+      "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+      "Tests/TerminalTests/PTYDescriptorLifetimeTests.swift"
+    ],
+    "pty_read_broker": [
+      "Sources/Terminal/IO/PTYReadBroker.swift",
+      "Tests/TerminalTests/PTYReadBrokerTests.swift"
+    ],
+    "pty_read_endpoint": [
+      "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+      "Sources/Terminal/IO/PTYReadBroker.swift",
+      "Sources/Terminal/IO/PTYReadEndpoint.swift",
+      "Tests/TerminalTests/PTYReadEndpointTests.swift"
+    ],
+    "pty_admission": [
+      "Sources/Terminal/IO/PTYReadBroker.swift",
+      "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+      "Tests/TerminalTests/PTYAdmissionTests.swift"
     ]
   }
 }

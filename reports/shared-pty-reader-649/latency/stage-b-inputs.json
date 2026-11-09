@@ -1,0 +1,191 @@
+{
+  "command": [
+    "xcrun",
+    "swiftc",
+    "-swift-version",
+    "5",
+    "-O",
+    "-whole-module-optimization",
+    "-target",
+    "arm64-apple-macosx15.0",
+    "-module-cache-path",
+    "/private/tmp/terminal-astra-io-prototype-e62/module-cache",
+    "-import-objc-header",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Interop/Bridge.h",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalDocument.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/DocumentReflow.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/TerminalWidth.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/TerminalWidthTables.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/Unicode18GraphemeTables.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/TerminalText.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalInputEncoder.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/ClipboardProtocol.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/KittyGraphics.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalPalette.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/UnicodeLowercase.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/HistorySearch.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalSnapshot.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/SelectionWordProfile.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalSelection.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/PresentedContent.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalEmulator.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Font.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Preferences.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Transport.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Session.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/SnapshotBridge.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/CellPalette.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/VisibleLinkProjection.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/AccessibilityProjection.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/SessionEventQueue.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/PTYReadBroker.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/PTYReadEndpoint.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/latency/Latency.swift",
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b-Spawn.o",
+    "-framework",
+    "AppKit",
+    "-framework",
+    "QuartzCore",
+    "-framework",
+    "Metal",
+    "-framework",
+    "CoreText",
+    "-framework",
+    "ImageIO",
+    "-o",
+    "/private/tmp/terminal-astra-io-prototype-e62/latency/stage-b-latency"
+  ],
+  "inputs": {
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Interop/Bridge.h": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Interop/Bridge.h",
+      "sha256": "e5baa6ffe077d4fa1ceb6f202e91eebd47119172cd1b0102f512ff4a68d86539"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalDocument.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalDocument.swift",
+      "sha256": "461d2ee88039e5de375c0d899783b0e818db89be5ff0abe46a55db1c08b51480"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/DocumentReflow.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/DocumentReflow.swift",
+      "sha256": "fc6223d765aa98d0e591bb0c0e4cae4ba5ef5a3c1e96ec82ca3080cfead689b7"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/TerminalWidth.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/TerminalWidth.swift",
+      "sha256": "f7d99a4b611254ec1c2e995cc7f5ad3865e17695d0ca735800f5713146f5828f"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/TerminalWidthTables.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/TerminalWidthTables.swift",
+      "sha256": "13ab185b44b914c8e4edae3fc6fcf3d332f4014b2121ad72e8e2a74a214b498d"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/Unicode18GraphemeTables.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/Unicode18GraphemeTables.swift",
+      "sha256": "ee56570a04c0bcad3d9d6ea288fba2bd841c82fc320be48efebf6130445c81f4"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/TerminalText.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/TerminalText.swift",
+      "sha256": "153ede47e6b0cfdad0a2ea5c5cff6512c237cd1852e966ffef584f5ccb894641"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalInputEncoder.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalInputEncoder.swift",
+      "sha256": "e199019a7380032322e527309a35a372a639fcac74ddf7a2f9149ab7044ad5a6"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/ClipboardProtocol.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/ClipboardProtocol.swift",
+      "sha256": "b2a4dd6d70b5731d9755a5f4b93cc2d719c9b909a13a149b9e58f000d190536b"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/KittyGraphics.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/KittyGraphics.swift",
+      "sha256": "436301e6d99efa815b3f5daa85732df9db5bcace5b572fab03f2284bbd111944"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalPalette.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalPalette.swift",
+      "sha256": "6bff4b1f3e751518c72848cb9f4ad0c8fdc2ba8a21d9e77ef1d7f2fb0e8f415e"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/UnicodeLowercase.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/UnicodeLowercase.swift",
+      "sha256": "bf382eebf90afdb116c4ef308d45b5b7c62b4ddbc5957ca78a7aec08d83d5ee4"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/HistorySearch.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/HistorySearch.swift",
+      "sha256": "ffd778ea834cb8a201e6e53d5567d30d7abb5edf34e029a89a68f2e98d7ee362"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalSnapshot.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalSnapshot.swift",
+      "sha256": "1aaac81b232517c9474944771240d6b3a9a95f8c58ba10d71b2b4a0a982f489f"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/SelectionWordProfile.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Text/SelectionWordProfile.swift",
+      "sha256": "921206f9ae3dc2c166bef39e9eebc6a4beb847426209d74f5f7264fd00cc2215"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalSelection.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalSelection.swift",
+      "sha256": "35ec910bc7073fd7c573f040a9a5e128cc32355692ee580629676e6e7d51e97a"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/PresentedContent.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/PresentedContent.swift",
+      "sha256": "9190f31549700be2dbc04c49165d9ab9190d180de33067ed2129e2756d8e70c6"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalEmulator.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Emulation/TerminalEmulator.swift",
+      "sha256": "80430cd8ae3ce8d28f78e56b5d3718d68e768440140380bc4154b51af8e79d66"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Font.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Font.swift",
+      "sha256": "85bf298a15e3d29bbce05fbda7ad3a0b82c99fbadcd1df90718c0a3ad598b023"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Preferences.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Preferences.swift",
+      "sha256": "739bf4455813b03ea763c00ca5a6134037ed37a2853adaf82f7082bb2908478e"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Transport.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Transport.swift",
+      "sha256": "71c6d42805a6fe6884e5f3482f23b756901bfde1b80bfd0649cd8e2f9abeff7b"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Session.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/Session.swift",
+      "sha256": "cf61996316c76db25445b6b35cf6deccf0d05606f6323ec41972a2b78c6414ba"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/SnapshotBridge.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/SnapshotBridge.swift",
+      "sha256": "66b6a59f9020f09b5dd41b323e8e50cb7b9db5e2392db75781fa29e0809b7265"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/CellPalette.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/CellPalette.swift",
+      "sha256": "b372061add8a053c013e7f663471a4e7f94fb9c34f4c33ad65b8c72924376716"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/VisibleLinkProjection.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/VisibleLinkProjection.swift",
+      "sha256": "6144f4caab733d52d68f387e7737ab8a73cd4a951b2b5c8763a34fa89614b5c3"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/AccessibilityProjection.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/AccessibilityProjection.swift",
+      "sha256": "29e8cd12c88ebb9e6e2ebc839bb967c4d2fd8abd82d20f2adcfc7518811815ad"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/SessionEventQueue.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/SessionEventQueue.swift",
+      "sha256": "7977038c2aa1830641e101ef87b0691ad5b2e2242d57ebbe9713cca4922e197d"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/PTYDescriptorLifetime.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+      "sha256": "9d0d10bb532ffed1f9c3e3723c8483fb047be4770a4fac0b4f0ab7c7f90f80e3"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/PTYReadBroker.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/PTYReadBroker.swift",
+      "sha256": "c7250df0eda3f6e0301afe28d562fe0bafd4fa07622ce065e17581c0d54d75c6"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/PTYReadEndpoint.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b/Sources/Terminal/IO/PTYReadEndpoint.swift",
+      "sha256": "777804212825dbb311bf373fdf6e961d9e3e5184b27097b797ac0771bb49e056"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/latency/Latency.swift": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/latency/frozen-2mib/Latency.swift",
+      "sha256": "280a8864d77e1b284136d661f0f1a309f2c72436354127d58a9d7e074b6efff4"
+    },
+    "/private/tmp/terminal-astra-io-prototype-e62/stage-b-Spawn.o": {
+      "artifact": "/private/tmp/terminal-astra-io-prototype-e62/stage-b-Spawn.o",
+      "sha256": "90d65433ea77b738d1eb4049a3dffbf07088458d56239f53ab57f397812c44a7"
+    }
+  },
+  "executable_sha256": "1b04ebf70fb1b0025e913d0696c7fbc3326b2720c58c94f4b42b7e5022b597d4",
+  "hash_capture": "after build; original source reconstructed as documented for baseline/stage-b"
+}

@@ -1,0 +1,453 @@
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+ruby -e 'Dir.glob("{Sources,Tests,tools}/**/*.swift").sort.each { |f| abort("Swift syntax failed: #{f}") unless system("xcrun", "swiftc", "-frontend", "-parse", f) }'
+ruby -e 'Dir.glob("tools/**/*.rb").sort.each { |f| abort("Ruby syntax failed: #{f}") unless system("ruby", "-c", f, out: File::NULL) }'
+#!/usr/bin/env bash
+set -euo pipefail
+ICONSET=target/native/Terminal.iconset
+if [[ target/native/Terminal.icns -nt assets/AppIcon.png ]]; then exit 0; fi
+mkdir -p "$ICONSET"
+for SIZE in 16 32 128 256 512; do
+  sips -z "$SIZE" "$SIZE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}.png" >/dev/null
+  DOUBLE=$((SIZE * 2))
+  sips -z "$DOUBLE" "$DOUBLE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET" -o target/native/Terminal.icns
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT_DIR="$TERMINAL_PROJECT_ROOT"
+BUILD_DIR="$ROOT_DIR/target/native"
+APP_BUNDLE="$ROOT_DIR/dist/Terminal.app"
+case "$1" in development) CONFIGURATION=development; OUTPUT_DIRECTORY=swift-incremental ;; release) CONFIGURATION=release; OUTPUT_DIRECTORY=swift-release ;; *) echo "Unknown build configuration: $1" >&2; exit 2 ;; esac
+mkdir -p "$BUILD_DIR" "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 Sources/TerminalLauncher/Launcher.c -o "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
+xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c Sources/Terminal/Interop/Spawn.c -o "$BUILD_DIR/Spawn.o"
+xcrun -sdk macosx metal -c Resources/Terminal/Terminal.metal -o "$BUILD_DIR/Terminal.air"
+xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+xcrun swift tools/SwiftIncrementalBuild.swift --configuration "$CONFIGURATION"
+cp "$ROOT_DIR/target/$OUTPUT_DIRECTORY/Terminal" "$APP_BUNDLE/Contents/MacOS/Terminal"
+cp Resources/Terminal/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+cp Resources/Terminal/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
+/usr/bin/tic -x -o "$APP_BUNDLE/Contents/Resources/terminfo" Resources/Terminal/Terminal.terminfo
+cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
+ditto Resources/Terminal/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
+ditto assets/fonts "$APP_BUNDLE/Contents/Resources/Fonts"
+codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
+codesign --force --sign - "$APP_BUNDLE"
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+swift-driver version: 1.127.15 Swift incremental compile 63876.31 ms; link 283.02 ms; executable /Users/helge/code/terminal/target/swift-incremental/Terminal
+/Users/helge/code/terminal/dist/Terminal.app/Contents/MacOS/TerminalLauncher: replacing existing signature
+/Users/helge/code/terminal/dist/Terminal.app: replacing existing signature
+mkdir -p target/native
+ruby tools/release_signing_test.rb
+Run options: --seed 4939
+
+# Running:
+
+......
+
+Finished in 0.005119s, 1172.1039 runs/s, 8986.1301 assertions/s.
+
+6 runs, 46 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/release_publisher_test.rb
+Run options: --seed 49079
+
+# Running:
+
+...........
+
+Finished in 0.025712s, 427.8158 runs/s, 1516.8015 assertions/s.
+
+11 runs, 39 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/tui_stress/run.rb --self-test
+PASS tui-stress capture deadline: a 30-second capture may finish after a short driver exercise
+PASS tui-stress installed provenance: one matching receipt required
+ruby tools/tui_stress/fixture.rb --self-test
+PASS tui-stress fixture: binary transcript, PTY geometry and lifecycle bounds
+ruby tools/tui_stress/FixtureTests.rb
+PASS tui-stress fixture: real inner command, Unicode transcript, WINCH relay and forced child cleanup
+ruby tools/tui_stress/provider.rb --self-test
+PASS tui-stress provider: deterministic Responses SSE event lifecycle and Unicode-safe chunks
+xcrun swiftc -parse-as-library -O tools/tui_stress/Driver.swift -o target/native/tui-stress-driver-tests
+target/native/tui-stress-driver-tests --self-test
+PASS TUI stress driver pane identity and layout topology rejection tests; no GUI/input executed
+ruby tools/glyph_policy_test.rb
+PASS glyph policy known-driver-fault
+PASS glyph policy unknown-fault
+PASS glyph policy different-error
+PASS glyph policy probe-success
+PASS glyph policy later-driver-fault
+PASS glyph policy local-default
+PASS glyph policy cpu-failure
+ruby tools/native_smoke_test.rb
+Run options: --seed 33008
+
+# Running:
+
+.....
+
+Finished in 7.139887s, 0.7003 runs/s, 4.4819 assertions/s.
+
+5 runs, 32 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/compare_terminals_test.rb
+Run options: --seed 25159
+
+# Running:
+
+Measuring trial 1: kitty, owned PID 123
+.Measuring trial 1: ghostty, owned PID 123
+.Measuring trial 1: ghostty, owned PID 123
+..Measuring trial 1: ghostty, owned PID 123
+Measuring trial 1: ghostty, owned PID 123
+.
+
+Finished in 0.003009s, 1661.6816 runs/s, 6646.7265 assertions/s.
+
+5 runs, 20 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/compare_terminal_apps_test.rb
+Run options: --seed 2262
+
+# Running:
+
+...Measuring swift app (PID 3021)
+.....
+
+Finished in 0.218434s, 36.6243 runs/s, 54.9365 assertions/s.
+
+8 runs, 12 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/profile_terminal_test.rb
+Run options: --seed 26784
+
+# Running:
+
+...
+
+Finished in 0.417591s, 7.1841 runs/s, 57.4725 assertions/s.
+
+3 runs, 24 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/session_stream_diagnostic_test.rb
+Run options: --seed 61190
+
+# Running:
+
+.
+
+Finished in 0.462761s, 2.1609 runs/s, 17.2875 assertions/s.
+
+1 runs, 8 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/close_smoke_test.rb
+Run options: --seed 46771
+
+# Running:
+
+...
+
+Finished in 5.951317s, 0.5041 runs/s, 3.0245 assertions/s.
+
+3 runs, 18 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/applescript_smoke_test.rb
+Run options: --seed 34615
+
+# Running:
+
+.......
+
+Finished in 0.454897s, 15.3881 runs/s, 50.5609 assertions/s.
+
+7 runs, 23 assertions, 0 failures, 0 errors, 0 skips
+xcrun clang -Wall -Wextra -Werror -O2 Benchmarks/TerminalBench/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
+target/native/terminal-bench-clock-test
+xcrun swiftc -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/DistributionTests.swift -o target/native/distribution-tests
+target/native/distribution-tests
+Ticket service unavailable; retrying staple in 1s…
+Ticket service unavailable; retrying staple in 2s…
+Ticket service unavailable; retrying staple in 1s…
+Ticket service unavailable; retrying staple in 2s…
+Ticket service unavailable; retrying staple in 4s…
+Ticket service unavailable; retrying validate in 1s…
+PASS distribution: transient staple/validate retries, bounded exhaustion, permanent and unrelated failures fail fast
+mkdir -p target/native/automation-dictionary
+xcrun sdp -fs -o target/native/automation-dictionary Resources/Terminal/Terminal.sdef
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 $(xcrun swift tools/SwiftIncrementalBuild.swift --print settings_window) -framework AppKit -framework CoreText -o target/native/settings-window-tests
+target/native/settings-window-tests
+PASS Settings window: semantic navigation, raw invalid drafts, hidden validation, nonfinite recovery, bounds, atomic Apply, Cancel and no persistence
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print visible_links) -framework Foundation -framework AppKit -framework CoreText -o target/native/visible-links-tests
+target/native/visible-links-tests
+INFO visible-links max-grid cells=1048576 index-bytes=4194304 candidate-max-utf16=8192 elapsed-ms=158.23
+INFO visible-links non-delimited cells=1048576 elapsed-ms=120.59
+INFO visible-links dense-ax links=4096 build-ms=55.49 query-and-children-ms=21.62
+INFO visible-links ordinary-grid cells=3000 urls=30 elapsed-ms=0.84
+PASS visible links: projection, AX links, selected UTF-16 ranges and stale setter rejection
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify >&2
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminfo_probe) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminfo-probe
+ruby tools/terminfo_smoke.rb
+PASS terminfo: source compiles, bundle contains the entry, tput strings match, and parser accepts them
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print clipboard_access) target/native/Spawn.o -framework AppKit -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/clipboard-access-tests
+target/native/clipboard-access-tests "$PWD"
+CLIPBOARD_TEST_REPORT=/Users/helge/code/terminal/reports/clipboard-access-tests.json run_id=4153B17D-9875-4946-9022-682B8B952B4C passed=true
+PASS clipboard: one-shot OSC 52 policy, ordered explicit copies, EOF/late close, and private PTY fixtures
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print shell_editing) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/shell-editing-tests
+env -u LANG -u LC_ALL -u LC_CTYPE -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE -u FORCE_COLOR target/native/shell-editing-tests "$PWD"
+SHELL_EDITING_CLEANUP child_reaped=true
+PASS shell editing: isolated zsh Unicode prompt, locale, completion, prompt redraw, resize, erase and cursor edits
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print emulator) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/emulator-tests
+target/native/emulator-tests
+PASS Swift core smoke: grid, SGR, alternate screen, wire input/replies, resize
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_document_ownership) -framework Foundation -o target/native/terminal-document-ownership-tests
+target/native/terminal-document-ownership-tests
+PASS Unicode span scalar differential: 2400 cases
+PASS TerminalDocument ownership: snapshots, document segmentation, batch transactions, local wide-pair repair, cluster width, margin insert and clipped cells
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_document_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-document-oracle-tests
+target/native/terminal-document-oracle-tests
+PASS TerminalDocument oracle: 9 Rust margin scenarios through Swift emulator
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_viewport_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-viewport-oracle-tests
+target/native/terminal-viewport-oracle-tests
+PASS TerminalDocument viewport oracle: 7 Rust viewport scenarios plus anchored flood through Swift emulator
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print history_search) -framework Foundation -o target/native/history-search-tests
+target/native/history-search-tests
+PASS Swift search: immutable pages, soft/hard rows, cancellation, staleness, limits
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_reflow_semantics) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-reflow-semantics-tests
+target/native/terminal-reflow-semantics-tests
+PASS TerminalDocument semantic reflow: inactive primary and rich roundtrip
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_selection) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-selection-tests
+target/native/terminal-selection-tests
+PASS actual copy-byte guard: 24903680 potential bytes, 44 copy turns, 32 REP turns
+PASS owner selection: exact writes, presented proofs, copy policy, row identity, screen state, cancellation
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print presented_content) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/presented-content-tests
+target/native/presented-content-tests
+PASS presented content: issued identities, row proofs/order/boundaries, stable history, bounded validation and cancellation
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_prompt_clear_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-prompt-clear-oracle
+target/native/terminal-prompt-clear-oracle
+PASS Prompt/reflow and display-clear oracles: Unicode byte partitions, erase/retype, sync release/watchdog/resize, phase/readiness
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_scheduler_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-scheduler-oracle
+target/native/terminal-scheduler-oracle
+PASS Terminal scheduler oracle: resumable REP, FIFO suffix, reply pressure, sync deadline, screen-local keyboard, invariants
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_semantic_regression) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-semantic-regression
+target/native/terminal-semantic-regression
+PASS Terminal semantic regression oracle: wrap, UTF-8, rendition, alternates, strings, cursor, wide repair, ECH
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_boundary_regression) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-boundary-regression
+target/native/terminal-boundary-regression
+PASS boundary utf8
+PASS boundary strings
+PASS boundary anchor
+PASS boundary retention
+PASS boundary readiness
+PASS boundary cap
+PASS boundary segmenter
+PASS boundary width
+PASS boundary rep
+PASS boundary movement
+PASS boundary csi-budget
+PASS boundary csi-ingress
+PASS boundary byte-retention
+PASS boundary history-storage
+PASS boundary history-thresholds
+mkdir -p target/native
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_graphics_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-graphics-oracle-tests
+target/native/terminal-graphics-oracle-tests
+PASS graphics ABI ignored-png-metadata
+PASS graphics ABI axis-limit
+PASS graphics ABI transport-fields
+PASS graphics ABI retired-anchor-cap
+PASS graphics ABI png-zlib
+PASS graphics ABI height-identity
+PASS graphics ABI partitions
+PASS graphics ABI atomic-chunks
+PASS graphics ABI malformed-atomic
+PASS graphics ABI cross-screen-delete
+PASS graphics ABI checked-ids
+PASS graphics ABI cursor-layout
+PASS graphics ABI reset-scroll
+PASS graphics ABI upload-lifecycle
+PASS graphics ABI delete-cache
+PASS graphics ABI feature-query
+PASS graphics ABI dmscene
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_palette) -framework Foundation -o target/native/terminal-palette-tests
+target/native/terminal-palette-tests
+PASS terminal palette: OSC 4/10/11/104 queries, color grammar and reset semantics
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print unicode18_corpus) -framework Foundation -o target/native/unicode18-corpus
+target/native/unicode18-corpus "$PWD" --strict
+Unicode 18 corpus: 853 cases, 0 boundary failures
+PASS Unicode category oracle: 1114112 code points (including surrogates)
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print unicode_decoder) -framework Foundation -o target/native/unicode-decoder-tests
+target/native/unicode-decoder-tests
+PASS Swift Unicode smoke: clusters, widths, chunked UTF-8, malformed-prefix oracle and Unicode 18 pin
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print unicode_lowercase) -framework Foundation -o target/native/unicode-lowercase-tests
+target/native/unicode-lowercase-tests
+PASS Unicode lowercase: Unicode 17.0.0, 1488 Rust-pinned mappings
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_width) -framework Foundation -o target/native/terminal-width-tests
+target/native/terminal-width-tests
+PASS terminal width: 24 source-exact sequences
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print input_encoder) -framework Foundation -o target/native/input-encoder-tests
+target/native/input-encoder-tests
+PASS Swift input encoder: legacy, application keypad, paste/focus, Kitty events
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print window_stress_motion) -framework AppKit -framework Foundation -framework CoreGraphics -o target/native/window-stress-motion-tests
+target/native/window-stress-motion-tests
+WindowStressMotionTests passed
+mkdir -p target/native
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print tab_navigation) -framework AppKit -o target/native/tab-navigation-tests
+target/native/tab-navigation-tests
+Tab navigation tests passed
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print osc52_protocol) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/osc52-protocol-tests
+target/native/osc52-protocol-tests
+PASS OSC 52: streaming parser/C ABI, strict padding, aborts, bounded payloads, queue lifecycle
+PASS PTY locale: LANG=<default> LC_ALL= LC_CTYPE= CODESET=UTF-8
+PASS PTY locale: LANG=<default> LC_ALL= LC_CTYPE= CODESET=UTF-8
+PASS PTY locale: LANG=en_US.UTF-8 LC_ALL= LC_CTYPE= CODESET=UTF-8
+PASS PTY locale: LANG=C LC_ALL= LC_CTYPE= CODESET=US-ASCII
+PASS PTY locale: LANG=en_US.UTF-8 LC_ALL=C LC_CTYPE= CODESET=US-ASCII
+PASS PTY locale: LANG=en_US.UTF-8 LC_ALL= LC_CTYPE=C CODESET=US-ASCII
+PASS PTY locale: LANG=C LC_ALL=en_US.UTF-8 LC_CTYPE=C CODESET=UTF-8
+PASS PTY locale: LANG=C LC_ALL= LC_CTYPE=en_US.UTF-8 CODESET=UTF-8
+PASS PTY locale: LANG=en_US.UTF-8 LC_ALL= LC_CTYPE= CODESET=UTF-8
+PASS PTY locale: LANG=<default> LC_ALL=C LC_CTYPE=en_US.UTF-8 CODESET=US-ASCII
+PASS PTY: 37 123 (40 bytes, child reaped, final output drained)
+PASS PTY: FINAL_SENTINEL (240014 bytes, child reaped, final output drained)
+PASS PTY: exec failure (0 bytes, child reaped, final output drained)
+PASS PTY: cwd failure (0 bytes, child reaped, final output drained)
+PASS PTY: ENV_OK (6 bytes, child reaped, final output drained)
+PASS PTY: BASH_CORPUS_OK (14 bytes, child reaped, final output drained)
+PASS PTY: FISH_CORPUS_OK (14 bytes, child reaped, final output drained)
+PASS PTY: NVIM_CORPUS_OK (5698 bytes, child reaped, final output drained)
+PASS PTY: TMUX_CORPUS_OK (1082 bytes, child reaped, final output drained)
+PASS PTY: FZF_CORPUS_OK (10949 bytes, child reaped, final output drained)
+PASS transport: every byte offset of bracket opening, Unicode payload and closing; idempotent cancel; unbracketed cancel; ordinary writes preserved
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print session_ingress) -o target/native/session-ingress-tests
+target/native/session-ingress-tests
+PASS owner queue: delivery identity, partial and zero-byte lease, barriers, replacement, cancellation, drain, sliced Data
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_descriptor_lifetime) -o target/native/pty-descriptor-lifetime-tests
+target/native/pty-descriptor-lifetime-tests
+PASS descriptor lifetime: cancellation orders, held leases, close once, duplicate acknowledgments, fd reuse
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_read_broker) -o target/native/pty-read-broker-tests
+target/native/pty-read-broker-tests
+PASS broker: output/control/output FIFO, bounded coalescing, credit retained through delivery and REP, ordered EOF, idempotent stop
+xcrun swiftc -D SESSION_IO_TESTING -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_read_endpoint) -o target/native/pty-read-endpoint-tests
+target/native/pty-read-endpoint-tests
+PASS read endpoint: credit returned before pause publication resumes without another owner notification; cancellation retires source
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_admission) -o target/native/pty-admission-tests
+target/native/pty-admission-tests
+PASS admission: exact bounded queued-ahead bytes, control barrier, EOF versus accepted input and descriptor write rejection
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print session) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests
+target/native/session-tests "$PWD"
+SESSION_TEST_REPORT=/Users/helge/code/terminal/reports/session-tests.json run_id=3FEFE2CC-FF5F-4D3C-93E0-AA9F1B5074D0 passed=true
+PASS session: REP ordering, lossless admission, live-mode paste encoding, saturation/cancel/close, owned-child reaping
+PASS geometry: all block characters stay in bounds; half blocks tile odd/even cells without gaps; box strokes meet cell edges
+PASS statistics: empty/finite/nonfinite distributions serialize as JSON values
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print glyph_raster_worker) -framework AppKit -framework CoreText -o target/native/glyph-raster-worker-tests
+target/native/glyph-raster-worker-tests
+PASS glyph raster worker: dedupe, completion, immutable recipe
+mkdir -p target/native
+xcrun swiftc -D GLYPH_RESIDENCY_TESTING $(xcrun swift tools/SwiftIncrementalBuild.swift --print glyph_residency) -framework AppKit -framework CoreText -framework Metal -o target/native/glyph-residency-tests
+target/native/glyph-residency-tests
+GLYPH_RESIDENCY_CHECKPOINT=before_mtl_create_system_default_device
+GLYPH_RESIDENCY_DEVICE=name=Apple M2 Max registry_id=4294968926 unified=true low_power=false headless=false max_buffer=17179869184 apple2=true mac2=true metal3=true
+GLYPH_RESIDENCY_CHECKPOINT=before_heap_texture_size_and_align
+GLYPH_RESIDENCY_CHECKPOINT=after_heap_texture_size_and_align
+GLYPH_RESIDENCY_CHECKPOINT=before_probe_make_heap
+GLYPH_RESIDENCY_CHECKPOINT=after_probe_make_heap
+GLYPH_RESIDENCY_CHECKPOINT=before_probe_make_heap_texture
+GLYPH_RESIDENCY_CHECKPOINT=after_probe_make_heap_texture
+GLYPH_RESIDENCY_CHECKPOINT=before_sync_residency_scenarios
+GLYPH_RESIDENCY_CHECKPOINT=before_async_residency_scenarios
+GLYPH_RESIDENCY_CHECKPOINT=after_async_residency_scenarios
+GLYPH_RESIDENCY_CHECKPOINT=before_mask_texture_readback
+GLYPH_RESIDENCY_CHECKPOINT=after_mask_texture_readback
+GLYPH_RESIDENCY_CHECKPOINT=before_color_texture_readback
+GLYPH_RESIDENCY_CHECKPOINT=after_color_texture_readback
+GLYPH_RESIDENCY_CHECKPOINT=before_production_metallib
+GLYPH_RESIDENCY_CHECKPOINT=after_production_metallib
+GLYPH_RESIDENCY_CHECKPOINT=before_offscreen_r8_pipeline
+GLYPH_RESIDENCY_CHECKPOINT=after_offscreen_r8_submit
+GLYPH_RESIDENCY_CHECKPOINT=after_offscreen_r8_readback
+GLYPH_RESIDENCY_CHECKPOINT=before_offscreen_rgba_fixtures
+GLYPH_RESIDENCY_CHECKPOINT=after_offscreen_rgba_fixtures
+PASS async residency: A+B→B, direct pin drain, surface union/detach, mixed materials, multi-page, reservation release, quiescence
+PASS glyph residency: tiny-budget churn, stable two-glyph working set, pins, stale generation, bounded negatives, exactly-once release, production R8/RGBA shader fixtures
+PASS preferences: home, tilde, paths, pane settings, private defaults, color validation and viewport geometry
+PASS direct Swift snapshot bridge: independent binary/JSON equivalence, styles/links, Unicode, search, scroll, images, sync gate, owned lifetimes
+PASS native key map: keypad/application wire, alternate layout facts, modifiers, and enhanced release

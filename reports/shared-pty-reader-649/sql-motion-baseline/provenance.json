@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "app": "/private/tmp/terminal-shared-reader-final-649/Baseline.app",
+  "source_name": "reflow-latest-9.sql",
+  "window_motion_requested": true,
+  "source_bytes": 8162501113,
+  "source_identity": [
+    16777232,
+    732076605,
+    8162501113,
+    1792592227,
+    931268800
+  ],
+  "executable_sha256": "8d7388f850978beeb4224c20f4067f30d1c5e501001cc698db25839584b92652",
+  "runner_sha256": "85919482c07323c5eb48edefb556a1f81469eb93a0d7d5f676c3f827e68c6055",
+  "scope": "Full local file through /bin/cat, primary history and scheduled live resize probes; no file contents recorded.",
+  "pid": 96440,
+  "exit_status": 0,
+  "natural_exit": true,
+  "cleanup_survivors": []
+}

@@ -1,0 +1,47 @@
+{
+  "baseline": "649083cde98fc2f4c8cd2e65104d4f1ebcb601f8",
+  "files": {
+    "Sources/Terminal/Session.swift": "21adc9255ba49a510bcb311eb7988a5ec37912705a9e6cfa829f179ec6ad8369",
+    "Sources/Terminal/IO/SessionEventQueue.swift": "32675d24b567709e6e3e5eab872f436884485da2005ced0344b4147714d01485",
+    "Sources/Terminal/IO/PTYDescriptorLifetime.swift": "9d0d10bb532ffed1f9c3e3723c8483fb047be4770a4fac0b4f0ab7c7f90f80e3",
+    "Sources/Terminal/IO/PTYReadBroker.swift": "83a2fc129334e69b26b64c80a57332f7565ceb32d0e851263d01db6430a1e974",
+    "Sources/Terminal/IO/PTYReadEndpoint.swift": "11b0c77ea1fc67c51539a9231c962e7bf82af28a6c66ceb2c052bd73141e8c3e",
+    "Tests/TerminalTests/SessionIngressTests.swift": "905d7498d5c707befff4ca33bc1277ed3e804c38043891a9be89574e3bc63dad",
+    "Tests/TerminalTests/PTYDescriptorLifetimeTests.swift": "3c43e7045022312683b5aafd9408c8310bf9e785dd8e9b7f6aedc837fc2ae268",
+    "Tests/TerminalTests/PTYReadBrokerTests.swift": "04cf2d2b4f2f4352cf7376406ecbb82fd8a58f9a00c1c33c8f87d465c1f0ad09",
+    "Tests/TerminalTests/PTYReadEndpointTests.swift": "979efc1fea9f24d22869bb26ce9c5fc98a9a0286411dae0484a4e7783df98839",
+    "Tests/TerminalTests/PTYAdmissionTests.swift": "89031880ce5d43456e649b3195523f9d47719840755be2faf294459c73ac28ad",
+    "tools/swift-sources.json": "0eead324c0a6950e375058889a59584d7bd9316622f5485f06e98ff0b9514abf"
+  },
+  "patch_sha256": "bc23cc507f5f7253e42c561499944bb9b2de59dd886684977de4ec3bdb54bf98",
+  "tests": {
+    "session_ingress": [
+      "Sources/Terminal/IO/SessionEventQueue.swift",
+      "Tests/TerminalTests/SessionIngressTests.swift"
+    ],
+    "pty_descriptor_lifetime": [
+      "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+      "Tests/TerminalTests/PTYDescriptorLifetimeTests.swift"
+    ],
+    "pty_read_broker": [
+      "Sources/Terminal/IO/PTYReadBroker.swift",
+      "Tests/TerminalTests/PTYReadBrokerTests.swift"
+    ],
+    "pty_read_endpoint": [
+      "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+      "Sources/Terminal/IO/PTYReadBroker.swift",
+      "Sources/Terminal/IO/PTYReadEndpoint.swift",
+      "Tests/TerminalTests/PTYReadEndpointTests.swift"
+    ],
+    "pty_admission": [
+      "Sources/Terminal/IO/PTYReadBroker.swift",
+      "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
+      "Tests/TerminalTests/PTYAdmissionTests.swift"
+    ]
+  },
+  "app": "/private/tmp/terminal-astra-io-prototype-e62/rebased-649.app",
+  "app_executable_sha256": "34798ae9dfbaab0e77a2c6feb042d2409c4a0ba5965e79f4ccabcd77b6a4e4c5",
+  "app_provenance": "/private/tmp/terminal-astra-io-prototype-e62/rebased-649-app.provenance.json",
+  "session_report": "/private/tmp/terminal-astra-io-prototype-e62/rebased-649/reports/session-tests.json",
+  "session_binary_sha256": "8819e2aaad025b25763d213a38677396f6f7eca1353ab3b0c2885a062d10b93e"
+}

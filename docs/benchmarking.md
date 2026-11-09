@@ -1,7 +1,7 @@
 # Performance measurements
 
-The [current three-app comparison](../reports/terminal-comparison-2026-11-09/README.md)
-measures the Swift app, Ghostty and Kitty with ten samples per workload in two
+The [three-app comparison](../reports/terminal-comparison-2026-11-09/README.md)
+measures Swift `9354d3a`, Ghostty and Kitty with ten samples per workload in two
 reversed launch orders. Run it with the reference apps installed:
 
 ```shell
@@ -14,6 +14,12 @@ alone. All apps use 100×30 cells and configured Obel Mono 14; native cell-pixel
 sizes differ. The driver measures PTY processing through an ordered reply,
 including backpressure; it does not measure displayed FPS or input-to-photon
 latency. Alternate-screen workloads exclude retained history.
+
+The later [shared-reader comparison](../reports/shared-pty-reader-649/README.md)
+measures the reader change against `649083c`, including a full SQL dump with
+window motion and separate sustained-flood input/resize latency gates. Keep its
+paired app gains separate from the earlier Ghostty/Kitty observations: the
+runtime and display geometry differ between those captures.
 
 The earlier [Swift–Ghostty baseline](../reports/ghostty-swift-2026-11-09/README.md)
 retains its raw results, limits and feature comparison. Its two-app runner is

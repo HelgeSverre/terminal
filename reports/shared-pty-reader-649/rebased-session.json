@@ -1,0 +1,237 @@
+{
+  "cancel_to_reap_seconds" : 0.0018880367279052734,
+  "checks" : {
+    "accessibility_presented_range_round_trips_through_session" : true,
+    "all_owned_children_reaped" : true,
+    "cancel_close_under_three_seconds" : true,
+    "closed_focus_and_key_releases_are_quiet" : true,
+    "closed_text_input_is_reported" : true,
+    "committed_text_round_trip" : true,
+    "expanded_key_write_rejected" : true,
+    "finished_pty_refuses_text" : true,
+    "finished_pty_retains_search" : true,
+    "finished_pty_retains_selection_copy_and_link_actions" : true,
+    "focus_release_preserves_viewport" : true,
+    "input_admitted_for_ordered_output" : true,
+    "input_after_accepted_output_is_bracketed" : true,
+    "input_before_mode_suffix_is_unbracketed" : true,
+    "large_paste_accepted" : true,
+    "link_activation_accepts_unchanged_history_proof" : true,
+    "modifier_keys_preserve_anchored_viewport" : true,
+    "ordered_mode_encoding_after_rep" : true,
+    "ordinary_ingress_busy" : true,
+    "oversize_paste_rejected" : true,
+    "pending_link_activation_close_cancels_and_reaps" : true,
+    "pending_resize_close_is_fair_and_cancels" : true,
+    "pending_selection_close_is_fair_and_cancels" : true,
+    "physical_key_reaches_pty" : true,
+    "rapid_resize_returns_to_original_before_input" : true,
+    "read_buffer_owned_fifo_and_eof" : true,
+    "release_admitted_under_ingress_pressure" : true,
+    "rep_completed" : true,
+    "resize_rejection_preserves_fifo_and_pty" : true,
+    "resumable_resize_commits_before_later_input" : true,
+    "saturated_cancel_close_reaped" : true,
+    "search_close_cancelled" : true,
+    "search_found_and_highlighted" : true,
+    "search_latest_query_completed" : true,
+    "search_owner_probe_under_100ms" : true,
+    "search_replacement_cancelled" : true,
+    "selection_accepted_input_clears_owner_state" : true,
+    "selection_copy_callback_raw_reaches_pty" : true,
+    "selection_copy_delivery_is_bounded" : true,
+    "selection_copy_is_immutable_before_later_output" : true,
+    "selection_cross_screen_state_restores" : true,
+    "selection_fifo_preserves_output_mode_order" : true,
+    "selection_nonsemantic_input_preserves_owner_state" : true,
+    "selection_stale_hit_is_rejected" : true,
+    "selection_word_profile_configuration_is_fifo" : true,
+    "split_children_reaped" : true,
+    "split_inherits_cwd" : true,
+    "typed_key_paths_admitted" : true,
+    "typed_legacy_metadata_rejected" : true,
+    "typed_metadata_rejected" : true,
+    "typing_follows_tail" : true,
+    "viewport_scroll_anchored" : true,
+    "zsh_startup_gate_blocks_a" : true,
+    "zsh_startup_input_admitted_after_b" : true
+  },
+  "failures" : [
+
+  ],
+  "finished_at" : "2026-11-09T23:22:32Z",
+  "owned_session_cleanup" : {
+    "all_children_reaped" : true,
+    "expected" : 23,
+    "reported" : 23,
+    "states" : [
+      {
+        "child_pid" : 94676,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 0
+      },
+      {
+        "child_pid" : 94674,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 1
+      },
+      {
+        "child_pid" : 94677,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 2
+      },
+      {
+        "child_pid" : 94706,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 3
+      },
+      {
+        "child_pid" : 94700,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 4
+      },
+      {
+        "child_pid" : 94780,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 5
+      },
+      {
+        "child_pid" : 94768,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 6
+      },
+      {
+        "child_pid" : 94695,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 7
+      },
+      {
+        "child_pid" : 94762,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 8
+      },
+      {
+        "child_pid" : 94786,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 9
+      },
+      {
+        "child_pid" : 94774,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 10
+      },
+      {
+        "child_pid" : 94742,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 11
+      },
+      {
+        "child_pid" : 94726,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 12
+      },
+      {
+        "child_pid" : 94733,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 13
+      },
+      {
+        "child_pid" : 94750,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 14
+      },
+      {
+        "child_pid" : 94714,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 15
+      },
+      {
+        "child_pid" : 94692,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 16
+      },
+      {
+        "child_pid" : 94689,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 17
+      },
+      {
+        "child_pid" : 94708,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 18
+      },
+      {
+        "child_pid" : 94683,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 19
+      },
+      {
+        "child_pid" : 94720,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 20
+      },
+      {
+        "child_pid" : 94694,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 21
+      },
+      {
+        "child_pid" : 94756,
+        "child_reaped" : true,
+        "child_reaped_reported" : true,
+        "session" : 22
+      }
+    ],
+    "unreaped_pids" : [
+
+    ]
+  },
+  "passed" : true,
+  "resumable_reflow" : {
+    "cancelled_close_after_begin" : true,
+    "cancelled_winch" : "",
+    "committed_owner_probes" : 2,
+    "committed_winch" : [
+      "24 20"
+    ],
+    "rapid_winch" : [
+      "24 80",
+      "24 80"
+    ],
+    "rejected_winch" : ""
+  },
+  "run_id" : "F8AD2D78-A7F3-4D07-B087-CFE155E762C9",
+  "started_at" : "2026-11-09T23:22:26Z",
+  "statuses" : [
+    "Process exited (status 0); draining output",
+    "Session finished",
+    "Paste limit is 1 MiB",
+    "Input busy",
+    "Input busy",
+    "Input busy",
+    "Paste cancelled",
+    "Process exited (status 1); draining output"
+  ]
+}

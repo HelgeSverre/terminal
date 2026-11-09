@@ -1,0 +1,330 @@
+{
+  "1-baseline.json": [
+    {
+      "workload": "unicode",
+      "mode": "input",
+      "samples": 128,
+      "backlog_high_water": 5120,
+      "percentiles": {
+        "input_ms": {
+          "p50": 0.2145,
+          "p95": 0.381667,
+          "p99": 0.618125,
+          "max": 0.942541
+        },
+        "probe_ms": {
+          "p50": 0.056458,
+          "p95": 0.154041,
+          "p99": 0.396292,
+          "max": 0.845916
+        }
+      }
+    },
+    {
+      "workload": "unicode",
+      "mode": "resize",
+      "samples": 128,
+      "backlog_high_water": 76800,
+      "percentiles": {
+        "input_ms": {
+          "p50": 78.410083,
+          "p95": 80.793916,
+          "p99": 98.102417,
+          "max": 140.585958
+        },
+        "probe_ms": {
+          "p50": 78.257083,
+          "p95": 80.573709,
+          "p99": 97.569708,
+          "max": 140.142042
+        }
+      }
+    },
+    {
+      "workload": "sql",
+      "mode": "input",
+      "samples": 128,
+      "backlog_high_water": 4770,
+      "percentiles": {
+        "input_ms": {
+          "p50": 0.192792,
+          "p95": 0.370666,
+          "p99": 0.675125,
+          "max": 0.780334
+        },
+        "probe_ms": {
+          "p50": 0.041792,
+          "p95": 0.138333,
+          "p99": 0.508084,
+          "max": 0.642541
+        }
+      }
+    },
+    {
+      "workload": "sql",
+      "mode": "resize",
+      "samples": 128,
+      "backlog_high_water": 28672,
+      "percentiles": {
+        "input_ms": {
+          "p50": 25.151,
+          "p95": 26.716625,
+          "p99": 27.185292,
+          "max": 28.869709
+        },
+        "probe_ms": {
+          "p50": 25.036958,
+          "p95": 26.586125,
+          "p99": 26.917208,
+          "max": 28.693666
+        }
+      }
+    }
+  ],
+  "2-lookahead64.json": [
+    {
+      "workload": "unicode",
+      "mode": "input",
+      "samples": 128,
+      "backlog_high_water": 65536,
+      "percentiles": {
+        "input_ms": {
+          "p50": 2.061292,
+          "p95": 2.988334,
+          "p99": 3.362875,
+          "max": 3.39125
+        },
+        "probe_ms": {
+          "p50": 1.923167,
+          "p95": 2.815334,
+          "p99": 3.244375,
+          "max": 3.252292
+        }
+      }
+    },
+    {
+      "workload": "unicode",
+      "mode": "resize",
+      "samples": 128,
+      "backlog_high_water": 65536,
+      "percentiles": {
+        "input_ms": {
+          "p50": 79.703666,
+          "p95": 81.554917,
+          "p99": 84.849625,
+          "max": 91.273
+        },
+        "probe_ms": {
+          "p50": 79.549334,
+          "p95": 81.340083,
+          "p99": 84.6625,
+          "max": 91.06525
+        }
+      }
+    },
+    {
+      "workload": "sql",
+      "mode": "input",
+      "samples": 128,
+      "backlog_high_water": 65536,
+      "percentiles": {
+        "input_ms": {
+          "p50": 1.138375,
+          "p95": 1.72075,
+          "p99": 1.97175,
+          "max": 1.97875
+        },
+        "probe_ms": {
+          "p50": 0.994666,
+          "p95": 1.600709,
+          "p99": 1.806792,
+          "max": 1.925375
+        }
+      }
+    },
+    {
+      "workload": "sql",
+      "mode": "resize",
+      "samples": 128,
+      "backlog_high_water": 65536,
+      "percentiles": {
+        "input_ms": {
+          "p50": 26.967583,
+          "p95": 28.169541,
+          "p99": 28.6755,
+          "max": 28.837875
+        },
+        "probe_ms": {
+          "p50": 26.782167,
+          "p95": 27.955833,
+          "p99": 28.522708,
+          "max": 28.542459
+        }
+      }
+    }
+  ],
+  "3-lookahead64.json": [
+    {
+      "workload": "unicode",
+      "mode": "input",
+      "samples": 128,
+      "backlog_high_water": 65536,
+      "percentiles": {
+        "input_ms": {
+          "p50": 1.975333,
+          "p95": 3.189,
+          "p99": 3.650084,
+          "max": 3.845916
+        },
+        "probe_ms": {
+          "p50": 1.872708,
+          "p95": 3.113042,
+          "p99": 3.585417,
+          "max": 3.63225
+        }
+      }
+    },
+    {
+      "workload": "unicode",
+      "mode": "resize",
+      "samples": 128,
+      "backlog_high_water": 65536,
+      "percentiles": {
+        "input_ms": {
+          "p50": 79.677292,
+          "p95": 81.670416,
+          "p99": 82.742917,
+          "max": 83.07825
+        },
+        "probe_ms": {
+          "p50": 79.473583,
+          "p95": 81.49425,
+          "p99": 82.520917,
+          "max": 82.882625
+        }
+      }
+    },
+    {
+      "workload": "sql",
+      "mode": "input",
+      "samples": 128,
+      "backlog_high_water": 65536,
+      "percentiles": {
+        "input_ms": {
+          "p50": 1.120459,
+          "p95": 1.803542,
+          "p99": 2.106792,
+          "max": 2.126583
+        },
+        "probe_ms": {
+          "p50": 0.954292,
+          "p95": 1.625333,
+          "p99": 1.987708,
+          "max": 2.003709
+        }
+      }
+    },
+    {
+      "workload": "sql",
+      "mode": "resize",
+      "samples": 128,
+      "backlog_high_water": 65536,
+      "percentiles": {
+        "input_ms": {
+          "p50": 26.777917,
+          "p95": 28.334667,
+          "p99": 29.283125,
+          "max": 29.434209
+        },
+        "probe_ms": {
+          "p50": 26.626416,
+          "p95": 28.133875,
+          "p99": 28.4725,
+          "max": 29.297458
+        }
+      }
+    }
+  ],
+  "4-baseline.json": [
+    {
+      "workload": "unicode",
+      "mode": "input",
+      "samples": 128,
+      "backlog_high_water": 5120,
+      "percentiles": {
+        "input_ms": {
+          "p50": 0.2015,
+          "p95": 0.294458,
+          "p99": 0.396041,
+          "max": 0.483417
+        },
+        "probe_ms": {
+          "p50": 0.049417,
+          "p95": 0.117292,
+          "p99": 0.135833,
+          "max": 0.375709
+        }
+      }
+    },
+    {
+      "workload": "unicode",
+      "mode": "resize",
+      "samples": 128,
+      "backlog_high_water": 31744,
+      "percentiles": {
+        "input_ms": {
+          "p50": 78.258292,
+          "p95": 80.188417,
+          "p99": 80.8525,
+          "max": 85.2095
+        },
+        "probe_ms": {
+          "p50": 78.057417,
+          "p95": 79.942458,
+          "p99": 80.688667,
+          "max": 85.095125
+        }
+      }
+    },
+    {
+      "workload": "sql",
+      "mode": "input",
+      "samples": 128,
+      "backlog_high_water": 4096,
+      "percentiles": {
+        "input_ms": {
+          "p50": 0.199041,
+          "p95": 0.321666,
+          "p99": 0.583542,
+          "max": 0.715375
+        },
+        "probe_ms": {
+          "p50": 0.037625,
+          "p95": 0.088333,
+          "p99": 0.463625,
+          "max": 0.569083
+        }
+      }
+    },
+    {
+      "workload": "sql",
+      "mode": "resize",
+      "samples": 128,
+      "backlog_high_water": 34816,
+      "percentiles": {
+        "input_ms": {
+          "p50": 25.04325,
+          "p95": 26.361292,
+          "p99": 27.019083,
+          "max": 28.15925
+        },
+        "probe_ms": {
+          "p50": 24.9375,
+          "p95": 26.172292,
+          "p99": 26.773791,
+          "max": 27.963167
+        }
+      }
+    }
+  ]
+}

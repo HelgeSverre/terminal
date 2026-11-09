@@ -31,10 +31,14 @@ compatibility tests and headless tools, rather than the normal rendering path.
 `Sources/Terminal/Emulation` owns interpretation, document/history, protocol input, search,
 graphics state and snapshots; `Sources/Terminal/Text` owns streaming Unicode processing.
 
-Each session currently has a serial Dispatch queue combining PTY readiness and
-terminal mutation. Dispatch sources use the native kernel readiness mechanism;
-no dedicated OS thread is created per session. This preserves single ownership
-but does not yet implement the original shared-reactor/owner-lane separation.
+PTY reads use one shared serial Dispatch lane, separate from each session's
+terminal owner. An ordered broker submits output and semantic controls to that
+owner, with 64 KiB of consumption-held read credit. A 2 MiB prototype improved
+throughput but added tens of milliseconds of input delay under output floods;
+the smaller bound keeps overlap while limiting queued predecessor work. The
+[transport investigation](../reports/shared-pty-reader-649/README.md) records
+throughput, latency, ordering, and descriptor-retirement evidence. Dispatch
+sources use native kernel readiness; no dedicated OS thread is created per pane.
 Each pane owns a Metal layer. A shared rendering service owns glyph residency,
 bounded raster work and the process-wide glyph budget; broader rendering and
 resource-recovery gates remain open.

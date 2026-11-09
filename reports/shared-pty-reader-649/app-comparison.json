@@ -1,0 +1,1704 @@
+{
+  "passed": true,
+  "scope": "Two Swift WMO app builds; sequential B-C-C-B, same PTY driver and geometry. Not display FPS.",
+  "bytes_per_run": 16777216,
+  "runs": 10,
+  "trials": [
+    {
+      "order": [
+        "baseline",
+        "candidate"
+      ],
+      "apps": {
+        "baseline": {
+          "natural_exit": true,
+          "command": [
+            "/private/tmp/terminal-shared-reader-final-649/Baseline.app/Contents/MacOS/Terminal",
+            "--columns",
+            "100",
+            "--rows",
+            "30",
+            "--font-size",
+            "14",
+            "--history-limit",
+            "10000",
+            "--exit-after-command",
+            "--execute",
+            "/private/tmp/terminal-shared-reader-final-649/app-comparison/terminal-bench",
+            "--output",
+            "/private/tmp/terminal-shared-reader-final-649/app-comparison/1-baseline.json",
+            "--terminal",
+            "baseline",
+            "--bytes",
+            "16777216",
+            "--runs",
+            "10",
+            "--columns",
+            "100",
+            "--rows",
+            "30"
+          ],
+          "pid": 95173,
+          "report": {
+            "schema": 2,
+            "driver_version": "0.3.0",
+            "terminal": "baseline",
+            "terminal_pid": 95173,
+            "columns": 100,
+            "rows": 30,
+            "pixel_width": 1700,
+            "pixel_height": 1230,
+            "output_post_processing": true,
+            "idle_seconds": 3.004049,
+            "cpu_timebase": {
+              "numer": 125,
+              "denom": 3
+            },
+            "resource_usage_available": true,
+            "resource_usage_errno": 0,
+            "idle_cpu_percent_one_core": 0.207598,
+            "idle_physical_bytes": 54856384,
+            "workloads": [
+              {
+                "name": "ascii_short_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 62.654924,
+                    "elapsed_seconds": 0.255367,
+                    "terminal_cpu_seconds": 0.466264
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 63.601094,
+                    "elapsed_seconds": 0.251568,
+                    "terminal_cpu_seconds": 0.455105
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 62.62427,
+                    "elapsed_seconds": 0.255492,
+                    "terminal_cpu_seconds": 0.462681
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 63.679818,
+                    "elapsed_seconds": 0.251257,
+                    "terminal_cpu_seconds": 0.47448
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 63.433664,
+                    "elapsed_seconds": 0.252232,
+                    "terminal_cpu_seconds": 0.490129
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 63.242357,
+                    "elapsed_seconds": 0.252995,
+                    "terminal_cpu_seconds": 0.506971
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 61.440865,
+                    "elapsed_seconds": 0.260413,
+                    "terminal_cpu_seconds": 0.506069
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 62.734765,
+                    "elapsed_seconds": 0.255042,
+                    "terminal_cpu_seconds": 0.501708
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 62.598054,
+                    "elapsed_seconds": 0.255599,
+                    "terminal_cpu_seconds": 0.46078
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 61.705541,
+                    "elapsed_seconds": 0.259296,
+                    "terminal_cpu_seconds": 0.487558
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 62.654924,
+                  "p95": 63.601094,
+                  "p99": 63.601094,
+                  "max": 63.679818
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.255042,
+                  "p95": 0.259296,
+                  "p99": 0.259296,
+                  "max": 0.260413
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.47448,
+                  "p95": 0.506069,
+                  "p99": 0.506069,
+                  "max": 0.506971
+                },
+                "max_run_end_physical_bytes": 99289856
+              },
+              {
+                "name": "ascii_long_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 78.818122,
+                    "elapsed_seconds": 0.202999,
+                    "terminal_cpu_seconds": 0.425984
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 78.751784,
+                    "elapsed_seconds": 0.20317,
+                    "terminal_cpu_seconds": 0.436395
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 79.47941,
+                    "elapsed_seconds": 0.20131,
+                    "terminal_cpu_seconds": 0.436466
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 78.829384,
+                    "elapsed_seconds": 0.20297,
+                    "terminal_cpu_seconds": 0.436647
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 79.868616,
+                    "elapsed_seconds": 0.200329,
+                    "terminal_cpu_seconds": 0.433878
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 78.972957,
+                    "elapsed_seconds": 0.202601,
+                    "terminal_cpu_seconds": 0.435248
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 79.280136,
+                    "elapsed_seconds": 0.201816,
+                    "terminal_cpu_seconds": 0.434712
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 76.139716,
+                    "elapsed_seconds": 0.21014,
+                    "terminal_cpu_seconds": 0.451841
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 79.124096,
+                    "elapsed_seconds": 0.202214,
+                    "terminal_cpu_seconds": 0.439357
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 76.674254,
+                    "elapsed_seconds": 0.208675,
+                    "terminal_cpu_seconds": 0.440578
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 78.829384,
+                  "p95": 79.47941,
+                  "p99": 79.47941,
+                  "max": 79.868616
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.202601,
+                  "p95": 0.208675,
+                  "p99": 0.208675,
+                  "max": 0.21014
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.436395,
+                  "p95": 0.440578,
+                  "p99": 0.440578,
+                  "max": 0.451841
+                },
+                "max_run_end_physical_bytes": 101190400
+              },
+              {
+                "name": "ansi_truecolor",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 33.451459,
+                    "elapsed_seconds": 0.478305,
+                    "terminal_cpu_seconds": 0.751556
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 33.923964,
+                    "elapsed_seconds": 0.471643,
+                    "terminal_cpu_seconds": 0.720593
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 33.882799,
+                    "elapsed_seconds": 0.472216,
+                    "terminal_cpu_seconds": 0.723036
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 33.837369,
+                    "elapsed_seconds": 0.47285,
+                    "terminal_cpu_seconds": 0.725385
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 33.64405,
+                    "elapsed_seconds": 0.475567,
+                    "terminal_cpu_seconds": 0.72595
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 33.865587,
+                    "elapsed_seconds": 0.472456,
+                    "terminal_cpu_seconds": 0.723314
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 34.016932,
+                    "elapsed_seconds": 0.470354,
+                    "terminal_cpu_seconds": 0.714573
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 33.732359,
+                    "elapsed_seconds": 0.474322,
+                    "terminal_cpu_seconds": 0.726432
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 33.382364,
+                    "elapsed_seconds": 0.479295,
+                    "terminal_cpu_seconds": 0.731909
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 33.411363,
+                    "elapsed_seconds": 0.478879,
+                    "terminal_cpu_seconds": 0.733068
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 33.732359,
+                  "p95": 33.923964,
+                  "p99": 33.923964,
+                  "max": 34.016932
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.47285,
+                  "p95": 0.478879,
+                  "p99": 0.478879,
+                  "max": 0.479295
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.725385,
+                  "p95": 0.733068,
+                  "p99": 0.733068,
+                  "max": 0.751556
+                },
+                "max_run_end_physical_bytes": 110463744
+              },
+              {
+                "name": "unicode",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 16.781603,
+                    "elapsed_seconds": 0.953425,
+                    "terminal_cpu_seconds": 1.481019
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 16.821318,
+                    "elapsed_seconds": 0.951174,
+                    "terminal_cpu_seconds": 1.484171
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 16.854169,
+                    "elapsed_seconds": 0.94932,
+                    "terminal_cpu_seconds": 1.465043
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 16.911603,
+                    "elapsed_seconds": 0.946096,
+                    "terminal_cpu_seconds": 1.46241
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 16.785247,
+                    "elapsed_seconds": 0.953218,
+                    "terminal_cpu_seconds": 1.474094
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 16.872155,
+                    "elapsed_seconds": 0.948308,
+                    "terminal_cpu_seconds": 1.482171
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 16.923731,
+                    "elapsed_seconds": 0.945418,
+                    "terminal_cpu_seconds": 1.479334
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 16.87301,
+                    "elapsed_seconds": 0.94826,
+                    "terminal_cpu_seconds": 1.48257
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 16.883514,
+                    "elapsed_seconds": 0.94767,
+                    "terminal_cpu_seconds": 1.478166
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 16.893212,
+                    "elapsed_seconds": 0.947126,
+                    "terminal_cpu_seconds": 1.477729
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 16.872155,
+                  "p95": 16.911603,
+                  "p99": 16.911603,
+                  "max": 16.923731
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.94826,
+                  "p95": 0.953218,
+                  "p99": 0.953218,
+                  "max": 0.953425
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 1.478166,
+                  "p95": 1.48257,
+                  "p99": 1.48257,
+                  "max": 1.484171
+                },
+                "max_run_end_physical_bytes": 108153920
+              }
+            ],
+            "dsr_roundtrip_ms": {
+              "samples": 100,
+              "p50": 0.02,
+              "p95": 0.029,
+              "p99": 0.033,
+              "max": 0.076
+            },
+            "note": "Same PTY payloads and ordered DSR drain; alternate screen excludes scrollback. CPU and footprint are terminal parent process only. Footprint is sampled at run ends, not peak. This measures parsing/backpressure, not display FPS or input-to-photon latency."
+          },
+          "cleanup_survivors": []
+        },
+        "candidate": {
+          "natural_exit": true,
+          "command": [
+            "/private/tmp/terminal-astra-io-prototype-e62/rebased-649.app/Contents/MacOS/Terminal",
+            "--columns",
+            "100",
+            "--rows",
+            "30",
+            "--font-size",
+            "14",
+            "--history-limit",
+            "10000",
+            "--exit-after-command",
+            "--execute",
+            "/private/tmp/terminal-shared-reader-final-649/app-comparison/terminal-bench",
+            "--output",
+            "/private/tmp/terminal-shared-reader-final-649/app-comparison/1-candidate.json",
+            "--terminal",
+            "candidate",
+            "--bytes",
+            "16777216",
+            "--runs",
+            "10",
+            "--columns",
+            "100",
+            "--rows",
+            "30"
+          ],
+          "pid": 95473,
+          "report": {
+            "schema": 2,
+            "driver_version": "0.3.0",
+            "terminal": "candidate",
+            "terminal_pid": 95473,
+            "columns": 100,
+            "rows": 30,
+            "pixel_width": 1700,
+            "pixel_height": 1230,
+            "output_post_processing": true,
+            "idle_seconds": 3.007821,
+            "cpu_timebase": {
+              "numer": 125,
+              "denom": 3
+            },
+            "resource_usage_available": true,
+            "resource_usage_errno": 0,
+            "idle_cpu_percent_one_core": 1.165755,
+            "idle_physical_bytes": 46222016,
+            "workloads": [
+              {
+                "name": "ascii_short_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 99.635707,
+                    "elapsed_seconds": 0.160585,
+                    "terminal_cpu_seconds": 0.37956
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 95.650874,
+                    "elapsed_seconds": 0.167275,
+                    "terminal_cpu_seconds": 0.420363
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 95.716106,
+                    "elapsed_seconds": 0.167161,
+                    "terminal_cpu_seconds": 0.39643
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 97.026149,
+                    "elapsed_seconds": 0.164904,
+                    "terminal_cpu_seconds": 0.414634
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 96.85875,
+                    "elapsed_seconds": 0.165189,
+                    "terminal_cpu_seconds": 0.399908
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 97.461137,
+                    "elapsed_seconds": 0.164168,
+                    "terminal_cpu_seconds": 0.408917
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 97.899445,
+                    "elapsed_seconds": 0.163433,
+                    "terminal_cpu_seconds": 0.385259
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 95.238095,
+                    "elapsed_seconds": 0.168,
+                    "terminal_cpu_seconds": 0.406776
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 97.324785,
+                    "elapsed_seconds": 0.164398,
+                    "terminal_cpu_seconds": 0.4216
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 95.205793,
+                    "elapsed_seconds": 0.168057,
+                    "terminal_cpu_seconds": 0.419132
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 96.85875,
+                  "p95": 97.899445,
+                  "p99": 97.899445,
+                  "max": 99.635707
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.164904,
+                  "p95": 0.168,
+                  "p99": 0.168,
+                  "max": 0.168057
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.406776,
+                  "p95": 0.420363,
+                  "p99": 0.420363,
+                  "max": 0.4216
+                },
+                "max_run_end_physical_bytes": 97323776
+              },
+              {
+                "name": "ascii_long_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 105.435879,
+                    "elapsed_seconds": 0.151751,
+                    "terminal_cpu_seconds": 0.406237
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 102.635158,
+                    "elapsed_seconds": 0.155892,
+                    "terminal_cpu_seconds": 0.416234
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 101.654426,
+                    "elapsed_seconds": 0.157396,
+                    "terminal_cpu_seconds": 0.422722
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 104.739461,
+                    "elapsed_seconds": 0.15276,
+                    "terminal_cpu_seconds": 0.41422
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 99.483309,
+                    "elapsed_seconds": 0.160831,
+                    "terminal_cpu_seconds": 0.430897
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 99.317811,
+                    "elapsed_seconds": 0.161099,
+                    "terminal_cpu_seconds": 0.432266
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 101.623434,
+                    "elapsed_seconds": 0.157444,
+                    "terminal_cpu_seconds": 0.419747
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 104.682583,
+                    "elapsed_seconds": 0.152843,
+                    "terminal_cpu_seconds": 0.410746
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 104.909778,
+                    "elapsed_seconds": 0.152512,
+                    "terminal_cpu_seconds": 0.410209
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 100.782323,
+                    "elapsed_seconds": 0.158758,
+                    "terminal_cpu_seconds": 0.426444
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 101.654426,
+                  "p95": 104.909778,
+                  "p99": 104.909778,
+                  "max": 105.435879
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.155892,
+                  "p95": 0.160831,
+                  "p99": 0.160831,
+                  "max": 0.161099
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.416234,
+                  "p95": 0.430897,
+                  "p99": 0.430897,
+                  "max": 0.432266
+                },
+                "max_run_end_physical_bytes": 101026560
+              },
+              {
+                "name": "ansi_truecolor",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 45.070423,
+                    "elapsed_seconds": 0.355,
+                    "terminal_cpu_seconds": 0.631886
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 44.261374000000004,
+                    "elapsed_seconds": 0.361489,
+                    "terminal_cpu_seconds": 0.622298
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 45.034775,
+                    "elapsed_seconds": 0.355281,
+                    "terminal_cpu_seconds": 0.616267
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 45.01387,
+                    "elapsed_seconds": 0.355446,
+                    "terminal_cpu_seconds": 0.614813
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 45.008678,
+                    "elapsed_seconds": 0.355487,
+                    "terminal_cpu_seconds": 0.613025
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 44.555338,
+                    "elapsed_seconds": 0.359104,
+                    "terminal_cpu_seconds": 0.621506
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 44.965292,
+                    "elapsed_seconds": 0.35583,
+                    "terminal_cpu_seconds": 0.620835
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 45.047328,
+                    "elapsed_seconds": 0.355182,
+                    "terminal_cpu_seconds": 0.61265
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 45.041621,
+                    "elapsed_seconds": 0.355227,
+                    "terminal_cpu_seconds": 0.613365
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 44.782678,
+                    "elapsed_seconds": 0.357281,
+                    "terminal_cpu_seconds": 0.626794
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 45.008678,
+                  "p95": 45.047328,
+                  "p99": 45.047328,
+                  "max": 45.070423
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.355446,
+                  "p95": 0.359104,
+                  "p99": 0.359104,
+                  "max": 0.361489
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.616267,
+                  "p95": 0.626794,
+                  "p99": 0.626794,
+                  "max": 0.631886
+                },
+                "max_run_end_physical_bytes": 107006720
+              },
+              {
+                "name": "unicode",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 19.909561,
+                    "elapsed_seconds": 0.803634,
+                    "terminal_cpu_seconds": 1.264545
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 17.928477,
+                    "elapsed_seconds": 0.892435,
+                    "terminal_cpu_seconds": 1.317829
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 19.544109,
+                    "elapsed_seconds": 0.818661,
+                    "terminal_cpu_seconds": 1.270409
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 19.822318,
+                    "elapsed_seconds": 0.807171,
+                    "terminal_cpu_seconds": 1.25955
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 19.812426,
+                    "elapsed_seconds": 0.807574,
+                    "terminal_cpu_seconds": 1.255139
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 19.895548,
+                    "elapsed_seconds": 0.8042,
+                    "terminal_cpu_seconds": 1.249926
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 19.919699,
+                    "elapsed_seconds": 0.803225,
+                    "terminal_cpu_seconds": 1.243039
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 19.906588,
+                    "elapsed_seconds": 0.803754,
+                    "terminal_cpu_seconds": 1.243866
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 19.815959,
+                    "elapsed_seconds": 0.80743,
+                    "terminal_cpu_seconds": 1.247441
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 19.797447,
+                    "elapsed_seconds": 0.808185,
+                    "terminal_cpu_seconds": 1.265233
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 19.815959,
+                  "p95": 19.909561,
+                  "p99": 19.909561,
+                  "max": 19.919699
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.807171,
+                  "p95": 0.818661,
+                  "p99": 0.818661,
+                  "max": 0.892435
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 1.255139,
+                  "p95": 1.270409,
+                  "p99": 1.270409,
+                  "max": 1.317829
+                },
+                "max_run_end_physical_bytes": 108121216
+              }
+            ],
+            "dsr_roundtrip_ms": {
+              "samples": 100,
+              "p50": 0.026,
+              "p95": 0.044,
+              "p99": 0.195,
+              "max": 0.267
+            },
+            "note": "Same PTY payloads and ordered DSR drain; alternate screen excludes scrollback. CPU and footprint are terminal parent process only. Footprint is sampled at run ends, not peak. This measures parsing/backpressure, not display FPS or input-to-photon latency."
+          },
+          "cleanup_survivors": []
+        }
+      },
+      "ratios": {
+        "ascii_short_lines": 1.5459080279149329,
+        "ascii_long_lines": 1.2895499221457825,
+        "ansi_truecolor": 1.334287886595776,
+        "unicode": 1.174477059984335
+      }
+    },
+    {
+      "order": [
+        "candidate",
+        "baseline"
+      ],
+      "apps": {
+        "candidate": {
+          "natural_exit": true,
+          "command": [
+            "/private/tmp/terminal-astra-io-prototype-e62/rebased-649.app/Contents/MacOS/Terminal",
+            "--columns",
+            "100",
+            "--rows",
+            "30",
+            "--font-size",
+            "14",
+            "--history-limit",
+            "10000",
+            "--exit-after-command",
+            "--execute",
+            "/private/tmp/terminal-shared-reader-final-649/app-comparison/terminal-bench",
+            "--output",
+            "/private/tmp/terminal-shared-reader-final-649/app-comparison/2-candidate.json",
+            "--terminal",
+            "candidate",
+            "--bytes",
+            "16777216",
+            "--runs",
+            "10",
+            "--columns",
+            "100",
+            "--rows",
+            "30"
+          ],
+          "pid": 95757,
+          "report": {
+            "schema": 2,
+            "driver_version": "0.3.0",
+            "terminal": "candidate",
+            "terminal_pid": 95757,
+            "columns": 100,
+            "rows": 30,
+            "pixel_width": 1700,
+            "pixel_height": 1230,
+            "output_post_processing": true,
+            "idle_seconds": 3.00359,
+            "cpu_timebase": {
+              "numer": 125,
+              "denom": 3
+            },
+            "resource_usage_available": true,
+            "resource_usage_errno": 0,
+            "idle_cpu_percent_one_core": 1.027032,
+            "idle_physical_bytes": 45681472,
+            "workloads": [
+              {
+                "name": "ascii_short_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 86.060371,
+                    "elapsed_seconds": 0.185916,
+                    "terminal_cpu_seconds": 0.433624
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 86.691735,
+                    "elapsed_seconds": 0.184562,
+                    "terminal_cpu_seconds": 0.428748
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 96.607857,
+                    "elapsed_seconds": 0.165618,
+                    "terminal_cpu_seconds": 0.411002
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 96.070708,
+                    "elapsed_seconds": 0.166544,
+                    "terminal_cpu_seconds": 0.40628
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 97.324193,
+                    "elapsed_seconds": 0.164399,
+                    "terminal_cpu_seconds": 0.409497
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 95.638868,
+                    "elapsed_seconds": 0.167296,
+                    "terminal_cpu_seconds": 0.407452
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 98.078279,
+                    "elapsed_seconds": 0.163135,
+                    "terminal_cpu_seconds": 0.399788
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 94.909865,
+                    "elapsed_seconds": 0.168581,
+                    "terminal_cpu_seconds": 0.410633
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 96.425623,
+                    "elapsed_seconds": 0.165931,
+                    "terminal_cpu_seconds": 0.402865
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 96.599108,
+                    "elapsed_seconds": 0.165633,
+                    "terminal_cpu_seconds": 0.389987
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 96.070708,
+                  "p95": 97.324193,
+                  "p99": 97.324193,
+                  "max": 98.078279
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.165931,
+                  "p95": 0.184562,
+                  "p99": 0.184562,
+                  "max": 0.185916
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.407452,
+                  "p95": 0.428748,
+                  "p99": 0.428748,
+                  "max": 0.433624
+                },
+                "max_run_end_physical_bytes": 100436928
+              },
+              {
+                "name": "ascii_long_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 93.230314,
+                    "elapsed_seconds": 0.171618,
+                    "terminal_cpu_seconds": 0.440331
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 99.925056,
+                    "elapsed_seconds": 0.16012,
+                    "terminal_cpu_seconds": 0.42338
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 102.474766,
+                    "elapsed_seconds": 0.156136,
+                    "terminal_cpu_seconds": 0.417416
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 101.527996,
+                    "elapsed_seconds": 0.157592,
+                    "terminal_cpu_seconds": 0.425525
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 98.767871,
+                    "elapsed_seconds": 0.161996,
+                    "terminal_cpu_seconds": 0.43205
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 105.440047,
+                    "elapsed_seconds": 0.151745,
+                    "terminal_cpu_seconds": 0.40457
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 102.088996,
+                    "elapsed_seconds": 0.156726,
+                    "terminal_cpu_seconds": 0.414863
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 104.393669,
+                    "elapsed_seconds": 0.153266,
+                    "terminal_cpu_seconds": 0.415397
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 100.760109,
+                    "elapsed_seconds": 0.158793,
+                    "terminal_cpu_seconds": 0.42354
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 100.957837,
+                    "elapsed_seconds": 0.158482,
+                    "terminal_cpu_seconds": 0.427328
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 100.957837,
+                  "p95": 104.393669,
+                  "p99": 104.393669,
+                  "max": 105.440047
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.157592,
+                  "p95": 0.161996,
+                  "p99": 0.161996,
+                  "max": 0.171618
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.42338,
+                  "p95": 0.43205,
+                  "p99": 0.43205,
+                  "max": 0.440331
+                },
+                "max_run_end_physical_bytes": 102517696
+              },
+              {
+                "name": "ansi_truecolor",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 44.363112,
+                    "elapsed_seconds": 0.36066,
+                    "terminal_cpu_seconds": 0.639621
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 44.47941,
+                    "elapsed_seconds": 0.359717,
+                    "terminal_cpu_seconds": 0.619954
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 43.744532,
+                    "elapsed_seconds": 0.36576,
+                    "terminal_cpu_seconds": 0.639923
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 44.556454,
+                    "elapsed_seconds": 0.359095,
+                    "terminal_cpu_seconds": 0.626984
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 44.261007,
+                    "elapsed_seconds": 0.361492,
+                    "terminal_cpu_seconds": 0.628988
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 44.244973,
+                    "elapsed_seconds": 0.36162300000000003,
+                    "terminal_cpu_seconds": 0.626703
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 44.143898,
+                    "elapsed_seconds": 0.362451,
+                    "terminal_cpu_seconds": 0.626389
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 44.266885,
+                    "elapsed_seconds": 0.361444,
+                    "terminal_cpu_seconds": 0.624686
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 44.010816,
+                    "elapsed_seconds": 0.363547,
+                    "terminal_cpu_seconds": 0.628984
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 44.314824,
+                    "elapsed_seconds": 0.361053,
+                    "terminal_cpu_seconds": 0.619622
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 44.261007,
+                  "p95": 44.47941,
+                  "p99": 44.47941,
+                  "max": 44.556454
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.361444,
+                  "p95": 0.363547,
+                  "p99": 0.363547,
+                  "max": 0.36576
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.626703,
+                  "p95": 0.639621,
+                  "p99": 0.639621,
+                  "max": 0.639923
+                },
+                "max_run_end_physical_bytes": 107826112
+              },
+              {
+                "name": "unicode",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 19.758526,
+                    "elapsed_seconds": 0.809777,
+                    "terminal_cpu_seconds": 1.273263
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 19.627374,
+                    "elapsed_seconds": 0.815188,
+                    "terminal_cpu_seconds": 1.272103
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 19.466875,
+                    "elapsed_seconds": 0.821909,
+                    "terminal_cpu_seconds": 1.280183
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 19.592644,
+                    "elapsed_seconds": 0.816633,
+                    "terminal_cpu_seconds": 1.272843
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 19.520884,
+                    "elapsed_seconds": 0.819635,
+                    "terminal_cpu_seconds": 1.269334
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 19.495054,
+                    "elapsed_seconds": 0.820721,
+                    "terminal_cpu_seconds": 1.277818
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 19.80882,
+                    "elapsed_seconds": 0.807721,
+                    "terminal_cpu_seconds": 1.252945
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 19.790101,
+                    "elapsed_seconds": 0.808485,
+                    "terminal_cpu_seconds": 1.250141
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 19.141,
+                    "elapsed_seconds": 0.835902,
+                    "terminal_cpu_seconds": 1.285763
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 19.73036,
+                    "elapsed_seconds": 0.810933,
+                    "terminal_cpu_seconds": 1.249112
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 19.592644,
+                  "p95": 19.790101,
+                  "p99": 19.790101,
+                  "max": 19.80882
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.815188,
+                  "p95": 0.821909,
+                  "p99": 0.821909,
+                  "max": 0.835902
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 1.272103,
+                  "p95": 1.280183,
+                  "p99": 1.280183,
+                  "max": 1.285763
+                },
+                "max_run_end_physical_bytes": 108940480
+              }
+            ],
+            "dsr_roundtrip_ms": {
+              "samples": 100,
+              "p50": 0.025,
+              "p95": 0.032,
+              "p99": 0.042,
+              "max": 0.053
+            },
+            "note": "Same PTY payloads and ordered DSR drain; alternate screen excludes scrollback. CPU and footprint are terminal parent process only. Footprint is sampled at run ends, not peak. This measures parsing/backpressure, not display FPS or input-to-photon latency."
+          },
+          "cleanup_survivors": []
+        },
+        "baseline": {
+          "natural_exit": true,
+          "command": [
+            "/private/tmp/terminal-shared-reader-final-649/Baseline.app/Contents/MacOS/Terminal",
+            "--columns",
+            "100",
+            "--rows",
+            "30",
+            "--font-size",
+            "14",
+            "--history-limit",
+            "10000",
+            "--exit-after-command",
+            "--execute",
+            "/private/tmp/terminal-shared-reader-final-649/app-comparison/terminal-bench",
+            "--output",
+            "/private/tmp/terminal-shared-reader-final-649/app-comparison/2-baseline.json",
+            "--terminal",
+            "baseline",
+            "--bytes",
+            "16777216",
+            "--runs",
+            "10",
+            "--columns",
+            "100",
+            "--rows",
+            "30"
+          ],
+          "pid": 96027,
+          "report": {
+            "schema": 2,
+            "driver_version": "0.3.0",
+            "terminal": "baseline",
+            "terminal_pid": 96027,
+            "columns": 100,
+            "rows": 30,
+            "pixel_width": 1700,
+            "pixel_height": 1230,
+            "output_post_processing": true,
+            "idle_seconds": 3.009402,
+            "cpu_timebase": {
+              "numer": 125,
+              "denom": 3
+            },
+            "resource_usage_available": true,
+            "resource_usage_errno": 0,
+            "idle_cpu_percent_one_core": 1.182624,
+            "idle_physical_bytes": 46107456,
+            "workloads": [
+              {
+                "name": "ascii_short_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 60.203563,
+                    "elapsed_seconds": 0.265765,
+                    "terminal_cpu_seconds": 0.492112
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 63.39094,
+                    "elapsed_seconds": 0.252402,
+                    "terminal_cpu_seconds": 0.482838
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 63.252107,
+                    "elapsed_seconds": 0.252956,
+                    "terminal_cpu_seconds": 0.478971
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 63.409279,
+                    "elapsed_seconds": 0.252329,
+                    "terminal_cpu_seconds": 0.473828
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 63.130566,
+                    "elapsed_seconds": 0.253443,
+                    "terminal_cpu_seconds": 0.456583
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 63.136545,
+                    "elapsed_seconds": 0.253419,
+                    "terminal_cpu_seconds": 0.483856
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 62.4917,
+                    "elapsed_seconds": 0.256034,
+                    "terminal_cpu_seconds": 0.473739
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 60.325228,
+                    "elapsed_seconds": 0.265229,
+                    "terminal_cpu_seconds": 0.471812
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 63.38868,
+                    "elapsed_seconds": 0.252411,
+                    "terminal_cpu_seconds": 0.454322
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 63.178428,
+                    "elapsed_seconds": 0.253251,
+                    "terminal_cpu_seconds": 0.478445
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 63.136545,
+                  "p95": 63.39094,
+                  "p99": 63.39094,
+                  "max": 63.409279
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.253251,
+                  "p95": 0.265229,
+                  "p99": 0.265229,
+                  "max": 0.265765
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.473828,
+                  "p95": 0.483856,
+                  "p99": 0.483856,
+                  "max": 0.492112
+                },
+                "max_run_end_physical_bytes": 97749888
+              },
+              {
+                "name": "ascii_long_lines",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 77.400878,
+                    "elapsed_seconds": 0.206716,
+                    "terminal_cpu_seconds": 0.443438
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 76.41864,
+                    "elapsed_seconds": 0.209373,
+                    "terminal_cpu_seconds": 0.448794
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 77.832369,
+                    "elapsed_seconds": 0.20557,
+                    "terminal_cpu_seconds": 0.437598
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 77.368317,
+                    "elapsed_seconds": 0.206803,
+                    "terminal_cpu_seconds": 0.445168
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 78.064774,
+                    "elapsed_seconds": 0.204958,
+                    "terminal_cpu_seconds": 0.439327
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 78.045735,
+                    "elapsed_seconds": 0.205008,
+                    "terminal_cpu_seconds": 0.4404
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 77.575758,
+                    "elapsed_seconds": 0.20625,
+                    "terminal_cpu_seconds": 0.454363
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 79.341466,
+                    "elapsed_seconds": 0.20166,
+                    "terminal_cpu_seconds": 0.430846
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 77.648041,
+                    "elapsed_seconds": 0.206058,
+                    "terminal_cpu_seconds": 0.445837
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 78.619056,
+                    "elapsed_seconds": 0.203513,
+                    "terminal_cpu_seconds": 0.439942
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 77.648041,
+                  "p95": 78.619056,
+                  "p99": 78.619056,
+                  "max": 79.341466
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.20557,
+                  "p95": 0.206803,
+                  "p99": 0.206803,
+                  "max": 0.209373
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.4404,
+                  "p95": 0.448794,
+                  "p99": 0.448794,
+                  "max": 0.454363
+                },
+                "max_run_end_physical_bytes": 101337984
+              },
+              {
+                "name": "ansi_truecolor",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 33.778934,
+                    "elapsed_seconds": 0.473668,
+                    "terminal_cpu_seconds": 0.737048
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 33.842164,
+                    "elapsed_seconds": 0.472783,
+                    "terminal_cpu_seconds": 0.72213
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 33.995177,
+                    "elapsed_seconds": 0.470655,
+                    "terminal_cpu_seconds": 0.722318
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 33.698754,
+                    "elapsed_seconds": 0.474795,
+                    "terminal_cpu_seconds": 0.726424
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 33.428605,
+                    "elapsed_seconds": 0.478632,
+                    "terminal_cpu_seconds": 0.730624
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 33.342989,
+                    "elapsed_seconds": 0.479861,
+                    "terminal_cpu_seconds": 0.736397
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 33.772944,
+                    "elapsed_seconds": 0.473752,
+                    "terminal_cpu_seconds": 0.724901
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 33.647659,
+                    "elapsed_seconds": 0.475516,
+                    "terminal_cpu_seconds": 0.724256
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 33.448941,
+                    "elapsed_seconds": 0.478341,
+                    "terminal_cpu_seconds": 0.729057
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 33.473784,
+                    "elapsed_seconds": 0.477986,
+                    "terminal_cpu_seconds": 0.727894
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 33.647659,
+                  "p95": 33.842164,
+                  "p99": 33.842164,
+                  "max": 33.995177
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.474795,
+                  "p95": 0.478632,
+                  "p99": 0.478632,
+                  "max": 0.479861
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 0.726424,
+                  "p95": 0.736397,
+                  "p99": 0.736397,
+                  "max": 0.737048
+                },
+                "max_run_end_physical_bytes": 109693824
+              },
+              {
+                "name": "unicode",
+                "source_bytes_per_run": 16777216,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 16.827563,
+                    "elapsed_seconds": 0.950821,
+                    "terminal_cpu_seconds": 1.491636
+                  },
+                  {
+                    "run": 2,
+                    "mib_per_second": 16.686499,
+                    "elapsed_seconds": 0.958859,
+                    "terminal_cpu_seconds": 1.482349
+                  },
+                  {
+                    "run": 3,
+                    "mib_per_second": 16.835017,
+                    "elapsed_seconds": 0.9504,
+                    "terminal_cpu_seconds": 1.473637
+                  },
+                  {
+                    "run": 4,
+                    "mib_per_second": 16.981316,
+                    "elapsed_seconds": 0.942212,
+                    "terminal_cpu_seconds": 1.456085
+                  },
+                  {
+                    "run": 5,
+                    "mib_per_second": 16.760807,
+                    "elapsed_seconds": 0.954608,
+                    "terminal_cpu_seconds": 1.487613
+                  },
+                  {
+                    "run": 6,
+                    "mib_per_second": 16.783786,
+                    "elapsed_seconds": 0.953301,
+                    "terminal_cpu_seconds": 1.482026
+                  },
+                  {
+                    "run": 7,
+                    "mib_per_second": 16.823776,
+                    "elapsed_seconds": 0.951035,
+                    "terminal_cpu_seconds": 1.477563
+                  },
+                  {
+                    "run": 8,
+                    "mib_per_second": 16.825121,
+                    "elapsed_seconds": 0.950959,
+                    "terminal_cpu_seconds": 1.483797
+                  },
+                  {
+                    "run": 9,
+                    "mib_per_second": 16.718022,
+                    "elapsed_seconds": 0.957051,
+                    "terminal_cpu_seconds": 1.475511
+                  },
+                  {
+                    "run": 10,
+                    "mib_per_second": 16.817711,
+                    "elapsed_seconds": 0.951378,
+                    "terminal_cpu_seconds": 1.482614
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 10,
+                  "p50": 16.817711,
+                  "p95": 16.835017,
+                  "p99": 16.835017,
+                  "max": 16.981316
+                },
+                "elapsed_seconds": {
+                  "samples": 10,
+                  "p50": 0.951035,
+                  "p95": 0.957051,
+                  "p99": 0.957051,
+                  "max": 0.958859
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 10,
+                  "p50": 1.482026,
+                  "p95": 1.487613,
+                  "p99": 1.487613,
+                  "max": 1.491636
+                },
+                "max_run_end_physical_bytes": 109235392
+              }
+            ],
+            "dsr_roundtrip_ms": {
+              "samples": 100,
+              "p50": 0.02,
+              "p95": 0.039,
+              "p99": 0.047,
+              "max": 0.143
+            },
+            "note": "Same PTY payloads and ordered DSR drain; alternate screen excludes scrollback. CPU and footprint are terminal parent process only. Footprint is sampled at run ends, not peak. This measures parsing/backpressure, not display FPS or input-to-photon latency."
+          },
+          "cleanup_survivors": []
+        }
+      },
+      "ratios": {
+        "ascii_short_lines": 1.521633912657083,
+        "ascii_long_lines": 1.3001981209030113,
+        "ansi_truecolor": 1.315426044944167,
+        "unicode": 1.1650006353421105
+      }
+    }
+  ],
+  "runner_sha256": "be5cb4cad7d0f9ef7d805c9f6d476b7b286e5f1dd44c80e4a6b56b620c64d639",
+  "validator_sha256": "c93cd23fd599b84ebf85d23e2614f3e7f148fcda7a5c45c65c7c5fd9abc8362e",
+  "load_before": "{ 6.67 6.13 5.79 }",
+  "apps": {
+    "baseline": {
+      "bundle": "/private/tmp/terminal-shared-reader-final-649/Baseline.app",
+      "executable_sha256": "8d7388f850978beeb4224c20f4067f30d1c5e501001cc698db25839584b92652"
+    },
+    "candidate": {
+      "bundle": "/private/tmp/terminal-astra-io-prototype-e62/rebased-649.app",
+      "executable_sha256": "34798ae9dfbaab0e77a2c6feb042d2409c4a0ba5965e79f4ccabcd77b6a4e4c5"
+    }
+  },
+  "driver_source_sha256": "cbe52cd535960db64083aa08d6928e9ec6037e5c7d37caa6b1a680051e25577e",
+  "driver_sha256": "fea221df7dc59de890e2d1849958d3386c2c32185ee2f4087fefe37d678d7f9e",
+  "load_after": "{ 6.76 6.39 5.93 }"
+}

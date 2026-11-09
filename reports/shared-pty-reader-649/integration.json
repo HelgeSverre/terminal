@@ -1,0 +1,7 @@
+{
+  "full_test": true,
+  "release_build": true,
+  "normal_smoke": true,
+  "signed_executable_sha256": "34798ae9dfbaab0e77a2c6feb042d2409c4a0ba5965e79f4ccabcd77b6a4e4c5",
+  "measured_executable_matches": true
+}

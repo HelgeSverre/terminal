@@ -172,6 +172,7 @@ lint:
     target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print transport) -o target/native/transport-tests
     target/native/transport-tests
+    just session-io-test
     just _session-test
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print geometry) -o target/native/geometry-tests
     target/native/geometry-tests
@@ -189,6 +190,22 @@ lint:
 # Kept separate so CI can diagnose its PTY contract without duplicating commands.
 [group('check')]
 session-test: build _session-test
+
+# Ordered read admission, parser leases, wakeups, and descriptor retirement.
+[group('check')]
+session-io-test:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print session_ingress) -o target/native/session-ingress-tests
+    target/native/session-ingress-tests
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_descriptor_lifetime) -o target/native/pty-descriptor-lifetime-tests
+    target/native/pty-descriptor-lifetime-tests
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_read_broker) -o target/native/pty-read-broker-tests
+    target/native/pty-read-broker-tests
+    xcrun swiftc -D SESSION_IO_TESTING -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_read_endpoint) -o target/native/pty-read-endpoint-tests
+    target/native/pty-read-endpoint-tests
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_admission) -o target/native/pty-admission-tests
+    target/native/pty-admission-tests
 
 [private]
 _session-test:

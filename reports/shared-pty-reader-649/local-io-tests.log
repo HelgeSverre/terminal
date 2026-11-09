@@ -1,0 +1,18 @@
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 50 app sources; 44 test groups; 564 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print session_ingress) -o target/native/session-ingress-tests
+target/native/session-ingress-tests
+PASS owner queue: delivery identity, partial and zero-byte lease, barriers, replacement, cancellation, drain, sliced Data
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_descriptor_lifetime) -o target/native/pty-descriptor-lifetime-tests
+target/native/pty-descriptor-lifetime-tests
+PASS descriptor lifetime: cancellation orders, held leases, close once, duplicate acknowledgments, fd reuse
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_read_broker) -o target/native/pty-read-broker-tests
+target/native/pty-read-broker-tests
+PASS broker: output/control/output FIFO, bounded coalescing, credit retained through delivery and REP, ordered EOF, idempotent stop
+xcrun swiftc -D SESSION_IO_TESTING -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_read_endpoint) -o target/native/pty-read-endpoint-tests
+target/native/pty-read-endpoint-tests
+PASS read endpoint: credit returned before pause publication resumes without another owner notification; cancellation retires source
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_admission) -o target/native/pty-admission-tests
+target/native/pty-admission-tests
+PASS admission: exact bounded queued-ahead bytes, control barrier, EOF versus accepted input and descriptor write rejection

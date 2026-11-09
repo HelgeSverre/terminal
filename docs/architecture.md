@@ -7,8 +7,11 @@ shows the main input and display path.
 
 ## State and presentation
 
-The session's serial queue owns the child PTY and orders input, output,
-resizing, and emulator mutations. `TerminalEmulator` interprets VT sequences;
+The session's serial queue orders input, output, resizing, and emulator
+mutations. A shared serial I/O lane reads each child's nonblocking PTY while
+the owner parses earlier output. `PTYReadBroker` orders read deliveries and
+owner submissions; terminal state stays on the session queue.
+`TerminalEmulator` interprets VT sequences;
 `TerminalDocument` owns retained text, history, and reflow. Immutable
 `TerminalSnapshot` values cross into the AppKit view.
 
@@ -18,6 +21,27 @@ for its pane surface. Accessibility exposes text and ranges through a bounded,
 read-only projection; AppleScript sends committed text through the normal
 session-input path. The [automation guide](automation.md) describes those
 interfaces.
+
+## PTY transport
+
+The read broker batches immediately available output without waiting for a
+target size. A control submission seals the preceding output batch. The broker
+holds byte credit until the parser consumes those bytes, and node credit until
+all resumable work for that record finishes. The owner queue keeps one immutable
+record per delivery, including a fully consumed record with pending REP work.
+
+Read-ahead is limited to 64 KiB and 256 output nodes. Each batch is at most
+16 KiB; a partially consumed head can retain its consumed prefix. These are
+payload bounds, not exact allocator or process-memory measurements. Semantic
+controls retain their existing admission rules. A larger 2 MiB prototype
+improved throughput but delayed input under continuous output; the
+[comparison](../reports/shared-pty-reader-649/README.md) records both variants.
+
+`PTYReadEndpoint` owns readiness, pause/resume, and cancellation on the shared
+lane. `PTYDescriptorLifetime` leases the descriptor for reads, writes, and
+resize ioctls. Physical close waits for active operations and both source
+cancellations, preventing a late operation from using a reused descriptor.
+Writes, reflow, snapshots, and process reaping stay with the session owner.
 
 ## Resizing
 
@@ -56,6 +80,7 @@ led to these rules.
 | Windows, pane tree, menus | [main.swift](../Sources/Terminal/main.swift) |
 | Native input and accessibility | [Canvas.swift](../Sources/Terminal/Canvas.swift) |
 | PTY and terminal-state ordering | [Session.swift](../Sources/Terminal/Session.swift) |
+| Read admission, readiness, and descriptor lifetime | [IO](../Sources/Terminal/IO) |
 | Emulation and document storage | [Emulation](../Sources/Terminal/Emulation) |
 | Unicode decoding and text tables | [Text](../Sources/Terminal/Text) |
 | Rendering and glyph resources | [Renderer.swift](../Sources/Terminal/Renderer.swift) |

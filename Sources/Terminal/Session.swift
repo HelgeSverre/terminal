@@ -144,11 +144,9 @@ final class Session: @unchecked Sendable {
     }
   }
   private struct StreamStatistics {
-    var readCallbacks = 0, readCalls = 0, outputEvents = 0, pumpSchedules = 0, pumpTurns = 0, feedCalls = 0, queueHighWater = 0, suspends = 0, resumes = 0, publishCalls = 0
-    var feedBytes: UInt64 = 0, readNanoseconds: UInt64 = 0, feedNanoseconds: UInt64 = 0, snapshotNanoseconds: UInt64 = 0, pumpNanoseconds: UInt64 = 0
-    var queuedBytesHighWater = 0
+    var outputEvents = 0, pumpSchedules = 0, pumpTurns = 0, feedCalls = 0, queueHighWater = 0, publishCalls = 0
+    var feedBytes: UInt64 = 0, feedNanoseconds: UInt64 = 0, snapshotNanoseconds: UInt64 = 0, pumpNanoseconds: UInt64 = 0
     mutating func observeEventQueue(_ count: Int) { queueHighWater = max(queueHighWater, count) }
-    mutating func observeQueuedBytes(_ count: Int) { queuedBytesHighWater = max(queuedBytesHighWater, count) }
   }
   let queue = DispatchQueue(label: "no.helgesverre.terminal.owner", qos: .userInteractive)
   private enum Event {
@@ -176,14 +174,13 @@ final class Session: @unchecked Sendable {
     case eof, idle
   }
   private let launchSpec: LaunchSpec?
-  private var events: [Event] = []
-  private var head = 0
-  private var queuedOutput = 0
-  // Owner-queue scratch; output events always receive their own immutable copy.
-  private var readSlab = [UInt8](repeating: 0, count: 16_384)
-  private var bytesRead: UInt64 = 0
+  private var ingress = SessionEventQueue<Event>()
+  private var queuedOutput: Int { ingress.outputBytes }
+  // The broker owns read admission and immutable transfer; terminal state stays on queue.
+  private var readBroker: PTYReadBroker!
+  private var readEndpoint: PTYReadEndpoint?
+  private var descriptorLifetime: PTYDescriptorLifetime?
   private var bytesParsed: UInt64 = 0
-  private var firstReadNs: UInt64 = 0
   private var lastParseNs: UInt64 = 0
   private var parserEnded = false
   private var ownerScheduled = false
@@ -194,11 +191,9 @@ final class Session: @unchecked Sendable {
   private var readEnded = false
   private var writeEnded = false
   private var closed = false
-  private var readSuspended = false
   private var writeSuspended = false
   private var clipboardClosedNotified = false
   private var clipboardCloseDelivered = false
-  private var reader: DispatchSourceRead?
   private var writer: DispatchSourceWrite?
   private var statusReader: DispatchSourceRead?
   private var process: DispatchSourceProcess?
@@ -246,7 +241,17 @@ final class Session: @unchecked Sendable {
     if CommandLine.arguments.prefix(while: { $0 != "--execute" }).contains("--session-statistics-file") {
       streamStatistics = StreamStatistics()
     }
-    queue.async { [self] in start() }
+    readBroker = PTYReadBroker(owner: queue, diagnostics: streamStatistics != nil, deliver: { [weak self] bytes in
+      guard let self else { return }
+      guard !closed else { readBroker.consumed(bytes.count, completedNode: true); return }
+      enqueue(.output(bytes, 0))
+    }, ended: { [weak self] error in
+      guard let self, !closed else { return }
+      if error != 0 && error != EIO { report("PTY read failed: \(String(cString: strerror(error)))") }
+      endRead()
+      enqueue(.eof)
+    })
+    readBroker.submit { [self] in start() }
   }
   deinit { if let core { terminal_destroy(core) } }
   private static var now: UInt64 { DispatchTime.now().uptimeNanoseconds / 1_000_000 }
@@ -312,10 +317,10 @@ final class Session: @unchecked Sendable {
       let status = terminal_search_fill(core, job.handle)
       if status == 0 {
         working = true
-        let owner = session.queue
+        let owner = session.readBroker!
         Self.worker.async { [weak self, job] in
           _ = terminal_search_step(job.handle)
-          owner.async { [weak self, job] in
+          owner.submit { [weak self, job] in
             guard let self else { return }
             working = false
             if job.generation != generation { self.job = nil }
@@ -457,7 +462,7 @@ final class Session: @unchecked Sendable {
         outstandingSelectionCopyCompletions -= 1
         admission.unlock()
       }
-      queue.async { [self, delivery] in
+      readBroker.submit { [self, delivery] in
         selectionDeliveries.removeAll { $0 === delivery }
       }
     }
@@ -474,7 +479,7 @@ final class Session: @unchecked Sendable {
       if cancelled { delivery.cancel() }
       delivery.completion(delivery.takeForDelivery())
       release(delivery.cost)
-      queue.async { [self, delivery] in
+      readBroker.submit { [self, delivery] in
         linkDeliveries.removeAll { $0 === delivery }
       }
     }
@@ -527,16 +532,14 @@ final class Session: @unchecked Sendable {
     }
     master = child.master
     pid = child.pid
-    let r = DispatchSource.makeReadSource(fileDescriptor: master, queue: queue)
+    let lifetime = PTYDescriptorLifetime(descriptor: master, sources: 2)
+    descriptorLifetime = lifetime
     let w = DispatchSource.makeWriteSource(fileDescriptor: master, queue: queue)
-    reader = r
     writer = w
-    r.setEventHandler { [weak self] in self?.readAvailable() }
     w.setEventHandler { [weak self] in self?.flush() }
-    let retire = DescriptorRetirement(fd: master, count: 2)
-    r.setCancelHandler { retire.complete() }
-    w.setCancelHandler { retire.complete() }
-    r.resume()
+    w.setCancelHandler { lifetime.sourceCancelled(1) }
+    readEndpoint = PTYReadEndpoint(fd: master, broker: readBroker, lifetime: lifetime,
+      eofObserved: { [weak self] in self?.stopAcceptingInput() })
     w.resume()
     w.suspend()
     writeSuspended = true
@@ -587,26 +590,35 @@ final class Session: @unchecked Sendable {
   }
   private func enqueue(_ event: Event) {
     if case .output = event { streamStatistics?.outputEvents += 1 }
-    events.append(event)
-    streamStatistics?.observeEventQueue(events.count - head)
+    if case .output(let bytes, let offset) = event {
+      precondition(offset == 0)
+      ingress.appendOutput(bytes)
+    } else { ingress.append(event) }
+    streamStatistics?.observeEventQueue(ingress.count)
     scheduleOwner()
   }
   private func scheduleOwner() {
-    guard !closed, !ownerScheduled, head < events.count else { return }
+    guard !closed, !ownerScheduled, !ingress.isEmpty else { return }
     ownerScheduled = true
     streamStatistics?.pumpSchedules += 1
-    queue.async { [self] in
+    readBroker.submit { [self] in
       ownerScheduled = false
       pump()
     }
   }
   private func pump() {
-    guard !closed, head < events.count else { return }
+    guard !closed, !ingress.isEmpty else { return }
     let started = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
     defer {
       if streamStatistics != nil { streamStatistics!.pumpNanoseconds &+= DispatchTime.now().uptimeNanoseconds - started }
     }
-    let event = events[head]
+    guard let lease = ingress.leaseHead() else { return }
+    let event: Event
+    switch lease {
+    case .vacant: preconditionFailure("Vacant ingress head")
+    case .output(let bytes, let offset): event = .output(bytes, offset)
+    case .event(let pending): event = pending
+    }
     streamStatistics?.pumpTurns += 1
     var complete = true
     var publishNeeded = true
@@ -626,13 +638,14 @@ final class Session: @unchecked Sendable {
         streamStatistics!.feedBytes &+= UInt64(used)
         streamStatistics!.feedNanoseconds &+= DispatchTime.now().uptimeNanoseconds - feedStarted
       }
-      queuedOutput -= used
+      ingress.consumeOutput(used)
+      readBroker.consumed(used, completedNode: false)
       bytesParsed += UInt64(used)
       if used > 0 { lastParseNs = DispatchTime.now().uptimeNanoseconds }
       drainReplies()
       drainClipboardWrites()
       if offset + used < bytes.count || terminal_has_work(core) {
-        events[head] = .output(bytes, offset + used)
+        // The partially consumed output lease remains at the ingress head.
         complete = false
       }
     case .input(let text, let key, let modifiers, let event, let cost):
@@ -717,7 +730,7 @@ final class Session: @unchecked Sendable {
       switch progress {
       case .pending:
         resizePending = true
-        events[head] = .resize(cols, rows, cw, ch, true)
+        ingress.replaceHead(with: .resize(cols, rows, cw, ch, true))
         complete = false
         // A builder step leaves the published terminal untouched. Do not make
         // frame cadence depend on how many bounded steps a reflow needs.
@@ -734,7 +747,9 @@ final class Session: @unchecked Sendable {
           ws_row: UInt16(geometry.rows), ws_col: UInt16(geometry.columns),
           ws_xpixel: UInt16(clamping: geometry.columns * geometry.cellWidth),
           ws_ypixel: UInt16(clamping: geometry.rows * geometry.cellHeight))
-        if master >= 0 && ioctl(master, TIOCSWINSZ, &size) < 0 { report("PTY resize failed") }
+        if let result = descriptorLifetime?.withLease({ ioctl($0, TIOCSWINSZ, &size) }), result < 0 {
+          report("PTY resize failed")
+        }
       case .rejected(let reason, _):
         resizePending = false
         precondition(queuedResizeCount > 0)
@@ -753,7 +768,7 @@ final class Session: @unchecked Sendable {
       switch progress {
       case .pending:
         selectionPending = true
-        events[head] = .selection(action, completion, cost, true, retainsCopyResult)
+        ingress.replaceHead(with: .selection(action, completion, cost, true, retainsCopyResult))
         complete = false
         // The snapshot remains the last coherent selection while the bridge
         // captures rows or assembles a copy in bounded owner turns.
@@ -776,7 +791,7 @@ final class Session: @unchecked Sendable {
       switch progress {
       case .pending:
         linkPending = true
-        events[head] = .link(content, target, completion, cost, true)
+        ingress.replaceHead(with: .link(content, target, completion, cost, true))
         complete = false
         // Validation is metadata-only but may span bounded owner turns. The
         // previously coherent snapshot remains the only published view.
@@ -814,80 +829,18 @@ final class Session: @unchecked Sendable {
     case .idle: break
     }
     if complete {
-      events[head] = .idle
-      head += 1
-    }
-    if head == events.count {
-      events.removeAll(keepingCapacity: true)
-      head = 0
-    } else if head >= 32 {
-      events.removeFirst(head)
-      head = 0
+      if case .output = event { readBroker.consumed(0, completedNode: true) }
+      ingress.completeHead()
     }
     flush()
     updateReadInterest()
     if publishNeeded { schedulePublish() }
     scheduleOwner()
   }
-  private func readAvailable() {
-    guard !closed, !readEnded else { return }
-    streamStatistics?.readCallbacks += 1
-    let started = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
-    var total = 0
-    while total < 65_536 && queuedOutput < 2 * 1024 * 1024 {
-      streamStatistics?.readCalls += 1
-      let (count, output) = readSlab.withUnsafeMutableBytes { buffer -> (Int, Data?) in
-        let count = Darwin.read(master, buffer.baseAddress!, buffer.count)
-        return (count, count > 0 ? Data(bytes: buffer.baseAddress!, count: count) : nil)
-      }
-      if let output {
-        enqueue(.output(output, 0))
-        queuedOutput += count
-        streamStatistics?.observeQueuedBytes(queuedOutput)
-        bytesRead += UInt64(count)
-        if firstReadNs == 0 { firstReadNs = DispatchTime.now().uptimeNanoseconds }
-        total += count
-      } else if count == 0 || (count < 0 && errno == EIO) {
-        endRead()
-        enqueue(.eof)
-        break
-      } else if errno == EINTR {
-        continue
-      } else if errno == EAGAIN {
-        break
-      } else {
-        report("PTY read failed: \(String(cString:strerror(errno)))")
-        endRead()
-        enqueue(.eof)
-        break
-      }
-    }
-    if streamStatistics != nil { streamStatistics!.readNanoseconds &+= DispatchTime.now().uptimeNanoseconds - started }
-    updateReadInterest()
-  }
-  private func updateReadInterest() {
-    guard !closed, !readEnded else { return }
-    if queuedOutput >= 2 * 1024 * 1024 || writeBytes >= 3 * 1024 * 1024 {
-      if !readSuspended {
-        reader?.suspend()
-        readSuspended = true
-        streamStatistics?.suspends += 1
-      }
-    } else if readSuspended && queuedOutput < 1024 * 1024 && writeBytes < 1536 * 1024 {
-      reader?.resume()
-      readSuspended = false
-      streamStatistics?.resumes += 1
-      queue.async { [weak self] in self?.readAvailable() }
-    }
-  }
+  private func updateReadInterest() { readEndpoint?.update(writeBytes: writeBytes) }
   private func endRead() {
     readEnded = true
-    if readSuspended {
-      reader?.resume()
-      readSuspended = false
-      streamStatistics?.resumes += 1
-    }
-    reader?.cancel()
+    readEndpoint?.close()
     endWrite()
     master = -1
     reap()
@@ -928,7 +881,7 @@ final class Session: @unchecked Sendable {
       live: { [weak owner] in owner?.acceptingClipboardRequests == true },
       completion: { [weak owner] allowed, completion in
         guard let owner else { DispatchQueue.main.async { completion(false) }; return }
-        owner.queue.async {
+        owner.readBroker.submit {
           guard !owner.closed else { DispatchQueue.main.async { completion(false) }; return }
           owner.enqueue(.clipboardDecision(requestID, allowed, completion))
         }
@@ -941,7 +894,7 @@ final class Session: @unchecked Sendable {
   }
   private func drainClipboardWrites() { terminal_take_clipboard_requests(core, Unmanaged.passUnretained(self).toOpaque(), Self.collectClipboard) }
   func setClipboardClosedHandler(_ handler: @escaping @MainActor (UUID) -> Void) {
-    queue.async { [weak self] in
+    readBroker.submit { [weak self] in
       guard let self else { return }
       onClipboardClosed = handler
       deliverClipboardCloseIfPossible()
@@ -957,7 +910,10 @@ final class Session: @unchecked Sendable {
       }
       let first = writes[0]
       let count = first.data.withUnsafeBytes {
-        Darwin.write(master, $0.baseAddress! + first.offset, min(first.remaining, 65_536 - turn))
+        buffer in
+        descriptorLifetime?.withLease { fd in
+          Darwin.write(fd, buffer.baseAddress! + first.offset, min(first.remaining, 65_536 - turn))
+        } ?? { errno = EPIPE; return -1 }()
       }
       if count > 0 {
         writes[0].offset += count
@@ -1005,7 +961,7 @@ final class Session: @unchecked Sendable {
       if admission != .closed || !lifecycle { report(admission.message) }
       return false
     }
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed, !writeEnded else {
         release(cost)
         if !lifecycle { report("Input closed") }
@@ -1031,7 +987,7 @@ final class Session: @unchecked Sendable {
       if admission != .closed || !lifecycle { report(admission.message) }
       return false
     }
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed, !writeEnded else {
         release(cost)
         if !lifecycle { report("Input closed") }
@@ -1054,7 +1010,7 @@ final class Session: @unchecked Sendable {
       report(admission.message)
       return false
     }
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed, !writeEnded else {
         release(cost)
         report("Input closed")
@@ -1066,13 +1022,16 @@ final class Session: @unchecked Sendable {
   }
   func semanticProbe(_ completion: @escaping @MainActor (Double) -> Void) {
     let time = DispatchTime.now().uptimeNanoseconds
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.probe(time, completion))
     }
   }
   func statistics(_ completion: @escaping @MainActor ([String: Any]) -> Void) {
-    queue.async { [self] in
+    readBroker.submit { [self] in
+      let readStats = readBroker.snapshot
+      let firstReadNs = readStats.firstReadNs
+      let bytesRead = readStats.bytesRead
       let elapsed =
         lastParseNs > firstReadNs && firstReadNs > 0
         ? Double(lastParseNs - firstReadNs) / 1_000_000_000 : 0
@@ -1085,14 +1044,14 @@ final class Session: @unchecked Sendable {
       ]
       if let stream = streamStatistics {
         stats["stream_diagnostic"] = [
-          "read_callbacks": stream.readCallbacks, "read_calls": stream.readCalls,
+          "read_callbacks": readStats.readCallbacks, "read_calls": readStats.readCalls,
           "output_events": stream.outputEvents, "pump_schedules": stream.pumpSchedules,
           "pump_turns": stream.pumpTurns, "feed_calls": stream.feedCalls,
           "feed_bytes": stream.feedBytes, "event_queue_high_water": stream.queueHighWater,
-          "queued_output_bytes_high_water": stream.queuedBytesHighWater,
-          "read_suspends": stream.suspends, "read_resumes": stream.resumes,
+          "queued_output_bytes_high_water": readStats.queuedBytesHighWater,
+          "read_suspends": readStats.suspends, "read_resumes": readStats.resumes,
           "publish_calls": stream.publishCalls,
-          "read_nanoseconds": stream.readNanoseconds, "feed_nanoseconds": stream.feedNanoseconds,
+          "read_nanoseconds": readStats.readNanoseconds, "feed_nanoseconds": stream.feedNanoseconds,
           "snapshot_nanoseconds": stream.snapshotNanoseconds, "pump_nanoseconds": stream.pumpNanoseconds,
         ] as [String: Any]
       }
@@ -1100,13 +1059,13 @@ final class Session: @unchecked Sendable {
     }
   }
   func configure(_ value: TerminalSessionConfiguration) {
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.configure(value))
     }
   }
   func resize(cols: Int, rows: Int, cellWidth: Int = 8, cellHeight: Int = 16) {
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed, cols >= 1, rows >= 1, cols <= 4096, rows <= 4096 else { return }
       if cols != columns || rows != rowCount || cellWidth != cellWidthPx
         || cellHeight != cellHeightPx || queuedResizeCount > 0
@@ -1117,13 +1076,13 @@ final class Session: @unchecked Sendable {
     }
   }
   func scroll(_ amount: Int) {
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.scroll(amount))
     }
   }
   func clearDisplay() {
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.clearDisplay)
     }
@@ -1149,7 +1108,7 @@ final class Session: @unchecked Sendable {
       report(admission.message)
       return false
     }
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed else {
         finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
                         result: .failure(.cancelled))
@@ -1176,7 +1135,7 @@ final class Session: @unchecked Sendable {
       report(admission.message)
       return false
     }
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed else {
         finishLink(cost: cost, completion: completion, result: .failure(.cancelled))
         return
@@ -1186,7 +1145,7 @@ final class Session: @unchecked Sendable {
     return true
   }
   func find(_ query: String, completion: @escaping @MainActor (HistorySearchOutcome) -> Void) {
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed else {
         DispatchQueue.main.async { completion(.cancelled) }
         return
@@ -1196,13 +1155,14 @@ final class Session: @unchecked Sendable {
   }
   // Urgent transport control: no semantic event or stalled write can trap it.
   func cancelPaste() {
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed else { return }
-      for index in head..<events.count {
-        if case .input(_, let key, _, _, let cost) = events[index], key == 1 {
+      ingress.transformEvents { event in
+        if case .input(_, let key, _, _, let cost) = event, key == 1 {
           release(cost)
-          events[index] = .idle
+          return .idle
         }
+        return event
       }
       for index in writes.indices { _ = writes[index].cancelPaste() }
       report("Paste cancelled")
@@ -1269,7 +1229,7 @@ final class Session: @unchecked Sendable {
   }
   func close() {
     closeInteractions()
-    queue.async { [self] in
+    readBroker.submit { [self] in
       guard !closed else { return }
       notifyClipboardClosed()
       closed = true
@@ -1290,8 +1250,13 @@ final class Session: @unchecked Sendable {
         TerminalPresentedContentBridge.cancel(core: core)
         linkPending = false
       }
-      for index in head..<events.count {
-        switch events[index] {
+      for record in ingress.drain() {
+        if case .output(let data, let offset) = record {
+          readBroker.consumed(data.count - offset, completedNode: true)
+          continue
+        }
+        guard case .event(let event) = record else { continue }
+        switch event {
         case .input(_, _, _, _, let cost), .keyInput(_, let cost), .raw(_, let cost), .shortcut(_, let cost): release(cost)
         case .find(_, let completion): DispatchQueue.main.async { completion(.cancelled) }
         case .clipboardDecision(_, _, let completion): DispatchQueue.main.async { completion(false) }
@@ -1303,15 +1268,8 @@ final class Session: @unchecked Sendable {
         default: break
         }
       }
-      events.removeAll()
-      head = 0
       queuedResizeCount = 0
-      if readSuspended {
-        reader?.resume()
-        readSuspended = false
-        streamStatistics?.resumes += 1
-      }
-      reader?.cancel()
+      readEndpoint?.close()
       endWrite()
       statusReader?.cancel()
       if let core {
@@ -1327,17 +1285,5 @@ final class Session: @unchecked Sendable {
         }
       }
     }
-  }
-}
-private final class DescriptorRetirement: @unchecked Sendable {
-  let fd: Int32
-  var remaining: Int
-  init(fd: Int32, count: Int) {
-    self.fd = fd
-    remaining = count
-  }
-  func complete() {
-    remaining -= 1
-    if remaining == 0 { Darwin.close(fd) }
   }
 }

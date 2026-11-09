@@ -1,0 +1,12 @@
+{
+  "note": "Original harness source restored by removing its sole later probe-drain addition; original binaries and command records copied unchanged. Source hashes captured after runs, not claimed as compile-time provenance.",
+  "files": {
+    "Flood.c": "4defef1d52dda0b45fcc68e84f3ea5b3cadfddbc9502c64b977ec582ef8680fd",
+    "Latency.swift": "280a8864d77e1b284136d661f0f1a309f2c72436354127d58a9d7e074b6efff4",
+    "baseline-command.json": "1551681a56665688c886338a1ae5c94e846b181fffe8bf269adda1a67cd79a72",
+    "baseline-latency": "aeb304b048a3910675e197f8922b347eed4482e7b98e048bf0de76b9deba99d6",
+    "flood": "1ce4c2fb5c6c07020eba38e307ac52fcde109ce36d1e530e33efc83db531114b",
+    "stage-b-command.json": "3c6f7f5cc276a68d4c7a5f401b0fb51b6f6d3f349d44aaa38c0b97bbf70d1c78",
+    "stage-b-latency": "1b04ebf70fb1b0025e913d0696c7fbc3326b2720c58c94f4b42b7e5022b597d4"
+  }
+}

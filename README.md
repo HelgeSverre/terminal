@@ -94,7 +94,9 @@ result to the AppKit view.
 flowchart LR
   Input["Keyboard, IME<br/>mouse, paste"] --> Canvas[AppKit canvas]
   Canvas -->|Input and resize| Session[Session queue]
-  Session <-->|PTY bytes| Process[Shell or program]
+  Process[Shell or program] -->|PTY output| Reader[Shared PTY reader]
+  Reader -->|Ordered deliveries| Session
+  Session -->|Input, replies, resize| Process
   Session --> Emulator["VT parser<br/>document and history"]
   Emulator --> Snapshot[Immutable snapshot]
   Snapshot --> Canvas
