@@ -1,0 +1,17 @@
+{
+  "rust_free_base": "d7dfefcc159f1279e9e3551af4e53a9e96a157f8",
+  "host_base_at_freeze": "95d5d0ca8542e0f5d588ca1377cfe8a2bf422f23",
+  "source_files": {
+    "native/Emulation/DocumentReflow.swift": "fb00de9ea83419360540631dfed97d2e2633e5ea4432e1af8f51ca11662e01f1",
+    "native/Emulation/TerminalDocument.swift": "21f7f82ecf757cd02821a71e98546c5dcead4b76e04a9ddc1f7edce15f7472fe",
+    "native/Emulation/TerminalEmulator.swift": "3ea7984463cca5aae52919c53adeec32902c551a1b69424336c263671569d1fc",
+    "native/tests/TerminalReflowSemanticTests.swift": "71b6796be905f74c1083fd18daeaba337aed9616c7ae6d9547694902f107f4e9",
+    "native/tests/TerminalGraphicsOracleTests.swift": "e8da477622309877ee6ad14cb97638fc55101af978cf44334f99893198aec700"
+  },
+  "frozen_inputs": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/accepted-candidate/manifest.json",
+  "frozen_inputs_sha256": "b44bff57cf9ffb422e3f2a583bdc8f749e69b4b615114e887e781a547ce79686",
+  "host_source_files": {
+    "native/Session.swift": "528733dec3b6ccd2a173ab7fa0df34fe0d12f98ddb8868bb9fa1a3bad5b9cfbf",
+    "native/tests/SessionTests.swift": "4c5d03da037d2841f1edae51116527248ef14ddb672cde7e0530e640c83f7094"
+  }
+}

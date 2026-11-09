@@ -14,6 +14,11 @@ import Foundation
         executable: "/bin/zsh", arguments: ["/bin/zsh", "-l"], cwd: "/tmp",
         launcher: root + "/dist/Terminal.app/Contents/MacOS/TerminalLauncher")
     }
+    func rubySpec(_ script: String, _ arguments: [String]) -> LaunchSpec {
+      LaunchSpec(
+        executable: "/usr/bin/ruby", arguments: ["/usr/bin/ruby", "-e", script] + arguments,
+        cwd: "/tmp", launcher: root + "/dist/Terminal.app/Contents/MacOS/TerminalLauncher")
+    }
     var checks = Dictionary(
       uniqueKeysWithValues: [
         "input_admitted_for_ordered_output", "input_before_mode_suffix_is_unbracketed",
@@ -31,6 +36,8 @@ import Foundation
         "physical_key_reaches_pty",
         "typed_metadata_rejected", "typed_legacy_metadata_rejected", "expanded_key_write_rejected",
         "typed_key_paths_admitted", "modifier_keys_preserve_anchored_viewport",
+        "resize_rejection_preserves_fifo_and_pty", "resumable_resize_commits_before_later_input",
+        "pending_resize_close_is_fair_and_cancels", "rapid_resize_returns_to_original_before_input",
       ].map { ($0, false) })
     checks["split_inherits_cwd"] = false
     checks["split_children_reaped"] = false
@@ -432,6 +439,236 @@ import Foundation
     expect(!view.input("user text"), "closed session admitted text")
     RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     checks["closed_text_input_is_reported"] = shutdownStatuses.contains("Input closed")
+    // A rejected resize must not signal the PTY, and a semantic event queued
+    // behind it must still reach the child under the retained old geometry.
+    let rejectedResizeDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("terminal-resize-rejection-\(UUID().uuidString)", isDirectory: true)
+    let rejectedResizeReceipt = rejectedResizeDirectory.appendingPathComponent("winch.txt")
+    do {
+      try FileManager.default.createDirectory(at: rejectedResizeDirectory, withIntermediateDirectories: false)
+    } catch {
+      expect(false, "could not create rejected-resize fixture: \(error)")
+    }
+    defer { try? FileManager.default.removeItem(at: rejectedResizeDirectory) }
+    let rejectedResizeScript = #"""
+      STDOUT.sync = true
+      trap("WINCH") { File.open(ARGV.fetch(0), "a") { |file| file.puts(`stty size`.strip) } }
+      system("stty raw -echo")
+      print "RESIZE_REJECT_READY"
+      input = STDIN.read(1)
+      print "RESIZE_REJECT_INPUT=#{input.ord} SIZE=#{`stty size`.strip}"
+      """#
+    let rejectedResize = own(Session(launch: rubySpec(rejectedResizeScript, [rejectedResizeReceipt.path])))
+    var rejectedResizeRequested = false
+    var rejectedResizeDelivered = false
+    rejectedResize.onSnapshot = { snapshot in
+      let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
+      if !rejectedResizeRequested && text.contains("RESIZE_REJECT_READY") {
+        rejectedResizeRequested = true
+        rejectedResize.resize(cols: 4096, rows: 4096)
+        expect(rejectedResize.input("r"), "rejected-resize input was not admitted")
+      }
+      if text.contains("RESIZE_REJECT_INPUT=114 SIZE=24 80") {
+        rejectedResizeDelivered = snapshot.cols == 80 && snapshot.rows.count == 24
+      }
+    }
+    let rejectedResizeDeadline = Date().addingTimeInterval(8)
+    while !rejectedResizeDelivered && Date() < rejectedResizeDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    let rejectedResizeSignals = ((try? String(contentsOf: rejectedResizeReceipt, encoding: .utf8)) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    checks["resize_rejection_preserves_fifo_and_pty"] =
+      rejectedResizeRequested && rejectedResizeDelivered && rejectedResizeSignals.isEmpty
+    expect(checks["resize_rejection_preserves_fifo_and_pty"] == true,
+      "rejected resize: requested=\(rejectedResizeRequested), delivered=\(rejectedResizeDelivered), winch=\(rejectedResizeSignals)")
+    rejectedResize.close()
+    // A resize back to the currently committed geometry is not a no-op while
+    // an earlier resize remains queued. It must stay behind A and commit before
+    // the later input observes the restored PTY size.
+    let rapidResizeDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("terminal-rapid-resize-\(UUID().uuidString)", isDirectory: true)
+    let rapidResizeReceipt = rapidResizeDirectory.appendingPathComponent("winch.txt")
+    do {
+      try FileManager.default.createDirectory(at: rapidResizeDirectory, withIntermediateDirectories: false)
+    } catch {
+      expect(false, "could not create rapid-resize fixture: \(error)")
+    }
+    defer { try? FileManager.default.removeItem(at: rapidResizeDirectory) }
+    let rapidResizeScript = #"""
+      STDOUT.sync = true
+      trap("WINCH") { File.open(ARGV.fetch(0), "a") { |file| file.puts(`stty size`.strip) } }
+      system("stty raw -echo")
+      print "RAPID_RESIZE_READY"
+      input = STDIN.read(1)
+      print "RAPID_RESIZE_INPUT=#{input.ord} SIZE=#{`stty size`.strip}"
+      sleep 0.1
+      """#
+    let rapidResize = own(Session(launch: rubySpec(rapidResizeScript, [rapidResizeReceipt.path])))
+    var rapidResizeRequested = false
+    var rapidResizeDelivered = false
+    rapidResize.onSnapshot = { snapshot in
+      let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
+      if !rapidResizeRequested && text.contains("RAPID_RESIZE_READY") {
+        rapidResizeRequested = true
+        rapidResize.resize(cols: 20, rows: 24)
+        rapidResize.resize(cols: 80, rows: 24)
+        expect(rapidResize.input("b"), "rapid-resize input was not admitted")
+      }
+      if text.contains("RAPID_RESIZE_INPUT=98 SIZE=24 80") {
+        rapidResizeDelivered = snapshot.cols == 80 && snapshot.rows.count == 24
+      }
+    }
+    let rapidResizeDeadline = Date().addingTimeInterval(8)
+    while !rapidResizeDelivered && Date() < rapidResizeDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    let rapidResizeSignals = ((try? String(contentsOf: rapidResizeReceipt, encoding: .utf8)) ?? "")
+      .split(whereSeparator: \.isNewline).map(String.init)
+    checks["rapid_resize_returns_to_original_before_input"] =
+      rapidResizeRequested && rapidResizeDelivered && (1...2).contains(rapidResizeSignals.count)
+    expect(checks["rapid_resize_returns_to_original_before_input"] == true,
+      "rapid resize: requested=\(rapidResizeRequested), delivered=\(rapidResizeDelivered), winch=\(rapidResizeSignals)")
+    rapidResize.close()
+    // The reflow fixture builds enough wide history to require the bridge's
+    // resumable path. Input and probes remain after the resize event until its
+    // one coherent commit, where the PTY gets exactly one matching WINCH.
+    let committedResizeDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("terminal-resize-commit-\(UUID().uuidString)", isDirectory: true)
+    let committedResizeReceipt = committedResizeDirectory.appendingPathComponent("winch.txt")
+    do {
+      try FileManager.default.createDirectory(at: committedResizeDirectory, withIntermediateDirectories: false)
+    } catch {
+      expect(false, "could not create committed-resize fixture: \(error)")
+    }
+    defer { try? FileManager.default.removeItem(at: committedResizeDirectory) }
+    let committedResizeScript = #"""
+      STDOUT.sync = true
+      trap("WINCH") { File.open(ARGV.fetch(0), "a") { |file| file.puts(`stty size`.strip) } }
+      system("stty raw -echo")
+      row = "r" * 140
+      50_000.times { |index| print "%05d %s\r\n" % [index, row] }
+      print "RESIZE_COMMIT_READY"
+      input = STDIN.read(1)
+      print "RESIZE_COMMIT_INPUT=#{input.ord} SIZE=#{`stty size`.strip}"
+      """#
+    let committedResize = own(Session(launch: rubySpec(committedResizeScript, [committedResizeReceipt.path])))
+    var committedResizeRequested = false
+    var committedResizeDelivered = false
+    var committedResizeProbe = false
+    var committedResizeOwnerProbes = 0
+    var committedResizeGeometries = Set<String>()
+    var scheduleCommittedResizeProbe: (() -> Void)!
+    scheduleCommittedResizeProbe = {
+      committedResize.queue.async {
+        DispatchQueue.main.async {
+          guard !committedResizeDelivered else { return }
+          committedResizeOwnerProbes += 1
+          if committedResizeOwnerProbes < 2 { scheduleCommittedResizeProbe() }
+        }
+      }
+    }
+    committedResize.onSnapshot = { snapshot in
+      let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
+      if !committedResizeRequested && text.contains("RESIZE_COMMIT_READY") {
+        committedResizeRequested = true
+        committedResize.resize(cols: 20, rows: 24)
+        expect(committedResize.input("c"), "committed-resize input was not admitted")
+        committedResize.semanticProbe { _ in committedResizeProbe = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(10)) {
+          scheduleCommittedResizeProbe()
+        }
+      }
+      if committedResizeRequested { committedResizeGeometries.insert("\(snapshot.cols)x\(snapshot.rows.count)") }
+      if text.contains("RESIZE_COMMIT_INPUT=99 SIZE=24 20") {
+        committedResizeDelivered = snapshot.cols == 20 && snapshot.rows.count == 24
+      }
+    }
+    let committedResizeDeadline = Date().addingTimeInterval(30)
+    while !(committedResizeDelivered && committedResizeProbe) && Date() < committedResizeDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    let committedResizeSignals = ((try? String(contentsOf: committedResizeReceipt, encoding: .utf8)) ?? "")
+      .split(whereSeparator: \.isNewline).map(String.init)
+    checks["resumable_resize_commits_before_later_input"] =
+      committedResizeRequested && committedResizeDelivered && committedResizeProbe
+      && committedResizeOwnerProbes >= 2
+      && committedResizeGeometries.isSubset(of: Set(["80x24", "20x24"]))
+      && committedResizeSignals == ["24 20"]
+    expect(checks["resumable_resize_commits_before_later_input"] == true,
+      "committed resize: requested=\(committedResizeRequested), delivered=\(committedResizeDelivered), semantic_probe=\(committedResizeProbe), owner_probes=\(committedResizeOwnerProbes), geometries=\(committedResizeGeometries), winch=\(committedResizeSignals)")
+    committedResize.close()
+    // The same queue-yield property must make an in-progress resize cancellable
+    // before it sends WINCH. The child remains idle, so any receipt is solely
+    // caused by an incorrect committed ioctl.
+    let cancelledResizeDirectory = FileManager.default.temporaryDirectory
+      .appendingPathComponent("terminal-resize-cancel-\(UUID().uuidString)", isDirectory: true)
+    let cancelledResizeReceipt = cancelledResizeDirectory.appendingPathComponent("winch.txt")
+    do {
+      try FileManager.default.createDirectory(at: cancelledResizeDirectory, withIntermediateDirectories: false)
+    } catch {
+      expect(false, "could not create cancelled-resize fixture: \(error)")
+    }
+    defer { try? FileManager.default.removeItem(at: cancelledResizeDirectory) }
+    let cancelledResizeScript = #"""
+      STDOUT.sync = true
+      trap("WINCH") { File.open(ARGV.fetch(0), "a") { |file| file.puts(`stty size`.strip) } }
+      system("stty raw -echo")
+      row = "x" * 140
+      50_000.times { |index| print "%05d %s\r\n" % [index, row] }
+      print "RESIZE_CANCEL_READY"
+      sleep 30
+      """#
+    let cancelledResize = own(Session(launch: rubySpec(cancelledResizeScript, [cancelledResizeReceipt.path])))
+    var cancelledResizeRequested = false
+    var cancelledResizeClosed = false
+    var cancelledResizeReaped = false
+    var cancelledResizeInputRejected = false
+    var cancelledResizeOwnerProbes = 0
+    var cancelledResizeCommittedUnexpectedly = false
+    var scheduleCancelledResizeProbe: (() -> Void)!
+    scheduleCancelledResizeProbe = {
+      cancelledResize.queue.async {
+        DispatchQueue.main.async {
+          guard !cancelledResizeClosed else { return }
+          if FileManager.default.fileExists(atPath: cancelledResizeReceipt.path) {
+            cancelledResizeCommittedUnexpectedly = true
+          }
+          cancelledResizeOwnerProbes += 1
+          if cancelledResizeOwnerProbes < 2 && !cancelledResizeCommittedUnexpectedly {
+            scheduleCancelledResizeProbe()
+          } else {
+            cancelledResizeClosed = true
+            cancelledResize.close()
+            cancelledResizeInputRejected = !cancelledResize.input("x")
+          }
+        }
+      }
+    }
+    cancelledResize.onStatus = { status in
+      if status.hasPrefix("Process exited") { cancelledResizeReaped = true }
+    }
+    cancelledResize.onSnapshot = { snapshot in
+      let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
+      guard !cancelledResizeRequested, text.contains("RESIZE_CANCEL_READY") else { return }
+      cancelledResizeRequested = true
+      cancelledResize.resize(cols: 20, rows: 24)
+      DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(10)) {
+        scheduleCancelledResizeProbe()
+      }
+    }
+    let cancelledResizeDeadline = Date().addingTimeInterval(8)
+    while !cancelledResizeReaped && Date() < cancelledResizeDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    let cancelledResizeSignals = ((try? String(contentsOf: cancelledResizeReceipt, encoding: .utf8)) ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    checks["pending_resize_close_is_fair_and_cancels"] =
+      cancelledResizeRequested && cancelledResizeClosed && cancelledResizeReaped
+      && cancelledResizeInputRejected && cancelledResizeOwnerProbes >= 2
+      && !cancelledResizeCommittedUnexpectedly && cancelledResizeSignals.isEmpty
+    expect(checks["pending_resize_close_is_fair_and_cancels"] == true,
+      "cancelled resize: requested=\(cancelledResizeRequested), closed=\(cancelledResizeClosed), reaped=\(cancelledResizeReaped), input_rejected=\(cancelledResizeInputRejected), owner_probes=\(cancelledResizeOwnerProbes), committed=\(cancelledResizeCommittedUnexpectedly), winch=\(cancelledResizeSignals)")
     let searchable = own(Session(launch: spec(
       #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; 3000.times{|i| print(i==1000 ? "SEARCH_NEEDLE\r\n" : "row#{i}\r\n")}; print "SEARCH_READY"; STDIN.read(1)'"#)))
     var searchReady = false
@@ -550,6 +787,14 @@ import Foundation
       "finished_at": ISO8601DateFormatter().string(from: Date()),
       "checks": checks, "passed": passed, "failures": failures,
       "cancel_to_reap_seconds": elapsed, "statuses": statuses,
+      "resumable_reflow": [
+        "rejected_winch": rejectedResizeSignals,
+        "rapid_winch": rapidResizeSignals,
+        "committed_winch": committedResizeSignals,
+        "cancelled_winch": cancelledResizeSignals,
+        "committed_owner_probes": committedResizeOwnerProbes,
+        "cancelled_owner_probes": cancelledResizeOwnerProbes,
+      ],
       "owned_session_cleanup": ["reported": cleanupStats.count, "expected": ownedSessions.count,
         "all_children_reaped": allChildrenReaped, "unreaped_pids": unreapedPIDs,
         "states": childReapStates],

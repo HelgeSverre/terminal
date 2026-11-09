@@ -16,6 +16,13 @@ Implemented and locally exercised:
   startup files and autosuggestion bindings. Five focused core cases and the
   actual native Command–K path pass.
 - Primary reflow and alternate crop/pad; inactive primary and saved cursors resize.
+- Resumable resize transactions keep later input ordered, yield between bounded
+  work quanta, reserve temporary memory before capture and retain reservations
+  through off-owner retirement. Only retained rows are materialized; pressure
+  evicts bounded oldest-history packets. Cancelled/rejected operations retain
+  geometry, grapheme and synchronization state. Rapid shrink/restore requests
+  preserve the requested final size. Focused core and real-PTY Session gates
+  pass; `reports/resumable-reflow-evidence/summary.md` records the exact scope.
 - Owner-confined primary viewport anchored by document/row identity, stable under
   new output, remapped through reflow, clamped on eviction, and retained while
   alternate is selected. Snapshots carry document/history/screen identity and
@@ -196,7 +203,10 @@ Required work remaining before the requested completion gate:
 - Full command/capability audit and hardware keyboard/layout validation.
   The bundled custom terminfo is available;
   switching the default identity still needs local/remote compatibility evidence.
-- Resumable reflow work quanta and fallible temporary-memory allowances. REP now yields in bounded quanta; actor/input ordering during REP is tested.
+- Broader reflow stress across displays and live applications. Resumable reflow
+  now has checked reservations and bounded work quanta; Swift allocator OOM is
+  not recoverable. REP also yields in bounded quanta, with actor/input ordering
+  covered by tests.
 - Broader selection/search navigation, live-edit and fractional pixel-scrolling
   validation. Indexed history and stable viewport anchors are implemented, but
   selection still holds a bounded host snapshot rather than owner-validated,

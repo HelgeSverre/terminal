@@ -83,6 +83,13 @@ private final class TerminalEmulator {
   private(set) var columns: Int
   private(set) var rowCount: Int
   private var document: TerminalDocument
+  private struct PendingResize {
+    let geometry: TerminalResizeGeometry
+    var revision: UInt64
+    var transaction: DocumentReflowTransaction
+    var relievingPressure = false
+  }
+  private var pendingResize: PendingResize?
   private var primary: TerminalScreen { get { document.primary } set { document.primary = newValue } }
   private var alternate: TerminalScreen { get { document.alternate } set { document.alternate = newValue } }
   private var usingAlternate = false
@@ -291,7 +298,11 @@ private final class TerminalEmulator {
     graphics.tick(now: now)
     if let deadline = syncDeadline, now >= deadline {
       syncDeadline = nil
+      let previousRevision = revision
       changed()
+      // The watchdog publishes the same committed document. Keep a clean
+      // resize generation current without concealing any earlier mutation.
+      if pendingResize?.revision == previousRevision { pendingResize?.revision = revision }
     }
   }
   private func repeatLastPrinted() {
@@ -974,42 +985,97 @@ private final class TerminalEmulator {
     pendingClipboardRequests.insert(requestID)
     clipboardRequests.append((requestID, data))
   }
-  func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool {
-    guard (1...4096).contains(nextColumns), (1...4096).contains(nextRows), nextColumns <= 1_048_576 / nextRows else { return false }
-    if nextColumns == columns && nextRows == rowCount { return true }
-    resetClusterBoundary()
-    let oldColumns = columns
-    let oldPrimary = primary
-    if !usingAlternate && nextColumns != columns && primary.atPrompt && primary.promptRedraw {
-      var promptScreen = primary
-      _ = document.clearPromptSuffix(&promptScreen, eraseStyle: eraseStyle())
-      primary = promptScreen
+  private var resizeGeometry: TerminalResizeGeometry {
+    TerminalResizeGeometry(columns: columns, rows: rowCount, cellWidth: cellPixelWidth, cellHeight: cellPixelHeight)
+  }
+  func beginResize(_ geometry: TerminalResizeGeometry) -> TerminalResizeProgress {
+    guard geometry.isValid else { return .rejected(.invalidGeometry, retained: resizeGeometry) }
+    guard pendingResize == nil else { return .rejected(.resizeInProgress, retained: resizeGeometry) }
+    if geometry.columns == columns && geometry.rows == rowCount {
+      cellPixelWidth = geometry.cellWidth; cellPixelHeight = geometry.cellHeight
+      return .committed(resizeGeometry)
     }
-    let oldAlternate = alternate
-    if nextColumns != columns { graphics.clear(alternate: false) }
-    let mapped = document.reflowPrimary(columns: nextColumns, rows: nextRows, anchor: viewAnchor)
-    var resizedAlternate = document.resize(oldAlternate, columns: nextColumns, rows: nextRows)
-    columns = nextColumns; rowCount = nextRows; alternate = resizedAlternate
-    primary.keyboardFlags = oldPrimary.keyboardFlags; primary.keyboardStack = oldPrimary.keyboardStack
-    primary.cursorVisible = oldPrimary.cursorVisible; primary.cursorShape = oldPrimary.cursorShape
-    resizedAlternate.keyboardFlags = oldAlternate.keyboardFlags; resizedAlternate.keyboardStack = oldAlternate.keyboardStack
-    resizedAlternate.cursorVisible = oldAlternate.cursorVisible; resizedAlternate.cursorShape = oldAlternate.cursorShape
-    alternate = resizedAlternate
-    if nextColumns != oldColumns {
-      tabs = Array(tabs.prefix(nextColumns))
-      if nextColumns > oldColumns {
-        tabs.append(contentsOf: (oldColumns..<nextColumns).map { !tabsCleared && $0 > 0 && $0.isMultiple(of: 8) })
+    pendingResize = PendingResize(geometry: geometry, revision: revision,
+      transaction: makeResizeTransaction(geometry))
+    return .pending
+  }
+  private func makeResizeTransaction(_ geometry: TerminalResizeGeometry) -> DocumentReflowTransaction {
+    let promptStyle = !usingAlternate && geometry.columns != columns && primary.atPrompt && primary.promptRedraw
+      ? eraseStyle() : nil
+    return DocumentReflowTransaction(source: document, geometry: geometry,
+      anchor: viewAnchor, promptEraseStyle: promptStyle, historyRows: historyLimit, historyBytes: historyByteLimit)
+  }
+  func advanceResize() -> TerminalResizeProgress {
+    guard var pending = pendingResize else { return .rejected(.noOperation, retained: resizeGeometry) }
+    guard pending.revision == revision else {
+      pending.transaction.retire()
+      pendingResize = nil
+      return .rejected(.staleInput, retained: resizeGeometry)
+    }
+    if pending.relievingPressure {
+      switch pending.transaction.relieveHistoryPressure(in: &document) {
+      case .pending: return .pending
+      case .rejected(let reason):
+        pendingResize = nil
+        return .rejected(reason, retained: resizeGeometry)
+      case .evicted:
+        didEvictHistory()
+        changed(history: true, screen: false)
+        pending.revision = revision
+      case .ready:
+        pending.transaction = makeResizeTransaction(pending.geometry)
+        pending.relievingPressure = false
+      }
+      pendingResize = pending
+      return .pending
+    }
+    let replacement: DocumentReflowTransaction.Replacement
+    switch pending.transaction.advance() {
+    case .pending: return .pending
+    case .pressure:
+      pending.relievingPressure = true
+      pendingResize = pending
+      return .pending
+    case .rejected(let reason):
+      pending.transaction.retire()
+      pendingResize = nil
+      return .rejected(reason, retained: resizeGeometry)
+    case .ready(let value): replacement = value
+    }
+    let oldColumns = columns
+    let geometry = pending.geometry
+    document = replacement.document
+    resetClusterBoundary()
+    syncDeadline = nil
+    columns = geometry.columns; rowCount = geometry.rows
+    cellPixelWidth = geometry.cellWidth; cellPixelHeight = geometry.cellHeight
+    if columns != oldColumns {
+      graphics.clear(alternate: false)
+      tabs = Array(tabs.prefix(columns))
+      if columns > oldColumns {
+        tabs.append(contentsOf: (oldColumns..<columns).map { !tabsCleared && $0 > 0 && $0.isMultiple(of: 8) })
       }
     }
-    enforceHistoryLimits()
-    viewAnchor = mapped.anchor ?? viewAnchor
+    if replacement.evictedHistory { didEvictHistory() }
+    viewAnchor = replacement.mapping.anchor ?? viewAnchor
     resolveViewportAnchor(clamp: true)
-    pruneGraphicsAnchors()
-    syncDeadline = nil
+    graphics.pruneAnchors(retaining: replacement.retainedRowIDs)
     changed(geometry: true)
-    return true
+    pending.transaction.retire()
+    pendingResize = nil
+    return .committed(resizeGeometry)
   }
-  func resize(columns nextColumns: Int, rows nextRows: Int, cellWidth: Int, cellHeight: Int) -> Bool { guard (1...1024).contains(cellWidth), (1...1024).contains(cellHeight), resize(columns: nextColumns, rows: nextRows) else { return false }; cellPixelWidth = cellWidth; cellPixelHeight = cellHeight; return true }
+  func cancelResize() { pendingResize?.transaction.retire(); pendingResize = nil }
+  func resize(columns nextColumns: Int, rows nextRows: Int) -> Bool {
+    resize(columns: nextColumns, rows: nextRows, cellWidth: cellPixelWidth, cellHeight: cellPixelHeight)
+  }
+  func resize(columns nextColumns: Int, rows nextRows: Int, cellWidth: Int, cellHeight: Int) -> Bool {
+    var progress = beginResize(TerminalResizeGeometry(columns: nextColumns, rows: nextRows,
+      cellWidth: cellWidth, cellHeight: cellHeight))
+    while case .pending = progress { progress = advanceResize() }
+    if case .committed = progress { return true }
+    return false
+  }
   func scroll(_ amount: Int) {
     guard !usingAlternate, amount != 0 else { return }
     let current = resolveViewportAnchor(clamp: true)
@@ -1041,9 +1107,10 @@ private final class TerminalEmulator {
     if let row = history.first ?? primary.rows.first { viewAnchor = row.id; viewOffset = history.first == nil ? 0 : history.count; if !viewportWasClamped { viewportClampRevision &+= 1; viewportWasClamped = true } }
   }
   private func enforceHistoryLimits() {
-    let retainedAnchor = viewAnchor
-    let evicted = document.trimHistory(rowLimit: historyLimit, byteLimit: historyByteLimit) > 0
-    if evicted, let retainedAnchor,
+    if document.trimHistory(rowLimit: historyLimit, byteLimit: historyByteLimit) > 0 { didEvictHistory() }
+  }
+  private func didEvictHistory() {
+    if let retainedAnchor = viewAnchor,
        history.index(ofRowID: retainedAnchor) == nil,
        !primary.rows.contains(where: { $0.id == retainedAnchor }) {
       clampViewportAfterEviction()
@@ -1473,6 +1540,15 @@ private func core(_ pointer: OpaquePointer?) -> TerminalEmulator? { pointer.map 
 // row/cell storage. The returned value survives later mutation and destruction.
 func swiftTerminalSnapshot(_ pointer: OpaquePointer?, scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
   core(pointer)?.snapshotValue(scroll: scroll, now: now) ?? (nil, nil)
+}
+enum TerminalResizeBridge {
+  static func begin(core pointer: OpaquePointer, columns: Int, rows: Int,
+                    cellWidth: Int, cellHeight: Int) -> TerminalResizeProgress {
+    core(pointer)!.beginResize(TerminalResizeGeometry(columns: columns, rows: rows,
+      cellWidth: cellWidth, cellHeight: cellHeight))
+  }
+  static func advance(core pointer: OpaquePointer) -> TerminalResizeProgress { core(pointer)!.advanceResize() }
+  static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelResize() }
 }
 private func inputCharacter(_ scalar: UInt32) -> Character? {
   guard scalar != 0, let value = UnicodeScalar(scalar) else { return nil }

@@ -107,7 +107,7 @@ final class Session: @unchecked Sendable {
     case keyInput(TerminalKeyEvent, Int)
     case raw(Data, Int)
     case shortcut(Data, Int)
-    case resize(Int, Int, Int, Int)
+    case resize(Int, Int, Int, Int, Bool)
     case configure(TerminalSessionConfiguration)
     case scroll(Int)
     case find(String, @MainActor (HistorySearchOutcome) -> Void)
@@ -149,6 +149,8 @@ final class Session: @unchecked Sendable {
   private var rowCount = 24
   private var cellWidthPx = 8
   private var cellHeightPx = 16
+  private var resizePending = false
+  private var queuedResizeCount = 0
   private var configuration = TerminalSessionConfiguration()
   private var imageCache: [ImageKey: ImagePixels] = [:]
   private var publishScheduled = false
@@ -418,6 +420,7 @@ final class Session: @unchecked Sendable {
     let event = events[head]
     streamStatistics?.pumpTurns += 1
     var complete = true
+    var publishNeeded = true
     switch event {
     case .output(let bytes, let offset):
       guard writeBytes < 3 * 1024 * 1024 else {
@@ -488,18 +491,48 @@ final class Session: @unchecked Sendable {
       if !writeEnded { writes.append(WriteTransaction(id: writeID, data: bytes, kind: .ordinary)) }
       if case .shortcut = event, configuration.followTailOnInput { terminal_view_follow_tail(core) }
       release(cost)
-    case .resize(let cols, let rows, let cw, let ch):
-      if terminal_resize_pixels(core, UInt32(cols), UInt32(rows), UInt32(cw), UInt32(ch)) {
-        columns = cols
-        rowCount = rows
-        cellWidthPx = cw
-        cellHeightPx = ch
+    case .resize(let cols, let rows, let cw, let ch, let began):
+      if !began && cols == columns && rows == rowCount && cw == cellWidthPx && ch == cellHeightPx {
+        precondition(queuedResizeCount > 0)
+        queuedResizeCount -= 1
+        publishNeeded = false
+        break
+      }
+      guard let core else {
+        precondition(queuedResizeCount > 0)
+        queuedResizeCount -= 1
+        report("Resize rejected: terminal is unavailable")
+        break
+      }
+      let progress = began
+        ? TerminalResizeBridge.advance(core: core)
+        : TerminalResizeBridge.begin(core: core, columns: cols, rows: rows, cellWidth: cw, cellHeight: ch)
+      switch progress {
+      case .pending:
+        resizePending = true
+        events[head] = .resize(cols, rows, cw, ch, true)
+        complete = false
+        // A builder step leaves the published terminal untouched. Do not make
+        // frame cadence depend on how many bounded steps a reflow needs.
+        publishNeeded = false
+      case .committed(let geometry):
+        resizePending = false
+        precondition(queuedResizeCount > 0)
+        queuedResizeCount -= 1
+        columns = geometry.columns
+        rowCount = geometry.rows
+        cellWidthPx = geometry.cellWidth
+        cellHeightPx = geometry.cellHeight
         var size = winsize(
-          ws_row: UInt16(rows), ws_col: UInt16(cols), ws_xpixel: UInt16(clamping: cols * cw),
-          ws_ypixel: UInt16(clamping: rows * ch))
+          ws_row: UInt16(geometry.rows), ws_col: UInt16(geometry.columns),
+          ws_xpixel: UInt16(clamping: geometry.columns * geometry.cellWidth),
+          ws_ypixel: UInt16(clamping: geometry.rows * geometry.cellHeight))
         if master >= 0 && ioctl(master, TIOCSWINSZ, &size) < 0 { report("PTY resize failed") }
-      } else {
-        report("Resize rejected")
+      case .rejected(let reason, _):
+        resizePending = false
+        precondition(queuedResizeCount > 0)
+        queuedResizeCount -= 1
+        report("Resize rejected: \(reason)")
       }
     case .configure(let value):
       configuration = value
@@ -536,7 +569,7 @@ final class Session: @unchecked Sendable {
     }
     flush()
     updateReadInterest()
-    schedulePublish()
+    if publishNeeded { schedulePublish() }
     scheduleOwner()
   }
   private func readAvailable() {
@@ -817,9 +850,10 @@ final class Session: @unchecked Sendable {
     queue.async { [self] in
       guard !closed, cols >= 1, rows >= 1, cols <= 4096, rows <= 4096 else { return }
       if cols != columns || rows != rowCount || cellWidth != cellWidthPx
-        || cellHeight != cellHeightPx
+        || cellHeight != cellHeightPx || queuedResizeCount > 0
       {
-        enqueue(.resize(cols, rows, cellWidth, cellHeight))
+        queuedResizeCount += 1
+        enqueue(.resize(cols, rows, cellWidth, cellHeight, false))
       }
     }
   }
@@ -924,6 +958,10 @@ final class Session: @unchecked Sendable {
       notifyClipboardClosed()
       closed = true
       historySearch.cancel()
+      if resizePending, let core {
+        TerminalResizeBridge.cancel(core: core)
+        resizePending = false
+      }
       for index in head..<events.count {
         switch events[index] {
         case .input(_, _, _, _, let cost), .keyInput(_, let cost), .raw(_, let cost), .shortcut(_, let cost): release(cost)
@@ -934,6 +972,7 @@ final class Session: @unchecked Sendable {
       }
       events.removeAll()
       head = 0
+      queuedResizeCount = 0
       if readSuspended {
         reader?.resume()
         readSuspended = false

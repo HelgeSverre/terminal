@@ -127,7 +127,21 @@ import Foundation
         var document = TerminalDocument(columns: 8, rows: 3)
         let retained = document.primary
         let anchor = retained.rows[0].id
-        let mapping = document.reflowPrimary(columns: 8, rows: 4, anchor: anchor)
+        let resize = DocumentReflowTransaction(source: document,
+          geometry: TerminalResizeGeometry(columns: 8, rows: 4, cellWidth: 8, cellHeight: 16),
+          anchor: anchor, promptEraseStyle: nil, historyRows: 50_000, historyBytes: 64 * 1024 * 1024)
+        var replacement: DocumentReflowTransaction.Replacement?
+        while replacement == nil {
+          switch resize.advance() {
+          case .pending: continue
+          case .pressure: preconditionFailure("unexpected pressure in small direct fixture")
+          case .ready(let value): replacement = value
+          case .rejected(let reason): preconditionFailure("height reflow rejected: \(reason)")
+          }
+        }
+        document = replacement!.document
+        let mapping = replacement!.mapping
+        resize.retire()
         precondition(mapping.anchor == anchor && document.primary.rows.prefix(3).elementsEqual(retained.rows))
         precondition(document.primary.rows[0].revision == retained.rows[0].revision)
         feed(core, command("a=T,f=24,s=1,v=1,i=1,C=1", [1, 2, 3]))

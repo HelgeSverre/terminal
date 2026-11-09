@@ -1,0 +1,507 @@
+{
+  "status": "PASS_scoped_reflow_and_session_gates",
+  "source_manifest_sha256": "691c914cabafa17ef64de56959843c174ff8b9b8f172b14e5bf98c02a0c3ff12",
+  "evidence": [
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/focused-gates.json",
+      "sha256": "29098398222f89344566b2801d666e1841c3cd208b37d26e2440ca9e2b126404",
+      "bytes": 1085
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-reflow.log",
+      "sha256": "a1f5929a008dcb87bcb3e58a9e4888a2531531379169dcc3f876007b2bcf3103",
+      "bytes": 568
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-reflow.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/rejection-atomicity-red.log",
+      "sha256": "e30cfbf6ef8b46efdd92a1196d05ef55523544f0b6a5cb1e1117dc930c15d88b",
+      "bytes": 693
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/rejection-atomicity-red.exit",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2,
+      "exit": 1
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/affinity-red.log",
+      "sha256": "45576d78b4e8bf0c7e8e2a35fdced933370e12da978736d96b33db2abff9be0a",
+      "bytes": 702
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/affinity-red.exit",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2,
+      "exit": 1
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/pressure-red.log",
+      "sha256": "300393059709818a83b474de725f6eea005baa4ac6bee7b39fc9b56dfe7716f2",
+      "bytes": 814
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/pressure-red.exit",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2,
+      "exit": 1
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/spec-policy-red.log",
+      "sha256": "8434c74a48945ca5214ab86fccf00ec011c40188f74773f6cca9fa0f6d5168b3",
+      "bytes": 175
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/spec-policy-red.exit",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+      "bytes": 2,
+      "exit": 1
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-reflow-semantics.log",
+      "sha256": "a1f5929a008dcb87bcb3e58a9e4888a2531531379169dcc3f876007b2bcf3103",
+      "bytes": 568
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-reflow-semantics.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-document-ownership.log",
+      "sha256": "745276b82d5ac38def225b23b172602701568cdfb8780a21e659b3de39f88818",
+      "bytes": 578
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-document-ownership.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-emulator-test.log",
+      "sha256": "9adae77733ccad82cb66e8dd343d499f69130674b86ee94330b4a137a3185794",
+      "bytes": 521
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-emulator-test.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-viewport-oracle.log",
+      "sha256": "4ca9e6143363c4572eff6a50b4b64af57e48bfa545ed787b79fdf29d3dc53946",
+      "bytes": 598
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-viewport-oracle.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-graphics-oracle.log",
+      "sha256": "a8c8f67a7fa6a8c7c0be5c9fef62fbd99d5a5083309668b122a2be87cdee1974",
+      "bytes": 884
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-graphics-oracle.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-prompt-clear-oracle.log",
+      "sha256": "76a00b783c2bee200c6dec119d0faed8fb6326e9f8265ab5bd1eb733f8b4d56c",
+      "bytes": 579
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-prompt-clear-oracle.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-scheduler-oracle.log",
+      "sha256": "a14f38519d60586e203240f085e55444417b84994bf03c2d6886c26c4a545e67",
+      "bytes": 606
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-scheduler-oracle.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-boundary-regression.log",
+      "sha256": "7259e60278b41d00dda60931dc4e1186985cb13b78bc81880a756dd1a392d485",
+      "bytes": 795
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-boundary-regression.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-semantic-regression.log",
+      "sha256": "c9496a633f4ddb27484b4765a92549ebcee76d00c4abf809e7c369e24a9287b6",
+      "bytes": 597
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/final-terminal-semantic-regression.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/atomicity-terminal-reflow-semantics.log",
+      "sha256": "a1f5929a008dcb87bcb3e58a9e4888a2531531379169dcc3f876007b2bcf3103",
+      "bytes": 568
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/atomicity-terminal-reflow-semantics.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/atomicity-terminal-scheduler-oracle.log",
+      "sha256": "a14f38519d60586e203240f085e55444417b84994bf03c2d6886c26c4a545e67",
+      "bytes": 606
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/atomicity-terminal-scheduler-oracle.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/atomicity-terminal-boundary-regression.log",
+      "sha256": "7259e60278b41d00dda60931dc4e1186985cb13b78bc81880a756dd1a392d485",
+      "bytes": 795
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/atomicity-terminal-boundary-regression.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/affinity-terminal-reflow-semantics.log",
+      "sha256": "a1f5929a008dcb87bcb3e58a9e4888a2531531379169dcc3f876007b2bcf3103",
+      "bytes": 568
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/affinity-terminal-reflow-semantics.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/affinity-terminal-prompt-clear-oracle.log",
+      "sha256": "76a00b783c2bee200c6dec119d0faed8fb6326e9f8265ab5bd1eb733f8b4d56c",
+      "bytes": 579
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/affinity-terminal-prompt-clear-oracle.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/affinity-terminal-viewport-oracle.log",
+      "sha256": "4ca9e6143363c4572eff6a50b4b64af57e48bfa545ed787b79fdf29d3dc53946",
+      "bytes": 598
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/affinity-terminal-viewport-oracle.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2,
+      "exit": 0
+    },
+    {
+      "path": "/Users/helge/code/terminal/reports/session-reflow-final-D823BF98-BB3C-470C-8DFB-F505AD9A50F4/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    },
+    {
+      "path": "/Users/helge/code/terminal/reports/session-reflow-final-D823BF98-BB3C-470C-8DFB-F505AD9A50F4/session-test.log",
+      "sha256": "6b147e010a0c2bc94d90de2700ae785f9b20be980dc2500da8cd33b9c8069927",
+      "bytes": 771
+    },
+    {
+      "path": "/Users/helge/code/terminal/reports/session-reflow-final-D823BF98-BB3C-470C-8DFB-F505AD9A50F4/session-tests.json",
+      "sha256": "f24b1b776614d50ff1cb1686fc1dc8aff88b51f40480a46e58002ef873fd8676",
+      "bytes": 5055
+    },
+    {
+      "path": "/Users/helge/code/terminal/reports/session-reflow-final-D823BF98-BB3C-470C-8DFB-F505AD9A50F4/source.before.sha256",
+      "sha256": "8f4e9ae6d5091d19f88d609e146255612a9f403b559f1405c0381f9305bc1e68",
+      "bytes": 8201
+    },
+    {
+      "path": "/Users/helge/code/terminal/reports/session-reflow-final-D823BF98-BB3C-470C-8DFB-F505AD9A50F4/source.after.sha256",
+      "sha256": "8f4e9ae6d5091d19f88d609e146255612a9f403b559f1405c0381f9305bc1e68",
+      "bytes": 8201
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/baseline/manifest.json",
+      "sha256": "4e06d443ec42a8f2711e29a56b56388a3e5bf2526586132368025abde59c0e79",
+      "bytes": 1875
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/baseline/measurement.json",
+      "sha256": "31bcd39f6dedf58a76b503cec6e1898e4278b030ad8c0c51b78755e20110ff89",
+      "bytes": 954
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/baseline/probe",
+      "sha256": "36c273a3f3affb8f75ef34dbb600c804b5a9ded76179ae4f495c6bba7795beff",
+      "bytes": 786136
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/ABIReflowMeasurement.swift",
+      "sha256": "06caa68bb433bbebd155f7d811929f84a7b3ecf5022c2cd92e5e47cdb73ca98f",
+      "bytes": 2397
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/run-accepted-candidate.rb",
+      "sha256": "6d9ef055a05bc899c65f99c59f1861c6981d08c4931d8216b84e79eac730d9d6",
+      "bytes": 2079
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/accepted-candidate/manifest.json",
+      "sha256": "b44bff57cf9ffb422e3f2a583bdc8f749e69b4b615114e887e781a547ce79686",
+      "bytes": 2485
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/accepted-candidate/build-command.json",
+      "sha256": "c5c8a0e7b66fa903b1a456e1e848a12ed11b0c3f32e46b823feceda91460aa69",
+      "bytes": 2583
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/accepted-candidate/comparison.json",
+      "sha256": "a13413451481348a7127b710620cbba0ff2ca927b33109feb202f82eb278aab7",
+      "bytes": 3927
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/accepted-candidate/build.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    },
+    {
+      "path": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/accepted-candidate/run.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    }
+  ],
+  "review": {
+    "agent": "/root/accessibility_review",
+    "result": "CLEAR",
+    "scope": "Source-only review of full reflow implementation plus final atomicity, affinity and clipped-wide planning bound; no independent builds run."
+  },
+  "abi_replay": {
+    "status": "PASS",
+    "snapshots": [
+      {
+        "index": 0,
+        "identical": true,
+        "baseline_sha256": "74926d3bbbbae46bdeaf5291078d41f1f3e918737bb3ecbd4bcd902c86691728",
+        "candidate_sha256": "74926d3bbbbae46bdeaf5291078d41f1f3e918737bb3ecbd4bcd902c86691728"
+      },
+      {
+        "index": 1,
+        "identical": true,
+        "baseline_sha256": "74926d3bbbbae46bdeaf5291078d41f1f3e918737bb3ecbd4bcd902c86691728",
+        "candidate_sha256": "74926d3bbbbae46bdeaf5291078d41f1f3e918737bb3ecbd4bcd902c86691728"
+      },
+      {
+        "index": 2,
+        "identical": true,
+        "baseline_sha256": "74926d3bbbbae46bdeaf5291078d41f1f3e918737bb3ecbd4bcd902c86691728",
+        "candidate_sha256": "74926d3bbbbae46bdeaf5291078d41f1f3e918737bb3ecbd4bcd902c86691728"
+      },
+      {
+        "index": 3,
+        "identical": true,
+        "baseline_sha256": "74926d3bbbbae46bdeaf5291078d41f1f3e918737bb3ecbd4bcd902c86691728",
+        "candidate_sha256": "74926d3bbbbae46bdeaf5291078d41f1f3e918737bb3ecbd4bcd902c86691728"
+      },
+      {
+        "index": 4,
+        "identical": true,
+        "baseline_sha256": "74926d3bbbbae46bdeaf5291078d41f1f3e918737bb3ecbd4bcd902c86691728",
+        "candidate_sha256": "74926d3bbbbae46bdeaf5291078d41f1f3e918737bb3ecbd4bcd902c86691728"
+      }
+    ],
+    "baseline_measurement": {
+      "history_byte_limit": 117440512,
+      "history_rows_before": 10000,
+      "includes_snapshot_projection": true,
+      "new_columns": 120,
+      "old_columns": 160,
+      "rows": 40,
+      "samples": [
+        {
+          "history_bytes": 117436480,
+          "history_rows": 14252,
+          "thread_cpu_ms": 87.812875,
+          "wall_ms": 104.207041
+        },
+        {
+          "history_bytes": 117436480,
+          "history_rows": 14252,
+          "thread_cpu_ms": 90.107583,
+          "wall_ms": 102.874666
+        },
+        {
+          "history_bytes": 117436480,
+          "history_rows": 14252,
+          "thread_cpu_ms": 91.914708,
+          "wall_ms": 110.526458
+        },
+        {
+          "history_bytes": 117436480,
+          "history_rows": 14252,
+          "thread_cpu_ms": 86.524625,
+          "wall_ms": 97.882542
+        },
+        {
+          "history_bytes": 117436480,
+          "history_rows": 14252,
+          "thread_cpu_ms": 89.364417,
+          "wall_ms": 104.29625
+        }
+      ]
+    },
+    "candidate_measurement": {
+      "history_byte_limit": 117440512,
+      "history_rows_before": 10000,
+      "includes_snapshot_projection": true,
+      "new_columns": 120,
+      "old_columns": 160,
+      "rows": 40,
+      "samples": [
+        {
+          "history_bytes": 117436480,
+          "history_rows": 14252,
+          "thread_cpu_ms": 37.971041,
+          "wall_ms": 37.9895
+        },
+        {
+          "history_bytes": 117436480,
+          "history_rows": 14252,
+          "thread_cpu_ms": 35.658666,
+          "wall_ms": 35.733417
+        },
+        {
+          "history_bytes": 117436480,
+          "history_rows": 14252,
+          "thread_cpu_ms": 33.861166,
+          "wall_ms": 33.939708
+        },
+        {
+          "history_bytes": 117436480,
+          "history_rows": 14252,
+          "thread_cpu_ms": 34.941584,
+          "wall_ms": 34.994417
+        },
+        {
+          "history_bytes": 117436480,
+          "history_rows": 14252,
+          "thread_cpu_ms": 33.654667,
+          "wall_ms": 33.674791
+        }
+      ]
+    },
+    "hashes": {
+      "probe": "03e158d3c65f4dfe18397c5cc4f35e97d1ad6cec2c5c02e0d9941dd975c8976c",
+      "manifest.json": "b44bff57cf9ffb422e3f2a583bdc8f749e69b4b615114e887e781a547ce79686",
+      "build-command.json": "c5c8a0e7b66fa903b1a456e1e848a12ed11b0c3f32e46b823feceda91460aa69",
+      "build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "measurement.json": "e2207269c3d9442521c472beab590451ceab0de04b891464089f25b93ba1bbfe",
+      "run.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "fixture_sha256": "06caa68bb433bbebd155f7d811929f84a7b3ecf5022c2cd92e5e47cdb73ca98f",
+    "runner_sha256": "6d9ef055a05bc899c65f99c59f1861c6981d08c4931d8216b84e79eac730d9d6",
+    "artifact_directory": "/Users/helge/.codex/artifacts/terminal-resumable-reflow/abi-comparison/accepted-candidate",
+    "comparison_sha256": "a13413451481348a7127b710620cbba0ff2ca927b33109feb202f82eb278aab7"
+  },
+  "session": {
+    "artifact_directory": "/Users/helge/code/terminal/reports/session-reflow-final-D823BF98-BB3C-470C-8DFB-F505AD9A50F4",
+    "run_id": "F29070C1-3CCE-4D10-A60D-A1573532EF45",
+    "exit": 0,
+    "source_files": {
+      "native/Session.swift": "528733dec3b6ccd2a173ab7fa0df34fe0d12f98ddb8868bb9fa1a3bad5b9cfbf",
+      "native/tests/SessionTests.swift": "4c5d03da037d2841f1edae51116527248ef14ddb672cde7e0530e640c83f7094"
+    },
+    "checks": {
+      "all_owned_children_reaped": true,
+      "cancel_close_under_three_seconds": true,
+      "closed_focus_and_key_releases_are_quiet": true,
+      "closed_text_input_is_reported": true,
+      "committed_text_round_trip": true,
+      "expanded_key_write_rejected": true,
+      "finished_pty_refuses_text": true,
+      "finished_pty_retains_search": true,
+      "focus_release_preserves_viewport": true,
+      "input_admitted_for_ordered_output": true,
+      "input_after_accepted_output_is_bracketed": true,
+      "input_before_mode_suffix_is_unbracketed": true,
+      "large_paste_accepted": true,
+      "modifier_keys_preserve_anchored_viewport": true,
+      "ordered_mode_encoding_after_rep": true,
+      "ordinary_ingress_busy": true,
+      "oversize_paste_rejected": true,
+      "pending_resize_close_is_fair_and_cancels": true,
+      "physical_key_reaches_pty": true,
+      "rapid_resize_returns_to_original_before_input": true,
+      "release_admitted_under_ingress_pressure": true,
+      "rep_completed": true,
+      "resize_rejection_preserves_fifo_and_pty": true,
+      "resumable_resize_commits_before_later_input": true,
+      "saturated_cancel_close_reaped": true,
+      "search_close_cancelled": true,
+      "search_found_and_highlighted": true,
+      "search_latest_query_completed": true,
+      "search_owner_probe_under_100ms": true,
+      "search_replacement_cancelled": true,
+      "split_children_reaped": true,
+      "split_inherits_cwd": true,
+      "typed_key_paths_admitted": true,
+      "typed_legacy_metadata_rejected": true,
+      "typed_metadata_rejected": true,
+      "typing_follows_tail": true,
+      "viewport_scroll_anchored": true,
+      "zsh_startup_gate_blocks_a": true,
+      "zsh_startup_input_admitted_after_b": true
+    },
+    "resumable_reflow": {
+      "cancelled_owner_probes": 2,
+      "cancelled_winch": "",
+      "committed_owner_probes": 2,
+      "committed_winch": [
+        "24 20"
+      ],
+      "rapid_winch": [
+        "24 80",
+        "24 80"
+      ],
+      "rejected_winch": ""
+    },
+    "cleanup": {
+      "expected": 17,
+      "reported": 17,
+      "all_children_reaped": true
+    },
+    "review": "Root source review CLEAR for queued resize admission/FIFO/commit-only WINCH."
+  }
+}

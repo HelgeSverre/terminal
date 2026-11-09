@@ -33,6 +33,36 @@ private struct TerminalRowSlot: Equatable {
 private struct TerminalRowPayload: Equatable {
   var text: String?
   var link: String?
+  var utf8Bytes: UInt64 { UInt64(text?.utf8.count ?? 0) + UInt64(link?.utf8.count ?? 0) }
+}
+
+// The sparse payload owner keeps its resource charge with its COW dictionary.
+// Every replacement/removal updates both atomically; scalar-only rows never
+// enter this path. Reflow can therefore reserve an input generation without
+// scanning every cell or retaining an uncharged history generation first.
+private struct TerminalRowPayloads: Equatable, Sequence {
+  private var entries: [Int: TerminalRowPayload] = [:]
+  private(set) var utf8Bytes: UInt64 = 0
+  var count: Int { entries.count }
+  var capacity: Int { entries.capacity }
+  var isEmpty: Bool { entries.isEmpty }
+  var values: Dictionary<Int, TerminalRowPayload>.Values { entries.values }
+  subscript(_ index: Int) -> TerminalRowPayload? {
+    get { entries[index] }
+    set {
+      utf8Bytes = utf8Bytes - (entries[index]?.utf8Bytes ?? 0) + (newValue?.utf8Bytes ?? 0)
+      entries[index] = newValue
+    }
+  }
+  @discardableResult mutating func removeValue(forKey key: Int) -> TerminalRowPayload? {
+    let old = entries.removeValue(forKey: key)
+    utf8Bytes -= old?.utf8Bytes ?? 0
+    return old
+  }
+  mutating func removeAll(keepingCapacity: Bool = false) {
+    entries.removeAll(keepingCapacity: keepingCapacity); utf8Bytes = 0
+  }
+  func makeIterator() -> Dictionary<Int, TerminalRowPayload>.Iterator { entries.makeIterator() }
 }
 
 // Matches the old TerminalCell ABI stride without retaining a String, link,
@@ -44,10 +74,10 @@ private struct TerminalLegacyCapacityCell {
 }
 private final class TerminalRowStorage {
   var slots: [TerminalRowSlot]
-  var payloads: [Int: TerminalRowPayload]
+  var payloads = TerminalRowPayloads()
   var logicalCapacity: Int
   var detachCapacity: Int
-  init(slots: [TerminalRowSlot], payloads: [Int: TerminalRowPayload] = [:], logicalCapacity: Int, detachCapacity: Int) {
+  init(slots: [TerminalRowSlot], payloads: TerminalRowPayloads = TerminalRowPayloads(), logicalCapacity: Int, detachCapacity: Int) {
     self.slots = slots; self.payloads = payloads
     self.logicalCapacity = logicalCapacity; self.detachCapacity = detachCapacity
   }
@@ -177,7 +207,30 @@ struct TerminalRow: Equatable {
   mutating func copyCell(from source: TerminalRow, at sourceIndex: Int, to index: Int) {
     ensureUniqueForCellEdit(); storage.slots[index] = source.storage.slots[sourceIndex]
     if let payload = source.storage.payloads[sourceIndex] { storage.payloads[index] = payload }
-    else { storage.payloads.removeValue(forKey: index) }
+    else if !storage.payloads.isEmpty { storage.payloads.removeValue(forKey: index) }
+  }
+  // Width-one stored cells can move together without Unicode reclassification
+  // or changing any style/link/protection metadata. Wide and clipped atoms
+  // deliberately stop the run and remain with the reflow atom owner.
+  func unchangedReflowRun(from start: Int, until limit: Int) -> Range<Int> {
+    let slots = storage.slots
+    var end = start
+    while end < min(limit, slots.count), slots[end].kind == 1, slots[end].flags & 1 == 0 { end += 1 }
+    return start..<end
+  }
+  mutating func copyCells(from source: TerminalRow, range: Range<Int>, to destination: Int) {
+    guard !range.isEmpty else { return }
+    ensureUniqueForCellEdit()
+    let target = destination..<(destination + range.count)
+    storage.slots.replaceSubrange(target, with: source.storage.slots[range])
+    if !storage.payloads.isEmpty {
+      for index in target { storage.payloads.removeValue(forKey: index) }
+    }
+    if !source.storage.payloads.isEmpty {
+      for index in range {
+        if let payload = source.storage.payloads[index] { storage.payloads[destination + index - range.lowerBound] = payload }
+      }
+    }
   }
   mutating func setKind(_ kind: UInt8, at index: Int) { ensureUniqueForCellEdit(); storage.slots[index].kind = kind }
   mutating func setFlags(_ flags: UInt8, at index: Int) { ensureUniqueForCellEdit(); storage.slots[index].flags = flags }
@@ -208,7 +261,7 @@ struct TerminalRow: Equatable {
     if !isKnownUniquelyReferenced(&storage) { storage = TerminalRowStorage(slots: storage.slots, payloads: storage.payloads, logicalCapacity: storage.logicalCapacity, detachCapacity: storage.detachCapacity) }
     storage.logicalCapacity = next; storage.detachCapacity = Self.blankLogicalCapacity(columns: newCount)
     storage.slots = Array(storage.slots.prefix(newCount))
-    storage.payloads = storage.payloads.reduce(into: [:]) { result, entry in
+    storage.payloads = storage.payloads.reduce(into: TerminalRowPayloads()) { result, entry in
       if entry.key < newCount { result[entry.key] = entry.value }
     }
   }
@@ -265,6 +318,21 @@ struct TerminalRow: Equatable {
   // ownership semantics.
   private static let logicalRowCharge: UInt64 = 32
   private static let logicalCellCharge: UInt64 = 64
+  var retainedBaseCost: UInt64 { Self.logicalRowCharge + UInt64(storage.logicalCapacity) * Self.logicalCellCharge }
+  // Temporary-operation admission follows the packed allocation, while the
+  // public history budget deliberately retains its legacy 64-byte formula.
+  var allocationBaseCost: UInt64 {
+    allocationSlotCost
+      + UInt64(storage.payloads.capacity) * 80 + UInt64(storage.payloads.count) * 64
+  }
+  var allocationSlotCost: UInt64 { 64 + UInt64(storage.slots.capacity * MemoryLayout<TerminalRowSlot>.stride) }
+  var reflowAllocationBytes: UInt64 { allocationBaseCost + 2 * storage.payloads.utf8Bytes }
+  func reflowCellStorage(at index: Int) -> (textBytes: UInt64, linkBytes: UInt64, sparse: Bool, hasLink: Bool) {
+    let slot = storage.slots[index]
+    let payload = storage.payloads[index]
+    return (slot.hasScalar ? UInt64(Self.utf8Length(of: slot.scalar)) : UInt64(payload?.text?.utf8.count ?? 0),
+            UInt64(payload?.link?.utf8.count ?? 0), payload != nil, payload?.link != nil)
+  }
   var retainedStorageCost: UInt64 {
     var bytes = Self.logicalRowCharge + UInt64(storage.logicalCapacity) * Self.logicalCellCharge
     for slot in storage.slots where slot.hasScalar { bytes += UInt64(Self.utf8Length(of: slot.scalar)) }
@@ -316,9 +384,14 @@ struct PromptAnchor: Equatable {
   var pendingWrap: Bool
 }
 struct TerminalHistory: RandomAccessCollection, Equatable {
-  private struct Entry: Equatable { let row: TerminalRow; let chargedBytes: UInt64 }
+  struct RetainedRow: Equatable {
+    let row: TerminalRow
+    let chargedBytes: UInt64
+    init(_ row: TerminalRow) { self.row = row; chargedBytes = row.retainedStorageCost }
+    var allocationBytes: UInt64 { row.reflowAllocationBytes }
+  }
   private static let maximumRetiredRowBytes: UInt64 = 256 * 1024
-  private var entries: [Entry?] = []
+  private var entries: [RetainedRow?] = []
   // Entries retain their absolute slot while the history's front is trimmed.
   // The map makes a pinned viewport's row lookup independent of scrollback
   // length; row identity zero is the unassigned placeholder and never anchors.
@@ -330,21 +403,50 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
   // alias after transfer, and still obeys row COW when a snapshot retains it.
   private var retiredRow: TerminalRow?
   private(set) var byteCount: UInt64 = 0
+  private(set) var allocationBytes: UInt64 = 0
+  var reflowAllocationBytes: UInt64 {
+    allocationBytes + UInt64(entries.capacity * MemoryLayout<RetainedRow?>.stride)
+      + UInt64(absoluteIndexByRowID.capacity) * 32 + (retiredRow?.reflowAllocationBytes ?? 0) + 128
+  }
+  var hasEmptyReflowStorage: Bool {
+    isEmpty && (entries.capacity > 0 || absoluteIndexByRowID.capacity > 0 || retiredRow != nil)
+  }
   var count: Int { entries.count - head }
   var startIndex: Int { 0 }
   var endIndex: Int { count }
   var isEmpty: Bool { count == 0 }
   subscript(_ index: Int) -> TerminalRow { entries[head + index]!.row }
+  func retainedRow(at index: Int) -> RetainedRow { entries[head + index]! }
   var rows: [TerminalRow] { Array(self) }
+  mutating func reserveReflowRows(_ count: Int) {
+    entries.reserveCapacity(count)
+    absoluteIndexByRowID.reserveCapacity(count)
+  }
   mutating func append(_ row: TerminalRow) {
-    let cost = row.retainedStorageCost
+    appendRetained(RetainedRow(row))
+  }
+  mutating func appendRetained(_ entry: RetainedRow) {
     let absoluteIndex = entries.count
-    entries.append(Entry(row: row, chargedBytes: cost))
-    if row.id != 0 { absoluteIndexByRowID[row.id] = absoluteIndex }
-    byteCount &+= cost
+    entries.append(entry)
+    if entry.row.id != 0 { absoluteIndexByRowID[entry.row.id] = absoluteIndex }
+    byteCount &+= entry.chargedBytes
+    allocationBytes &+= entry.allocationBytes
   }
   mutating func append(contentsOf values: [TerminalRow]) { for row in values { append(row) } }
-  mutating func removeAll() { entries.removeAll(); absoluteIndexByRowID.removeAll(); retiredRow = nil; head = 0; byteCount = 0 }
+  // Reflow pressure runs only after its captured generation has retired.
+  // Advance the FIFO without a whole-array compaction; the returned immutable
+  // row is transferred to off-owner retirement before another batch is taken.
+  mutating func takeOldestForReflow() -> RetainedRow? {
+    guard head < entries.count else { return nil }
+    let entry = entries[head]!
+    if entry.row.id != 0, absoluteIndexByRowID[entry.row.id] == head {
+      absoluteIndexByRowID.removeValue(forKey: entry.row.id)
+    }
+    entries[head] = nil; head += 1
+    byteCount -= entry.chargedBytes; allocationBytes -= entry.allocationBytes
+    return entry
+  }
+  mutating func removeAll() { entries.removeAll(); absoluteIndexByRowID.removeAll(); retiredRow = nil; head = 0; byteCount = 0; allocationBytes = 0 }
   mutating func replace(_ values: [TerminalRow]) { removeAll(); append(contentsOf: values) }
   func index(ofRowID rowID: UInt64) -> Int? {
     guard rowID != 0, let absoluteIndex = absoluteIndexByRowID[rowID],
@@ -365,6 +467,7 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
       let last = entries[head + remove - 1]!
       retiredRow = last.chargedBytes <= Self.maximumRetiredRowBytes ? last.row : nil
       for index in head..<(head + remove) {
+        allocationBytes -= entries[index]!.allocationBytes
         if let entry = entries[index], entry.row.id != 0,
            absoluteIndexByRowID[entry.row.id] == index {
           absoluteIndexByRowID.removeValue(forKey: entry.row.id)
@@ -469,9 +572,9 @@ struct TerminalDocument {
     primary.bottomMargin = rows - 1; alternate.bottomMargin = rows - 1
   }
   mutating func blankRow() -> TerminalRow {
-    defer { nextRowID &+= 1 }
-    var row = TerminalRow(columns: columns, logicalCellCapacity: blankCellCapacity); row.id = nextRowID; return row
+    var row = TerminalRow(columns: columns, logicalCellCapacity: blankCellCapacity); row.id = reserveRowIdentity(); return row
   }
+  mutating func reserveRowIdentity() -> UInt64 { defer { nextRowID &+= 1 }; return nextRowID }
   mutating func eraseRow(_ style: TerminalStyle) -> TerminalRow {
     defer { nextRowID &+= 1 }
     return Self.erasedRow(columns: columns, logicalCellCapacity: blankCellCapacity,
@@ -1053,6 +1156,14 @@ struct TerminalDocument {
     }
     result.cursorRow = min(nextRows - 1, max(0, screen.cursorRow - start)); result.cursorColumn = min(nextColumns - 1, screen.cursorColumn); result.pendingWrap = false
     return result
+  }
+  func resizedRow(_ source: TerminalRow, columns nextColumns: Int) -> TerminalRow {
+    var row = source
+    row.truncate(to: min(source.count, nextColumns))
+    if row.count < nextColumns { row.appendBlanks(nextColumns - row.count) }
+    repairWidePairs(&row, eraseStyle: TerminalStyle())
+    if nextColumns != source.count { row.softWrapped = false; row.revision &+= 1 }
+    return row
   }
   func repairedCellOwner(in row: TerminalRow, at column: Int) -> Int { Self.repairedCellOwner(in: row, at: column) }
   private static func repairedCellOwner(in row: TerminalRow, at column: Int) -> Int { column >= 0 && column < row.count && row.kind(at: column) == 3 && column > 0 ? column - 1 : column }
