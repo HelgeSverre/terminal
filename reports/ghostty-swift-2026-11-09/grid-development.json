@@ -1,0 +1,51 @@
+{
+  "passed": true,
+  "executable_sha256": "88fc0d46f2c13bd0209400b48b1af85ef4e211733c218b26ec1c905525fa7e5c",
+  "cases": [
+    {
+      "requested": [
+        80,
+        24
+      ],
+      "font_size": 8,
+      "observed": [
+        80,
+        24,
+        400,
+        312
+      ],
+      "natural_exit": true,
+      "cleanup_survivors": []
+    },
+    {
+      "requested": [
+        100,
+        30
+      ],
+      "font_size": 14,
+      "observed": [
+        100,
+        30,
+        900,
+        630
+      ],
+      "natural_exit": true,
+      "cleanup_survivors": []
+    },
+    {
+      "requested": [
+        60,
+        14
+      ],
+      "font_size": 20,
+      "observed": [
+        60,
+        14,
+        720,
+        392
+      ],
+      "natural_exit": true,
+      "cleanup_survivors": []
+    }
+  ]
+}

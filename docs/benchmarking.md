@@ -1,5 +1,18 @@
 # Performance measurements
 
+The [2026-11-09 Swift–Ghostty baseline](../reports/ghostty-swift-2026-11-09/README.md)
+uses the current Swift app, ten samples per workload and reversed launch orders.
+It includes raw results, limits and a feature comparison. Reproduce it with:
+
+```shell
+just benchmark-ghostty reports/ghostty-comparison-next
+```
+
+The three-app pilots below predate the Swift cutover and measured the Rust-backed
+app. They are retained as historical results.
+
+## Historical three-app pilots
+
 Run the same payload in three separate, visible application instances. The local
 comparison driver uses 100×30 cells, Obel Mono 14, opaque backgrounds, cursor blink
 disabled, and an alternate screen. Existing user configuration is not changed.
@@ -9,7 +22,7 @@ below exercises primary-screen history separately.
 Build this terminal once, then run the apps **sequentially**, with no other heavy
 work and a consistent display, power mode, and window visibility:
 
-```sh
+```shell
 just build
 just benchmark terminal reports/comparison-001
 just benchmark ghostty reports/comparison-001
@@ -118,7 +131,7 @@ unrelated broad permissions to obtain a benchmark.
 
 ## Frozen Swift–Rust core exploration
 
-The [latest frozen replay comparison](../reports/swift-decoder-a19f77f/summary.md)
+The [early frozen replay comparison](../reports/swift-decoder-a19f77f/summary.md)
 pairs Swift `a19f77f` with the verified archived Rust `b5a9fea` executable.
 Three alternating 2 MiB pairs per workload measured:
 
@@ -137,8 +150,8 @@ load. They include feed, reply draining, parser finish, invariant validation
 and final snapshot serialization/free. They exclude the GUI, renderer, PTY,
 retained history and search; they do not establish complete behavioral parity.
 Rust was not rebuilt, and recorded build wall times are provenance rather than
-a matched full-app compilation benchmark. Main remains Rust-backed while the
-Swift experiment is optimized separately.
+a matched full-app compilation benchmark. These are historical experiment
+results; the application has since switched to Swift. See the [cutover record](swift-cutover.md).
 
 Earlier evidence is retained in the [range-local printing probe](../reports/swift-printing-315f055/summary.md),
 [ownership comparison](../reports/emulator-comparison-6c601d1-a49a5af/summary.md)
@@ -162,7 +175,7 @@ measured ratios remain available for comparison with the current threshold.
 
 Run a quick app-level diagnostic from the main worktree with:
 
-```sh
+```shell
 just benchmark-apps /absolute/path/to/Rust.app /absolute/path/to/Swift.app reports/new-comparison
 ```
 
@@ -183,7 +196,7 @@ and headless engine measurements stay separate.
 For example, run two independent trials in opposite orders, using the same
 immutable bundles and a new output directory for each:
 
-```sh
+```shell
 BENCH_BYTES=16777216 BENCH_RUNS=10 BENCH_FIRST=rust just benchmark-apps /absolute/path/to/Rust.app /absolute/path/to/Swift.app reports/acceptance-rust-first
 BENCH_BYTES=16777216 BENCH_RUNS=10 BENCH_FIRST=swift just benchmark-apps /absolute/path/to/Rust.app /absolute/path/to/Swift.app reports/acceptance-swift-first
 ```
@@ -212,7 +225,7 @@ and the current criterion are recorded in the
 
 For the next diagnostic stack capture, use:
 
-```sh
+```shell
 just profile-app /absolute/path/to/Terminal.app reports/new-profile
 just profile-app /absolute/path/to/Terminal.app reports/unicode-profile unicode
 ```
