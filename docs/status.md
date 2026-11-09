@@ -140,6 +140,13 @@ Implemented and locally exercised:
 
 Current automated evidence:
 
+- Version 0.2.2/build 8 at `a8cf4bd` passes full macOS CI (run `42605737863`),
+  including the isolated zsh editing, byte-partitioned prompt and erase/movement
+  regressions. The exact notarized build passes signed normal/editing checks
+  (30/30 and 14/14), window-close/Cmd-Q child reaping, and app/PKG trust checks.
+  It is installed; every installed file, mode and symlink matches the signed
+  artifact. See `reports/distribution-0.2.2.json` and
+  `reports/prompt-editing-regressions/summary.md`.
 - Owner selection/copy passes full macOS CI at `e7431fc` (run `42564093682`),
   plus native normal/editing/selection checks (30/30, 14/14 and 16/16), the private
   AppleScript fixture, real-PTY Session and private clipboard gates. The evidence packet in
@@ -148,8 +155,8 @@ Current automated evidence:
 - Version 0.2.1 runtime `b9d3a81` passes full macOS CI at test-only correction
   `25dc31e` (run `42551103822`), signed normal/editing/quit fixtures and actual
   Vite AX-link browser navigation. App and PKG notarization, stapling and trust
-  validation pass. The prepared release awaits clean closure of the installed
-  app's live sessions; `reports/distribution-0.2.1.json` records installation.
+  validation pass. This prepared release was superseded before installation by
+  0.2.2; `reports/distribution-0.2.1.json` preserves its historical receipt.
 - Its full 8.16 GB motion stress passes in 190.08 seconds with 11,402 movement/
   resize ticks, complete output drain, no Metal command/dimension errors and
   natural app/child exit. A fresh two-resize SQL pair measures Swift 47.0196

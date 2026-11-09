@@ -1,0 +1,9 @@
+{
+  "source_commit": "a8cf4bd3300e328f9b192c1147af7c163a31a0ac",
+  "version": "0.2.2",
+  "build": 8,
+  "source_archive_sha256": "a267afec1b033efeaf28210e1871db072f29140a3e319de0393d8ae77aee1495",
+  "note": "Committed source archive used for the optimized build; signing and installation receipts are stored separately.",
+  "development_executable_sha256": "dacc7163383ff5b7c15938f9e527665988927c342802d27ecff6ca9d29a1af08",
+  "uuid_output": "UUID: 48D9C69A-B7F6-37F3-93FE-ADF1F31667D2 (arm64) /Users/helge/.codex/artifacts/terminal-release-0.2.2-a8cf4bd/source/dist/Terminal.app/Contents/MacOS/Terminal"
+}

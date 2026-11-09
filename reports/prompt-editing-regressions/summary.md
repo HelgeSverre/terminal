@@ -34,6 +34,11 @@ to distinguish prompt-width errors from incidental input. Native validation is
 programmatic AppKit input; it is not physical-keyboard or input-method proof.
 
 The focused tests are registered in the standard `just test`/macOS CI workflow.
+The full suite and bundle verification pass at `a8cf4bd` in
+[macOS CI run 42605737863](https://github.com/HelgeSverre/terminal/actions/runs/42605737863).
+The exact signed 0.2.2/build 8 app also passes all 30 normal and 14 editing
+checks plus both closure/reaping fixtures; its verified installation is recorded
+in [the distribution receipt](../distribution-0.2.2.json).
 
 ## Locale regression control
 

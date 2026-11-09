@@ -1,0 +1,70 @@
+{
+  "installed_at": "2026-11-09T11:16:46Z",
+  "path": "/Users/helge/Applications/Helge Terminal.app",
+  "version": "0.2.2",
+  "build": 8,
+  "source_commit": "a8cf4bd3300e328f9b192c1147af7c163a31a0ac",
+  "all_installed_regular_files_modes_and_symlinks_match_signed_artifact": true,
+  "manifest_entry_count": 28,
+  "executable_sha256": "9ac7900f890a5efa76f3c08e69c0662c759544ecb5d924ecc3baa738267a9a48",
+  "verification_commands": [
+    {
+      "argv": [
+        "codesign",
+        "--verify",
+        "--strict",
+        "--deep",
+        "/Users/helge/Applications/Helge Terminal.app"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "spctl",
+        "--assess",
+        "--type",
+        "execute",
+        "--verbose=2",
+        "/Users/helge/Applications/Helge Terminal.app"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": "/Users/helge/Applications/Helge Terminal.app: accepted\nsource=Notarized Developer ID\n"
+    },
+    {
+      "argv": [
+        "xcrun",
+        "stapler",
+        "validate",
+        "/Users/helge/Applications/Helge Terminal.app"
+      ],
+      "exit": 0,
+      "stdout": "Processing: /Users/helge/Applications/Helge Terminal.app\nThe validate action worked!\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/libexec/PlistBuddy",
+        "-c",
+        "Print :CFBundleShortVersionString",
+        "/Users/helge/Applications/Helge Terminal.app/Contents/Info.plist"
+      ],
+      "exit": 0,
+      "stdout": "0.2.2\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "/usr/libexec/PlistBuddy",
+        "-c",
+        "Print :CFBundleVersion",
+        "/Users/helge/Applications/Helge Terminal.app/Contents/Info.plist"
+      ],
+      "exit": 0,
+      "stdout": "8\n",
+      "stderr": ""
+    }
+  ]
+}
