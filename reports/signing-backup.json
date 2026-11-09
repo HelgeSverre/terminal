@@ -1,13 +1,10 @@
 {
   "verified_at": "2026-11-09T00:37:05Z",
   "vault": "Personal",
-  "vault_id": "[PRIVATE_1PASSWORD_VAULT]",
   "item": "Terminal Release Signing",
-  "item_id": "[PRIVATE_1PASSWORD_ITEM]",
   "notary_key_attachment_roundtrip_verified": true,
   "all_metadata_fields_readback_verified": true,
   "shared_certificate_item": "Sourcefour Release Signing",
-  "shared_certificate_item_id": "[PRIVATE_1PASSWORD_SHARED_CERTIFICATES]",
   "shared_application_certificate_password_and_private_key_verified": true,
   "shared_installer_certificate_password_and_private_key_verified": true,
   "local_keychain_profile": "splash-notary",

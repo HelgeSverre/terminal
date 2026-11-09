@@ -37,13 +37,14 @@ assets match; a changed build needs a new version.
 Recovery copies live in Helge's **Personal** 1Password vault:
 
 - **Terminal Release Signing** holds the notarization API key, its identifiers,
-  signing metadata, and the dedicated `homebrew-tap-terminal` token.
+  signing metadata, and the dedicated `terminal-homebrew-tap` token.
 - **Sourcefour Release Signing** holds the shared application and installer
   certificate exports and their passwords.
 
-The Homebrew token follows the existing tap token's classic `repo` scope and
-no-expiry setup. The workflow uses it only in the publication job to update the
-tap. The release repository's own token publishes its assets.
+The fine-grained Homebrew token is restricted to `homebrew-tap`, with Contents
+read/write and Metadata read permissions. It follows the other project tap
+tokens' no-expiry setup. The workflow uses it only in the publication job to
+update the tap. The release repository's own token publishes its assets.
 
 Repository secrets contain working copies:
 
