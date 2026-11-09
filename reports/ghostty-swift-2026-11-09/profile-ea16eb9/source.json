@@ -1,0 +1,7 @@
+{
+  "source_sha": "ea16eb90b403147a9983a8d98a39199ec422c432",
+  "tree_sha": "aff99f6398069f898d7cd45f101c51033a4427de",
+  "build_scope": "Clean git archive ea16eb9, includes committed source only; uncommitted settings preview excluded",
+  "build_command": "just release-build",
+  "executable_sha256": "a2505de695a8ed5e328e03e4557b933a2d5dba95471d784fa6a87fea51cfe688"
+}

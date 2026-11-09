@@ -1,0 +1,30 @@
+{
+  "bytes_parsed" : 170353941,
+  "bytes_read" : 170353941,
+  "child_pid" : 57412,
+  "child_reaped" : true,
+  "history_bytes" : 0,
+  "parsed_mib_per_second" : 28.491054386198183,
+  "parser_ended" : true,
+  "queued_output_bytes" : 0,
+  "read_ended" : true,
+  "stream_diagnostic" : {
+    "event_queue_high_water" : 15,
+    "feed_bytes" : 170353941,
+    "feed_calls" : 166546,
+    "feed_nanoseconds" : 1593343993,
+    "output_events" : 166546,
+    "publish_calls" : 314,
+    "pump_nanoseconds" : 1665270891,
+    "pump_schedules" : 166554,
+    "pump_turns" : 166554,
+    "queued_output_bytes_high_water" : 15360,
+    "read_callbacks" : 165433,
+    "read_calls" : 331979,
+    "read_nanoseconds" : 544964238,
+    "read_resumes" : 0,
+    "read_suspends" : 0,
+    "snapshot_nanoseconds" : 25813831
+  },
+  "stream_seconds" : 5.7022171249999998
+}
