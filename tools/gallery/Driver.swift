@@ -41,7 +41,10 @@ private func descendants(_ element: AXUIElement, depth: Int = 0) -> [AXUIElement
       return windows[0]
     }
     func panes() throws -> [AXUIElement] {
-      try descendants(window()).filter { (attribute($0, kAXIdentifierAttribute) as? String)?.hasPrefix("no.helgesverre.terminal.pane.") == true }
+      try descendants(window()).filter {
+        (attribute($0, kAXRoleAttribute) as? String) == kAXTextAreaRole
+          && (attribute($0, kAXIdentifierAttribute) as? String)?.hasPrefix("no.helgesverre.terminal.pane.") == true
+      }
     }
     func waitForPanes(_ count: Int) throws -> [AXUIElement] {
       let deadline = ProcessInfo.processInfo.systemUptime + 6

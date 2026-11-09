@@ -24,6 +24,19 @@ private func descendants(_ element: AXUIElement, depth: Int = 0) -> [AXUIElement
   return [element] + ((ax(element, kAXChildrenAttribute) as? [AXUIElement]) ?? []).flatMap { descendants($0, depth: depth + 1) }
 }
 
+private let terminalPaneIdentifierPrefix = "no.helgesverre.terminal.pane."
+
+/// Pane chrome deliberately exposes AX groups and controls alongside the
+/// canvas. Only a text-area whose identifier is exactly the pane UUID is a
+/// terminal viewport that can receive the stress driver's geometry actions.
+private func isTerminalCanvas(role: String?, identifier: String?) -> Bool {
+  guard role == (kAXTextAreaRole as String), let identifier,
+    identifier.hasPrefix(terminalPaneIdentifierPrefix)
+  else { return false }
+  let identifierSuffix = String(identifier.dropFirst(terminalPaneIdentifierPrefix.count))
+  return UUID(uuidString: identifierSuffix) != nil
+}
+
 private func rectJSON(_ rect: CGRect) -> [Double] {
   [rect.minX, rect.minY, rect.width, rect.height]
 }
@@ -43,7 +56,10 @@ private func nestedDividers(_ frames: [CGRect]) throws -> (outer: CGPoint, inner
   // AX exposes the terminal canvas rather than its pane wrapper. A split below
   // a title header therefore has a 21pt canvas seam (20pt header plus divider).
   func horizontalDividerGap(_ start: CGFloat, _ end: CGFloat) -> Bool { (0...2).contains(end - start) }
-  func verticalDividerGap(_ start: CGFloat, _ end: CGFloat) -> Bool { (0...24).contains(end - start) }
+  func verticalDividerGap(_ start: CGFloat, _ end: CGFloat) -> Bool {
+    let gap = end - start
+    return (0...2).contains(gap) || (20...22).contains(gap)
+  }
   func dividerCoordinate(_ start: CGFloat, _ end: CGFloat) -> CGFloat {
     start + min(0.5, (end - start) / 2)
   }
@@ -69,15 +85,22 @@ private func verticalStackLayout(_ frames: [CGRect]) throws -> VerticalStackLayo
   guard ordered.allSatisfy({ $0.width > 40 && $0.height > 40 && abs($0.minX - first.minX) <= 1 && abs($0.maxX - first.maxX) <= 1 }) else {
     throw TUIStressFailure.invalid("final panes are not positive full-width leaves")
   }
-  guard (0..<2).allSatisfy({ index in
-    let gap = ordered[index + 1].minY - ordered[index].maxY
-    return (0...24).contains(gap)
-  }) else { throw TUIStressFailure.invalid("final stack is overlapping or has a missing divider adjacency") }
+  let canvasSeams = (0..<2).map { ordered[$0 + 1].minY - ordered[$0].maxY }
+  guard canvasSeams.allSatisfy({ (0...2).contains($0) || (20...22).contains($0) }) else {
+    throw TUIStressFailure.invalid("final stack is overlapping or has a missing divider adjacency")
+  }
   guard Set(ordered.map { "\($0.minX.rounded())/\($0.minY.rounded())/\($0.width.rounded())/\($0.height.rounded())" }).count == 3 else {
     throw TUIStressFailure.invalid("final stack has duplicate pane geometry")
   }
-  let top = ordered[0].minY, bottom = ordered[2].maxY
-  let target = [top + (bottom - top) / 3, top + 2 * (bottom - top) / 3]
+  // The canvas gap includes the 20pt header that precedes every lower pane.
+  // Balance actual canvas heights, not the overall span, so header seams do
+  // not get folded into the divider target. A plain stack has 0–2pt seams;
+  // a header stack has 20–22pt seams and follows the same calculation.
+  let targetCanvasHeight = ordered.map(\.height).reduce(0, +) / 3
+  let target = [
+    ordered[0].minY + targetCanvasHeight + 0.5,
+    ordered[0].minY + targetCanvasHeight * 2 + canvasSeams[0] + 0.5,
+  ]
   return VerticalStackLayout(leaves: ordered,
     dividerPoints: [CGPoint(x: first.midX, y: ordered[0].maxY + min(0.5, (ordered[1].minY - ordered[0].maxY) / 2)),
       CGPoint(x: first.midX, y: ordered[1].maxY + min(0.5, (ordered[2].minY - ordered[1].maxY) / 2))], targetDividerY: target)
@@ -146,8 +169,9 @@ private func balancedInspectionStack(_ frames: [CGRect]) throws -> VerticalStack
 
   private func panes() throws -> [AXUIElement] {
     let panes = descendants(try window()).filter {
-      guard let identifier = ax($0, kAXIdentifierAttribute) as? String else { return false }
-      return identifier.hasPrefix("no.helgesverre.terminal.pane.")
+      isTerminalCanvas(
+        role: ax($0, kAXRoleAttribute) as? String,
+        identifier: ax($0, kAXIdentifierAttribute) as? String)
     }
     return try panes.sorted {
       let lhs = try frame($0), rhs = try frame($1)
@@ -446,6 +470,15 @@ private func balancedInspectionStack(_ frames: [CGRect]) throws -> VerticalStack
 @main enum Main {
   @MainActor static func main() throws {
     if CommandLine.arguments.contains("--self-test") {
+      let paneIdentifier = terminalPaneIdentifierPrefix + "f1bceb4d-4bc2-4a17-87ec-e9a27e4295d9"
+      precondition(isTerminalCanvas(role: kAXTextAreaRole as String, identifier: paneIdentifier))
+      precondition(!isTerminalCanvas(role: kAXGroupRole as String, identifier: paneIdentifier + ".presentation"))
+      precondition(!isTerminalCanvas(role: kAXButtonRole as String,
+        identifier: "no.helgesverre.terminal.pane.choose-color"))
+      precondition(!isTerminalCanvas(role: kAXTextAreaRole as String,
+        identifier: terminalPaneIdentifierPrefix + "not-a-uuid"))
+      precondition(!isTerminalCanvas(role: kAXTextAreaRole as String,
+        identifier: paneIdentifier + ".presentation"))
       let top = CGRect(x: 10, y: 20, width: 100, height: 60)
       let right = CGRect(x: 111, y: 20, width: 90, height: 121)
       let bottom = CGRect(x: 10, y: 81, width: 100, height: 60)
@@ -465,10 +498,20 @@ private func balancedInspectionStack(_ frames: [CGRect]) throws -> VerticalStack
       catch TUIStressFailure.invalid { }
       let inspection = [CGRect(x: 10, y: 20, width: 190, height: 390), CGRect(x: 10, y: 411, width: 190, height: 390), CGRect(x: 10, y: 802, width: 190, height: 390)]
       let balanced = try balancedInspectionStack(inspection)
-      precondition(abs(balanced.targetDividerY[0] - 410.6666666667) < 0.01)
+      precondition(abs(balanced.targetDividerY[0] - 410.5) < 0.01)
       do { _ = try balancedInspectionStack([inspection[0], CGRect(x: 10, y: 411, width: 190, height: 300), CGRect(x: 10, y: 712, width: 190, height: 480)]); preconditionFailure("unbalanced inspection stack accepted") }
       catch TUIStressFailure.invalid { }
-      print("PASS TUI stress driver layout topology rejection tests; no GUI/input executed")
+      let headerStack = [CGRect(x: 10, y: 20, width: 190, height: 280),
+        CGRect(x: 10, y: 321, width: 190, height: 280), CGRect(x: 10, y: 622, width: 190, height: 280)]
+      let headerBalanced = try balancedInspectionStack(headerStack)
+      precondition(abs(headerBalanced.targetDividerY[0] - 300.5) < 0.01)
+      precondition(abs(headerBalanced.targetDividerY[1] - 601.5) < 0.01)
+      do {
+        _ = try balancedInspectionStack([headerStack[0], CGRect(x: 10, y: 321, width: 190, height: 240),
+          CGRect(x: 10, y: 582, width: 190, height: 320)])
+        preconditionFailure("unbalanced header stack accepted")
+      } catch TUIStressFailure.invalid { }
+      print("PASS TUI stress driver pane identity and layout topology rejection tests; no GUI/input executed")
       return
     }
     guard CommandLine.arguments.count == 4, let pid = Int32(CommandLine.arguments[2]), pid > 0 else {
