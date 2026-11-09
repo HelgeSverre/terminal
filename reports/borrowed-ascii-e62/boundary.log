@@ -1,0 +1,20 @@
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 46 app sources; 39 test groups; 531 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_boundary_regression) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-boundary-regression
+target/native/terminal-boundary-regression
+PASS boundary utf8
+PASS boundary strings
+PASS boundary anchor
+PASS boundary retention
+PASS boundary readiness
+PASS boundary cap
+PASS boundary segmenter
+PASS boundary width
+PASS boundary rep
+PASS boundary movement
+PASS boundary csi-budget
+PASS boundary csi-ingress
+PASS boundary byte-retention
+PASS boundary history-storage
+PASS boundary history-thresholds

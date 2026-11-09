@@ -1,0 +1,8 @@
+{
+  "base_commit": "e62bd660b7a43d1c94e2c8b119bb33fe10d8070a",
+  "runtime_baseline": "9354d3a",
+  "combined_proof_emulator_sha256": "7c8517ee859dc4d1580bb1adcaa4ee153338e7b5f0934cc64fef3bed10f0880d",
+  "final_emulator_sha256": "0ae8e338252cd7a69bd5e9739c4add39903224db8d92b375a863c6b9ed901d3b",
+  "measured_executable_sha256": "8d7388f850978beeb4224c20f4067f30d1c5e501001cc698db25839584b92652",
+  "final_executable_sha256": "8d7388f850978beeb4224c20f4067f30d1c5e501001cc698db25839584b92652"
+}

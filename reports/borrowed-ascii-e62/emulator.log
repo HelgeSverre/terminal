@@ -1,0 +1,6 @@
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 46 app sources; 39 test groups; 531 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print emulator) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/emulator-tests
+target/native/emulator-tests
+PASS Swift core smoke: grid, SGR, alternate screen, wire input/replies, resize

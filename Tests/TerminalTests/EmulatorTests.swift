@@ -232,6 +232,51 @@ import Foundation
     precondition(terminal_feed(repeatCore, nil, 0, 0) == 0)
     precondition(visibleZCount() == 2)
   }
+  static func borrowedASCIIContinuationEquivalence() {
+    // Bytewise feeds never enter the >=16-byte shortcut. Compare complete
+    // owner snapshots (including revisions), replies, and history charges.
+    // Short cases keep the preceding cluster visible; long cases cross both
+    // the 1024-scalar transaction boundary and bounded history eviction.
+    let short = String(repeating: "a", count: 16)
+    let long = String(repeating: "bcdef0123456789 ", count: 73)
+    let fixtures: [(String, Data)] = [
+      ("prepend", Data(("\u{600}" + short + "\u{301}").utf8)),
+      ("combining", Data(("e\u{301}" + short + "\u{301}").utf8)),
+      ("emoji", Data(("👩🏽‍💻" + short + "\u{fe0f}").utf8)),
+      ("pending-utf8", Data([0xe1, 0x80]) + Data((short + long).utf8) + Data([0xc2])),
+      ("long-mixed", Data(("猫e\u{301}" + long + "👩🏽‍💻" + long).utf8)),
+      ("charset", Data(("\u{1b}(0" + short + "\u{1b}(B" + long +
+        "\u{1b})0\u{e}" + short + "\u{f}" + long).utf8)),
+      ("margins-insert-nowrap", Data(("\u{1b}[?69h\u{1b}[3;14s\u{1b}[2;3r\u{1b}[?6h" + long +
+        "\u{1b}[4h" + short + "\u{1b}[4l\u{1b}[?7l" + long).utf8)),
+      ("rep-suffix", Data(("e\u{301}" + long + "\u{1b}[5000bZ\u{1b}[6n").utf8)),
+    ]
+    for (name, body) in fixtures {
+      let payload = body + Data("\u{1b}[6n".utf8)
+      for budget: UInt64 in [0, 4096] {
+        func run(_ partitions: [Int]) -> (Data, Data, UInt64) {
+          let core = terminal_create(32, 4)!
+          defer { terminal_destroy(core) }
+          terminal_set_history_byte_limit(core, budget)
+          feed(core, bytes: payload, partitions: partitions)
+          terminal_finish(core)
+          precondition(terminal_validate(core), "ASCII continuation invariants: \(name)")
+          return (stableSnapshot(core), replies(core), terminal_history_bytes(core))
+        }
+        let expected = run(Array(repeating: 1, count: payload.count))
+        var partitions = [[payload.count], [3, 17, 1, 1023, 2, 19, 7]]
+        for size in [15, 16, 1024] {
+          partitions.append(Array(repeating: size, count: (payload.count + size - 1) / size))
+        }
+        for chunks in partitions {
+          let actual = run(chunks)
+          precondition(actual.0 == expected.0, "ASCII continuation snapshot: \(name), budget \(budget), chunks \(chunks.prefix(8))")
+          precondition(actual.1 == expected.1, "ASCII continuation replies: \(name)")
+          precondition(actual.2 == expected.2, "ASCII continuation history charge: \(name)")
+        }
+      }
+    }
+  }
   static func decodedBatchEquivalence() {
     // The whole-buffer case reaches the <=1024 decoded scalar writer, while
     // the byte and irregular cases force ordinary feed boundaries.  A full
@@ -809,6 +854,7 @@ import Foundation
   static func main() {
     nativeModifierWire()
     asciiByteAdmission()
+    borrowedASCIIContinuationEquivalence()
     decodedBatchEquivalence()
     indexHistoryUsesMutatedPrimaryForViewportClamp()
     csiASCIIParsing()

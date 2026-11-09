@@ -1,0 +1,37 @@
+{
+  "baseline_revision": "9354d3a",
+  "decision": "ready for real-app validation: ASCII gains retained and prior Unicode1023 regression absent",
+  "scope": "Headless terminal_feed throughput; no PTY or display FPS claim",
+  "order": [
+    "baseline",
+    "candidate",
+    "candidate",
+    "baseline"
+  ],
+  "bytes_per_sample": 2097152,
+  "warmups_per_cell": 1,
+  "measured_samples_per_cell_per_run": 5,
+  "flags": [
+    "-swift-version",
+    "5",
+    "-O",
+    "-whole-module-optimization",
+    "-target",
+    "arm64-apple-macosx15.0"
+  ],
+  "correctness": {
+    "passed": true,
+    "row_records": 270,
+    "parser_records": 337
+  },
+  "hashes": {
+    "change.patch": "7062ce3fe504f3daa172995acd420e2023439ec29cefe46fe4cf86281cf6fe4d",
+    "Probe.swift": "c2f0701eb3c3bb1e3a1fa38c94f1e5c931f911e30263b557886677519ed024e9",
+    "RowProbe.swift": "6902a817a0d344dbc73d7b586a5198f9ff427f6f655ad552bc7b32660757c00a",
+    "build.sh": "29e3f6cdb756f57003864a44a14b2b8d09836a2656f4c1d6c1ed4e26f1d8c45e",
+    "run.rb": "499a3560c04a6b88a8aaaa60947252a4d71970bf5246596cccb46be1509cf385",
+    "run-bench.rb": "bb61c5331ae72e8cd6d149a84b1cafea225e5306597e66f20a53ee827b221962",
+    "baseline/probe": "40a0d9bfb5945be0f0de90f0088ed991bb82ab4ea503bc356537d9b0228163a2",
+    "candidate/probe": "b653865455846e370a9452fe90d98dfaab772f2b5da221ab62cc42c4bf179eb4"
+  }
+}

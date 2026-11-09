@@ -56,8 +56,7 @@ private final class BorrowedSnapshotCells {
   }
 }
 
-// This view is valid only during the synchronous C ABI feed call. It feeds
-// the reusable decoder scratch; Document continues to receive ArraySlice.
+// Borrowed printable input, valid only during the synchronous feed call.
 private struct ASCIIInputScalars: RandomAccessCollection {
   typealias Element = Unicode.Scalar
   typealias Index = Int
@@ -256,9 +255,9 @@ private final class TerminalEmulator {
     decodedScalars.removeAll(keepingCapacity: true)
     decodedScalarStart = 0
   }
-  // Long printable ASCII bypasses per-byte UTF-8 decoding, but remains in the
-  // same bounded scratch array and therefore reaches the specialized
-  // ArraySlice document transaction used by every other decoder emission.
+  // Eligible ASCII borrows the feed buffer only during the document transaction.
+  // Prior decoded text is drained first; row storage retains scalar values, never
+  // this input view. History effects are applied at every document yield.
   private func appendASCIIInput(_ bytes: UnsafePointer<UInt8>, offset: Int, limit: Int) -> Int? {
     guard case .ground = parser, utf8.isIdle, !charsetSpecial[charsetSlot] else { return nil }
     var count = 0
@@ -275,19 +274,28 @@ private final class TerminalEmulator {
       return count
     }
 
+    drainASCIIInput(bytes, offset: offset, count: count)
+    return count
+  }
+  // Keep the generic borrowed writer outside the mixed-text scanner's hot loop.
+  @inline(never)
+  private func drainASCIIInput(_ bytes: UnsafePointer<UInt8>, offset: Int, count: Int) {
+    flushDecodedScalars()
     var admitted = 0
     while admitted < count {
-      let available = 1024 - (decodedScalars.count - decodedScalarStart)
-      if available == 0 {
-        flushDecodedScalars()
-        continue
+      let amount = min(1024, count - admitted)
+      let scalars = ASCIIInputScalars(bytes.advanced(by: offset + admitted), count: amount)
+      var consumed = 0
+      while consumed < amount {
+        let batch = document.print(scalars[consumed...], usingAlternate: usingAlternate,
+          leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
+          attributes: TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput))
+        precondition(batch.consumedScalarCount > 0)
+        consumed += batch.consumedScalarCount
+        apply(batch.effect, mutations: batch.mutationCount)
       }
-      let amount = min(available, count - admitted)
-      decodedScalars.append(contentsOf: ASCIIInputScalars(bytes.advanced(by: offset + admitted), count: amount))
       admitted += amount
-      if decodedScalars.count - decodedScalarStart == 1024 { flushDecodedScalars() }
     }
-    return count
   }
   private func apply(_ effect: TerminalDocument.PrintEffect, mutations: Int = 1) {
     guard mutations > 0 else { return }
