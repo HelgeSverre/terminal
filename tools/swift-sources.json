@@ -74,6 +74,12 @@
       "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
       "CellPalette.swift", "VisibleLinkProjection.swift", "AccessibilityProjection.swift", "tests/SessionTests.swift"
     ],
+    "shell_editing": [
+      "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift",
+      "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
+      "CellPalette.swift", "VisibleLinkProjection.swift", "AccessibilityProjection.swift", "tests/ShellEditingTests.swift"
+    ],
     "geometry": ["Geometry.swift", "tests/GeometryTests.swift"],
     "statistics": ["Statistics.swift", "tests/StatisticsTests.swift"],
     "glyph_raster_worker": ["Font.swift", "GlyphRasterWorker.swift", "tests/GlyphRasterWorkerTests.swift"],

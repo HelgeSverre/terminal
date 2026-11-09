@@ -41,6 +41,11 @@ import AppKit
       let initial = snapshot.cursor.col
       measurements["fresh_initial_col"] = initial
       if let prompt = snapshot.rows[snapshot.cursor.row].cells.firstIndex(where: { $0.text == "❯" }) {
+        measurements["fresh_starship_prompt_col"] = prompt
+        measurements["fresh_starship_cursor_offset"] = initial - prompt
+        let spanStart = min(prompt + 1, snapshot.cols)
+        let spanEnd = max(spanStart, min(initial, snapshot.cols))
+        measurements["fresh_starship_cells_after_prompt"] = snapshot.rows[snapshot.cursor.row].cells[spanStart..<spanEnd].count
         checks["fresh_starship_cursor_alignment"] = initial == prompt + 2
       }
       key(8, "c"); key(2, "d")

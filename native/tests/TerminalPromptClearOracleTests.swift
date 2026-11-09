@@ -5,12 +5,25 @@ import Foundation
 @main enum TerminalPromptClearOracleTests {
   static func make(_ columns: UInt32 = 8, _ rows: UInt32 = 4) -> OpaquePointer { terminal_create(columns, rows)! }
   static func feed(_ terminal: OpaquePointer, _ text: String) {
-    let bytes = Data(text.utf8)
-    _ = bytes.withUnsafeBytes { terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0) }
-    while terminal_has_work(terminal) { _ = terminal_feed(terminal, nil, 0, 0) }
+    feed(terminal, Data(text.utf8))
   }
-  static func snapshot(_ terminal: OpaquePointer) -> [String: Any] {
-    TerminalSnapshotTestSupport.ownerSnapshot(terminal)!
+  static func feed(_ terminal: OpaquePointer, _ bytes: Data, now: UInt64 = 0) {
+    var offset = 0
+    var turns = 0
+    while offset < bytes.count || terminal_has_work(terminal) {
+      turns += 1
+      precondition(turns < 1_000, "prompt fixture did not drain bounded ingress")
+      let used = bytes.withUnsafeBytes { buffer in
+        terminal_feed(terminal, offset < bytes.count ? buffer.bindMemory(to: UInt8.self).baseAddress!.advanced(by: offset) : nil, bytes.count - offset, now)
+      }
+      precondition(used >= 0 && used <= bytes.count - offset)
+      precondition(used > 0 || terminal_has_work(terminal) || offset == bytes.count)
+      offset += used
+      precondition(terminal_validate(terminal))
+    }
+  }
+  static func snapshot(_ terminal: OpaquePointer, now: UInt64 = 0) -> [String: Any] {
+    TerminalSnapshotTestSupport.ownerSnapshot(terminal, now: now)!
   }
   static func replies(_ terminal: OpaquePointer) -> Data {
     final class Box { var value = Data() }
@@ -155,11 +168,80 @@ import Foundation
     feed(terminal, "\u{1b}[?1049h")
     precondition(terminal_clear_display(terminal) == 0) // Alternate remains intact.
   }
+  // These are protocol traces, independent of zsh's own width calculations.
+  // Every split includes UTF-8 scalars, SGR, OSC 133 and their terminators.
+  static let unicodePrompt = "\u{1b}]133;A;redraw=1\u{7}\u{1b}[34m~/猫/e\u{301}\u{1b}[0m\r\n❯ "
+  static let command = "cd crescat"
+  static let promptReady = "\u{1b}]133;B\u{7}"
+  static func expectSingleEditedPrompt(_ terminal: OpaquePointer, now: UInt64 = 0) {
+    let value = TerminalSnapshotTestSupport.ownerSnapshot(terminal, now: now)!
+    precondition(count("~/猫/e\u{301}", value) == 1 && count("❯", value) == 1)
+    precondition(count(command, value) == 1 && !text(value).contains("cdcd"))
+    precondition(value["at_prompt"] as? Bool == true && value["input_ready"] as? Bool == true)
+    let cursor = value["cursor"] as! [String: Any]
+    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 12)
+    let firstCell = ((value["rows"] as! [[String: Any]])[0]["cells"] as! [[String: Any]])[0]
+    precondition((firstCell["style"] as! [String: Any])["foreground"] as? [String: Int] == ["Indexed": 4])
+    precondition(terminal_validate(terminal))
+  }
+  static func bytePartitionedPromptRedrawAndErase() {
+    let initial = Data((unicodePrompt + promptReady + command).utf8)
+    let redraw = Data(("\r\r\u{1b}[A\u{1b}[J" + unicodePrompt + promptReady + command).utf8)
+    for split in 0...max(initial.count, redraw.count) {
+      let terminal = make(64, 8); defer { terminal_destroy(terminal) }
+      let initialSplit = min(split, initial.count)
+      feed(terminal, Data(initial.prefix(initialSplit)))
+      feed(terminal, Data(initial.dropFirst(initialSplit)))
+      expectSingleEditedPrompt(terminal)
+      for width: UInt32 in [24, 80, 32] {
+        precondition(terminal_resize(terminal, width, 8))
+        let redrawSplit = min(split, redraw.count)
+        feed(terminal, Data(redraw.prefix(redrawSplit)))
+        feed(terminal, Data(redraw.dropFirst(redrawSplit)))
+        expectSingleEditedPrompt(terminal)
+      }
+      feed(terminal, "\r\u{1b}[2K❯ " + promptReady)
+      let erased = snapshot(terminal)
+      precondition(!text(erased).contains(command) && count("❯", erased) == 1)
+      precondition((erased["cursor"] as! [String: Any])["col"] as? Int == 2)
+      feed(terminal, command)
+      expectSingleEditedPrompt(terminal)
+    }
+  }
+  static func synchronizedPromptRedrawHasOnePublication() {
+    for release in ["explicit", "watchdog", "resize"] {
+      let terminal = make(64, 8); defer { terminal_destroy(terminal) }
+      feed(terminal, unicodePrompt + promptReady + "cd")
+      feed(terminal, "\u{1b}[?2026h")
+      let redraw = Data(("\r\r\u{1b}[A\u{1b}[J" + unicodePrompt + promptReady + command).utf8)
+      for byte in redraw { feed(terminal, Data([byte])) }
+      precondition(TerminalSnapshotTestSupport.ownerSnapshot(terminal, now: 149) == nil)
+      if release == "explicit" {
+        feed(terminal, Data("\u{1b}[?2026l".utf8), now: 149)
+        expectSingleEditedPrompt(terminal, now: 149)
+      } else if release == "watchdog" {
+        expectSingleEditedPrompt(terminal, now: 150)
+      } else {
+        // The resize transaction ends the hold (spec 9.6/12.2). Redraw=1
+        // retires the old prompt; only the subsequent shell redraw restores it.
+        precondition(terminal_resize(terminal, 32, 8))
+        let resized = snapshot(terminal, now: 149)
+        precondition(resized["cols"] as? Int == 32)
+        precondition(resized["at_prompt"] as? Bool == true && resized["input_ready"] as? Bool == true)
+        precondition(!text(resized).contains(command))
+        for byte in redraw { feed(terminal, Data([byte]), now: 149) }
+        feed(terminal, Data("\u{1b}[?2026l".utf8), now: 149)
+        expectSingleEditedPrompt(terminal, now: 149)
+      }
+    }
+  }
   static func main() {
     promptClearsBeforeShellRedraw(); plainPromptAndPrefixSurvive(); fullWidthAndWidePrefixesSurvive()
     alternatePixelEvictionAndCommandBoundaries(); promptClearPreservesModesAndRebasesAnchor(); unmarkedAlternateAndMarkers(); promptPhasePublishesInputReadiness(); clearDropsOnlyPrimaryImages()
     readinessSurvivesHistoricalPromptAnchor()
     clearActionValuesMatchABI()
-    print("PASS Prompt/reflow and display-clear oracles: phase/readiness survives anchor retirement")
+    bytePartitionedPromptRedrawAndErase()
+    synchronizedPromptRedrawHasOnePublication()
+    print("PASS Prompt/reflow and display-clear oracles: Unicode byte partitions, erase/retype, sync release/watchdog/resize, phase/readiness")
   }
 }

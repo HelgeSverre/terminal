@@ -119,6 +119,7 @@ lint:
     just visible-links-test
     just _terminfo-test
     just _clipboard-access-tests
+    just _shell-editing-test
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     just emulator-test
@@ -171,6 +172,19 @@ _session-test:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print session) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests
     target/native/session-tests "$PWD"
+
+# Exercise a clean interactive zsh through Session's PTY, with macOS-style
+# missing locale variables. This is separate from the broader Session suite so
+# Unicode prompt and completion redraw failures have a short, focused signal.
+[group('check')]
+shell-editing-test: build _shell-editing-test
+
+[private]
+_shell-editing-test:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print shell_editing) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/shell-editing-tests
+    env -u LANG -u LC_ALL -u LC_CTYPE -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE -u FORCE_COLOR target/native/shell-editing-tests "$PWD"
 
 # Swift terminal-state smoke; historical Rust oracles live in the archived branch.
 [group('check')]

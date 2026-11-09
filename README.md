@@ -130,6 +130,9 @@ real-GPU validation remains required.
 
 ```sh
 just test
+just shell-editing-test # Isolated zsh: Unicode prompt, completion, redraw and edits
+just terminal-prompt-clear-oracle # Byte-split prompt redraw and sync/resize
+just terminal-semantic-regression # Cursor motion, erase and wide-cell repair
 just smoke
 just editing-smoke # Fresh-prompt cd/Backspace, autosuggestions and ZLE buffer
 just glyph-smoke   # Every Nerd Font glyph through all four styles and Metal

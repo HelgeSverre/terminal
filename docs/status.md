@@ -49,6 +49,11 @@ Implemented and locally exercised:
   explicit LANG/LC_* overrides and the parent's environment remain untouched.
   A controlled double-Tab locale A/B and real PTY regression cover the Unicode
   prompt redisplay defect; see `reports/locale-launch-evidence/summary.md`.
+- Character erasure (CSI ECH), next/previous-line cursor movement (CNL/CPL),
+  and shared direction-aware scrolling-margin bounds for CUU/CUD/CNL/CPL.
+  Erasure preserves only the active background, repairs whole wide glyphs and
+  leaves the cursor in place. Focused semantic, byte-partitioned prompt and
+  real-zsh editing regressions are part of `just test`.
 - Metal glyph atlas/instanced quads, demand-only rendering, Retina metrics.
   Atlas pages grow lazily. Pressure uses bounded direct glyph textures, then a
   visible replacement after the exact-glyph budget is exhausted; oversized

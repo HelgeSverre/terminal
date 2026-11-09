@@ -151,7 +151,26 @@ import Darwin
     guard phase == -1, startupGateReady, let modifierSelectionResult else { return }
     checks["modifier_keys_preserve_selection"] = modifierSelectionResult
     phase = 0
-    runCommand()
+    guard let window = controller.window, let pane = controller.panes.first else {
+      finish(timedOut: true)
+      return
+    }
+    // This fixture writes through the Canvas/Session boundary. Give its owned
+    // window the same AppKit focus precondition as an interactive key route;
+    // otherwise a direct executable launch can have a first responder while
+    // its focus lifecycle remains false.
+    NSApp.activate(ignoringOtherApps: true)
+    window.makeKeyAndOrderFront(nil)
+    window.makeFirstResponder(pane)
+    controller.panes.forEach { $0.updateFocus() }
+    DispatchQueue.main.async { [weak self, weak pane, weak window] in
+      guard let self, let pane, let window, self.phase == 0 else { return }
+      self.measurements["startup_command_app_active"] = NSApp.isActive
+      self.measurements["startup_command_key_window"] = window.isKeyWindow
+      self.measurements["startup_command_first_responder"] = window.firstResponder === pane
+      self.measurements["startup_command_pane_focused"] = pane.geometryReport()["focused"] as? Bool == true
+      self.runCommand()
+    }
   }
   private func runCommand() {
     guard let pane = controller.panes.first else { return }
