@@ -115,3 +115,6 @@ That command displays item fields; run it only in a private local session.
 Automated recovery should capture values in memory and report verification
 results without printing credentials. Local Keychain profiles are working
 copies; Personal remains the recovery source.
+
+Tag a tested code commit whose message does not contain `[skip ci]` or another
+Actions skip marker. Such markers also suppress tag-push release workflows.

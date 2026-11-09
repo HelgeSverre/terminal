@@ -173,3 +173,18 @@ startup grids and the earlier pane lifecycle checks pass. Final CI/publication
 remain gated on the next source commit. Evidence is retained under
 `reports/editing-input-isolation-2026-11-09` and
 `reports/selection-word-worker-2026-11-09`.
+
+## Released closure
+
+The cleanup is verified at released `v0.2.3`, source `2e8949b`:
+[full CI](https://github.com/HelgeSverre/terminal/actions/runs/42688273499) and
+[release workflow](https://github.com/HelgeSverre/terminal/actions/runs/42689003132)
+both pass. The release workflow tests, signs, notarizes, publishes and updates
+the Homebrew cask. Independently downloaded ZIP/PKG checksums, app signature,
+stapling and Gatekeeper assessments pass on this Mac. The cask and live tap site
+show 0.2.3. The later 3e559d2 commit records benchmark evidence only.
+
+Local development after this closure contains separate 0.2.4 optimization work
+and a settings redesign. Their validation is distinct; this closure is not a
+claim that every later working-tree change has passed CI. The UI port to the
+SidePulse branch awaits the user's explicit design approval.

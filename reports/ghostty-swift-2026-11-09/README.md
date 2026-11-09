@@ -93,3 +93,25 @@ source layout and preflight changes. Small differences do not establish an
 optimization or regression under varying desktop load. The table above remains
 the initial optimization baseline; neither run includes the separate parser
 prototypes. Exact executable identities and all reference samples are retained.
+
+## First parser/text optimization batch
+
+The [development comparison](after-text-batching/comparison.json), at `0b7a6c0`,
+uses the same settings and reversed orders. These changes are for 0.2.4;
+released 0.2.3 remains the preflight baseline.
+
+| Workload | 0.2.3 preflight | Optimized development | Ghostty in development trials |
+| --- | ---: | ---: | ---: |
+| Short ASCII | 58.8 | 57.1–59.0 | 209.0–244.0 |
+| Long ASCII | 75.5–75.6 | 72.1–76.0 | 216.3–251.2 |
+| ANSI truecolor | 18.4 | 31.0–31.1 | 177.8–183.0 |
+| Unicode | 12.3–12.4 | 14.5–14.6 | 175.4–178.2 |
+
+Values are trial medians in MiB/s. ANSI improves about 69% and mixed Unicode
+about 18%; ASCII shows no clear improvement amid desktop/reference variation.
+The headless prototype gains do not carry through in full. Ghostty remains
+substantially faster, so comparable whole-app speed is still an open goal.
+Both orders exit naturally without owned survivors. This batch replaces CSI
+string accumulation, avoids unchanged screen copies for SGR, measures singleton
+width without strings and batches narrowly admitted fresh Unicode row spans.
+A separate payload-bit prototype had mixed timings and remains experimental.
