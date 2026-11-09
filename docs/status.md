@@ -140,6 +140,14 @@ Implemented and locally exercised:
 
 Current automated evidence:
 
+- The 0.2.3 candidate fixes nested pane allocation on split and window resize.
+  The headless macOS suite passes at `12330f0` (run `42630258871`).
+  Real Codex and Files runs pass 72 rapid resizes, pane edits, final output
+  checks, and owned-process cleanup; see the [recorded evidence](../reports/real-tui-pane-stress/README.md).
+  Its fresh Starship cursor-alignment check remains unverified: one signed
+  editing run started at column 5 rather than 2, while typing, erasing, and
+  subsequent ZLE-buffer rounds passed. The installed app remains 0.2.2 pending
+  a controlled fresh-start check.
 - Version 0.2.2/build 8 at `a8cf4bd` passes full macOS CI (run `42605737863`),
   including the isolated zsh editing, byte-partitioned prompt and erase/movement
   regressions. The exact notarized build passes signed normal/editing checks

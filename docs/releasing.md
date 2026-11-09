@@ -1,5 +1,26 @@
 # Release credentials and recovery
 
+## Build and install
+
+```sh
+just release-status  # Validate local identities and notarization access
+just package         # Sign the app, ZIP, and PKG
+just release         # Sign, notarize, staple, and validate both app and PKG
+```
+
+Artifacts are written to `dist/release`. The bundle identifier is
+`no.helgesverre.terminal`; the PKG installs to `/Applications`.
+`just install` builds an optimized bundle for `~/Applications/Helge Terminal.app`.
+It selects a matching notarized artifact when available. Quit the installed app
+before replacing it.
+
+The release configuration is `~/.config/terminal/release.json`. It can specify
+`applicationIdentity`, `installerIdentity`, and `notaryProfile`;
+`APPLE_NOTARY_PROFILE` overrides the profile. Identities are detected when one
+valid Developer ID certificate exists for each role.
+
+## Credential policy
+
 Helge requires notarization credentials and recovery details to be saved in his
 **Personal** 1Password vault. Back up new or changed credentials there before
 notarizing. Read back attachments and compare them with the working originals;

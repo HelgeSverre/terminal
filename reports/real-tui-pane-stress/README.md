@@ -5,6 +5,9 @@ Verified on this Mac on 2026-11-09, using the same frozen, whole-module-optimize
 hashes, geometry, cleanup receipts, and capture hashes are in
 [verification.json](verification.json).
 
+The headless macOS suite passes at `12330f0` in
+[CI run 42630258871](https://github.com/HelgeSverre/terminal/actions/runs/42630258871).
+
 | Workload | Rapid window resizes | Workload output during resizing | Final visible panes | Cleanup |
 | --- | ---: | ---: | ---: | --- |
 | Files 0.4.0 | 72 | 19,110 bytes | 3/3 | No survivors; 4 healthy fixture receipts |

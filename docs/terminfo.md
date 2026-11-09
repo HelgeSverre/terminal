@@ -19,11 +19,11 @@ to inspect that compiled result.
 
 | Capability group | Entry policy | Evidence in the emulator |
 | --- | --- | --- |
-| Cursor movement, tabs, margins, erase, character/line insert/delete and scroll | Advertised | `commands.rs` handles the CSI/ESC sequences emitted by the entry. |
+| Cursor movement, tabs, margins, erase, character/line insert/delete and scroll | Advertised | `TerminalEmulator.swift` handles the CSI/ESC sequences emitted by the entry. |
 | 256 indexed colors and advertised SGR styles (bold, dim, conceal, reverse, underline) | Advertised | `setaf`/`setab` use standard xterm-compatible ANSI/256-color SGR; `Renderer.swift` visibly applies each listed style. Blink is deliberately absent because the renderer retains, but does not animate, that style. |
 | Alternate screen, application cursor/keypad | Advertised | `?1049`, `?1`, `ESC =`, and `ESC >` map to owned screen/input modes. |
-| DEC line drawing and supported keys | Advertised | `acsc` matches the DEC graphics mapping; key strings match `input.rs`. |
-| Audible/visual bell, OSC 52, window operations, title-stack, dynamic color allocation, cursor-style extensions | Not advertised | There is no capability merely because a similar xterm entry has one. OSC 52 is deliberately denied. |
+| DEC line drawing and supported keys | Advertised | `acsc` matches the DEC graphics mapping; key strings match `TerminalInputEncoder.swift`. |
+| Audible/visual bell, OSC 52, window operations, title-stack, dynamic color allocation, cursor-style extensions | Not advertised | The entry declares only tested capabilities. OSC 52 writes have a separate [permission policy](osc52-clipboard.md); reads are denied. |
 | Direct-color terminfo extension | Not advertised as `RGB` | RGB SGR rendering works and `COLORTERM=truecolor` is exported, but `colors#256` remains the stable terminfo promise until direct-color ncurses behavior is tested across supported client versions. |
 
 The SGR sequences use the same 256-color forms documented by
