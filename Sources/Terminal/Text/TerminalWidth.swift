@@ -25,6 +25,11 @@ enum TerminalWidth {
     return total
   }
 
+  /// Exact string-mode width of a singleton, before cluster extensions arrive.
+  static func width(of scalar: Unicode.Scalar) -> Int {
+    widthInString(scalar.value, next: .default).add
+  }
+
   // MARK: unicode-width's right-to-left sequence state machine
 
   private static func widthInString(_ scalar: UInt32, next originalNext: WidthInfo) -> (add: Int, info: WidthInfo) {

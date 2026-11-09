@@ -394,6 +394,95 @@ import Foundation
     precondition(alternateSnapshot.rows[0].cells[0].text.isEmpty)
   }
 
+  static func unicodeSpansMatchScalarTransactions() {
+    let texts = [
+      "αβγδεζηθ猫界語한국어", "Aαβ猫界Z", "αβe\u{301}γδ",
+      "αβ©\u{FE0F}γδ©\u{FE0E}", "αβ👩\u{200D}💻🇳🇴👍🏽γ",
+      "αβ\u{600}Aγδ", "αβ\u{200B}γ\u{7}δ", "αβ각γक्‍षδ",
+      "αβ" + String(repeating: "\u{301}", count: 66) + "γδ",
+      String(repeating: "α猫β界", count: 260),
+    ]
+    var cases = 0
+    for columns in [1, 2, 3, 7, 17] {
+      for alternate in [false, true] {
+        for autoWrap in [false, true] {
+          for insertMode in [false, true] {
+            for margins in [false, true] {
+              for chunk in [1, 3, 1024] {
+                for text in texts {
+                  var scalar = TerminalDocument(columns: columns, rows: 2)
+                  // Start inside existing rich wide cells, then retain the
+                  // screen across each edit to exercise detached row storage.
+                  for value in "猫界猫界猫界猫界猫界".unicodeScalars {
+                    _ = scalar.print(value, usingAlternate: alternate, leftRightMargins: false,
+                      autoWrap: true, insertMode: false, attributes: styled)
+                  }
+                  scalar.resetPrintCluster()
+                  if alternate {
+                    scalar.alternate.cursorColumn = min(1, columns - 1)
+                    scalar.alternate.pendingWrap = false
+                    scalar.alternate.leftMargin = min(1, columns - 1)
+                    scalar.alternate.rightMargin = max(0, columns - 2)
+                    if scalar.alternate.leftMargin > scalar.alternate.rightMargin {
+                      scalar.alternate.rightMargin = scalar.alternate.leftMargin
+                    }
+                  } else {
+                    scalar.primary.cursorColumn = min(1, columns - 1)
+                    scalar.primary.pendingWrap = false
+                    scalar.primary.leftMargin = min(1, columns - 1)
+                    scalar.primary.rightMargin = max(0, columns - 2)
+                    if scalar.primary.leftMargin > scalar.primary.rightMargin {
+                      scalar.primary.rightMargin = scalar.primary.leftMargin
+                    }
+                  }
+                  var batch = scalar
+                  let values = Array(text.unicodeScalars)
+                  let attributes = TerminalDocument.PrintAttributes(
+                    style: TerminalStyle(foreground: 7, background: 8, flags: 3),
+                    link: chunk == 3 ? nil : "https://example.test/unicode", protected: chunk != 1)
+                  var offset = 0
+                  while offset < values.count {
+                    let retained = alternate ? batch.alternate : batch.primary
+                    let retainedCells = retained.rows.map { Array($0.cells) }
+                    let result = batch.print(values[offset..<min(values.count, offset + chunk)],
+                      usingAlternate: alternate, leftRightMargins: margins, autoWrap: autoWrap,
+                      insertMode: insertMode, attributes: attributes)
+                    precondition(result.consumedScalarCount > 0)
+                    var mutations = 0, history = 0
+                    var last: TerminalDocument.PrintEffect?
+                    for value in values[offset..<(offset + result.consumedScalarCount)] {
+                      if let effect = scalar.print(value, usingAlternate: alternate,
+                        leftRightMargins: margins, autoWrap: autoWrap,
+                        insertMode: insertMode, attributes: attributes) {
+                        mutations += 1; history += effect.appendedHistoryCount
+                        if effect.lastPrinted != nil { last = effect }
+                      }
+                    }
+                    precondition(result.mutationCount == mutations && result.effect.appendedHistoryCount == history)
+                    precondition(result.effect.lastPrinted == last?.lastPrinted)
+                    precondition(result.effect.repeatAttributes?.link == last?.repeatAttributes?.link)
+                    precondition(result.effect.repeatAttributes?.style == last?.repeatAttributes?.style)
+                    precondition(result.effect.repeatAttributes?.protected == last?.repeatAttributes?.protected)
+                    precondition(batch.primary == scalar.primary && batch.alternate == scalar.alternate && batch.history == scalar.history)
+                    precondition(retained.rows.map { Array($0.cells) } == retainedCells)
+                    for (actual, expected) in zip(batch.primary.rows + batch.alternate.rows,
+                                                  scalar.primary.rows + scalar.alternate.rows) {
+                      precondition(actual.retainedStorageCost == expected.retainedStorageCost)
+                    }
+                    precondition(batch.hasValidInvariants(batch.primary) && batch.hasValidInvariants(batch.alternate))
+                    offset += result.consumedScalarCount
+                  }
+                  cases += 1
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    print("PASS Unicode span scalar differential: \(cases) cases")
+  }
+
   static func asciiSpanMatchesScalarTransactions() {
     let attributes = TerminalDocument.PrintAttributes(
       style: TerminalStyle(foreground: 0x0102_0304, background: 0x0506_0708, flags: 1),
@@ -942,6 +1031,7 @@ import Foundation
     documentOwnsSegmentationAndOrphans()
     batchWriterMatchesScalarTransactions()
     asciiSpanMatchesScalarTransactions()
+    unicodeSpansMatchScalarTransactions()
     alternateMultiwrapBatchDoesNotYieldForReplacements()
     discardedAlternateReuseRespectsSnapshots()
     evictedPrimaryReuseRespectsSnapshots()

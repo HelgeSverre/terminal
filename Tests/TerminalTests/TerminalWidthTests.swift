@@ -18,6 +18,11 @@ import Foundation
     for (text, expected, label) in examples {
       precondition(TerminalWidth.width(of: text) == expected, "\(label): expected \(expected), got \(TerminalWidth.width(of: text))")
     }
+    for value in UInt32(0)...0x10FFFF {
+      guard let scalar = Unicode.Scalar(value) else { continue }
+      precondition(TerminalWidth.width(of: scalar) == TerminalWidth.width(of: String(scalar)),
+                   "singleton width mismatch at U+\(String(value, radix: 16))")
+    }
     let arguments = CommandLine.arguments
     if let index = arguments.firstIndex(of: "--oracle") {
       guard arguments.indices.contains(index + 1) else { fatalError("--oracle requires an executable path") }

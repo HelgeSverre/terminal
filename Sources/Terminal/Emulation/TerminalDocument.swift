@@ -363,6 +363,36 @@ struct TerminalRow: Equatable {
     }
   }
 
+  // The caller has admitted fresh width-one/two clusters that fit this row.
+  // Width lookup is repeated here to avoid allocating a per-run widths array.
+  mutating func replaceSingletons<C: Collection>(at column: Int, scalars: C, cellCount: Int,
+                                                style: TerminalStyle, link: String?, protected: Bool)
+  where C.Element == Unicode.Scalar {
+    guard cellCount > 0, column >= 0, column + cellCount <= storage.slots.count else { return }
+    ensureUniqueForCellEdit()
+    let range = column..<(column + cellCount)
+    observeSelectionWrite(range)
+    if let link {
+      for index in range { storage.payloads[index] = TerminalRowPayload(text: nil, link: link) }
+    } else if !storage.payloads.isEmpty {
+      for index in range { storage.payloads.removeValue(forKey: index) }
+    }
+    storage.slots.withUnsafeMutableBufferPointer { slots in
+      var index = column
+      for scalar in scalars {
+        let width = TerminalWidth.width(of: scalar)
+        slots[index] = TerminalRowSlot(scalar: scalar.value, style: style, hasScalar: true,
+                                       kind: width == 2 ? 2 : 1, flags: protected ? 2 : 0,
+                                       protected: protected)
+        if width == 2 {
+          slots[index + 1] = TerminalRowSlot(style: style, kind: 3, flags: protected ? 2 : 0,
+                                            protected: protected)
+        }
+        index += width
+      }
+    }
+  }
+
   // Preserve the published history-byte contract across this physical storage
   // optimization. These are the old ABI strides (row 32, rich cell 64), not
   // an allocator or RSS estimate; payload bytes retain their old per-cell
@@ -808,6 +838,69 @@ struct TerminalDocument {
         return PrintBatchEffect(effect: effect, consumedScalarCount: consumed, mutationCount: mutations)
       }
 
+      // Keep Unicode segmentation exact while sharing a single row edit for
+      // fresh singleton clusters. A rejected candidate leaves segmenter state
+      // untouched and takes the ordinary transaction on the next iteration.
+      // Restrict runs to ordinary text and complete Hangul syllables. Emoji,
+      // marks and joiners stay on the scalar path without speculative packing.
+      // Start only after a non-ASCII text scalar; ASCII separators before
+      // emoji must not trigger a redundant Unicode lookahead.
+      if index != scalars.endIndex, scalar.value >= 0x80,
+         scalars[index].value >= 0x80,
+         (category == .other || category == .lv || category == .lvt),
+         !insertMode, !screen.pendingWrap,
+         screen.rows.indices.contains(screen.cursorRow),
+         screen.rows[screen.cursorRow].count > screen.cursorColumn {
+        let horizontal = leftRightMargins
+          ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
+        let right = screen.cursorColumn <= horizontal.1 ? horizontal.1 : columns - 1
+        let capacity = right - screen.cursorColumn + (autoWrap ? 1 : 0)
+        var end = index, count = 0, cellCount = 0, lastWidth = 0
+        var last: Unicode.Scalar?
+        var finalSegmenter = state.segmenter
+        while end != scalars.endIndex, cellCount < capacity {
+          let candidate = scalars[end]
+          let candidateCategory = Self.category(for: candidate)
+          switch candidateCategory { case .other, .lv, .lvt:
+            var nextSegmenter = finalSegmenter
+            let width = TerminalWidth.width(of: candidate)
+            if !TerminalText.isDefaultIgnorable(candidate),
+               (width == 1 || width == 2), cellCount + width <= capacity,
+               nextSegmenter.push(candidate, category: candidateCategory) {
+              finalSegmenter = nextSegmenter
+              cellCount += width; count += 1; lastWidth = width; last = candidate
+              end = scalars.index(after: end)
+              continue
+            }
+          default: break
+          }
+          break
+        }
+        if let last {
+          let column = screen.cursorColumn
+          let prototype = TerminalCell(text: "", kind: 1, style: attributes.style,
+                                       link: attributes.link, flags: attributes.protected ? 2 : 0,
+                                       protected: attributes.protected)
+          if preparePrintedReplacement(in: &screen.rows[screen.cursorRow], at: column,
+                                       count: cellCount, like: prototype) {
+            screen.rows[screen.cursorRow].replaceSingletons(at: column, scalars: scalars[index..<end],
+              cellCount: cellCount, style: attributes.style, link: attributes.link,
+              protected: attributes.protected)
+            screen.rows[screen.cursorRow].revision &+= UInt64(count)
+            state.segmenter = finalSegmenter
+            state.openCluster = (screen.cursorRow, column + cellCount - lastWidth)
+            state.retainedScalars = 1; state.capped = false
+            effect.lastPrinted = String(last)
+            effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link,
+                                                      protected: attributes.protected)
+            screen.cursorColumn = min(right, column + cellCount)
+            screen.pendingWrap = column + cellCount > right && autoWrap
+            consumed += count; mutations += count; index = end
+            continue
+          }
+        }
+      }
+
       // Admission remains deliberately narrow: the first scalar has already
       // established grapheme ownership through the ordinary transaction.
       // Subsequent printable ASCII scalars each begin a fresh cluster, so a
@@ -978,16 +1071,8 @@ struct TerminalDocument {
       return
     }
     state.openCluster = nil; state.retainedScalars = 0
-    let measuredWidth: Int
-    let richText: String?
-    if scalar.value < 0x80 && category == .other {
-      measuredWidth = 1
-      richText = nil
-    } else {
-      let text = String(scalar)
-      measuredWidth = TerminalText.cellWidth(of: text)
-      richText = text
-    }
+    let measuredWidth = scalar.value < 0x80 && category == .other
+      ? 1 : TerminalWidth.width(of: scalar)
     if measuredWidth == 0 {
       if TerminalText.isDefaultIgnorable(scalar) {
         return
@@ -1028,18 +1113,11 @@ struct TerminalDocument {
     let truncated = width == 2 && occupied < width
     let kind: UInt8 = width == 2 && occupied == 2 ? 2 : 1
     let flags: UInt8 = (attributes.protected ? 2 : 0) | (truncated ? 1 : 0)
-    if let richText {
-      Self.replacePrintedLead(in: &screen.rows[row], at: column,
-                              with: TerminalCell(text: richText, kind: kind, style: attributes.style,
-                                                 link: attributes.link, flags: flags,
-                                                 protected: attributes.protected))
-    } else {
-      Self.replacePrintedScalar(in: &screen.rows[row], at: column, scalar: scalar, kind: kind,
-                                style: attributes.style, link: attributes.link, flags: flags,
-                                protected: attributes.protected)
-    }
+    Self.replacePrintedScalar(in: &screen.rows[row], at: column, scalar: scalar, kind: kind,
+                              style: attributes.style, link: attributes.link, flags: flags,
+                              protected: attributes.protected)
     state.openCluster = (row, column); state.retainedScalars = 1
-    effect.lastPrinted = richText ?? String(scalar)
+    effect.lastPrinted = String(scalar)
     effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link,
                                               protected: attributes.protected)
     screen.cursorColumn = min(right, column + occupied)
