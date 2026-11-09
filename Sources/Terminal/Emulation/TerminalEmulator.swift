@@ -378,15 +378,30 @@ private final class TerminalEmulator {
         if byte == 0x30 { charsetSpecial[slot] = true }
         else if byte == 0x42 { charsetSpecial[slot] = false }
       case .csi:
-        if (0x40...0x7e).contains(byte) {
-          handleCSI(csiBytes, final: byte); parser = .ground
+        // Parameter bytes cannot produce replies or REP work. Admit their
+        // contiguous run once, preserving the scalar-backed UTF-8 budget.
+        let start = offset
+        var budget = csiUTF8Count
+        while offset < limit {
+          let next = bytes[offset]
+          if (0x40...0x7e).contains(next) || budget >= 16_384 { break }
+          budget += next < 0x80 ? 1 : 2
+          offset += 1
+        }
+        if offset > start {
+          csiBytes.append(contentsOf: UnsafeBufferPointer(start: bytes + start, count: offset - start))
+          csiUTF8Count = budget
+        }
+        if offset == limit { continue }
+        let final = bytes[offset]
+        if (0x40...0x7e).contains(final) {
+          handleCSI(csiBytes, final: final); parser = .ground
           if repeatRemaining > 0 { return offset + 1 }
+        } else {
+          // A final is accepted even at the limit; only a further parameter
+          // byte overflows, and that byte is consumed without interpretation.
+          parser = .ground; csiBytes.removeAll(keepingCapacity: true); csiUTF8Count = 0
         }
-        else if csiUTF8Count < 16_384 {
-          csiBytes.append(byte)
-          csiUTF8Count += byte < 0x80 ? 1 : 2
-        }
-        else { parser = .ground; csiBytes.removeAll(keepingCapacity: true); csiUTF8Count = 0 }
       case .osc:
         if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
         else if byte == 0x07 { finishString(); parser = .ground }

@@ -1,0 +1,178 @@
+{
+  "passed": true,
+  "flags": "-swift-version 5 -O -whole-module-optimization; Foundation CoreGraphics ImageIO; Sources/Terminal/Interop/Bridge.h",
+  "samples": [
+    {
+      "round": 1,
+      "mode": "baseline",
+      "values": {
+        "ascii_short_lines": 118.58080338494294,
+        "ascii_long_lines": 171.13465383077806,
+        "ansi_truecolor": 48.38351578986049,
+        "unicode": 21.545004927563898
+      }
+    },
+    {
+      "round": 1,
+      "mode": "candidate",
+      "values": {
+        "ascii_short_lines": 118.01403830628398,
+        "ascii_long_lines": 176.1181053605599,
+        "ansi_truecolor": 51.136987027727486,
+        "unicode": 21.72836095523423
+      }
+    },
+    {
+      "round": 2,
+      "mode": "candidate",
+      "values": {
+        "ascii_short_lines": 115.74659302358666,
+        "ascii_long_lines": 170.21682770691606,
+        "ansi_truecolor": 51.384458936151084,
+        "unicode": 21.681817569186972
+      }
+    },
+    {
+      "round": 2,
+      "mode": "baseline",
+      "values": {
+        "ascii_short_lines": 115.78158591132612,
+        "ascii_long_lines": 171.7560379853691,
+        "ansi_truecolor": 47.58115693847094,
+        "unicode": 21.383382537209332
+      }
+    },
+    {
+      "round": 3,
+      "mode": "baseline",
+      "values": {
+        "ascii_short_lines": 116.23398343258565,
+        "ascii_long_lines": 172.49924018191822,
+        "ansi_truecolor": 47.688370393714536,
+        "unicode": 21.640998930963896
+      }
+    },
+    {
+      "round": 3,
+      "mode": "candidate",
+      "values": {
+        "ascii_short_lines": 116.65985113891901,
+        "ascii_long_lines": 173.3127674718059,
+        "ansi_truecolor": 50.728651624257786,
+        "unicode": 21.80270245227581
+      }
+    },
+    {
+      "round": 4,
+      "mode": "candidate",
+      "values": {
+        "ascii_short_lines": 115.51807349570686,
+        "ascii_long_lines": 170.49098698044224,
+        "ansi_truecolor": 50.71618202037727,
+        "unicode": 21.56822254674949
+      }
+    },
+    {
+      "round": 4,
+      "mode": "baseline",
+      "values": {
+        "ascii_short_lines": 116.14831083399766,
+        "ascii_long_lines": 171.1464326922155,
+        "ansi_truecolor": 47.73250080789567,
+        "unicode": 21.566292816923593
+      }
+    },
+    {
+      "round": 5,
+      "mode": "baseline",
+      "values": {
+        "ascii_short_lines": 115.57522074551957,
+        "ascii_long_lines": 170.28883267351185,
+        "ansi_truecolor": 47.505374045438884,
+        "unicode": 21.62030975997451
+      }
+    },
+    {
+      "round": 5,
+      "mode": "candidate",
+      "values": {
+        "ascii_short_lines": 114.16407054110739,
+        "ascii_long_lines": 168.85266905628393,
+        "ansi_truecolor": 50.58065779329643,
+        "unicode": 21.50327246040898
+      }
+    },
+    {
+      "round": 6,
+      "mode": "candidate",
+      "values": {
+        "ascii_short_lines": 116.25865527192803,
+        "ascii_long_lines": 171.8776346044963,
+        "ansi_truecolor": 50.639879803794976,
+        "unicode": 21.70766579816447
+      }
+    },
+    {
+      "round": 6,
+      "mode": "baseline",
+      "values": {
+        "ascii_short_lines": 115.96610185739884,
+        "ascii_long_lines": 171.6494971759571,
+        "ansi_truecolor": 47.76886648717387,
+        "unicode": 21.513935651818468
+      }
+    },
+    {
+      "round": 7,
+      "mode": "baseline",
+      "values": {
+        "ascii_short_lines": 115.31472740223937,
+        "ascii_long_lines": 167.76929797773442,
+        "ansi_truecolor": 47.55428452736583,
+        "unicode": 21.49986133286733
+      }
+    },
+    {
+      "round": 7,
+      "mode": "candidate",
+      "values": {
+        "ascii_short_lines": 114.52759338989489,
+        "ascii_long_lines": 168.5714184494985,
+        "ansi_truecolor": 50.29887265623479,
+        "unicode": 21.471742896189927
+      }
+    }
+  ],
+  "compiler": "Apple Swift version 6.2.4 (swiftlang-6.2.4.1.4 clang-1700.6.4.2)\nTarget: arm64-apple-macosx15.0\n",
+  "executable_sha256": {
+    "baseline": "23679c212521a1eebe9ac0d689b18214454ff26d1851a098a5e5360012bc9d4c",
+    "candidate": "df155da51ed654f9dfa14bbe5ae054838c04aef7cd31a28e70292e65de1b8092"
+  },
+  "source_sha256": {
+    "BaselineTerminalEmulator.swift": "80430cd8ae3ce8d28f78e56b5d3718d68e768440140380bc4154b51af8e79d66",
+    "Sources/Terminal/Emulation/TerminalEmulator.swift": "58cdacdf5441cfb39327ab472f8e0d9f3f649861c53469adc991e443e6360834",
+    "CoreMicrobench.swift": "821342da237e70f444f64ce596a08a554ba5a99a913357f30c6fd86b867570a1"
+  },
+  "medians": {
+    "ascii_short_lines": {
+      "baseline": 115.96610185739884,
+      "candidate": 115.74659302358666,
+      "ratio": 0.9981071293223074
+    },
+    "ascii_long_lines": {
+      "baseline": 171.1464326922155,
+      "candidate": 170.49098698044224,
+      "ratio": 0.9961702636656646
+    },
+    "ansi_truecolor": {
+      "baseline": 47.688370393714536,
+      "candidate": 50.71618202037727,
+      "ratio": 1.0634916144474043
+    },
+    "unicode": {
+      "baseline": 21.545004927563898,
+      "candidate": 21.681817569186972,
+      "ratio": 1.0063500863463735
+    }
+  }
+}

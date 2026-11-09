@@ -256,6 +256,79 @@ import Foundation
       try expect((value["cursor"] as! [String: Any])["col"] as? Int == column + 2, "orphan combining cursor")
     }
   }
+  // These ingress limits describe the Swift adapter, not a shared VT grammar.
+  #if !RUST_BASELINE
+  static func offer(_ terminal: OpaquePointer, _ bytes: Data) -> Int {
+    bytes.withUnsafeBytes { terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0) }
+  }
+  private final class ReplyCapture { var bytes = Data() }
+  private static let receiveReply: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void = { context, bytes, count in
+    if let context, let bytes {
+      Unmanaged<ReplyCapture>.fromOpaque(context).takeUnretainedValue().bytes.append(bytes, count: count)
+    }
+  }
+  static func drainReplies(_ terminal: OpaquePointer) -> Data {
+    let capture = ReplyCapture()
+    terminal_replies(terminal, Unmanaged.passUnretained(capture).toOpaque(), receiveReply)
+    return capture.bytes
+  }
+  static func ingressLine(_ terminal: OpaquePointer) throws -> String {
+    cells(try snapshot(terminal)).map { cell in
+      let text = cell["text"] as! String
+      return text.isEmpty ? " " : text
+    }.joined().trimmingCharacters(in: .whitespaces)
+  }
+  static func csiParameterBudget() throws {
+    let asciiCap = Data(repeating: 0x20, count: 16_384)
+    let highCap = Data(repeating: 0x80, count: 8_192)
+    let overshoot = Data(repeating: 0x20, count: 16_383) + Data([0x80])
+    let fixtures: [(Data, String)] = [
+      (asciiCap, "X Z"), // Final C is accepted at the exact budget.
+      (Data(repeating: 0x20, count: 16_383) + Data("3".utf8), "X   Z"),
+      (asciiCap + Data("1".utf8), "XCZ"), // Overflow consumes 1; C is now printable.
+      (highCap, "XZ"), // High bytes charge two and reject the completed packet.
+      (highCap + Data("1".utf8), "XCZ"),
+      (overshoot, "XZ"), // A final is accepted even after the last byte costs two.
+      (overshoot + Data("1".utf8), "XCZ")
+    ]
+    for (index, fixture) in fixtures.enumerated() {
+      let input = Data("X\u{1b}[".utf8) + fixture.0 + Data("CZ".utf8)
+      for split in [0, 3, input.count - 3, input.count - 2, input.count - 1, input.count] {
+        let terminal = terminal_create(12, 2)!
+        defer { terminal_destroy(terminal) }
+        try feed(terminal, Data(input.prefix(split)))
+        try feed(terminal, Data(input.dropFirst(split)))
+        try expect(try ingressLine(terminal) == fixture.1, "CSI budget fixture\(index), split\(split)")
+      }
+    }
+  }
+  static func csiIngressYields() throws {
+    let terminal = terminal_create(20, 2)!
+    defer { terminal_destroy(terminal) }
+    let packet = Data("X".utf8) + Data(repeating: 0, count: 65_532) + Data("\u{1b}[3CZ".utf8)
+    try expect(offer(terminal, packet) == 65_536, "CSI ignored offer bound")
+    try expect(lines(try snapshot(terminal))[0] == "X", "CSI suffix admitted before next offer")
+    try expect(offer(terminal, Data(packet.dropFirst(65_536))) == 2, "CSI split final consumption")
+    try expect(cells(try snapshot(terminal))[4]["text"] as? String == "Z", "CSI split parameters lost")
+
+    let repeatPacket = Data("\u{1b}[2bY".utf8)
+    try expect(offer(terminal, repeatPacket) == 4, "REP must yield immediately after final")
+    try expect(offer(terminal, Data("Y".utf8)) == 0, "REP work must precede suffix admission")
+    try expect(offer(terminal, Data("Y".utf8)) == 1, "REP suffix was not replayable")
+    try expect(try ingressLine(terminal) == "X   ZZZY", "REP changed last printed or suffix")
+
+    let query = Data("\u{1b}[5n".utf8), reply = Data("\u{1b}[0n".utf8)
+    let queued = Data(String(repeating: "\u{1b}[5n", count: 8_193).utf8) + Data("Q".utf8)
+    try expect(offer(terminal, queued) == 32_768, "reply queue did not yield at command boundary")
+    let suffix = Data(queued.dropFirst(32_768))
+    try expect(offer(terminal, suffix) == 0, "full reply queue admitted suffix")
+    try expect(drainReplies(terminal) == Data(String(repeating: "\u{1b}[0n", count: 8_192).utf8), "reply queue lost replies")
+    try expect(offer(terminal, suffix) == query.count + 1, "drained reply suffix consumption")
+    try expect(drainReplies(terminal) == reply, "replayed query count")
+    try expect(try ingressLine(terminal) == "X   ZZZYQ", "reply backpressure lost printable suffix")
+    try expect(terminal_validate(terminal), "CSI ingress document invariants")
+  }
+  #endif
   static func main() {
     var cases: [(String, () throws -> Void)] = [
       ("utf8", utf8), ("strings", stringCaps), ("anchor", survivingAnchor),
@@ -264,6 +337,8 @@ import Foundation
       ("width", continuationWidth), ("rep", repeatClusters), ("movement", combiningAfterMovement)
     ]
     #if !RUST_BASELINE
+    cases.append(("csi-budget", csiParameterBudget))
+    cases.append(("csi-ingress", csiIngressYields))
     cases.append(("byte-retention", resizeByteRetention))
     cases.append(("history-storage", historyStorageCharge))
     cases.append(("history-thresholds", historyByteThresholds))
