@@ -80,6 +80,9 @@ detected when each has one valid Developer ID certificate; the same local file
 can specify `applicationIdentity` and `installerIdentity` when needed.
 Credentials and private keys are kept outside this repository. The PKG installs
 to Applications; `just install` uses your personal Applications folder.
+The durable backup is **Terminal Release Signing** in the Personal 1Password
+vault; see [credential recovery](docs/releasing.md) for the verified shared
+certificate references and requirements for future credential changes.
 
 Shortcuts: ⌘N window, ⌘T tab, ⌘D split right, ⇧⌘D split below, ⌘W close pane,
 ⌘C copy selection, ⌘V paste, ⌘A select visible output, ⌘F literal history search,
