@@ -53,6 +53,9 @@ final class TerminalSelection {
     deinit { credit.signal() }
   }
   private static let retirement = DispatchQueue(label: "terminal.selection.retirement", qos: .utility)
+  // Owner-side test synchronization only; production word work remains asynchronous.
+  static func drainWordJobsForTesting() -> Bool { TerminalWordCapture.drainJobsForTesting() }
+  static func withWordJobsPausedForTesting(_ body: () -> Void) { TerminalWordCapture.withJobsPausedForTesting(body) }
   static func drainRetirementForTesting() { retirement.sync {} }
   static func withRetirementPausedForTesting(_ body: () -> Void) {
     let entered = DispatchSemaphore(value: 0), resume = DispatchSemaphore(value: 0)
@@ -553,7 +556,20 @@ private final class TerminalWordCapture {
     }
     return nil
   }
+  static func drainJobsForTesting() -> Bool { WordJob.drainForTesting() }
+  static func withJobsPausedForTesting(_ body: () -> Void) { WordJob.withPausedForTesting(body) }
   private final class WordJob {
+    static func drainForTesting() -> Bool {
+      let finished = DispatchSemaphore(value: 0)
+      queue.async { finished.signal() }
+      return finished.wait(timeout: .now() + .seconds(5)) == .success
+    }
+    static func withPausedForTesting(_ body: () -> Void) {
+      let entered = DispatchSemaphore(value: 0), resume = DispatchSemaphore(value: 0)
+      queue.async { entered.signal(); resume.wait() }
+      entered.wait(); defer { resume.signal() }
+      body()
+    }
     private static let queue = DispatchQueue(label: "terminal.selection.words", qos: .userInitiated)
     private static let slots = DispatchSemaphore(value: 4)
     private let lock = NSLock()

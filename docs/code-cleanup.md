@@ -22,8 +22,8 @@ The coordinator owns integration and this document; reviewers are read-only.
 | --- | --- | --- |
 | G1: baseline full native suite | CI development app, `ce285ff`; production inputs unchanged at baseline | [Passed](https://github.com/HelgeSverre/terminal/actions/runs/42657698748); hosted Metal exception remains distinct from local real-GPU coverage |
 | G2: startup grid | Actual app, explicit 100×30/Obel 14, 1× display | Pre-fix release/development reject 100×27; corrected development and WMO release pass 8/14/20pt cases (`reports/ghostty-swift-2026-11-09/grid-{development,release}.json`) |
-| G3: build/source ownership | Development and WMO release | Baseline release compile succeeded; final migration checks pending |
-| G4: lifecycle / GPU viewport | Owned native pane fixture | Baseline passed; affected final artifact pending |
+| G3: build/source ownership | Development and WMO release | Both builds pass with canonical source paths and compiler module `Terminal`; source graph positive/negative checks pass |
+| G4: lifecycle / GPU viewport | Owned native pane fixture | Current development and WMO fixtures pass; explicit grids at 8/14/20pt and clean app/child exit pass |
 | G5: comparison | Same driver and grid, two opposite launch orders | Strict copied-executable comparison passes both launch orders (`before-layout-cleanup-verified/comparison.json`); current-layout rerun pending |
 | G6: final integration | `just test`, current native artifact and CI head | Pending |
 
@@ -31,11 +31,11 @@ The coordinator owns integration and this document; reviewers are read-only.
 
 | ID | Owner / representation | Invariant / disposition |
 | --- | --- | --- |
-| M1 | Canvas: window attachment, bounds, font/backing metrics, PTY grid | I1: requested grid uses actual font metrics even before layout. Confirmed issue A1; inspected/changed, verification pending |
-| M2 | Window: active pane, title cache, presentation map, split tree | I2: active title and leaf minima derive from owned pane state. Existing tests retained; inspect during rounds |
-| M3 | Preferences: persisted defaults, validated edits, UI/automation consumers | I3: edits preserve independent preferences and migration stays owned. Inspect during rounds |
-| M4 | Build graph: source groups, C/Metal/resources, incremental outputs | I4: every shipped/test input resolves once and no retired source root remains active. Migration pending |
-| M5 | Comparison runner: frozen bundles, owned PIDs, reports and cleanup | I5: valid complete results require matching contract and all owned processes reaped. New task-owned interface; inspect before publication |
+| M1 | Canvas: window attachment, bounds, font/backing metrics, PTY grid | I1: requested grid uses actual font metrics even before layout. A1 verified in development and WMO release at 8/14/20pt on the current 1× display |
+| M2 | Window: active pane, title cache, presentation map, split tree | I2: active title and leaf minima derive from owned pane state. Inspected and retained; current development/WMO pane lifecycle and viewport checks pass |
+| M3 | Preferences: persisted defaults, validated edits, UI/automation consumers | I3: edits preserve independent preferences and migration stays owned. Inspected and retained; preference and script contracts pass |
+| M4 | Build graph: source groups, C/Metal/resources, incremental outputs | I4: every shipped/test input resolves once and no retired source root remains active. Migrated and verified; remaining CI gate recorded below |
+| M5 | Comparison runner: frozen bundles, owned PIDs, reports and cleanup | I5: valid complete results require matching contract and all owned processes reaped. Verified by process/failure regressions and strict two-order baseline |
 
 | From | Event / guard | Owner effects / next state | Failure, retry, cancellation | Evidence |
 | --- | --- | --- | --- | --- |
@@ -129,3 +129,47 @@ regression passes: locale variants, final-output drain, exec/cwd errors, bash,
 fish, Neovim, tmux and fzf; children are reaped. Remaining host checks continue
 from the interrupted suite. Exact-event native tab routing passes on the final
 optimized test executable without its foreground skip.
+
+## Release preflight follow-up
+
+The native host checks interrupted by the C include repair were resumed. A
+concurrent bundle rebuild then changed `target/native/Spawn.o` during the bridge
+compile; that local validation attempt was invalid. After build output stopped
+changing, the standalone snapshot-bridge and keymap checks passed. Local build
+and test invocations sharing output directories must be serialized.
+
+The full required checks have passed as local components (including real-GPU
+residency), rather than one uninterrupted final `just test` invocation. CI run
+[42684436222](https://github.com/HelgeSverre/terminal/actions/runs/42684436222)
+at `45c8f7f` failed in the word-selection test's 100,000-turn polling limit.
+It is a failed gate, not a verified final head. A controlled paused-word-worker
+reproduction produces that exact error; releasing and draining the worker allows
+completion. The test now synchronizes with the real asynchronous word queue
+using a five-second timeout, retaining its owner-work bound and checking exact
+Unicode selection across soft wraps. Production worker execution is unchanged.
+The log did not identify the exact word action that failed on CI; attribution
+to a particular call is not claimed.
+
+Fresh Starship editing failures were separately traced to unowned desktop
+keystrokes entering the smoke window before scripted input. Controlled two-event
+injection reproduces 4→6→4; filtering only the smoke window restores 2→4→2.
+The fixture permits its exact synthetic events through the existing AppKit
+route and removes its monitor on completion/timeout. Strict cursor and ZLE
+assertions remain. The portable `editing-input-isolation` recipe compiles
+private variants, isolates other desktop input in both, and requires a red
+baseline and green candidate with exactly two controlled probe rejections.
+It stores only numeric editing evidence; no history suggestions are recorded.
+No production prompt, shell hook, parser or normal input path changes.
+
+These release-preflight fixes receive their own scoped review and validation;
+CI and signed publication are pending on the next source commit. Installed live
+sessions are outside the fixtures and remain untouched.
+
+Release-preflight review: three read-only reviewers found no further issue in
+staged tree `cfccb12`. Root's controlled portable regression passes (red baseline,
+green candidate, stable input hashes, no survivors); the optimized complete
+selection suite and clean development/WMO editing checks pass. Both release
+startup grids and the earlier pane lifecycle checks pass. Final CI/publication
+remain gated on the next source commit. Evidence is retained under
+`reports/editing-input-isolation-2026-11-09` and
+`reports/selection-word-worker-2026-11-09`.

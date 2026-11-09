@@ -4,6 +4,14 @@ The goal remains active. This is a working development milestone, not v1 complet
 
 Implemented and locally exercised:
 
+- Native tab shortcuts: Cmd1–8 selects by position, Cmd9 selects the last tab,
+  CmdOptionLeft/Right wraps between adjacent tabs. Menu routing consumes missing
+  indices without terminal-input fallthrough. Native tab order, reorder, groups
+  and field-editor restoration have separate optional window coverage.
+- Active-pane window titles, compact split headers, a muted palette/custom hex
+  colors, and Off/5%/10% inactive dimming. Development and WMO pane-layout
+  fixtures pass with real Metal viewport checks.
+
 - Native macOS 15 AppKit bundle, precompiled Metal shaders, ad-hoc signing, Run action.
 - Swift-owned rows with stable identities, direct immutable snapshots, indexed
   history, symbolic styles and bounded history retention.
@@ -70,7 +78,7 @@ Implemented and locally exercised:
   basic literal search, windows/tabs/nested splits and font size controls.
 - Minimal pane-only content with Obel Mono; geometric block and common box glyphs.
 - App icon, bundle identity `no.helgesverre.terminal`, Developer ID signing,
-  notarized/stapled app and PKG distribution artifacts, private GitHub repository
+  notarized/stapled app and PKG distribution artifacts, public GitHub repository
   and a passing macOS CI test run. The matching notarized Swift app is installed
   in the user's personal Applications folder.
 - Graphite/yellow visual style drawn from Helge's Trace/Splash/Glue/Shepherd
@@ -144,10 +152,11 @@ Current automated evidence:
   The headless macOS suite passes at `12330f0` (run `42630258871`).
   Real Codex and Files runs pass 72 rapid resizes, pane edits, final output
   checks, and owned-process cleanup; see the [recorded evidence](../reports/real-tui-pane-stress/README.md).
-  Its fresh Starship cursor-alignment check remains unverified: one signed
-  editing run started at column 5 rather than 2, while typing, erasing, and
-  subsequent ZLE-buffer rounds passed. The installed app remains 0.2.2 pending
-  a controlled fresh-start check.
+  Fresh Starship smoke offsets were traced to unowned desktop keystrokes
+  entering the fixture. A [controlled red/green regression](../reports/editing-input-isolation-2026-11-09/README.md)
+  proves isolation restores strict cursor and ZLE checks; development and WMO
+  release smokes pass. The installed app remains 0.2.2 with live sessions;
+  0.2.3 publication is pending its final CI/signing gate.
 - Version 0.2.2/build 8 at `a8cf4bd` passes full macOS CI (run `42605737863`),
   including the isolated zsh editing, byte-partitioned prompt and erase/movement
   regressions. The exact notarized build passes signed normal/editing checks
@@ -310,3 +319,8 @@ oversize rejection, and saturation/cancel/close. `native-idle.json` records a
 M2-class MacBook with 32 GiB RAM; this Max-class result is not an equivalent
 reference configuration. `native-smoke.json` includes actual pane/layer geometry and
 Metal command times; `quit-smoke.json` also verified the process exits.
+
+Release preflight: CI `45c8f7f` failed its asynchronous word-selection polling
+limit. A [paused-worker regression](../reports/selection-word-worker-2026-11-09/README.md)
+reproduces the failure and validates bounded worker synchronization in tests.
+Current-head CI remains required; that failed run is not a final pass.

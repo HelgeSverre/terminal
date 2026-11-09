@@ -20,10 +20,15 @@ import Foundation
     snapshot.selectionPresentation!.hit(row: row, boundary: column, affinity: .before)!
   }
   static func perform(_ core: OpaquePointer, _ action: TerminalSelectionAction) -> TerminalSelectionProgress {
-    var result = TerminalSelectionBridge.begin(core: core, action: action)
+    finish(core, TerminalSelectionBridge.begin(core: core, action: action))
+  }
+  static func finish(_ core: OpaquePointer, _ initial: TerminalSelectionProgress) -> TerminalSelectionProgress {
+    var result = initial
     var turns = 0
     while case .pending = result {
       turns += 1; check(turns < 100_000, "selection made no progress")
+      // Owner turns cannot bound completion of the asynchronous word worker.
+      check(TerminalSelection.drainWordJobsForTesting(), "word worker did not finish")
       result = TerminalSelectionBridge.advance(core: core)
     }
     return result
@@ -38,6 +43,7 @@ import Foundation
     return result
   }
   static func main() {
+    delayedWordWorker()
     exactWriteEvidence()
     presentedInteriorProof()
     copyPolicy()
@@ -308,6 +314,24 @@ import Foundation
     check(copy(core) == "cde\nCDE", "write between rectangle slices preserves selection")
     feed(core, "\u{1b}[1;12HD")
     check(copy(core) == nil, "same-byte overwrite inside second rectangle slice invalidates")
+  }
+  static func delayedWordWorker() {
+    let core = terminal_create(8, 4)!
+    defer { terminal_destroy(core) }
+    feed(core, "élève/path next")
+    var result = TerminalSelectionProgress.pending
+    TerminalSelection.withWordJobsPausedForTesting {
+      result = TerminalSelectionBridge.begin(core: core,
+        action: .begin(hit(snapshot(core), row: 0, column: 2), granularity: .word))
+      for _ in 0..<100_000 {
+        guard case .pending = result else { check(false, "word selection completed before worker ran"); return }
+        result = TerminalSelectionBridge.advance(core: core)
+      }
+      guard case .pending = result else { check(false, "paused word worker must remain pending"); return }
+    }
+    result = finish(core, result)
+    guard case .completed = result else { check(false, "released word worker must complete selection"); return }
+    check(copy(core) == "élève/path", "delayed worker preserves Unicode word and soft-wrap boundaries")
   }
   static func wordSelection() {
     let core = terminal_create(8, 4)!
