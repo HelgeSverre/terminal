@@ -12,6 +12,8 @@ import AppKit
   private var right: TerminalCanvasView?
   private var bottom: TerminalCanvasView?
   private var narrowLeaf: TerminalCanvasView?
+  private var nestedLeaves: [NSView] = []
+  private var resizeBaseline: NSSize?
   private var before: Geometry?
   private var after: Geometry?
   private var finished = false
@@ -32,6 +34,7 @@ import AppKit
   private enum Step: String {
     case initial, nest, position, closeRight, verifyPromotion, resplit, verifyResplit
     case prepareNarrowLeaf, positionNarrowLeaf, splitNarrowLeaf, verifyNarrowLeaf
+    case resizeNarrowSmaller, verifyNarrowSmaller, resizeNarrowLarger, verifyNarrowLarger
   }
 
   private func schedule(_ step: Step) {
@@ -200,7 +203,42 @@ import AppKit
             "window_height": window.contentView?.bounds.height ?? 0,
             "leaf_frames": leafFrames.map(NSStringFromRect), "leaves_visible": leavesVisible])
       }
-      finish(error: nil, extra: ["leaf_frames": leafFrames.map(NSStringFromRect)])
+      nestedLeaves = inner.arrangedSubviews
+      resizeBaseline = window.contentView?.bounds.size
+      schedule(.resizeNarrowSmaller)
+
+    case .resizeNarrowSmaller:
+      guard let window = controller.window, let baseline = resizeBaseline else {
+        return finish(error: "missing window resize baseline")
+      }
+      // Both dimensions remain above the recursively computed 200×362 root
+      // minimum. A real corner resize used to leave a nested leaf at 110pt.
+      window.setContentSize(NSSize(
+        width: max(600, baseline.width * 0.72), height: max(420, baseline.height * 0.64)))
+      schedule(.verifyNarrowSmaller)
+
+    case .verifyNarrowSmaller:
+      guard let window = controller.window else { return finish(error: "window disappeared after shrink") }
+      settle(window)
+      guard verifyResizedLeaves(in: window) else {
+        return finish(error: "window shrink violated nested leaf minimum", extra: resizeEvidence(in: window))
+      }
+      schedule(.resizeNarrowLarger)
+
+    case .resizeNarrowLarger:
+      guard let window = controller.window, let baseline = resizeBaseline else {
+        return finish(error: "missing window resize baseline before grow")
+      }
+      window.setContentSize(baseline)
+      schedule(.verifyNarrowLarger)
+
+    case .verifyNarrowLarger:
+      guard let window = controller.window else { return finish(error: "window disappeared after grow") }
+      settle(window)
+      guard verifyResizedLeaves(in: window) else {
+        return finish(error: "window grow violated nested leaf minimum", extra: resizeEvidence(in: window))
+      }
+      finish(error: nil, extra: resizeEvidence(in: window))
     }
   }
 
@@ -233,6 +271,35 @@ import AppKit
     } catch {
       NSLog("Pane lifecycle diagnostic write failed: %@", String(describing: error))
     }
+  }
+
+  private func verifyResizedLeaves(in window: NSWindow) -> Bool {
+    let panes = controller.panes
+    let contentBounds = window.contentView?.bounds ?? .zero
+    let frames = panes.map { $0.convert($0.bounds, to: window.contentView) }
+    let nonOverlapping = !frames.enumerated().contains { index, frame in
+      frames.dropFirst(index + 1).contains {
+        frame.intersection($0).width > 1 && frame.intersection($0).height > 1
+      }
+    }
+    return nestedLeaves.count == 2
+      && nestedLeaves.allSatisfy { $0.window === window && $0.convert($0.bounds, to: window.contentView).height >= 120 }
+      && panes.count == 3
+      && panes.allSatisfy { $0.window === window }
+      && frames.allSatisfy { $0.width >= 200 && $0.height >= 120 && contentBounds.contains($0) }
+      && nonOverlapping
+  }
+
+  private func resizeEvidence(in window: NSWindow) -> [String: Any] {
+    [
+      "resized_leaf_frames": nestedLeaves.map {
+        NSStringFromRect($0.convert($0.bounds, to: window.contentView))
+      },
+      "all_pane_frames": controller.panes.map {
+        NSStringFromRect($0.convert($0.bounds, to: window.contentView))
+      },
+      "content_size": NSStringFromSize(window.contentView?.bounds.size ?? .zero),
+    ]
   }
 
   @MainActor private struct Geometry {

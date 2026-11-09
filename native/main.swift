@@ -46,6 +46,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   private var root: NSView?
   private var initialLaunch: LaunchSpec?
   private let diagnosticSplitLaunch: LaunchSpec?
+  private var reconcilingLayout = false
   init(launch: LaunchSpec? = nil) {
     initialLaunch = launch
     diagnosticSplitLaunch =
@@ -152,7 +153,9 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     panes.forEach { $0.updateFocus() }
   }
   private func reconcileLayout() {
-    guard let root else { return }
+    guard !reconcilingLayout, let root else { return }
+    reconcilingLayout = true
+    defer { reconcilingLayout = false }
     let minimum = terminalMinimumSize(root)
     window?.contentMinSize = minimum
     if let window, let contentView = window.contentView,
@@ -212,6 +215,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       $0.refresh()
     }
   }
+  func windowDidResize(_ notification: Notification) { reconcileLayout() }
   func windowDidResignKey(_ notification: Notification) { panes.forEach { $0.updateFocus() } }
   func windowDidDeminiaturize(_ notification: Notification) { panes.forEach { $0.refresh() } }
   func windowWillClose(_ notification: Notification) {
