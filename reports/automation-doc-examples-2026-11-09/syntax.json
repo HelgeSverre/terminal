@@ -1,0 +1,49 @@
+{
+  "fixture": "/var/folders/xr/z75qc4354_v3lm18m65xkz580000gn/T/terminal-automation-doc-syntax-20261109-75207-kdx9xm/DocumentationFixture.app",
+  "rewrite": "Only tell target: bundle ID replaced with explicit copied app path",
+  "examples": [
+    {
+      "index": 1,
+      "kind": "shell -e",
+      "passed": true,
+      "log": ""
+    },
+    {
+      "index": 2,
+      "kind": "applescript fence",
+      "passed": true,
+      "log": ""
+    },
+    {
+      "index": 3,
+      "kind": "applescript fence",
+      "passed": true,
+      "log": ""
+    },
+    {
+      "index": 4,
+      "kind": "shell heredoc",
+      "passed": true,
+      "log": ""
+    },
+    {
+      "index": 5,
+      "kind": "shell heredoc",
+      "passed": true,
+      "log": ""
+    },
+    {
+      "index": 6,
+      "kind": "applescript fence",
+      "passed": true,
+      "log": ""
+    },
+    {
+      "index": 7,
+      "kind": "shell heredoc",
+      "passed": true,
+      "log": ""
+    }
+  ],
+  "executed": false
+}
