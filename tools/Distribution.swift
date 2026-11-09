@@ -81,16 +81,25 @@ struct Distribution {
   }
   func notarize(_ archive: URL, profile: String, label: String, output: URL) throws {
     print("Submitting \(label) for notarization…")
-    let data = try run(["xcrun", "notarytool", "submit", archive.path,
-                        "--keychain-profile", profile, "--wait", "--output-format", "json"])
+    let data = try run(notaryCommand(["submit", archive.path,
+      "--wait", "--output-format", "json"], profile: profile))
     try data.write(to: output.appendingPathComponent("notary-\(label).json"), options: .atomic)
     let submission = try JSONDecoder().decode(Submission.self, from: data)
     guard submission.status == "Accepted" else {
-      let log = try run(["xcrun", "notarytool", "log", submission.id, "--keychain-profile", profile])
+      let log = try run(notaryCommand(["log", submission.id], profile: profile))
       try log.write(to: output.appendingPathComponent("notary-\(label)-log.json"), options: .atomic)
       throw Failure.message("Notarization \(submission.status); see dist/release/notary-\(label)-log.json.")
     }
     print("Accepted \(label): \(submission.id)")
+  }
+  func notaryCommand(_ arguments: [String], profile: String) -> [String] {
+    var command = ["xcrun", "notarytool"] + arguments + ["--keychain-profile", profile]
+    if let keychain = ProcessInfo.processInfo.environment["APPLE_SIGNING_KEYCHAIN"],
+      !keychain.isEmpty
+    {
+      command += ["--keychain", keychain]
+    }
+    return command
   }
   func execute(_ operation: String) throws {
     if operation == "install" || operation == "uninstall" {
@@ -110,7 +119,7 @@ struct Distribution {
       guard let profile = config.notaryProfile, !profile.isEmpty else {
         throw Failure.message("Set APPLE_NOTARY_PROFILE or notaryProfile in ~/.config/terminal/release.json.")
       }
-      _ = try run(["xcrun", "notarytool", "history", "--keychain-profile", profile, "--output-format", "json"])
+      _ = try run(notaryCommand(["history", "--output-format", "json"], profile: profile))
     }
     if operation == "status" {
       print("Application: \(application)\nInstaller: \(installer)\nNotarization credentials verified.")

@@ -620,6 +620,8 @@ resize-smoke: build
 [group('check')]
 workflow-tests:
     mkdir -p target/native
+    ruby tools/release_signing_test.rb
+    ruby tools/release_publisher_test.rb
     ruby tools/tui_stress/run.rb --self-test
     ruby tools/tui_stress/fixture.rb --self-test
     ruby tools/tui_stress/FixtureTests.rb

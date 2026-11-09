@@ -29,6 +29,20 @@ import Darwin
       for key in ["STAPLER_TEST_COUNTER", "STAPLER_TEST_FAILURES", "STAPLER_TEST_STATUS"] { unsetenv(key) }
     }
     let distribution = Distribution()
+    let originalKeychain = ProcessInfo.processInfo.environment["APPLE_SIGNING_KEYCHAIN"]
+    defer {
+      if let originalKeychain { setenv("APPLE_SIGNING_KEYCHAIN", originalKeychain, 1) }
+      else { unsetenv("APPLE_SIGNING_KEYCHAIN") }
+    }
+    unsetenv("APPLE_SIGNING_KEYCHAIN")
+    precondition(distribution.notaryCommand(["history"], profile: "fixture")
+      == ["xcrun", "notarytool", "history", "--keychain-profile", "fixture"])
+    setenv("APPLE_SIGNING_KEYCHAIN", "/temporary signing/owned.keychain-db", 1)
+    for arguments in [["history"], ["submit", "fixture.zip"], ["log", "submission"]] {
+      precondition(distribution.notaryCommand(arguments, profile: "fixture")
+        == ["xcrun", "notarytool"] + arguments + ["--keychain-profile", "fixture",
+          "--keychain", "/temporary signing/owned.keychain-db"])
+    }
     func scenario(status: Int, failures: Int, command: [String], attempts: Int, success: Bool) throws {
       try? files.removeItem(at: counter)
       setenv("STAPLER_TEST_STATUS", String(status), 1)
