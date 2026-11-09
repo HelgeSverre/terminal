@@ -1,0 +1,18 @@
+Run options: --seed 56379
+
+# Running:
+
+...F
+
+Finished in 6.394121s, 0.6256 runs/s, 2.6587 assertions/s.
+
+  1) Failure:
+NativeSmokeProcessTest#test_owned_fixture_clears_inherited_color_controls_without_mutating_parent [/Users/helge/.codex/artifacts/terminal-visual-launch-environment/baseline/native_smoke_test.rb:68]:
+--- expected
++++ actual
+@@ -1 +1 @@
+-["NO_COLOR=<unset>", "CLICOLOR=<unset>", "CLICOLOR_FORCE=<unset>", "FORCE_COLOR=<unset>"]
++["NO_COLOR=parent-0", "CLICOLOR=parent-1", "CLICOLOR_FORCE=parent-2", "FORCE_COLOR=parent-3"]
+
+
+4 runs, 17 assertions, 1 failures, 0 errors, 0 skips

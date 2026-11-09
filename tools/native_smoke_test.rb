@@ -43,4 +43,49 @@ class NativeSmokeProcessTest < Minitest::Test
   ensure
     runner&.cleanup
   end
+
+  def test_owned_fixture_clears_inherited_color_controls_without_mutating_parent
+    keys = %w[NO_COLOR CLICOLOR CLICOLOR_FORCE FORCE_COLOR]
+    original = keys.to_h { |key| [key, ENV[key]] }
+    keys.each_with_index { |key, index| ENV[key] = "parent-#{index}" }
+    Dir.mktmpdir('terminal-smoke-environment-') do |dir|
+      script = <<~'RUBY'
+        keys = %w[NO_COLOR CLICOLOR CLICOLOR_FORCE FORCE_COLOR]
+        puts keys.map { |key| "#{key}=#{ENV.fetch(key, '<unset>')}" }
+      RUBY
+      command = [RbConfig.ruby, '-e', script]
+      original_command = command.dup
+      default_log = File.join(dir, 'default.log')
+      default = nil
+      begin
+        default = NativeSmokeProcess.new(command, log: default_log)
+        assert default.wait(2)&.success?
+        assert_empty default.cleanup
+      ensure
+        default&.cleanup
+      end
+      assert_equal original_command, command
+      assert_equal keys.map { |key| "#{key}=<unset>" }, File.readlines(default_log, chomp: true)
+
+      explicit_log = File.join(dir, 'explicit.log')
+      explicit_command = [{ 'NO_COLOR' => '1' }, *command]
+      original_explicit_command = explicit_command.map(&:dup)
+      explicit = nil
+      begin
+        explicit = NativeSmokeProcess.new(explicit_command, log: explicit_log)
+        assert explicit.wait(2)&.success?
+        assert_empty explicit.cleanup
+      ensure
+        explicit&.cleanup
+      end
+      assert_equal original_explicit_command, explicit_command
+      assert_equal 'NO_COLOR=1', File.readlines(explicit_log, chomp: true).first
+      assert_equal keys.drop(1).map { |key| "#{key}=<unset>" },
+        File.readlines(explicit_log, chomp: true).drop(1)
+    end
+    assert_equal keys.each_with_index.to_h { |key, index| [key, "parent-#{index}"] },
+      keys.to_h { |key| [key, ENV[key]] }
+  ensure
+    original&.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+  end
 end

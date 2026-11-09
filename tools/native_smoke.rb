@@ -10,11 +10,18 @@ require 'set'
 class NativeSmokeProcess
   attr_reader :pid, :status
 
+  COLOR_CONTROL_ENVIRONMENT = %w[NO_COLOR CLICOLOR CLICOLOR_FORCE FORCE_COLOR].freeze
+
   def initialize(command, log: nil)
+    spawn_command = command.dup
+    provided_environment = spawn_command.first.is_a?(Hash) ? spawn_command.shift.dup : {}
+    fixture_environment = COLOR_CONTROL_ENVIRONMENT.to_h { |key| [key, nil] }.merge(provided_environment)
     @pid = if log
-      File.open(log, 'wx') { |output| Process.spawn(*command, out: output, err: output) }
+      File.open(log, 'wx') do |output|
+        Process.spawn(fixture_environment, *spawn_command, out: output, err: output)
+      end
     else
-      Process.spawn(*command)
+      Process.spawn(fixture_environment, *spawn_command)
     end
     @owned = {}
     @status = nil

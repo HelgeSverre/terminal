@@ -1,0 +1,16 @@
+{
+  "baseline": {
+    "exit_status": 1,
+    "output_sha256": "368a0a54a894d57ba0db08914fe0c07a04cafa71530d3960555110c4b33093e1"
+  },
+  "candidate": {
+    "exit_status": 0,
+    "output_sha256": "07cf8bd465eafca981a6cb838efb5fb05aa9d9a6d9e2ac60eca5a7916ad53295"
+  },
+  "baseline_source": "115f497:tools/native_smoke.rb",
+  "candidate_files": {
+    "tools/native_smoke.rb": "3bf4afcb9190f8a08d960543b62c8020e174f79d1418b38ed44d73e8caf54c01",
+    "tools/native_smoke_test.rb": "f2c4375ca6d545d9f4445b4bc4df7de53f7db30794bb5f2144a946eca25ab22e"
+  },
+  "normal_launch_policy": "Unchanged; the terminal honors intentional inherited NO_COLOR. Only owned test fixtures normalize color-control defaults; explicit per-fixture env wins."
+}
