@@ -6,6 +6,42 @@ require 'tmpdir'
 require_relative 'native_smoke'
 
 class NativeSmokeProcessTest < Minitest::Test
+  def test_constructor_interrupt_after_spawn_reaps_the_child
+    Dir.mktmpdir('terminal-smoke-constructor-') do |directory|
+      path = File.join(directory, 'app.log')
+      original_open = File.method(:open)
+      original_spawn = Process.method(:spawn)
+      child = nil
+      begin
+        Process.define_singleton_method(:spawn) do |*args, **options|
+          pid = original_spawn.call(*args, **options)
+          child = pid if args.include?('sleep 30')
+          pid
+        end
+        File.define_singleton_method(:open) do |*args, **options, &block|
+          if args.first == path
+            original_open.call(*args, **options) do |file|
+              block.call(file)
+              raise Interrupt, 'during constructor after spawn'
+            end
+          else
+            original_open.call(*args, **options, &block)
+          end
+        end
+        assert_raises(Interrupt) { NativeSmokeProcess.new([RbConfig.ruby, '-e', 'sleep 30'], log: path) }
+        refute_nil child
+        assert_raises(Errno::ESRCH) { Process.kill(0, child) }
+      ensure
+        File.define_singleton_method(:open, original_open)
+        Process.define_singleton_method(:spawn, original_spawn)
+        if child
+          Process.kill('KILL', child) rescue Errno::ESRCH
+          Process.wait(child) rescue Errno::ECHILD
+        end
+      end
+    end
+  end
+
   def test_timeout_reaps_resistant_app_and_child_without_touching_other_processes
     Dir.mktmpdir('terminal-smoke-runner-') do |dir|
       path = File.join(dir, 'child.pid')

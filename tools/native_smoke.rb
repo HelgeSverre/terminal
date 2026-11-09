@@ -16,15 +16,23 @@ class NativeSmokeProcess
     spawn_command = command.dup
     provided_environment = spawn_command.first.is_a?(Hash) ? spawn_command.shift.dup : {}
     fixture_environment = COLOR_CONTROL_ENVIRONMENT.to_h { |key| [key, nil] }.merge(provided_environment)
-    @pid = if log
-      File.open(log, 'wx') do |output|
-        Process.spawn(fixture_environment, *spawn_command, out: output, err: output)
-      end
-    else
-      Process.spawn(fixture_environment, *spawn_command)
-    end
     @owned = {}
     @status = nil
+    @pid = nil
+    begin
+      if log
+        File.open(log, 'wx') do |output|
+          # Store ownership before leaving the block: closing the log or an
+          # interrupt can unwind initialization before the caller gets `self`.
+          @pid = Process.spawn(fixture_environment, *spawn_command, out: output, err: output)
+        end
+      else
+        @pid = Process.spawn(fixture_environment, *spawn_command)
+      end
+    rescue Exception # Interrupt is outside StandardError; the spawned tree is still ours.
+      cleanup if @pid
+      raise
+    end
   end
 
   def wait(seconds)
