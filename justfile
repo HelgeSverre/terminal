@@ -640,6 +640,7 @@ workflow-tests:
     target/native/tui-stress-driver-tests --self-test
     ruby tools/glyph_policy_test.rb
     ruby tools/native_smoke_test.rb
+    ruby tools/compare_ghostty_test.rb
     ruby tools/compare_terminal_apps_test.rb
     ruby tools/profile_terminal_test.rb
     ruby tools/close_smoke_test.rb

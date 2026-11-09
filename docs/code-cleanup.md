@@ -53,7 +53,10 @@ The coordinator owns integration and this document; reviewers are read-only.
 | A1 | Explicit 30-row startup uses seed 19px height before first layout; actual font is 21px, yielding 27 PTY rows | Metrics independent of bounds; real CLI regression red on baseline and green in development/release | Fixed in working candidate; three development fonts pass; release pending |
 | A2 | Ghostty serves its PTY from an owned descendant rather than the launcher PID | Validate report PID against retained observed-owned membership; keep natural exit and no-survivor checks | Fixed candidate; process unit test and both-order tiny comparison pass |
 | A3 | Different native cell metrics rejected despite matching PTY grid/font/OPOST | Require matching cell geometry/mode; retain positive pixel dimensions as provenance, no pixel-matched FPS claim | Fixed candidate; both-order tiny comparison passes |
-| A4 | Failed comparison lacked a reason/stage | Persist stage and failure while retaining failed outcomes and fresh-directory retry | Fixed candidate; interrupted diagnostic records failure and empty survivors |
+| A4 | Failed comparison lacked a reason/stage; nonzero app status hid the driver marker | Persist stage/failure and prioritize driver diagnostics | Fixed candidate; interruption evidence and nonzero-marker regression pass |
+| A5 | Interrupt after launch but before cleanup guard leaked the newly started app | Arm ensure before creating/inspecting the process; retain cleanup on early failures | Fixed candidate; injected post-launch interrupt red/green regression passes |
+| A6 | Wrong report label or two missing mode fields could satisfy comparison | Validate exact label and Boolean OPOST per app | Fixed candidate; corruption regressions pass |
+| A7 | Source hash alone did not identify the executed frozen copy | Hash measured executable and reject source/copy mismatch | Fixed candidate; actual-copy verification pending |
 
 ## Module decisions
 
@@ -71,7 +74,7 @@ The coordinator owns integration and this document; reviewers are read-only.
 Three read-only reviewers per round; the coordinator integrates changes.
 
 - Sweep A Discover: three read-only lenses (terminal_coverage lifecycle, ghostty_features retry/concurrency, cleanup_consumers callers/coverage). M1–M5 inspected; confirmed A1–A4, no additional pane/preference defect. Evidence: pre-fix grid rejection; actual development 8/14/20pt passes; observed-owned process tests; 1-byte comparison in both orders; explicit interruption cleans up. Pixel geometry is intentionally provenance, not equality for this PTY-only comparison.
-- Sweep A Challenge: pending.
+- Sweep A Challenge: three rotated lenses on `7f40e98`. Confirmed launch-before-ensure gap (A5), lost nonzero driver reason (A4), missing report label/OPOST validation (A6), and copied-executable provenance gap (A7). Candidate now arms cleanup before launch, retains `.failed` reasons, validates label/Boolean mode, and hashes the measured copy. Four targeted tests pass (10 assertions); the same tests against pre-fix `7f40e98` produce three failures. Frozen compiled app inputs are unchanged. Font equality means configured family/size, not independently proven resolved-font identity.
 - Sweep A Verify: pending.
 - Sweep B Discover: pending, after correctness verification and baseline measurement.
 - Sweep B Challenge: pending.

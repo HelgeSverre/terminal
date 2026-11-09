@@ -17,28 +17,33 @@ begin
   Dir.mktmpdir('terminal-startup-grid-') do |directory|
     frozen = File.join(directory, 'Terminal.app')
     raise 'Bundle copy failed' unless system('ditto', app, frozen)
+    frozen_hash = Digest::SHA256.file(File.join(frozen, 'Contents/MacOS/Terminal')).hexdigest
+    raise 'App executable changed while freezing' unless frozen_hash == report['executable_sha256']
+    report['frozen_executable_sha256'] = frozen_hash
     driver = File.join(directory, 'grid-driver')
     raise 'Driver build failed' unless system('xcrun', 'clang', '-O2', File.join(root, 'native/benchmarks/terminal-bench.c'), '-o', driver)
     [[80, 24, 8], [100, 30, 14], [60, 14, 20]].each_with_index do |(columns, rows, font), index|
       path = File.join(directory, "#{index}.json")
       entry = { 'requested' => [columns, rows], 'font_size' => font }
       report['cases'] << entry
-      process = NativeSmokeProcess.new([File.join(frozen, 'Contents/MacOS/Terminal'),
+      process = nil
+      begin
+        process = NativeSmokeProcess.new([File.join(frozen, 'Contents/MacOS/Terminal'),
         '--columns', columns.to_s, '--rows', rows.to_s, '--font-size', font.to_s,
         '--exit-after-command', '--execute', driver, '--output', path,
         '--terminal', 'grid-smoke', '--bytes', '1', '--runs', '1', '--idle-seconds', '1',
         '--workload', 'ascii_short_lines', '--columns', columns.to_s, '--rows', rows.to_s],
         log: File.join(directory, "#{index}.log"))
-      begin
-        raise 'App timeout/failure' unless process.wait(15)&.success?
+        status = process.wait(15)
         raise File.read("#{path}.failed") if File.file?("#{path}.failed")
+        raise 'App timeout/failure' unless status&.success?
         data = JSON.parse(File.read(path))
         raise 'Wrong owner/grid' unless process.observed_owned?(data['terminal_pid']) && data.values_at('columns', 'rows') == [columns, rows]
         raise 'Children survived natural exit' unless process.live_pids.empty?
         entry['observed'] = data.values_at('columns', 'rows', 'pixel_width', 'pixel_height')
         entry['natural_exit'] = true
       ensure
-        entry['cleanup_survivors'] = process.cleanup
+        entry['cleanup_survivors'] = process ? process.cleanup : []
         raise 'Processes survived cleanup' unless entry['cleanup_survivors'].empty?
       end
     end

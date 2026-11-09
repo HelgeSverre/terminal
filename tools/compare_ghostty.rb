@@ -21,7 +21,7 @@ class GhosttyComparison
       'bytes_per_run' => @bytes, 'runs_per_workload' => @runs, 'geometry' => [100, 30],
       'font' => 'Obel Mono 14', 'os' => capture('sw_vers'), 'hardware' => capture('sysctl', '-n', 'machdep.cpu.brand_string'),
       'power' => capture('pmset', '-g', 'batt'), 'load_before' => capture('sysctl', '-n', 'vm.loadavg'),
-      'scope' => 'Sequential visible-app PTY throughput and ordered parser replies; alternate screen excludes history. Same cell grid/font; native cell-pixel metrics are recorded, not normalized. Not display FPS, presentation/input latency, peak memory, or a SQL benchmark.',
+      'scope' => 'Sequential visible-app PTY throughput and ordered parser replies; alternate screen excludes history. Same cell grid/configured font; native cell-pixel metrics are recorded, not normalized. Not display FPS, presentation/input latency, peak memory, or a SQL benchmark.',
       'trials' => [] }
   end
 
@@ -47,7 +47,11 @@ class GhosttyComparison
           'executable_bytes' => File.size(source_executable), 'bundle_bytes' => Dir.glob(File.join(app, '**/*')).sum { |p| File.file?(p) && !File.symlink?(p) ? File.size(p) : 0 } }
         destination = File.join(temporary, "#{name}.app")
         capture('ditto', app, destination)
-        File.join(destination, 'Contents/MacOS', executable)
+        frozen_executable = File.join(destination, 'Contents/MacOS', executable)
+        frozen_hash = Digest::SHA256.file(frozen_executable).hexdigest
+        @result['apps'][name]['frozen_executable_sha256'] = frozen_hash
+        raise "#{name} executable changed while freezing" unless frozen_hash == @result['apps'][name]['executable_sha256']
+        frozen_executable
       end
       @result['ghostty_version'] = capture(apps.fetch('ghostty'), '+version')
       config = File.join(@output, 'ghostty.conf')
@@ -101,21 +105,25 @@ class GhosttyComparison
     else
       [executable, '--config-default-files=false', "--config-file=#{config}", '-e', driver, *args]
     end
-    process = NativeSmokeProcess.new(command, log: File.join(@output, "#{index}-#{name}.log"))
-    record = { 'pid' => process.pid, 'natural_exit' => false }
+    process = nil
+    record = { 'natural_exit' => false }
     trial['apps'][name] = record
-    puts "Measuring trial #{index}: #{name}, owned PID #{process.pid}"
-    STDOUT.flush
     begin
+      process = NativeSmokeProcess.new(command, log: File.join(@output, "#{index}-#{name}.log"))
+      record['pid'] = process.pid
+      puts "Measuring trial #{index}: #{name}, owned PID #{process.pid}"
+      STDOUT.flush
       status = process.wait(300)
+      raise File.read("#{report}.failed") if File.file?("#{report}.failed")
       raise "#{name} timed out" unless status
       raise "#{name} failed: #{status}" unless status.success?
       raise 'Children survived natural app exit' unless process.live_pids.empty?
       record['natural_exit'] = true
-      raise File.read("#{report}.failed") if File.file?("#{report}.failed")
       data = JSON.parse(File.read(report))
       record['report_pid'] = data['terminal_pid']
       raise 'Wrong report owner/schema/grid' unless data['schema'] == 2 && process.observed_owned?(data['terminal_pid']) && data.values_at('columns', 'rows') == [100, 30]
+      raise 'Wrong report terminal label' unless data['terminal'] == name
+      raise 'Missing output-processing mode' unless [true, false].include?(data['output_post_processing'])
       raise 'Missing cell-pixel geometry' unless data.values_at('pixel_width', 'pixel_height').all? { |value| value.is_a?(Integer) && value.positive? }
       raise 'Wrong corpus' unless data.fetch('workloads').map { |x| x['name'] } == %w[ascii_short_lines ascii_long_lines ansi_truecolor unicode]
       data.fetch('workloads').each do |workload|
@@ -126,7 +134,7 @@ class GhosttyComparison
       end
       record['report'] = data
     ensure
-      record['cleanup_survivors'] = process.cleanup
+      record['cleanup_survivors'] = process ? process.cleanup : []
       raise 'Owned processes survived cleanup' unless record['cleanup_survivors'].empty?
     end
   end
