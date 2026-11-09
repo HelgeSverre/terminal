@@ -82,3 +82,14 @@ just benchmark-ghostty reports/ghostty-comparison-next
 This builds the release app, freezes copies, records provenance and runs both
 orders. It refuses an existing report directory. See [benchmarking](../../docs/benchmarking.md)
 for the separate history/SQL and display-smoothness tests.
+
+## Layout and release-preflight check
+
+The [post-cleanup comparison](after-layout-preflight/comparison.json) repeats the
+same two orders at `2e8949b`, before signing/publication. Our trial medians were
+58.8/58.8 MiB/s (short ASCII), 75.6/75.5 (long ASCII), 18.4/18.4 (ANSI), and
+12.3/12.4 (Unicode). This check finds no substantial throughput loss from the
+source layout and preflight changes. Small differences do not establish an
+optimization or regression under varying desktop load. The table above remains
+the initial optimization baseline; neither run includes the separate parser
+prototypes. Exact executable identities and all reference samples are retained.
