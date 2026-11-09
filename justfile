@@ -36,6 +36,15 @@ tui-stress-prepare:
 tui-stress workload="files":
     ruby tools/tui_stress/run.rb --installed --workload "$1"
 
+# Build then capture one untouched public-fixture README image from a copied app.
+[group('check')]
+gallery-overview: build
+    ruby tools/gallery/run.rb overview
+
+[group('check')]
+gallery-panes: build
+    ruby tools/gallery/run.rb panes
+
 # Close the last window; require both the app and its HUP-resistant child to exit
 [group('check')]
 close-smoke: build

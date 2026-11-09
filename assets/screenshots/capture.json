@@ -1,0 +1,22 @@
+{
+  "capture_method": "ScreenCaptureKit native single-window capture; PNGs are unmodified.",
+  "fixture": "A disposable public workspace using real Files, cat, and a relative Git diff.",
+  "source": {
+    "release_source_revision": "0c1f4cf3e360e4549a66363cb231c3be6c14ed1d",
+    "terminal_executable_sha256": "1d3cc110074aa5383f2cd5cfdeaced2ff5ffe6e244f6bbd403378d97c349e516"
+  },
+  "captures": [
+    {
+      "file": "overview.png",
+      "sha256": "88d1aa8dba8c48f8b73b2d28f23ac802604f9d488632e544fb2336978859dcb6",
+      "dimensions": "1400x850",
+      "owned_process_cleanup": "3 of 3 process trees reaped; no survivors"
+    },
+    {
+      "file": "panes.png",
+      "sha256": "e67fae4f07fe455101459ca5fc50753d401a72baefb5464df0f5efc2aa64fc9e",
+      "dimensions": "1400x850",
+      "owned_process_cleanup": "3 of 3 process trees reaped; no survivors"
+    }
+  ]
+}
