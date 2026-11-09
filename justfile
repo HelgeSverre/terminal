@@ -695,3 +695,8 @@ tab-navigation-test:
     mkdir -p target/native
     xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print tab_navigation) -framework AppKit -o target/native/tab-navigation-tests
     target/native/tab-navigation-tests
+
+# Reproduce unowned keyboard input in copied smoke fixtures: red baseline, green fix.
+[group('check')]
+editing-input-isolation app output:
+    ruby tools/editing_input_isolation_test.rb "$1" "$2"

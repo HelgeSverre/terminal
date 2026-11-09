@@ -15,10 +15,23 @@ import AppKit
   private var startupSnapshots = 0
   private var startupPromptSnapshots = 0
   private var startupReadySnapshots = 0
+  private var keyboardMonitor: Any?
+  private var syntheticEvent: NSEvent?
+  private var suppressedExternalKeys = 0
   init(window: TerminalWindow, path: String) { controller = window; self.path = path }
   static func start(window: TerminalWindow, path: String) {
     let test = EditingSmokeTest(window: window, path: path)
     active = test
+    // This fixture tests synthetic input. Physical keys on the shared desktop
+    // must not mutate its fresh ZLE buffer before the first snapshot arrives.
+    test.keyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak test] event in
+      guard let test, event.window === test.controller.window else { return event }
+      guard event === test.syntheticEvent else {
+        test.suppressedExternalKeys += 1
+        return nil
+      }
+      return event
+    }
     window.panes.first?.onObservedSnapshot = { [weak test] in test?.observe($0) }
     window.panes.first?.session.semanticProbe { _ in }
     DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
@@ -124,13 +137,18 @@ import AppKit
       if let event = NSEvent.keyEvent(with: type, location: .zero, modifierFlags: flags,
         timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
         context: nil, characters: text, charactersIgnoringModifiers: text, isARepeat: false, keyCode: code) {
+        syntheticEvent = event
         NSApp.sendEvent(event)
+        syntheticEvent = nil
       }
     }
   }
   private func finish() {
     guard Self.active === self else { return }
     Self.active = nil
+    if let keyboardMonitor { NSEvent.removeMonitor(keyboardMonitor) }
+    keyboardMonitor = nil
+    measurements["suppressed_external_key_events"] = suppressedExternalKeys
     measurements["startup_snapshot_count"] = startupSnapshots
     measurements["startup_prompt_snapshot_count"] = startupPromptSnapshots
     measurements["startup_input_ready_snapshot_count"] = startupReadySnapshots
