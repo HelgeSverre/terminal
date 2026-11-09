@@ -136,6 +136,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
   func applicationDidFinishLaunching(_ notification: Notification) {
     if let renderingError { NSLog("Metal initialization failed: %@", renderingError) }
+    SidePulse.shared.configure(enabled: TerminalPreferences.load().sidePulseEnabled)
     NSApp.setActivationPolicy(.regular)
     menu()
     finishedLaunching = true
@@ -551,6 +552,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
   func applyPreferences(_ preferences: TerminalPreferences) {
     preferences.save()
+    SidePulse.shared.configure(enabled: preferences.sidePulseEnabled)
     windows.lazy.flatMap(\.panes).forEach { $0.apply(preferences.view) }
     windows.forEach { $0.applyPanePresentationPreferences(preferences) }
     menu()
@@ -572,6 +574,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // already given would never end.
     guard !terminationRequested else { return terminationReply?.isSent == true ? .terminateNow : .terminateLater }
     terminationRequested = true
+    SidePulse.shared.configure(enabled: false)
     recoveryLayoutWork?.cancel()
     recoveryCheckpointWork?.cancel()
     recoveryPending.removeAll()

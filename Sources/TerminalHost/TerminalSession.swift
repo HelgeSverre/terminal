@@ -509,6 +509,8 @@ public final class TerminalSession: @unchecked Sendable {
   private let publication = NSLock()
   private var latest: TerminalSnapshot?
   private var deliveryScheduled = false
+  private var pendingActivity: (TerminalActivity, Bool)?
+  private var activityDeliveryScheduled = false
   /// The working directory the child last reported, as an OSC 7 location.
   @MainActor package private(set) var deliveredDirectory: String?
   private lazy var historySearch = HistorySearch(session: self)
@@ -530,6 +532,10 @@ public final class TerminalSession: @unchecked Sendable {
   /// The program rang the bell (BEL). Bells that arrive together are
   /// reported once. The terminal makes no sound of its own.
   public var onBell: (@MainActor () -> Void)?
+  /// Identifies this session to whatever follows `onActivity`.
+  package let activityID = UUID()
+  /// The latest command or bell signal, and whether a command is running.
+  package var onActivity: (@MainActor (TerminalActivity, Bool) -> Void)?
   /// Called once when the child could not be started.
   public var onLaunchFailure: (@MainActor (SessionLaunchFailure) -> Void)?
   /// Whether a view shows this session. A session serves one view.
@@ -1303,6 +1309,9 @@ public final class TerminalSession: @unchecked Sendable {
       drainReplies()
       drainClipboardWrites()
       drainDownloads()
+      if let activity = swiftTerminalTakeActivity(core) {
+        publishActivity(activity, running: swiftTerminalCommandRunning(core))
+      }
       if helge_terminal_take_bells(core) > 0 {
         DispatchQueue.main.async { [weak self] in self?.onBell?() }
       }
@@ -1600,6 +1609,24 @@ public final class TerminalSession: @unchecked Sendable {
           kind: owner.collectingPaste
             ? .paste(bracketed: data.starts(with: Data("\u{1b}[200~".utf8))) : .ordinary))
     }
+  // Like snapshot publication, activity retains only the latest owner state
+  // while Main is busy. PTY output must not enqueue unbounded UI callbacks.
+  private func publishActivity(_ activity: TerminalActivity, running: Bool) {
+    publication.lock()
+    pendingActivity = (activity, running)
+    if activityDeliveryScheduled { publication.unlock(); return }
+    activityDeliveryScheduled = true
+    publication.unlock()
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.publication.lock()
+      let value = self.pendingActivity
+      self.pendingActivity = nil
+      self.activityDeliveryScheduled = false
+      self.publication.unlock()
+      if let value { self.onActivity?(value.0, value.1) }
+    }
+  }
   private func drainReplies() {
     helge_terminal_replies(core, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
   }
