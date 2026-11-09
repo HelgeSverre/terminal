@@ -25,6 +25,7 @@ import Foundation
         "input_after_accepted_output_is_bracketed", "ordered_mode_encoding_after_rep",
         "zsh_startup_gate_blocks_a", "zsh_startup_input_admitted_after_b",
         "rep_completed", "large_paste_accepted", "oversize_paste_rejected",
+        "read_buffer_owned_fifo_and_eof",
         "saturated_cancel_close_reaped", "cancel_close_under_three_seconds",
         "ordinary_ingress_busy", "release_admitted_under_ingress_pressure",
         "viewport_scroll_anchored", "focus_release_preserves_viewport", "typing_follows_tail",
@@ -126,6 +127,52 @@ import Foundation
     checks["split_children_reaped"] = parentEnded && siblingEnded
     expect(parentEnded && siblingEnded && siblingMatched,
       "split cwd: parent=\(parentEnded), child=\(siblingEnded), match=\(siblingMatched), cwd=\(String(describing: parentCWD)), childText=\(childText)")
+    // Queue many distinct read events behind resumable parser work. Every DSR
+    // reply must preserve its original position command even after the next
+    // PTY read reuses scratch storage; a final snapshot alone cannot prove it.
+    let readBufferScript = #"""
+      stty raw -echo
+      exec /usr/bin/ruby -e '
+      STDOUT.sync = true
+      payload = "X\e[500000b"
+      expected = ""
+      8192.times do |i|
+        row = i % 20 + 1
+        column = i / 20 % 60 + 1
+        payload << "\e[#{row};#{column}H\e[6n"
+        expected << "\e[#{row};#{column}R"
+      end
+      STDOUT.write(payload)
+      received = STDIN.read(expected.bytesize)
+      marker = received == expected ? "READ_BUFFER_FIFO_OK" : "READ_BUFFER_FIFO_BAD"
+      print "\e[2J\e[H#{marker}"
+      '
+      """#
+    let readBuffer = own(Session(launch: spec(readBufferScript)))
+    var readBufferOK = false, readBufferFinished = false
+    var readBufferStats: [String: Any] = [:]
+    readBuffer.onSnapshot = { snapshot in
+      readBufferOK = snapshot.rows.flatMap { $0.cells }.map(\.text).joined().contains("READ_BUFFER_FIFO_OK")
+    }
+    readBuffer.onStatus = { if $0 == "Session finished" { readBufferFinished = true } }
+    let readBufferDeadline = Date().addingTimeInterval(8)
+    while !(readBufferOK && readBufferFinished) && Date() < readBufferDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    readBuffer.statistics { readBufferStats = $0 }
+    while readBufferStats.isEmpty && Date() < readBufferDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    let receivedBytes = (readBufferStats["bytes_read"] as? NSNumber)?.uint64Value ?? 0
+    let parsedBytes = (readBufferStats["bytes_parsed"] as? NSNumber)?.uint64Value ?? 0
+    checks["read_buffer_owned_fifo_and_eof"] = readBufferOK && readBufferFinished
+      && receivedBytes > 65_536 && receivedBytes == parsedBytes
+      && readBufferStats["read_ended"] as? Bool == true
+      && readBufferStats["parser_ended"] as? Bool == true
+      && (readBufferStats["queued_output_bytes"] as? Int) == 0
+    expect(checks["read_buffer_owned_fifo_and_eof"] == true,
+      "read-buffer FIFO/EOF: marker=\(readBufferOK), finished=\(readBufferFinished), read=\(receivedBytes), parsed=\(parsedBytes), stats=\(readBufferStats)")
+    readBuffer.close()
     // A UI snapshot is deliberately coalesced, so it cannot timestamp parser order.
     // Check both sides of the resumable packet boundary directly, then exercise
     // Session's FIFO against a real PTY child below.

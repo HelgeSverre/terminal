@@ -179,6 +179,8 @@ final class Session: @unchecked Sendable {
   private var events: [Event] = []
   private var head = 0
   private var queuedOutput = 0
+  // Owner-queue scratch; output events always receive their own immutable copy.
+  private var readSlab = [UInt8](repeating: 0, count: 16_384)
   private var bytesRead: UInt64 = 0
   private var bytesParsed: UInt64 = 0
   private var firstReadNs: UInt64 = 0
@@ -831,13 +833,15 @@ final class Session: @unchecked Sendable {
     guard !closed, !readEnded else { return }
     streamStatistics?.readCallbacks += 1
     let started = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
-    var slab = [UInt8](repeating: 0, count: 16_384)
     var total = 0
     while total < 65_536 && queuedOutput < 2 * 1024 * 1024 {
       streamStatistics?.readCalls += 1
-      let count = Darwin.read(master, &slab, slab.count)
-      if count > 0 {
-        enqueue(.output(Data(slab.prefix(count)), 0))
+      let (count, output) = readSlab.withUnsafeMutableBytes { buffer -> (Int, Data?) in
+        let count = Darwin.read(master, buffer.baseAddress!, buffer.count)
+        return (count, count > 0 ? Data(bytes: buffer.baseAddress!, count: count) : nil)
+      }
+      if let output {
+        enqueue(.output(output, 0))
         queuedOutput += count
         streamStatistics?.observeQueuedBytes(queuedOutput)
         bytesRead += UInt64(count)

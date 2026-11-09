@@ -1,0 +1,39 @@
+{
+  "passed": true,
+  "scope": "Instrumented short-ASCII diagnosis; not performance acceptance.",
+  "app": "/private/tmp/terminal-performance-ea16eb9/dist/Terminal.app",
+  "executable_sha256": "a2505de695a8ed5e328e03e4557b933a2d5dba95471d784fa6a87fea51cfe688",
+  "driver_source_sha256": "cbe52cd535960db64083aa08d6928e9ec6037e5c7d37caa6b1a680051e25577e",
+  "runner_sha256": "afbe35abbce870a9f3f9f4c466a231bc2deb55e8b3befb88aa0a4d0f6f3e1d27",
+  "requested_bytes_per_run": 16777216,
+  "runs": 10,
+  "driver_sha256": "fea221df7dc59de890e2d1849958d3386c2c32185ee2f4087fefe37d678d7f9e",
+  "pid": 62642,
+  "exit_status": 0,
+  "diagnostic_mib_per_second": {
+    "samples": 10,
+    "p50": 58.565797,
+    "p95": 58.921009,
+    "p99": 58.921009,
+    "max": 59.478227
+  },
+  "per_source_mib": {
+    "feed_bytes": 1064712.13125,
+    "feed_calls": 1040.8,
+    "feed_nanoseconds": 10739143.80625,
+    "output_events": 1040.8,
+    "publish_calls": 2.0,
+    "pump_nanoseconds": 11228327.03125,
+    "pump_schedules": 1040.85,
+    "pump_turns": 1040.85,
+    "read_callbacks": 1038.175,
+    "read_calls": 2078.975,
+    "read_nanoseconds": 3228311.39375,
+    "read_resumes": 0.0,
+    "read_suspends": 0.0,
+    "snapshot_nanoseconds": 164920.06875
+  },
+  "mean_output_event_bytes": 1022.974761001153,
+  "natural_exit": true,
+  "cleanup_survivors": []
+}

@@ -1,0 +1,9 @@
+{
+  "base_revision": "ea16eb90b403147a9983a8d98a39199ec422c432",
+  "candidate_base_revision": "63ad414",
+  "candidate_patches": {
+    "visible-links-classification.patch": "715a6ae1e248f4e7ebc93a9dd6c57fb94416170d7662e64dc3e171368b73c670",
+    "change.patch": "47bf2bad157706081c6223cc7c0ff429f6d2160823621cb4e9a89e068ce32597"
+  },
+  "scope": "Combined indexed Unicode, link classification, and read reuse; excludes the settings redesign. Not isolated per-change app attribution."
+}
