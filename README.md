@@ -56,6 +56,8 @@ Nerd Font Mono fills missing icon glyphs.
 | Action | Shortcut |
 | --- | --- |
 | New window / tab | ⌘N / ⌘T |
+| Select tab 1–8 / last tab | ⌘1–8 / ⌘9 |
+| Previous / next tab (wraps) | ⌥⌘← / ⌥⌘→ |
 | Split right / below | ⌘D / ⇧⌘D |
 | Close pane | ⌘W |
 | Clear screen and scrollback | ⌘K |

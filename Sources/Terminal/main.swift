@@ -331,6 +331,10 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   }
 }
 final class AppDelegate: NSObject, NSApplicationDelegate {
+  private lazy var tabNavigation = TerminalTabNavigation { [weak self] in
+    (NSApp.keyWindow?.windowController as? TerminalWindow)?.window
+      ?? self?.intendedPane()?.window
+  }
   var windows: [TerminalWindow] = []
   let rendering: TerminalRendering?
   let renderingError: String?
@@ -562,6 +566,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     item(
       window, "Show Previous Tab", #selector(NSWindow.selectPreviousTab(_:)), "\t",
       [.control, .shift])
+    window.addItem(.separator())
+    tabNavigation.addMenuItems(to: window)
   }
 }
 let catalogArguments = Array(CommandLine.arguments.prefix { $0 != "--execute" })

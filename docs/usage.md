@@ -121,3 +121,10 @@ Accessibility exposes pane text, ranges, selections, and link actions.
 AppleScript provides explicit commands for sending text, reading screens,
 managing windows and panes, and updating validated settings. The
 [automation guide](automation.md) documents the commands and bounds.
+
+### Switching tabs
+
+Press Cmd+1 through Cmd+8 to select a tab by its position. Cmd+9 selects the
+last tab. Cmd+Option+Left and Cmd+Option+Right select the previous or next tab,
+wrapping at the ends. These shortcuts apply to the current window's tab group.
+A shortcut for a tab that does not exist does nothing.

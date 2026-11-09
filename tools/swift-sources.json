@@ -44,6 +44,7 @@
     "Sources/Terminal/EditingSmoke.swift",
     "Sources/Terminal/ResizeSmoke.swift",
     "Sources/Terminal/PaneLifecycleSmoke.swift",
+    "Sources/Terminal/TabNavigation.swift",
     "Sources/Terminal/main.swift"
   ],
   "emulation": [
@@ -579,6 +580,10 @@
       "Sources/Terminal/Font.swift",
       "Sources/Terminal/AccessibilityProjection.swift",
       "Tests/TerminalTests/VisibleLinkProjectionTests.swift"
+    ],
+    "tab_navigation": [
+      "Sources/Terminal/TabNavigation.swift",
+      "Tests/TerminalTests/TabNavigationTests.swift"
     ]
   }
 }

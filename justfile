@@ -164,6 +164,7 @@ lint:
     just terminal-width
     just input-encoder
     just window-stress-motion-test
+    just tab-navigation-test
     just osc52-protocol
     xcrun clang -Wall -Wextra -Werror -I Sources/Terminal/Interop -c Tests/TerminalTests/pty.c -o target/native/swift-pty-tests.o
     xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty) target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
@@ -687,3 +688,10 @@ swift-build-test:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swift tools/SwiftIncrementalBuild.swift --clean
     output="$(xcrun swift tools/SwiftIncrementalBuild.swift)"; [[ "$output" == "Swift incremental no-op;"* ]]
+
+# Verify AppKit tab shortcuts without delivering keys to the PTY encoder.
+[group('check')]
+tab-navigation-test:
+    mkdir -p target/native
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print tab_navigation) -framework AppKit -o target/native/tab-navigation-tests
+    target/native/tab-navigation-tests
