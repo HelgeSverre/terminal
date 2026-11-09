@@ -1,0 +1,7 @@
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 42 app sources; 34 test groups; 436 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print session) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests
+target/native/session-tests "$PWD"
+SESSION_TEST_REPORT=/Users/helge/code/terminal/reports/session-tests.json run_id=AE6B2A1B-A0A8-4487-9E79-88E638C1215F passed=true
+PASS session: REP ordering, lossless admission, live-mode paste encoding, saturation/cancel/close, owned-child reaping

@@ -98,6 +98,12 @@ primary scroll position for return. Hold Cmd over an http/https/mailto URL to
 underline it, then Cmd-click to open it. Plain URLs and OSC 8 hyperlinks share
 the same detection and accessible link actions. File drops paste quoted paths.
 
+Drag to select characters, double-click for a word, triple-click for a line,
+or hold Option while dragging for a rectangle. Selection follows its text as
+output scrolls and the pane resizes. Overwritten or evicted selections clear
+with a brief notice. Settings → Text → Word characters controls the extra
+punctuation included in word selection.
+
 The current shell is `$SHELL`, falling back to `/bin/zsh`, with its normal login
 configuration. Set the starting folder in Settings → Startup → Directory; `~`
 and an empty field use your home folder. The setting applies to new shells;
@@ -160,8 +166,8 @@ open. See the [cutover measurements and validation](docs/swift-cutover.md) for
 the paired results, build sizes and distribution evidence.
 
 The native sources share one Swift compiler module. `native/Emulation` owns
-VT interpretation, document/history, input encoding, search, graphics protocol
-state and immutable snapshots. `native/Text` owns streaming text processing and
+VT interpretation, document/history, selection and copy, input encoding, search,
+graphics protocol state and immutable snapshots. `native/Text` owns streaming text processing and
 the pinned grapheme, width and lowercase tables. AppKit, PTY scheduling and
 Metal rendering remain in `native`; the source graph lists every app and test
 input explicitly.

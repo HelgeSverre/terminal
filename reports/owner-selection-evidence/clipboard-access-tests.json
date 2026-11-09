@@ -1,0 +1,39 @@
+{
+  "checks" : {
+    "all_owned_children_reaped" : true,
+    "allow_writes_once" : true,
+    "cancel_dismisses_active" : true,
+    "denial_latches_session" : true,
+    "eof_cancels_pending_write" : true,
+    "invalid_utf8_denied" : true,
+    "late_close_handler_delivered_once" : true,
+    "late_decision_cannot_write" : true,
+    "later_osc52_allow_beats_user_copy" : true,
+    "newer_user_copy_beats_stale_osc52" : true,
+    "next_queued_completes" : true,
+    "overflow_denied" : true,
+    "private_pasteboard_preserved" : true,
+    "prompt_rate_limited" : true,
+    "pty_write_reaches_private_pasteboard" : true,
+    "queued_same_session_denied" : true,
+    "read_query_denied_without_host_request" : true,
+    "rejected_copy_preserves_allowed_osc52" : true,
+    "request_resolution_is_one_shot" : true,
+    "stale_queue_denied" : true,
+    "user_copy_capture_survives_later_pty_mutation" : true,
+    "user_copy_closed_session_cannot_write" : true,
+    "user_copy_empty_string" : true,
+    "user_copy_external_change_wins" : true,
+    "user_copy_newer_request_wins" : true,
+    "user_copy_stale_completion_rejected" : true
+  },
+  "failures" : [
+
+  ],
+  "owned_sessions" : 12,
+  "passed" : true,
+  "run_id" : "A5C11DF8-D67C-45BD-8D6D-99B4A2AC6534",
+  "unreaped_sessions" : [
+
+  ]
+}

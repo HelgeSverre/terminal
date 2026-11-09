@@ -84,7 +84,48 @@ private final class TerminalRowStorage {
 }
 
 struct TerminalRow: Equatable {
-  var id: UInt64; var revision: UInt64; var softWrapped = false
+  // Value-only observation: private reflow copies cannot invalidate live
+  // selection, and no row retains a selection object or page generation.
+  struct SelectionObservation {
+    let generation: UInt64
+    var columns: Range<Int>
+    let observesSoftEdge: Bool
+    var additionalColumns: [Range<Int>]? = nil
+    var overwritten = false
+    var changedSoftEdge = false
+    mutating func write(_ range: Range<Int>) {
+      guard !overwritten else { return }
+      if columns.overlaps(range) { overwritten = true; return }
+      guard let intervals = additionalColumns else { return }
+      var lower = 0, upper = intervals.count
+      while lower < upper {
+        let middle = lower + (upper - lower) / 2
+        if intervals[middle].upperBound <= range.lowerBound { lower = middle + 1 }
+        else { upper = middle }
+      }
+      if lower < intervals.count && intervals[lower].overlaps(range) { overwritten = true }
+    }
+    mutating func softEdgeChanged() { if observesSoftEdge { changedSoftEdge = true } }
+    // Reflow supplies monotonically ordered intervals. Keep the common
+    // single interval allocation-free; coalesce adjacent selected runs.
+    mutating func include(_ range: Range<Int>) {
+      if additionalColumns == nil && range.lowerBound <= columns.upperBound {
+        columns = columns.lowerBound..<max(columns.upperBound, range.upperBound)
+      } else if let last = additionalColumns?.last, range.lowerBound <= last.upperBound {
+        additionalColumns![additionalColumns!.count - 1] = last.lowerBound..<max(last.upperBound, range.upperBound)
+      } else {
+        if additionalColumns == nil { additionalColumns = [] }
+        additionalColumns!.append(range)
+      }
+    }
+    var allocationBytes: UInt64 { UInt64(additionalColumns?.capacity ?? 0) * UInt64(MemoryLayout<Range<Int>>.stride) }
+  }
+  var id: UInt64; var revision: UInt64
+  var softWrapped = false {
+    didSet { if oldValue != softWrapped { selectionObservation?.softEdgeChanged() } }
+  }
+  var selectionObservation: SelectionObservation?
+  private mutating func observeSelectionWrite(_ range: Range<Int>) { selectionObservation?.write(range) }
   private var storage: TerminalRowStorage
   // `slots.capacity` is deliberately not the history contract: Swift rounds
   // Array capacity by element stride. Preserve the former 64-byte rich-cell
@@ -117,6 +158,7 @@ struct TerminalRow: Equatable {
   }
   mutating func resetForReuse(columns: Int, logicalCellCapacity: Int,
                               style: TerminalStyle, id: UInt64) {
+    selectionObservation = nil
     if storage.slots.count != columns || !isKnownUniquelyReferenced(&storage) {
       storage = TerminalRowStorage(slots: Array(repeating: TerminalRowSlot(style: style.erased()), count: columns),
                                    logicalCapacity: logicalCellCapacity, detachCapacity: logicalCellCapacity)
@@ -175,6 +217,7 @@ struct TerminalRow: Equatable {
   }
 
   mutating func setCell(_ cell: TerminalCell, at index: Int) {
+    observeSelectionWrite(index..<(index + 1))
     ensureUniqueForCellEdit()
     var slot = TerminalRowSlot(scalar: 0, style: cell.style, hasScalar: false,
                                kind: cell.kind, flags: cell.flags, protected: cell.protected)
@@ -193,6 +236,7 @@ struct TerminalRow: Equatable {
 
   mutating func setScalar(_ scalar: Unicode.Scalar, at index: Int, kind: UInt8,
                           style: TerminalStyle, link: String?, flags: UInt8, protected: Bool) {
+    observeSelectionWrite(index..<(index + 1))
     ensureUniqueForCellEdit()
     storage.slots[index] = TerminalRowSlot(scalar: scalar.value, style: style, hasScalar: true,
                                    kind: kind, flags: flags, protected: protected)
@@ -201,10 +245,12 @@ struct TerminalRow: Equatable {
   }
 
   mutating func erase(at index: Int, style: TerminalStyle = TerminalStyle()) {
+    observeSelectionWrite(index..<(index + 1))
     ensureUniqueForCellEdit(); storage.slots[index] = TerminalRowSlot(style: style.erased())
     if !storage.payloads.isEmpty { storage.payloads.removeValue(forKey: index) }
   }
   mutating func copyCell(from source: TerminalRow, at sourceIndex: Int, to index: Int) {
+    observeSelectionWrite(index..<(index + 1))
     ensureUniqueForCellEdit(); storage.slots[index] = source.storage.slots[sourceIndex]
     if let payload = source.storage.payloads[sourceIndex] { storage.payloads[index] = payload }
     else if !storage.payloads.isEmpty { storage.payloads.removeValue(forKey: index) }
@@ -222,6 +268,7 @@ struct TerminalRow: Equatable {
     guard !range.isEmpty else { return }
     ensureUniqueForCellEdit()
     let target = destination..<(destination + range.count)
+    observeSelectionWrite(target)
     storage.slots.replaceSubrange(target, with: source.storage.slots[range])
     if !storage.payloads.isEmpty {
       for index in target { storage.payloads.removeValue(forKey: index) }
@@ -232,10 +279,11 @@ struct TerminalRow: Equatable {
       }
     }
   }
-  mutating func setKind(_ kind: UInt8, at index: Int) { ensureUniqueForCellEdit(); storage.slots[index].kind = kind }
-  mutating func setFlags(_ flags: UInt8, at index: Int) { ensureUniqueForCellEdit(); storage.slots[index].flags = flags }
-  mutating func addFlags(_ flags: UInt8, at index: Int) { ensureUniqueForCellEdit(); storage.slots[index].flags |= flags }
+  mutating func setKind(_ kind: UInt8, at index: Int) { observeSelectionWrite(index..<(index + 1)); ensureUniqueForCellEdit(); storage.slots[index].kind = kind }
+  mutating func setFlags(_ flags: UInt8, at index: Int) { observeSelectionWrite(index..<(index + 1)); ensureUniqueForCellEdit(); storage.slots[index].flags = flags }
+  mutating func addFlags(_ flags: UInt8, at index: Int) { observeSelectionWrite(index..<(index + 1)); ensureUniqueForCellEdit(); storage.slots[index].flags |= flags }
   mutating func clearText(at index: Int) {
+    observeSelectionWrite(index..<(index + 1))
     ensureUniqueForCellEdit(); storage.slots[index].scalar = 0
     storage.slots[index].hasScalar = false
     if var payload = storage.payloads[index] {
@@ -257,6 +305,7 @@ struct TerminalRow: Equatable {
     setCell(cell, at: index)
   }
   mutating func truncate(to newCount: Int) {
+    if newCount < count { observeSelectionWrite(newCount..<count) }
     let next = Self.legacyCapacity(existingCount: storage.slots.count, capacity: storage.logicalCapacity, truncatingTo: newCount)
     if !isKnownUniquelyReferenced(&storage) { storage = TerminalRowStorage(slots: storage.slots, payloads: storage.payloads, logicalCapacity: storage.logicalCapacity, detachCapacity: storage.detachCapacity) }
     storage.logicalCapacity = next; storage.detachCapacity = Self.blankLogicalCapacity(columns: newCount)
@@ -276,6 +325,7 @@ struct TerminalRow: Equatable {
     for index in range { copyCell(from: source, at: index, to: index) }
   }
   mutating func shiftCells(column: Int, right: Int, amount: Int, inserting: Bool) {
+    observeSelectionWrite(column..<(right + 1))
     ensureUniqueForCellEdit()
     if inserting {
       for destination in stride(from: right, through: column + amount, by: -1) {
@@ -297,6 +347,7 @@ struct TerminalRow: Equatable {
     guard count > 0, column >= 0, column + count <= storage.slots.count else { return }
     ensureUniqueForCellEdit()
     let range = column..<(column + count)
+    observeSelectionWrite(range)
     if let link {
       for index in range { storage.payloads[index] = TerminalRowPayload(text: nil, link: link) }
     } else if !storage.payloads.isEmpty {
@@ -326,7 +377,7 @@ struct TerminalRow: Equatable {
       + UInt64(storage.payloads.capacity) * 80 + UInt64(storage.payloads.count) * 64
   }
   var allocationSlotCost: UInt64 { 64 + UInt64(storage.slots.capacity * MemoryLayout<TerminalRowSlot>.stride) }
-  var reflowAllocationBytes: UInt64 { allocationBaseCost + 2 * storage.payloads.utf8Bytes }
+  var reflowAllocationBytes: UInt64 { allocationBaseCost + 2 * storage.payloads.utf8Bytes + (selectionObservation?.allocationBytes ?? 0) }
   func reflowCellStorage(at index: Int) -> (textBytes: UInt64, linkBytes: UInt64, sparse: Bool, hasLink: Bool) {
     let slot = storage.slots[index]
     let payload = storage.payloads[index]

@@ -1,0 +1,72 @@
+mkdir -p target/native
+ruby tools/glyph_policy_test.rb
+PASS glyph policy known-driver-fault
+PASS glyph policy unknown-fault
+PASS glyph policy different-error
+PASS glyph policy probe-success
+PASS glyph policy later-driver-fault
+PASS glyph policy local-default
+PASS glyph policy cpu-failure
+ruby tools/native_smoke_test.rb
+Run options: --seed 64890
+
+# Running:
+
+....
+
+Finished in 6.774806s, 0.5904 runs/s, 3.5425 assertions/s.
+
+4 runs, 24 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/compare_terminal_apps_test.rb
+Run options: --seed 16282
+
+# Running:
+
+.......
+
+Finished in 0.000704s, 9943.1817 runs/s, 9943.1817 assertions/s.
+
+7 runs, 7 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/profile_terminal_test.rb
+Run options: --seed 41339
+
+# Running:
+
+..
+
+Finished in 0.001749s, 1143.5106 runs/s, 9719.8400 assertions/s.
+
+2 runs, 17 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/close_smoke_test.rb
+Run options: --seed 46783
+
+# Running:
+
+...
+
+Finished in 6.143398s, 0.4883 runs/s, 2.9300 assertions/s.
+
+3 runs, 18 assertions, 0 failures, 0 errors, 0 skips
+ruby tools/applescript_smoke_test.rb
+Run options: --seed 64914
+
+# Running:
+
+.......
+
+Finished in 0.467717s, 14.9663 runs/s, 49.1750 assertions/s.
+
+7 runs, 23 assertions, 0 failures, 0 errors, 0 skips
+xcrun clang -Wall -Wextra -Werror -O2 native/benchmarks/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
+target/native/terminal-bench-clock-test
+xcrun swiftc -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/DistributionTests.swift -o target/native/distribution-tests
+target/native/distribution-tests
+Ticket service unavailable; retrying staple in 1s…
+Ticket service unavailable; retrying staple in 2s…
+Ticket service unavailable; retrying staple in 1s…
+Ticket service unavailable; retrying staple in 2s…
+Ticket service unavailable; retrying staple in 4s…
+Ticket service unavailable; retrying validate in 1s…
+PASS distribution: transient staple/validate retries, bounded exhaustion, permanent and unrelated failures fail fast
+mkdir -p target/native/automation-dictionary
+xcrun sdp -fs -o target/native/automation-dictionary native/Terminal.sdef

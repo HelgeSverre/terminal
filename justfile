@@ -127,6 +127,7 @@ lint:
     just terminal-viewport-oracle
     just history-search-test
     just terminal-reflow-semantics
+    just terminal-selection
     just terminal-prompt-clear-oracle
     just terminal-scheduler-oracle
     just terminal-semantic-regression
@@ -356,6 +357,14 @@ unicode-lowercase:
     xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print unicode_lowercase) -framework Foundation -o target/native/unicode-lowercase-tests
     target/native/unicode-lowercase-tests
 
+# Verify owner-validated selection, captured copy and mutation handling.
+[group('check')]
+terminal-selection:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_selection) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-selection-tests
+    target/native/terminal-selection-tests
+
 # Verify plain/OSC 8 links, cell/UTF-16 mapping and stale accessibility actions.
 [group('check')]
 visible-links-test:
@@ -504,6 +513,11 @@ automation-consent: build
 [group('check')]
 accessibility-smoke: build
     ruby tools/accessibility_smoke.rb
+
+# Exercise real owned AppKit mouse gestures and private-pasteboard copying.
+[group('check')]
+selection-smoke: build
+    ruby tools/selection_smoke.rb
 
 [group('check')]
 resize-smoke: build

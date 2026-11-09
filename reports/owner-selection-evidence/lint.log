@@ -1,0 +1,4 @@
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 42 app sources; 34 test groups; 436 declared paths; bundle inputs present
+ruby -e 'Dir.glob("{native,tools}/**/*.swift").sort.each { |f| abort("Swift syntax failed: #{f}") unless system("xcrun", "swiftc", "-frontend", "-parse", f) }'
+ruby -e 'Dir.glob("tools/**/*.rb").sort.each { |f| abort("Ruby syntax failed: #{f}") unless system("ruby", "-c", f, out: File::NULL) }'

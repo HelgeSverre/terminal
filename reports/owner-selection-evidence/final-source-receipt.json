@@ -1,0 +1,50 @@
+{
+  "source_hashes": {
+    "native/Emulation/TerminalSelection.swift": "6ae59c8dfd92bb554ef26cd7a5e98f5e4cf0df8824773bfeeee52c1590d97c34",
+    "native/Text/SelectionWordProfile.swift": "921206f9ae3dc2c166bef39e9eebc6a4beb847426209d74f5f7264fd00cc2215",
+    "native/Emulation/TerminalDocument.swift": "6fbc85ea4763989df553f6a3949847fa017c7c8aed12eb7175bd1fd8f4c0daf4",
+    "native/Emulation/TerminalEmulator.swift": "f7ed034b61b44d2aab17e2b064c37e9e768190068a06745614ada34f296625bc",
+    "native/Emulation/DocumentReflow.swift": "fc6223d765aa98d0e591bb0c0e4cae4ba5ef5a3c1e96ec82ca3080cfead689b7",
+    "native/Emulation/TerminalSnapshot.swift": "8558478ad5b7492c9f7bf38d96f0ffebf3bce7bccf0a26ba94927390424095e1",
+    "native/tests/TerminalSelectionTests.swift": "b51b7ad2cea7437c86b2bfee31f07899d6656435cc2639f60303d7e2c64ae9a2",
+    "native/tests/BinarySnapshotOracle.swift": "c7844561d3c2e7efb3dcb144ac9f6e866444081ae7e0a18b3eb573ace7c7c342",
+    "native/tests/SnapshotBridgeTests.swift": "bfbb5cf1b7e497e506d170b66229c5e59c034416bdaf1829238dbf32e6754a13",
+    "native/Session.swift": "18ce1d47804c5d8cbf17a54628fb49a793847782d149a1337fe5df4e2485682b",
+    "native/tests/SessionTests.swift": "6c5dfa369ad25b6f6046d3e0a7e71240ebce11611df886b9691a23fa145ade1a",
+    "tools/swift-sources.json": "3941ea53ed194711bad8a7fa59d25cd6a47531f995b0159026452eacffe7e6f2"
+  },
+  "evidence_hashes": {
+    "copy-admission-final.log": "c2e2dbcddb31ea10e30b15ab3f94278b050cb0c462508fbec0089a959ae53759",
+    "copy-limit.log": "c2e2dbcddb31ea10e30b15ab3f94278b050cb0c462508fbec0089a959ae53759",
+    "copy-retirement-final.log": "c2e2dbcddb31ea10e30b15ab3f94278b050cb0c462508fbec0089a959ae53759",
+    "copy-retirement-green.log": "c2e2dbcddb31ea10e30b15ab3f94278b050cb0c462508fbec0089a959ae53759",
+    "copy-retirement-red.log": "8b03fd9a06b30947b3ebd85782a5a9fb3d6d97e071a6e2382bdae7090dd00cdd",
+    "document-ownership.log": "e42f81027f70c4e5c73c3eafdfa27abd94da859b1fd2ba367ef2762f6a839d09",
+    "empty-gesture-green.log": "98c8035625c316e58294f8d75ebaf7a50d3f57153af7442b897308fa5a8d7370",
+    "empty-gesture-red.log": "2ed4efc3ebb81ec3a1f0a9e950438ca0221644868cf1f8e83dd20ee1301bcd8f",
+    "pointer-red.log": "e6f4e3714572a54243ff2602a79de088bcfd07a2ea5e7bc899ec1b24c9808cbe",
+    "pointer-resource-green.log": "98c8035625c316e58294f8d75ebaf7a50d3f57153af7442b897308fa5a8d7370",
+    "reflow.log": "43edffdf7dd6bac4917db6efc89d9dc202f4eb047eff9d219870a4268df13ac4",
+    "snapshot-bridge.log": "c9f2f053956fe434d0909199d1e3abcac36433020636d757461b1700ca42fe7a",
+    "copy-admission-final.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "copy-limit.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "copy-retirement-final.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "copy-retirement-green.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "copy-retirement-red.exit": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "document-ownership.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "empty-gesture-green.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "empty-gesture-red.exit": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "pointer-red.exit": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+    "pointer-resource-green.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "reflow.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "snapshot-bridge.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+  },
+  "final_gate": "copy-admission-final.exit",
+  "notes": [
+    "Final focused terminal-selection gate exit0 with source-graph compilation hash guard.",
+    "Actual24,903,680-byte potential copy rejected after44 copy turns; REP32 turns.",
+    "Failed/cancelled buffer retirement credit tested; immediate successful transfers remain admissible with retirement paused.",
+    "Temporary proof/copy credit saturation returns busy; structural/output limits remain limitExceeded.",
+    "Document/reflow/snapshot and Session gate receipts are earlier checkpoints; final app/host rerun belongs to Root."
+  ]
+}

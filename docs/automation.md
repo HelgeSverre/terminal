@@ -32,16 +32,21 @@ is a current snapshot, not a wait operation; poll it when waiting for output.
 
 To change preferences without UI scripting, use `configure preferences`. It
 accepts any subset of `font size`, `scrollback rows`, `option sends escape`,
-`follows tail on input`, and `starting directory`. The command fills omitted
-values from the current settings, then calls Terminal's normal validation,
+`follows tail on input`, `starting directory`, and `word characters`. The command
+fills omitted values from the current settings, then calls Terminal's normal validation,
 save, and live-apply path as one validated update. It returns a short summary of the saved
 values.
+
+`word characters` adds punctuation to Unicode word selection. An empty string
+uses Unicode word boundaries alone. The value accepts at most 64 scalars
+(256 UTF-8 bytes), excluding whitespace and controls; the returned summary uses
+the canonical sorted, deduplicated value.
 
 ```applescript
 tell application id "no.helgesverre.terminal"
   configure preferences font size 15.0 scrollback rows 10000 ¬
     option sends escape true follows tail on input true ¬
-    starting directory "/Users/helge/code"
+    starting directory "/Users/helge/code" word characters "_-/.:~"
 end tell
 ```
 

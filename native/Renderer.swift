@@ -4,12 +4,6 @@ import Metal
 import QuartzCore
 import simd
 
-struct GridSelection: Equatable {
-  var start: Int
-  var end: Int
-  var lower: Int { min(start, end) }
-  var upper: Int { max(start, end) }
-}
 struct RenderRequest {
   let snapshot: TerminalSnapshot
   let width: Int
@@ -19,8 +13,6 @@ struct RenderRequest {
   let cellHeight: Int
   let fontSize: CGFloat
   let focused: Bool
-  let scrolled: Bool
-  let selection: GridSelection?
   let marked: String
   let linkUnderline: [Range<Int>]
 }
@@ -635,6 +627,7 @@ final class TerminalRendering: @unchecked Sendable {
       replacementGlyph = nil
       needsReset = false
       var linkSegment = 0
+      var selectionSegment = 0
       for (r, row) in snap.rows.enumerated() {
         let search = searchRows[r]
         for (c, cell) in row.cells.enumerated() {
@@ -647,9 +640,16 @@ final class TerminalRendering: @unchecked Sendable {
             bg = TerminalTheme.linear(TerminalTheme.accent)
             fg = TerminalTheme.linear(TerminalTheme.background)
           }
-          if let selection = request.selection, selection.lower <= r * snap.cols + c,
-            r * snap.cols + c < selection.upper
-          {
+          while selectionSegment < snap.selection.segments.count {
+            let segment = snap.selection.segments[selectionSegment]
+            if segment.row < r || segment.row == r && segment.end <= c {
+              selectionSegment += 1
+            } else { break }
+          }
+          let selected = selectionSegment < snap.selection.segments.count
+            && snap.selection.segments[selectionSegment].row == r
+            && snap.selection.segments[selectionSegment].start <= c
+          if selected {
             bg = TerminalTheme.linear(TerminalTheme.selection)
             fg = TerminalTheme.linear(TerminalTheme.text)
           }
@@ -733,7 +733,7 @@ final class TerminalRendering: @unchecked Sendable {
     quads.removeAll(keepingCapacity: true)
     glyphQuads = Array(repeating: [], count: atlases.count)
     directGlyphQuads.removeAll(keepingCapacity: true)
-    if snap.cursor.visible && !request.scrolled {
+    if snap.cursor.visible && snap.following_tail {
       let x = request.inset + snap.cursor.col * request.cellWidth
       let y = request.inset + snap.cursor.row * request.cellHeight
       let tint =

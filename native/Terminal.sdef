@@ -62,6 +62,7 @@
       <parameter name="option sends escape" code="Hopt" type="boolean" optional="yes"><cocoa key="OptionSendsEscape"/></parameter>
       <parameter name="follows tail on input" code="Hfol" type="boolean" optional="yes"><cocoa key="FollowTailOnInput"/></parameter>
       <parameter name="starting directory" code="Hdir" type="text" optional="yes"><cocoa key="StartingDirectory"/></parameter>
+      <parameter name="word characters" code="Hwrd" type="text" optional="yes" description="Extra non-whitespace, non-control Unicode scalars treated as word characters for terminal selection."><cocoa key="SelectionWordCharacters"/></parameter>
       <result type="text" description="A summary of the saved preferences."/>
     </command>
   </suite>

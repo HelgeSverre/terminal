@@ -14,7 +14,8 @@ import AppKit
       }
     }
     func compare(_ value: TerminalSnapshot, _ legacy: TerminalSnapshot) {
-      precondition(value.rows == legacy.rows, "cell layout/text/color/style/link/wrap mismatch")
+      precondition(value.rows == legacy.rows, "row identity/revision or cell layout/text/color/style/link/wrap mismatch")
+      precondition(value.rows.allSatisfy { $0.id != 0 }, "live ABI snapshots must preserve real row identities")
       precondition(value.at_prompt == legacy.at_prompt)
       precondition(value.input_ready == legacy.input_ready)
       precondition(value.search == legacy.search)
@@ -92,6 +93,8 @@ import AppKit
     let sentinels = BinarySnapshotOracle.emptyStringSentinels(
       metadata: try JSONSerialization.data(withJSONObject: shapeMetadata)).snapshot!
     precondition(sentinels.rows[0].cells[0].text == "" && sentinels.rows[0].cells[0].link == "")
+    precondition(sentinels.rows[0].id == 0 && sentinels.selectionHit(row: 0, boundary: 0) == nil,
+      "legacy binary metadata without identity proof must remain non-actionable")
     // Old experimental metadata did not have a readiness field. Preserve that
     // as unknown so automation cannot mistake an old A-only snapshot for B.
     feed("\u{1b}]133;A\u{7}")

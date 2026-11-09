@@ -204,14 +204,17 @@ final class TerminalConfigurePreferencesCommand: TerminalScriptCommand {
       let historyRows = text("HistoryRows", fallback: String(current.historyRows)),
       let optionSendsEscape = boolean("OptionSendsEscape", fallback: current.optionSendsEscape),
       let followTailOnInput = boolean("FollowTailOnInput", fallback: current.followTailOnInput),
-      let startingDirectory = text("StartingDirectory", fallback: current.startingDirectory)
+      let startingDirectory = text("StartingDirectory", fallback: current.startingDirectory),
+      let selectionWordCharacters = text(
+        "SelectionWordCharacters", fallback: current.selectionWordProfile.punctuation)
     else { return nil }
     do {
       let preferences = try TerminalPreferences.edited(
         fontSize: fontSize, historyRows: historyRows, optionSendsEscape: optionSendsEscape,
-        followTailOnInput: followTailOnInput, startingDirectory: startingDirectory)
+        followTailOnInput: followTailOnInput, startingDirectory: startingDirectory,
+        selectionWordCharacters: selectionWordCharacters)
       delegate.applyPreferences(preferences)
-      return "font size \(String(format: "%.15g", Double(preferences.fontSize))), scrollback rows \(preferences.historyRows), starting directory \(preferences.startingDirectory)"
+      return "font size \(String(format: "%.15g", Double(preferences.fontSize))), scrollback rows \(preferences.historyRows), starting directory \(preferences.startingDirectory), word characters \(preferences.selectionWordProfile.punctuation)"
     } catch {
       return fail(error.localizedDescription, number: -1700)
     }

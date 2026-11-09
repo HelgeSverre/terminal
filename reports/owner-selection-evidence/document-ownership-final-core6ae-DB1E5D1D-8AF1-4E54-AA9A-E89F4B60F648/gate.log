@@ -1,0 +1,6 @@
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 42 app sources; 34 test groups; 436 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_document_ownership) -framework Foundation -o target/native/terminal-document-ownership-tests
+target/native/terminal-document-ownership-tests
+PASS TerminalDocument ownership: snapshots, document segmentation, batch transactions, local wide-pair repair, cluster width, margin insert and clipped cells

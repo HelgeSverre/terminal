@@ -65,6 +65,7 @@ final class DocumentReflowTransaction {
     let mapping: TerminalDocument.ReflowMapping
     let evictedHistory: Bool
     let retainedRowIDs: Set<UInt64>
+    let selection: TerminalSelectionReflowResult
   }
   enum Progress { case pending, ready(Replacement), pressure, rejected(TerminalResizeRejection) }
   enum PressureProgress { case pending, evicted, ready, rejected(TerminalResizeRejection) }
@@ -96,7 +97,8 @@ final class DocumentReflowTransaction {
   private(set) var turnCount = 0
 
   init(source: TerminalDocument, geometry: TerminalResizeGeometry,
-       anchor: UInt64?, promptEraseStyle: TerminalStyle?, historyRows: Int, historyBytes: Int) {
+       anchor: UInt64?, promptEraseStyle: TerminalStyle?, historyRows: Int, historyBytes: Int,
+       primarySelection: TerminalSelectionReflowInput? = nil, alternateSelection: TerminalSelectionReflowInput? = nil) {
     guard geometry.isValid else { earlyStatus = .rejected(.invalidGeometry); return }
     // At most 8192 active rows, each O(1). No retained generation or private
     // builder allocation exists until its complete input reservation succeeds.
@@ -117,6 +119,7 @@ final class DocumentReflowTransaction {
       if index < geometry.rows { alternateResources = State.sum(alternateResources, row.reflowAllocationBytes - row.allocationSlotCost) }
     }
     let required = State.sum(sourceBytes, promptBytes, largestPromptDictionary,
+      primarySelection?.content.allocationBytes ?? 0, alternateSelection?.content.allocationBytes ?? 0,
       State.product(source.history.count + source.primary.rows.count, 16), 4096)
     guard required <= ReflowReservationLedger.operationLimit else {
       if source.history.isEmpty { earlyStatus = .rejected(.operationBudget) }
@@ -128,7 +131,8 @@ final class DocumentReflowTransaction {
     }
     guard let lease = ReflowReservationLedger.shared.reserve(required) else { earlyStatus = .rejected(.processBudget); return }
     state = State(source: source, geometry: geometry, anchor: anchor, promptEraseStyle: promptEraseStyle,
-                  historyRows: historyRows, historyBytes: historyBytes, lease: lease, alternateResources: alternateResources)
+                  historyRows: historyRows, historyBytes: historyBytes, lease: lease, alternateResources: alternateResources,
+                  primarySelection: primarySelection, alternateSelection: alternateSelection)
   }
   func advance() -> Progress {
     if let early = earlyStatus {
@@ -305,12 +309,18 @@ final class DocumentReflowTransaction {
     var oldScreenStart = 0
     var screenRows: [TerminalRow] = []
     var alternateRows: [TerminalRow] = []
+    var primarySelection: TerminalSelectionReflowTracker?
+    var alternateSelection: TerminalSelectionReflowTracker?
+    var selectionBudgetBase: UInt64 = 0
 
     init(source: TerminalDocument, geometry: TerminalResizeGeometry, anchor: UInt64?, promptEraseStyle: TerminalStyle?,
-         historyRows: Int, historyBytes: Int, lease: ReflowReservationLedger.Lease, alternateResources: UInt64) {
+         historyRows: Int, historyBytes: Int, lease: ReflowReservationLedger.Lease, alternateResources: UInt64,
+         primarySelection: TerminalSelectionReflowInput?, alternateSelection: TerminalSelectionReflowInput?) {
       self.source = source; self.geometry = geometry; self.anchor = anchor; self.promptEraseStyle = promptEraseStyle
       self.historyRows = max(0, historyRows); self.historyBytes = UInt64(max(0, historyBytes))
       self.lease = lease; self.alternateResources = alternateResources
+      self.primarySelection = primarySelection.map(TerminalSelectionReflowTracker.init)
+      self.alternateSelection = alternateSelection.map(TerminalSelectionReflowTracker.init)
     }
     var sourceCount: Int { source.history.count + source.primary.rows.count }
     var cursorSource: Int { source.history.count + source.primary.cursorRow }
@@ -390,7 +400,8 @@ final class DocumentReflowTransaction {
           let item = row(index)
           var extent = 0
           for cell in 0..<item.count where item.kind(at: cell) != 0 || item.style(at: cell).background != 0 { extent = cell + 1 }
-          if extent > 0 || index <= cursorSource || index <= savedSource { lastRelevant = index }
+          extent = max(extent, primarySelection?.extent(item.id) ?? 0)
+          if extent > 0 || index <= cursorSource || index <= savedSource || primarySelection?.input.content.byRow[item.id] != nil { lastRelevant = index }
           if item.softWrapped { extent = source.columns }
           if index == cursorSource { extent = max(extent, min(source.columns, cursorBoundary)) }
           if index == savedSource { extent = max(extent, min(source.columns, savedBoundary)) }
@@ -415,8 +426,12 @@ final class DocumentReflowTransaction {
             let nominal = !atEnd && (kind == 2 || item.flags(at: cell) & 1 != 0) ? 2 : 1
             let width = min(nominal, geometry.columns)
             let wrapsAtom = !atEnd && kind != 3 && kind != 4 && plannedColumn + width > geometry.columns
+            if index == cursorSource && cell == cursorBoundary && source.primary.pendingWrap {
+              start = min(max(oldScreenStart, plannedCount - geometry.rows + 1), plannedCount)
+              windowPlanned = true
+            }
             if wrapsAtom || (plannedColumn == geometry.columns && hasBeforeBoundary(index, cell, row: item)) { finishPlan() }
-            if index == cursorSource && cell == cursorBoundary {
+            if index == cursorSource && cell == cursorBoundary && !source.primary.pendingWrap {
               start = min(max(oldScreenStart, plannedCount - geometry.rows + 1), plannedCount)
               windowPlanned = true
             }
@@ -464,8 +479,10 @@ final class DocumentReflowTransaction {
         let retainedCount = min(plannedCount, start + geometry.rows) - retainedStart
         let required = Self.sum(lease!.bytes, replacementAllocation,
           Self.product(geometry.rows, newRowAllocation), alternateResources,
-          Self.product(retainedCount + geometry.rows, 192))
+          Self.product(retainedCount + geometry.rows,
+            192 + UInt64(MemoryLayout<TerminalRow.SelectionObservation?>.stride)))
         if let error = rejectBudget(required) { return error }
+        selectionBudgetBase = required
         working = source
         working!.setSize(columns: geometry.columns, rows: geometry.rows)
         working!.history = TerminalHistory()
@@ -479,6 +496,7 @@ final class DocumentReflowTransaction {
         } else { index = retainedStart; phase = .history }
         work += geometry.columns
       case .packing:
+        if let error = reserveSelectionWork() { return error }
         guard index <= lastRelevant else {
           if packedCount == 0 { finish(soft: false); work += geometry.columns }
           precondition(packedCount == plannedCount)
@@ -486,6 +504,7 @@ final class DocumentReflowTransaction {
         }
         let item = row(index)
         if !enteredRow {
+          primarySelection?.visit(item)
           if item.id == anchor, let current {
             mappedAnchor = index > 0 && row(index - 1).softWrapped ? (output!.last?.id ?? current.id) : current.id
           }
@@ -498,12 +517,15 @@ final class DocumentReflowTransaction {
         let occupied = kind == 2 ? 2 : 1
         let width = min(nominal, geometry.columns)
         let wrapsAtom = !atEnd && kind != 3 && kind != 4 && column + width > geometry.columns
+        mapBoundary(sourceIndex: index, sourceColumn: sourceColumn, after: true)
+        primarySelection?.mapBoundary(source: item.id, column: sourceColumn, output: current?.id, targetColumn: column, after: true)
         if wrapsAtom || (column == geometry.columns && hasBeforeBoundary(index, sourceColumn, row: item)) {
           if wrapsAtom && column < geometry.columns { current?.setKind(4, at: column) }
           finish(soft: true); work += geometry.columns
           if item.id == anchor && mappedAnchor == nil { mappedAnchor = current?.id }
         }
-        mapBoundary(sourceIndex: index, sourceColumn: sourceColumn)
+        mapBoundary(sourceIndex: index, sourceColumn: sourceColumn, after: false)
+        primarySelection?.mapBoundary(source: item.id, column: sourceColumn, output: current?.id, targetColumn: column, after: false)
         guard !atEnd else {
           if !continues(index) { finish(soft: false); work += geometry.columns }
           sourceColumn = 0; enteredRow = false; index += 1; work += 1; return nil
@@ -516,14 +538,18 @@ final class DocumentReflowTransaction {
             let boundary = prompt.column + (prompt.pendingWrap ? 1 : 0)
             if boundary > sourceColumn { limit = min(limit, boundary) }
           }
+          limit = primarySelection?.nextBoundary(item.id, after: sourceColumn, limit: limit) ?? limit
           let run = item.unchangedReflowRun(from: sourceColumn, until: limit)
           if !run.isEmpty {
+            primarySelection?.copy(source: item.id, columns: run, target: column..<(column + run.count), retained: current != nil)
             current?.copyCells(from: item, range: run, to: column)
             sourceColumn += run.count; column += run.count; work += run.count
             return nil
           }
         }
         if kind == 3 || kind == 4 { sourceColumn += 1; work += 1; return nil }
+        primarySelection?.copy(source: item.id, columns: sourceColumn..<(sourceColumn + occupied),
+                               target: column..<(column + width), retained: current != nil)
         if current == nil {
           column += width; sourceColumn += occupied; work += nominal; return nil
         } else if kind == 0 { current!.erase(at: column, style: item.style(at: sourceColumn)) }
@@ -541,25 +567,34 @@ final class DocumentReflowTransaction {
         }
         column += width; sourceColumn += occupied; work += nominal
       case .history:
+        if let error = reserveSelectionWork() { return error }
         if index < start {
-          let entry = outputEntry(index)
+          var entry = outputEntry(index)
+          if !widthChanges, let primarySelection {
+            var row = entry.row
+            primarySelection.transfer(&row, ordinal: index, mutable: false)
+            entry = TerminalHistory.RetainedRow(row)
+          }
           working!.history.appendRetained(entry); retainedRowIDs.insert(entry.row.id)
           index += 1; work += widthChanges || index <= source.history.count ? 1 : source.columns; return nil
         }
         index = 0; phase = .screen
       case .screen:
+        if let error = reserveSelectionWork() { return error }
         if index < geometry.rows {
           if start + index < plannedCount { screenRows.append(widthChanges ? output![start + index] : row(start + index)) }
           else { screenRows.append(working!.blankRow()) }
           if index == geometry.rows - 1 && start + geometry.rows < plannedCount && screenRows[index].softWrapped {
             screenRows[index].softWrapped = false; screenRows[index].revision &+= 1
           }
+          if !widthChanges { primarySelection?.transfer(&screenRows[index], ordinal: start + index, mutable: true) }
           retainedRowIDs.insert(screenRows.last!.id)
           index += 1; work += geometry.columns; return nil
         }
         assemblePrimary()
         index = 0; phase = .alternate; work += geometry.rows
       case .alternate:
+        if let error = reserveSelectionWork() { return error }
         if index < geometry.rows {
           let blank = working!.blankRow() // preserve row-ID consumption of the old crop/pad path
           if index < source.alternate.rows.count {
@@ -568,6 +603,7 @@ final class DocumentReflowTransaction {
           if index == geometry.rows - 1 && geometry.rows < source.alternate.rows.count && alternateRows[index].softWrapped {
             alternateRows[index].softWrapped = false; alternateRows[index].revision &+= 1
           }
+          alternateSelection?.transfer(&alternateRows[index], ordinal: index, mutable: true)
           retainedRowIDs.insert(alternateRows.last!.id)
           index += 1; work += source.columns + geometry.columns; return nil
         }
@@ -586,6 +622,7 @@ final class DocumentReflowTransaction {
         alternate.cursorVisible = source.alternate.cursorVisible; alternate.cursorShape = source.alternate.cursorShape
         working!.alternate = alternate; phase = .complete
       case .complete:
+        primarySelection?.complete(); alternateSelection?.complete()
         return .ready
       }
       work += 1; return nil
@@ -593,10 +630,16 @@ final class DocumentReflowTransaction {
     func replacement() -> Replacement {
       Replacement(document: working!, mapping: TerminalDocument.ReflowMapping(
         anchor: widthChanges ? mappedAnchor : anchor, cursor: cursorMap, saved: savedMap),
-        evictedHistory: retainedStart > 0, retainedRowIDs: retainedRowIDs)
+        evictedHistory: retainedStart > 0, retainedRowIDs: retainedRowIDs,
+        selection: TerminalSelectionReflowResult(primary: primarySelection?.output,
+          alternate: alternateSelection?.output,
+          primaryLost: primarySelection?.lost ?? false, alternateLost: alternateSelection?.lost ?? false,
+          primaryOrigin: primarySelection?.origin, primaryHead: primarySelection?.head,
+          alternateOrigin: alternateSelection?.origin, alternateHead: alternateSelection?.head))
     }
     func continues(_ sourceIndex: Int) -> Bool { sourceIndex < lastRelevant && row(sourceIndex).softWrapped }
     func hasBeforeBoundary(_ sourceIndex: Int, _ column: Int, row: TerminalRow) -> Bool {
+      if primarySelection?.hasBeforeBoundary(row.id, column: column) == true { return true }
       if sourceIndex == cursorSource && !source.primary.pendingWrap && column == cursorBoundary { return true }
       if sourceIndex == savedSource && !source.primary.savedPendingWrap && column == savedBoundary { return true }
       if let prompt = source.primary.promptAnchor, prompt.row == row.id, !prompt.pendingWrap && prompt.column == column { return true }
@@ -614,18 +657,31 @@ final class DocumentReflowTransaction {
       else { _ = working!.reserveRowIdentity(); current = nil }
     }
     func finish(soft: Bool) {
-      if current != nil { current!.softWrapped = soft; output!.append(current!) }
+      if current != nil {
+        current!.softWrapped = soft
+        primarySelection?.finish(&current!, ordinal: packedCount, mutable: packedCount >= start)
+        output!.append(current!)
+      }
       packedCount += 1; beginOutputRow(); column = 0
     }
-    func mapBoundary(sourceIndex: Int, sourceColumn: Int) {
-      if sourceIndex == cursorSource && sourceColumn == cursorBoundary {
+    func reserveSelectionWork() -> Step? {
+      guard primarySelection != nil || alternateSelection != nil else { return nil }
+      if primarySelection?.overflow == true || alternateSelection?.overflow == true { return .rejected(.operationBudget) }
+      // One row can introduce at most one interval per output column. Reserve
+      // dictionary/array growth and that scratch before touching the mapper.
+      let required = Self.sum(selectionBudgetBase, primarySelection?.allocationBytes ?? 0,
+        alternateSelection?.allocationBytes ?? 0, UInt64(geometry.columns) * 512 + 4096)
+      return rejectBudget(required)
+    }
+    func mapBoundary(sourceIndex: Int, sourceColumn: Int, after: Bool) {
+      if sourceIndex == cursorSource && sourceColumn == cursorBoundary && source.primary.pendingWrap == after {
         cursorMap = (packedCount, min(column, geometry.columns - 1), column == geometry.columns)
       }
-      if sourceIndex == savedSource && sourceColumn == savedBoundary {
+      if sourceIndex == savedSource && sourceColumn == savedBoundary && source.primary.savedPendingWrap == after {
         savedMap = (packedCount, min(column, geometry.columns - 1), column == geometry.columns)
       }
       if let current, let prompt = source.primary.promptAnchor, row(sourceIndex).id == prompt.row,
-         sourceColumn == prompt.column + (prompt.pendingWrap ? 1 : 0) {
+         sourceColumn == prompt.column + (prompt.pendingWrap ? 1 : 0), prompt.pendingWrap == after {
         promptMap = PromptAnchor(row: current.id, column: min(column, geometry.columns - 1), pendingWrap: column == geometry.columns)
       }
     }
@@ -659,6 +715,7 @@ final class DocumentReflowTransaction {
       working = nil; output = nil; current = nil; plan = nil
       screenRows.removeAll(); alternateRows.removeAll(); ends.removeAll()
       retainedRowIDs.removeAll()
+      primarySelection = nil; alternateSelection = nil
       lease = nil
     }
   }
@@ -674,4 +731,168 @@ extension TerminalDocument {
     var saved: (row: Int, column: Int, pending: Bool)
   }
 
+}
+
+// Selection remaps retain metadata only. Their ordered spans share the
+// streaming document layout, without an all-history boundary map or cells.
+struct TerminalSelectedSpan {
+  let rowID: UInt64
+  var columns: Range<Int>
+  var softNextID: UInt64?
+  let sourceOrdinal: Int
+  let mutableAtCapture: Bool
+  let group: Int
+}
+final class TerminalSelectionContent {
+  var spans: [TerminalSelectedSpan] = []
+  var byRow: [UInt64: Range<Int>] = [:]
+  var mutableRows: [UInt64: Int] = [:]
+  var allocationBytes: UInt64 {
+    UInt64(spans.capacity * MemoryLayout<TerminalSelectedSpan>.stride)
+      + UInt64(byRow.capacity) * 64 + UInt64(mutableRows.capacity) * 48 + 128
+  }
+  func append(_ span: TerminalSelectedSpan) {
+    let index = spans.count
+    spans.append(span)
+    byRow[span.rowID] = (byRow[span.rowID]?.lowerBound ?? index)..<(index + 1)
+    if span.mutableAtCapture { mutableRows[span.rowID] = span.sourceOrdinal }
+  }
+}
+struct TerminalSelectionReflowInput {
+  let generation: UInt64
+  let rectangular: Bool
+  let content: TerminalSelectionContent
+  let origin: TerminalSelectionBoundary
+  let head: TerminalSelectionBoundary
+}
+struct TerminalSelectionReflowResult {
+  var primary: TerminalSelectionContent?
+  var alternate: TerminalSelectionContent?
+  var primaryLost = false
+  var alternateLost = false
+  var primaryOrigin: TerminalSelectionBoundary?
+  var primaryHead: TerminalSelectionBoundary?
+  var alternateOrigin: TerminalSelectionBoundary?
+  var alternateHead: TerminalSelectionBoundary?
+}
+
+struct TerminalSelectionBoundary {
+  let rowID: UInt64
+  let column: Int
+  let after: Bool
+}
+final class TerminalSelectionReflowTracker {
+  let input: TerminalSelectionReflowInput
+  let output = TerminalSelectionContent()
+  var lost = false
+  var overflow = false
+  var origin: TerminalSelectionBoundary?
+  var head: TerminalSelectionBoundary?
+  private var segments: [(columns: Range<Int>, group: Int)] = []
+  private var previous: (id: UInt64, soft: Bool)?
+  private var seenRows = 0
+  init(_ input: TerminalSelectionReflowInput) { self.input = input }
+  var allocationBytes: UInt64 { output.allocationBytes + UInt64(segments.capacity) * 32 + 128 }
+  func extent(_ row: UInt64) -> Int {
+    var extent = 0
+    if let indices = input.content.byRow[row], !indices.isEmpty { extent = input.content.spans[indices.upperBound - 1].columns.upperBound }
+    if input.origin.rowID == row { extent = max(extent, input.origin.column) }
+    if input.head.rowID == row { extent = max(extent, input.head.column) }
+    return extent
+  }
+  func nextBoundary(_ row: UInt64, after column: Int, limit: Int) -> Int {
+    var next = limit
+    for boundary in [input.origin, input.head] where boundary.rowID == row && boundary.column > column { next = min(next, boundary.column) }
+    return next
+  }
+  func hasBeforeBoundary(_ row: UInt64, column: Int) -> Bool {
+    [input.origin, input.head].contains { $0.rowID == row && $0.column == column && !$0.after }
+  }
+  func mapBoundary(source row: UInt64, column: Int, output target: UInt64?, targetColumn: Int, after: Bool) {
+    func mapped(_ boundary: TerminalSelectionBoundary) -> TerminalSelectionBoundary? {
+      guard boundary.rowID == row, boundary.column == column, boundary.after == after else { return nil }
+      guard let target else { lost = true; return nil }
+      return TerminalSelectionBoundary(rowID: target, column: targetColumn, after: after)
+    }
+    if let value = mapped(input.origin) { origin = value }
+    if let value = mapped(input.head) { head = value }
+    if !after, let indices = input.content.byRow[row] {
+      let spans = input.content.spans
+      var lower = indices.lowerBound, upper = indices.upperBound
+      while lower < upper {
+        let middle = lower + (upper - lower) / 2
+        if spans[middle].columns.lowerBound < column { lower = middle + 1 } else { upper = middle }
+      }
+      while lower < indices.upperBound && spans[lower].columns.lowerBound == column {
+        let span = spans[lower]; lower += 1
+        guard span.columns.isEmpty else { continue }
+        if target != nil { append(targetColumn..<targetColumn, group: span.group) } else { lost = true }
+      }
+    }
+  }
+  func visit(_ row: TerminalRow) {
+    guard input.content.byRow[row.id] != nil else { return }
+    seenRows += 1
+    if let observation = row.selectionObservation, observation.generation == input.generation, observation.overwritten { lost = true }
+  }
+  func copy(source row: UInt64, columns: Range<Int>, target: Range<Int>, retained: Bool) {
+    guard let indices = input.content.byRow[row] else { return }
+    let spans = input.content.spans
+    var lower = indices.lowerBound, upper = indices.upperBound
+    while lower < upper {
+      let middle = lower + (upper - lower) / 2
+      if spans[middle].columns.upperBound <= columns.lowerBound { lower = middle + 1 } else { upper = middle }
+    }
+    while lower < indices.upperBound && spans[lower].columns.lowerBound < columns.upperBound {
+      let span = spans[lower]
+      let start = max(span.columns.lowerBound, columns.lowerBound), end = min(span.columns.upperBound, columns.upperBound)
+      if start < end {
+        if !retained { lost = true }
+        else if columns.count == target.count {
+          append((target.lowerBound + start - columns.lowerBound)..<(target.lowerBound + end - columns.lowerBound), group: span.group)
+        } else { append(target, group: span.group) } // indivisible wide/clipped atom
+      }
+      lower += 1
+    }
+  }
+  private func append(_ columns: Range<Int>, group: Int) {
+    if let last = segments.last, last.group == group, last.columns.upperBound == columns.lowerBound {
+      segments[segments.count - 1].columns = last.columns.lowerBound..<columns.upperBound
+    } else { segments.append((columns, group)) }
+  }
+  func finish(_ row: inout TerminalRow, ordinal: Int, mutable: Bool) {
+    if let previous, previous.soft, let indices = output.byRow[previous.id] {
+      output.spans[indices.upperBound - 1].softNextID = row.id
+    }
+    previous = (row.id, row.softWrapped)
+    if !segments.isEmpty {
+      guard output.spans.count <= 65_536 - segments.count else { overflow = true; segments.removeAll(keepingCapacity: true); return }
+      var observation = TerminalRow.SelectionObservation(generation: input.generation,
+        columns: segments[0].columns, observesSoftEdge: !input.rectangular)
+      for (index, segment) in segments.enumerated() {
+        if index > 0 { observation.include(segment.columns) }
+        output.append(TerminalSelectedSpan(rowID: row.id, columns: segment.columns, softNextID: nil,
+          sourceOrdinal: ordinal, mutableAtCapture: mutable, group: segment.group))
+      }
+      row.selectionObservation = observation
+      segments.removeAll(keepingCapacity: true)
+    } else { row.selectionObservation = nil }
+  }
+  func transfer(_ row: inout TerminalRow, ordinal: Int, mutable: Bool) {
+    visit(row)
+    if let indices = input.content.byRow[row.id] {
+      for span in input.content.spans[indices] {
+        if span.columns.upperBound > row.count { lost = true }
+        else { append(span.columns, group: span.group) }
+      }
+    }
+    for boundary in [input.origin, input.head] where boundary.rowID == row.id {
+      if boundary.column > row.count { lost = true }
+      else if boundary.rowID == input.origin.rowID && boundary.column == input.origin.column { origin = boundary }
+      else { head = boundary }
+    }
+    if input.head.rowID == row.id, input.head.column <= row.count { head = input.head }
+    finish(&row, ordinal: ordinal, mutable: mutable)
+  }
+  func complete() { if seenRows != input.content.byRow.count || origin == nil || head == nil { lost = true } }
 }

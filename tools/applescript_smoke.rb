@@ -214,6 +214,8 @@ class AppleScriptSmoke
                    'An invalid font size was accepted.', name: 'reject invalid font size')
     expect_failure("tell application id #{app} to configure preferences starting directory \"/does/not/exist\"", -1700,
                    'An invalid starting directory was accepted.', name: 'reject invalid directory')
+    expect_failure("tell application id #{app} to configure preferences word characters \"not valid\"", -1700,
+                   'Invalid selection word characters were accepted.', name: 'reject invalid word characters')
     run_script("tell application id #{app} to show settings", name: 'show settings while focused')
     hide_fixture
 
@@ -229,8 +231,11 @@ class AppleScriptSmoke
 
     configured = run_script(
       "tell application id #{app} to configure preferences font size 15.0 scrollback rows 1000 " \
-      'option sends escape true follows tail on input false starting directory "/tmp"', name: 'configure preferences')
+      'option sends escape true follows tail on input false starting directory "/tmp" word characters "@_/-@"', name: 'configure preferences')
     raise "configure preferences did not return the saved font size: #{configured.inspect}" unless configured.include?('15')
+    unless configured.include?('word characters -/@_')
+      raise "configure preferences did not return canonical word characters: #{configured.inspect}"
+    end
     cleared = run_script("tell application id #{app} to clear screen", name: 'clear screen')
     raise "clear screen returned a different pane: #{cleared.inspect}" unless cleared == pane_id
 

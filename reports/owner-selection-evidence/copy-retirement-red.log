@@ -1,0 +1,7 @@
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 42 app sources; 34 test groups; 436 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_selection) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-selection-tests
+target/native/terminal-selection-tests
+FAIL native/tests/TerminalSelectionTests.swift:180: retired copy buffer must retain admission credit until its storage is released
+error: recipe `terminal-selection` failed on line 366 with exit code 1

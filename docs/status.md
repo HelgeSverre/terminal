@@ -27,8 +27,17 @@ Implemented and locally exercised:
   new output, remapped through reflow, clamped on eviction, and retained while
   alternate is selected. Snapshots carry document/history/screen identity and
   the resolved viewport; focus reports and key releases do not follow the tail.
-  Reset/history clear/screen or geometry changes invalidate frozen host selections;
-  destructive screen/geometry changes cancel preedit without committing it.
+  Destructive screen/geometry changes cancel preedit without committing it.
+- Owner-confined character, Unicode word, line and rectangular selection carries
+  presented snapshot, screen, geometry and row proofs. Whole-row movement and
+  width reflow preserve selected text; selected overwrites (including identical
+  replacements) and eviction clear it with a brief notice. Primary and alternate
+  selections remain separate. Copy captures immutable text on the owner in bounded
+  turns, with a 16 MiB result limit, cancellation and explicit backpressure.
+  AppKit owns pasteboard delivery and orders explicit copies with permitted
+  OSC 52 writes. Word punctuation is a validated setting and AppleScript parameter.
+  Accessibility reports disjoint rectangular ranges without selecting intervening
+  text. The former frozen host snapshot and independent copy serializer are gone.
 - Bounded worker-based literal search over immutable rows with Unicode scalar
   lowercase matching, soft-wrap joining, cell decorations, query limits,
   latest-query cancellation, close cancellation and source-revision validation.
@@ -114,6 +123,10 @@ Implemented and locally exercised:
 
 Current automated evidence:
 
+- Owner selection/copy has focused owner, real-PTY Session, private clipboard,
+  document/reflow and accessibility projection gates. The evidence packet in
+  `reports/owner-selection-evidence/summary.md` distinguishes source checkpoints
+  and final integration results from physical input and VoiceOver claims.
 - Version 0.2.1 runtime `b9d3a81` passes full macOS CI at test-only correction
   `25dc31e` (run `42551103822`), signed normal/editing/quit fixtures and actual
   Vite AX-link browser navigation. App and PKG notarization, stapling and trust
@@ -220,10 +233,11 @@ Required work remaining before the requested completion gate:
   not recoverable. REP also yields in bounded quanta, with actor/input ordering
   covered by tests.
 - Broader selection/search navigation, live-edit and fractional pixel-scrolling
-  validation. Indexed history and stable viewport anchors are implemented, but
-  selection still holds a bounded host snapshot rather than owner-validated,
-  eviction-aware endpoints. Multi-display and long-lived interaction coverage
-  remains incomplete.
+  validation. Selection now has owner-validated, eviction-aware endpoints and
+  reflow mapping; multi-display and long-lived interaction coverage remains
+  incomplete. Hyperlink activation still needs the same owner-side presented
+  proof validation used for selection, beyond the existing displayed-generation
+  checks.
 - Shared reactor/owner lanes, complete end-to-end admission accounting, global
   memory budgets and broader queue-race tests. Transactional paste cancellation
   with bracket closure is implemented and tested at every partial-write offset.

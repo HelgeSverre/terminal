@@ -1,5 +1,23 @@
 import AppKit
 
+/// A smoke run must never observe or mutate the user's clipboard. The report
+/// path already belongs to the fixture, so it is a stable private-board scope.
+func selectionSmokeReportPath() -> String? {
+  guard let index = CommandLine.arguments.firstIndex(of: "--selection-smoke"),
+    CommandLine.arguments.indices.contains(index + 1)
+  else { return nil }
+  return URL(fileURLWithPath: CommandLine.arguments[index + 1]).standardizedFileURL.path
+}
+
+func selectionSmokePasteboardName(reportPath: String) -> NSPasteboard.Name {
+  var hash: UInt64 = 0xcbf29ce484222325
+  for byte in reportPath.utf8 {
+    hash ^= UInt64(byte)
+    hash &*= 0x100000001b3
+  }
+  return NSPasteboard.Name("no.helgesverre.terminal.selection-smoke.\(String(hash, radix: 16))")
+}
+
 final class TerminalWindow: NSWindowController, NSWindowDelegate {
   let automationID = UUID().uuidString
   private(set) var panes: [TerminalCanvasView] = []
@@ -169,11 +187,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   var windows: [TerminalWindow] = []
   let rendering: TerminalRendering?
   let renderingError: String?
-  let clipboardAccess = ClipboardAccess()
+  let clipboardAccess: ClipboardAccess
   private var preferencesWindow: TerminalSettingsWindow?
   private weak var lastFocusedPane: TerminalCanvasView?
   private var terminationRequested = false
   override init() {
+    if let path = selectionSmokeReportPath() {
+      let pasteboard = NSPasteboard(name: selectionSmokePasteboardName(reportPath: path))
+      clipboardAccess = ClipboardAccess(pasteboard: pasteboard)
+    } else {
+      clipboardAccess = ClipboardAccess()
+    }
     do {
       rendering = try TerminalRendering()
       renderingError = nil
@@ -260,6 +284,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       CommandLine.arguments.count > index + 1, let window = windows.first
     {
       ResizeSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
+    }
+    if let path = selectionSmokeReportPath(), let window = windows.first {
+      SelectionSmokeTest.start(window: window, path: path)
     }
   }
   @objc func newWindow(_ sender: Any?) {

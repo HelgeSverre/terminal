@@ -2,9 +2,11 @@ import Foundation
 
 @main struct PreferencesTests {
   static func main() throws {
-    func edited(_ path: String, size: String = "14", history: String = "50000") throws -> TerminalPreferences {
+    func edited(_ path: String, size: String = "14", history: String = "50000",
+                words: String = TerminalSelectionWordProfile.standard.punctuation) throws -> TerminalPreferences {
       try TerminalPreferences.edited(fontSize: size, historyRows: history,
-        optionSendsEscape: false, followTailOnInput: true, startingDirectory: path)
+        optionSendsEscape: false, followTailOnInput: true, startingDirectory: path,
+        selectionWordCharacters: words)
     }
     let home = FileManager.default.homeDirectoryForCurrentUser.path
     let blank = try edited("")
@@ -13,6 +15,18 @@ import Foundation
     precondition(blank.startingDirectory == home)
     precondition(tilde.startingDirectoryText == "~")
     precondition(slash.launchDirectory == home)
+    let customWords = try edited("", words: "//_猫/")
+    precondition(customWords.selectionWordProfile.punctuation == "/_猫")
+    precondition(customWords.session.selectionWordProfile == customWords.selectionWordProfile)
+    let unicodeWords = try edited("", words: "")
+    precondition(unicodeWords.selectionWordProfile.punctuation.isEmpty)
+    let encodedProfile = try JSONEncoder().encode(customWords.selectionWordProfile)
+    let decodedProfile = try JSONDecoder().decode(TerminalSelectionWordProfile.self, from: encodedProfile)
+    precondition(decodedProfile == customWords.selectionWordProfile)
+    for invalid in [" ", "x\ny", "\u{1b}", String(repeating: "x", count: 65)] {
+      do { _ = try edited("", words: invalid); preconditionFailure("invalid word characters accepted") }
+      catch TerminalPreferences.ValidationError.wordCharacters {}
+    }
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Terminal settings \(UUID().uuidString)")
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
     defer { try? FileManager.default.removeItem(at: folder) }

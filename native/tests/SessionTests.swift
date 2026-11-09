@@ -38,6 +38,14 @@ import Foundation
         "typed_key_paths_admitted", "modifier_keys_preserve_anchored_viewport",
         "resize_rejection_preserves_fifo_and_pty", "resumable_resize_commits_before_later_input",
         "pending_resize_close_is_fair_and_cancels", "rapid_resize_returns_to_original_before_input",
+        "selection_stale_hit_is_rejected", "selection_copy_is_immutable_before_later_output",
+        "selection_fifo_preserves_output_mode_order", "selection_cross_screen_state_restores",
+        "selection_word_profile_configuration_is_fifo",
+        "selection_nonsemantic_input_preserves_owner_state",
+        "selection_accepted_input_clears_owner_state", "selection_copy_callback_raw_reaches_pty",
+        "selection_copy_delivery_is_bounded",
+        "accessibility_presented_range_round_trips_through_session",
+        "pending_selection_close_is_fair_and_cancels",
       ].map { ($0, false) })
     checks["split_inherits_cwd"] = false
     checks["split_children_reaped"] = false
@@ -55,6 +63,9 @@ import Foundation
       let failure = message()
       failures.append(failure)
       FileHandle.standardError.write(Data("FAIL SessionTests [\(runID)]: \(failure)\n".utf8))
+    }
+    func selectionRow(_ snapshot: TerminalSnapshot, containing marker: String) -> Int? {
+      snapshot.rows.firstIndex { row in row.cells.map(\.text).joined().contains(marker) }
     }
     let splitFolder = FileManager.default.temporaryDirectory.appendingPathComponent("Terminal split 猫 #% \(UUID().uuidString)")
     do {
@@ -654,6 +665,303 @@ import Foundation
       && cancelledResizeInputRejected && cancelledResizeSignals.isEmpty
     expect(checks["pending_resize_close_is_fair_and_cancels"] == true,
       "cancelled resize: requested=\(cancelledResizeRequested), closed=\(cancelledResizeClosed), reaped=\(cancelledResizeReaped), input_rejected=\(cancelledResizeInputRejected), winch=\(cancelledResizeSignals)")
+    // Selection hits are proofs from the displayed snapshot. Let the child
+    // overwrite the saved row before the owner sees the action, then exercise
+    // a primary selection across an alternate-screen transition. The final
+    // copy is followed in FIFO by a mode-changing PTY reply and an overwrite.
+    let selectionScript = #"""
+      STDOUT.sync = true
+      system("stty raw -echo")
+      print "STALE_TEXT"
+      sleep 0.25
+      print "\e[1;1HX"
+      sleep 0.25
+      print "\e[2J\e[HPRIMARY@TEXT"
+      sleep 1
+      print "\e[?1049hALT_TEXT"
+      sleep 1
+      print "\e[?1049l"
+      input = STDIN.read(5)
+      if input == "WORD\n"
+        print "\e[?2004hRAW_CALLBACK_RECEIVED"
+      end
+      input = STDIN.read(1)
+      if input == "q"
+        print "ACCEPTED_INPUT_AFTER_COPY"
+      end
+      sleep 30
+      """#
+    let selectionSession = own(Session(launch: rubySpec(selectionScript, [])))
+    var staleHit: TerminalSelectionHit?
+    var staleRequested = false
+    var staleRejected = false
+    var primarySelectionRequested = false
+    var primarySelectionCompleted = false
+    var selectionWordProfileConfigured = false
+    var accessibilityRangeRequested = false
+    var accessibilityRangeCompleted = false
+    var accessibilityCountersAreIndependent = false
+    var accessibilityRequestedRange: NSRange?
+    var accessibilityGetterCaptured = false
+    var accessibilityRangeRoundTripped = false
+    var accessibilityGetterRanges: [NSRange] = []
+    var accessibilityGetterText: String?
+    var selectionNonsemanticInputsSent = false
+    var selectionNonsemanticOwnerProbe = false
+    var selectionNonsemanticInputPreserved = false
+    var alternateSelectionRequested = false
+    var alternateSelectionCompleted = false
+    var primaryRestored = false
+    var selectionCopyRequested = false
+    var selectionCopyText: String?
+    var selectionCopyCompleted = false
+    var selectionCopyBackpressureHeld = false
+    var selectionCopyRawIssued = false
+    var selectionCopyRawReached = false
+    var selectionSemanticInputRequested = false
+    var selectionModeAfterCopy = false
+    var selectionClearedByAcceptedInput = false
+    selectionSession.onSnapshot = { snapshot in
+      if staleHit == nil, let row = selectionRow(snapshot, containing: "STALE_TEXT") {
+        staleHit = snapshot.selectionHit(row: row, boundary: 0)
+      }
+      if !staleRequested, let staleHit, snapshot.rows.indices.contains(staleHit.row),
+         snapshot.rows[staleHit.row].revision != staleHit.rowRevision
+      {
+        staleRequested = selectionSession.selection(.begin(staleHit, granularity: .character)) { result in
+          if case .failure(.staleTarget) = result { staleRejected = true }
+        }
+      }
+      // This must use a received snapshot, not an independently constructed
+      // presentation: snapshot revision tracks emulator mutations, whereas
+      // presentation IDs identify immutable publications and intentionally
+      // advance independently.
+      if !snapshot.alternate, !accessibilityRangeRequested,
+         let presentation = snapshot.selectionPresentation,
+         presentation.snapshotID != snapshot.revision
+      {
+        let projection = AccessibilityProjection(snapshot: snapshot)
+        if let stringRange = projection.text.range(of: "PRIMARY@TEXT") {
+          let range = NSRange(stringRange, in: projection.text)
+          if let request = projection.presentedRange(for: [range]) {
+            accessibilityCountersAreIndependent = true
+            accessibilityRequestedRange = range
+            accessibilityRangeRequested = selectionSession.selection(
+              .range(start: request.start, end: request.end, mode: request.mode)) { result in
+                if case .success = result { accessibilityRangeCompleted = true }
+              }
+          }
+        }
+      }
+      if !snapshot.alternate, accessibilityRangeCompleted, !accessibilityGetterCaptured,
+         snapshot.selection.phase == .committed, !snapshot.selection.segments.isEmpty,
+         let expectedRange = accessibilityRequestedRange
+      {
+        let projection = AccessibilityProjection(snapshot: snapshot)
+        accessibilityGetterCaptured = true
+        accessibilityGetterRanges = projection.selectedRanges()
+        accessibilityGetterText = projection.selectedText()
+        accessibilityRangeRoundTripped =
+          accessibilityGetterRanges == [expectedRange]
+          && accessibilityGetterText == "PRIMARY@TEXT"
+      }
+      if !snapshot.alternate, accessibilityGetterCaptured, !primarySelectionRequested,
+         let row = selectionRow(snapshot, containing: "PRIMARY@TEXT"),
+         let hit = snapshot.selectionHit(row: row, boundary: "PRIMARY".utf8.count)
+      {
+        let profile = TerminalSelectionWordProfile(punctuation: "@")!
+        selectionSession.configure(TerminalSessionConfiguration(selectionWordProfile: profile))
+        selectionWordProfileConfigured = true
+        primarySelectionRequested = selectionSession.selection(.begin(hit, granularity: .word)) { result in
+          if case .success = result { primarySelectionCompleted = true }
+        }
+      }
+      if snapshot.alternate, !alternateSelectionRequested,
+         let row = selectionRow(snapshot, containing: "ALT_TEXT"),
+         let start = snapshot.selectionHit(row: row, boundary: 0),
+         let end = snapshot.selectionHit(row: row, boundary: "ALT_TEXT".utf8.count)
+      {
+        alternateSelectionRequested = selectionSession.selection(.range(start: start, end: end, mode: .linear)) { result in
+          if case .success = result { alternateSelectionCompleted = true }
+        }
+      }
+      if !snapshot.alternate, primarySelectionCompleted, alternateSelectionCompleted,
+         !snapshot.selection.segments.isEmpty
+      {
+        primaryRestored = true
+        if !selectionCopyRequested {
+          selectionCopyRequested = selectionSession.selection(
+            .copy(expectedSelectionRevision: snapshot.selection.revision)) { result in
+              if case .success(let text) = result {
+                selectionCopyText = text
+                selectionCopyCompleted = true
+                selectionCopyRawIssued = true
+                selectionSession.rawInput(Data("WORD\n".utf8))
+              }
+            }
+          selectionCopyBackpressureHeld = !selectionSession.selection(
+            .copy(expectedSelectionRevision: snapshot.selection.revision)) { _ in }
+        }
+      }
+      if !snapshot.alternate, primarySelectionCompleted, !selectionNonsemanticInputsSent,
+         !snapshot.selection.segments.isEmpty
+      {
+        selectionNonsemanticInputsSent =
+          selectionSession.input(shiftPress)
+          && selectionSession.input(key: 2, event: 0)
+          && selectionSession.input("r", key: 200, event: 2)
+          && selectionSession.input("", key: 999)
+        selectionSession.semanticProbe { _ in selectionNonsemanticOwnerProbe = true }
+      }
+      if !snapshot.alternate, selectionNonsemanticOwnerProbe, !snapshot.selection.segments.isEmpty {
+        selectionNonsemanticInputPreserved = true
+      }
+      selectionModeAfterCopy = selectionModeAfterCopy
+        || (snapshot.modes.bracketed_paste && selectionRow(snapshot, containing: "RAW_CALLBACK_RECEIVED") != nil)
+      selectionCopyRawReached = selectionCopyRawReached
+        || selectionRow(snapshot, containing: "RAW_CALLBACK_RECEIVED") != nil
+      if selectionCopyRawReached, !selectionSemanticInputRequested {
+        selectionSemanticInputRequested = selectionSession.input("q")
+      }
+      if selectionRow(snapshot, containing: "ACCEPTED_INPUT_AFTER_COPY") != nil {
+        selectionClearedByAcceptedInput = snapshot.selection.segments.isEmpty
+      }
+    }
+    let selectionDeadline = Date().addingTimeInterval(8)
+    while !(staleRejected && selectionCopyCompleted && selectionCopyRawReached
+      && selectionModeAfterCopy && selectionClearedByAcceptedInput)
+      && Date() < selectionDeadline
+    {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["selection_stale_hit_is_rejected"] = staleRequested && staleRejected
+    checks["selection_cross_screen_state_restores"] =
+      primarySelectionRequested && primarySelectionCompleted && alternateSelectionRequested
+      && alternateSelectionCompleted && primaryRestored
+    checks["selection_copy_is_immutable_before_later_output"] =
+      selectionCopyCompleted && selectionCopyText == "PRIMARY@TEXT" && selectionCopyRawReached
+    checks["selection_fifo_preserves_output_mode_order"] =
+      selectionCopyCompleted && selectionModeAfterCopy
+    checks["selection_word_profile_configuration_is_fifo"] =
+      selectionWordProfileConfigured && primarySelectionCompleted && selectionCopyText == "PRIMARY@TEXT"
+    checks["selection_nonsemantic_input_preserves_owner_state"] =
+      selectionNonsemanticInputsSent && selectionNonsemanticOwnerProbe && selectionNonsemanticInputPreserved
+    checks["selection_accepted_input_clears_owner_state"] =
+      selectionCopyCompleted && selectionSemanticInputRequested && selectionClearedByAcceptedInput
+    checks["selection_copy_callback_raw_reaches_pty"] =
+      selectionCopyRawIssued && selectionCopyRawReached
+    checks["selection_copy_delivery_is_bounded"] =
+      selectionCopyRequested && selectionCopyBackpressureHeld
+    checks["accessibility_presented_range_round_trips_through_session"] =
+      accessibilityRangeRequested && accessibilityRangeCompleted
+      && accessibilityCountersAreIndependent && accessibilityGetterCaptured
+      && accessibilityRangeRoundTripped
+    expect(checks["selection_stale_hit_is_rejected"] == true,
+      "stale selection: hit=\(staleHit != nil), requested=\(staleRequested), rejected=\(staleRejected)")
+    expect(checks["selection_cross_screen_state_restores"] == true,
+      "cross-screen selection: primary=\(primarySelectionCompleted), alternate=\(alternateSelectionCompleted), restored=\(primaryRestored)")
+    expect(checks["selection_copy_is_immutable_before_later_output"] == true,
+      "selection copy: completed=\(selectionCopyCompleted), text=\(String(describing: selectionCopyText)), raw_receipt=\(selectionCopyRawReached)")
+    expect(checks["selection_fifo_preserves_output_mode_order"] == true,
+      "selection mode FIFO: copy=\(selectionCopyCompleted), mode=\(selectionModeAfterCopy)")
+    expect(checks["selection_word_profile_configuration_is_fifo"] == true,
+      "selection word profile: configured=\(selectionWordProfileConfigured), selected=\(primarySelectionCompleted), text=\(String(describing: selectionCopyText))")
+    expect(checks["selection_nonsemantic_input_preserves_owner_state"] == true,
+      "selection nonsemantic input: sent=\(selectionNonsemanticInputsSent), probe=\(selectionNonsemanticOwnerProbe), preserved=\(selectionNonsemanticInputPreserved)")
+    expect(checks["selection_accepted_input_clears_owner_state"] == true,
+      "selection accepted input did not clear owner state: requested=\(selectionSemanticInputRequested), cleared=\(selectionClearedByAcceptedInput)")
+    expect(checks["selection_copy_callback_raw_reaches_pty"] == true,
+      "selection copy callback raw receipt: issued=\(selectionCopyRawIssued), received=\(selectionCopyRawReached)")
+    expect(checks["selection_copy_delivery_is_bounded"] == true,
+      "selection copy completion did not retain its bounded delivery slot")
+    expect(checks["accessibility_presented_range_round_trips_through_session"] == true,
+      "accessibility selection round trip: requested=\(accessibilityRangeRequested), completed=\(accessibilityRangeCompleted), independent_counters=\(accessibilityCountersAreIndependent), getter_snapshot=\(accessibilityGetterCaptured), expected=\(String(describing: accessibilityRequestedRange)), actual_ranges=\(accessibilityGetterRanges), actual_text=\(String(describing: accessibilityGetterText)), exact_getter=\(accessibilityRangeRoundTripped)")
+    selectionSession.close()
+    // A 4,096-row selection makes both capture and copy resumable. Queue a
+    // direct owner probe and urgent close behind the first copy pump: the
+    // probe must run between bounded turns, while Close cancels the operation
+    // before it can publish a copied string and reaps the owned PTY.
+    let pendingSelectionScript = #"""
+      STDOUT.sync = true
+      system("stty raw -echo")
+      print "SELECTION_RESIZE_READY"
+      STDIN.read(1)
+      row = "x" * 79
+      4096.times { print row, "\r\n" }
+      print "SELECTION_COPY_READY"
+      sleep 30
+      """#
+    let pendingSelection = own(Session(launch: rubySpec(pendingSelectionScript, [])))
+    var pendingSelectionResizeRequested = false
+    var pendingSelectionCaptureRequested = false
+    var pendingSelectionCaptureCompleted = false
+    var pendingSelectionCopyRequested = false
+    var pendingSelectionCopyAdmitted = false
+    var pendingSelectionOwnerProbe = false
+    var pendingSelectionCloseRequested = false
+    var pendingSelectionInputRejected = false
+    var pendingSelectionCancelledCallbacks = 0
+    var pendingSelectionReaped = false
+    pendingSelection.onStatus = { status in
+      if status.hasPrefix("Process exited") { pendingSelectionReaped = true }
+    }
+    pendingSelection.onSnapshot = { snapshot in
+      if !pendingSelectionResizeRequested, selectionRow(snapshot, containing: "SELECTION_RESIZE_READY") != nil {
+        pendingSelectionResizeRequested = true
+        pendingSelection.resize(cols: 80, rows: 4096)
+        expect(pendingSelection.input("g"), "pending selection fixture start was not admitted")
+      }
+      guard snapshot.rows.count == 4096,
+            selectionRow(snapshot, containing: "SELECTION_COPY_READY") != nil
+      else { return }
+      if !pendingSelectionCaptureRequested,
+         let start = snapshot.selectionHit(row: 0, boundary: 0),
+         let end = snapshot.selectionHit(row: snapshot.rows.count - 1, boundary: snapshot.cols)
+      {
+        pendingSelectionCaptureRequested = pendingSelection.selection(.range(start: start, end: end, mode: .linear)) { result in
+          if case .success = result { pendingSelectionCaptureCompleted = true }
+        }
+      }
+      guard pendingSelectionCaptureCompleted, !snapshot.selection.segments.isEmpty,
+            !pendingSelectionCopyRequested
+      else { return }
+      pendingSelectionCopyRequested = true
+      let copy = TerminalSelectionAction.copy(expectedSelectionRevision: snapshot.selection.revision)
+      pendingSelection.queue.async {
+        let admitted = pendingSelection.selection(copy) { result in
+          if case .failure(.cancelled) = result { pendingSelectionCancelledCallbacks += 1 }
+        }
+        DispatchQueue.main.async { pendingSelectionCopyAdmitted = admitted }
+        // A posts the copy admission, B posts C. A schedules the first pump P;
+        // B schedules C after P. P begins/caches one bounded copy turn and
+        // queues Q, then C runs before Q and queues urgent Close after it.
+        pendingSelection.queue.async {
+          pendingSelection.queue.async {
+            DispatchQueue.main.async { pendingSelectionOwnerProbe = true }
+            pendingSelection.close()
+            let inputRejected = !pendingSelection.input("x")
+            DispatchQueue.main.async {
+              pendingSelectionCloseRequested = true
+              pendingSelectionInputRejected = inputRejected
+            }
+          }
+        }
+      }
+    }
+    let pendingSelectionDeadline = Date().addingTimeInterval(20)
+    while !(pendingSelectionReaped && pendingSelectionCancelledCallbacks == 1)
+      && Date() < pendingSelectionDeadline
+    {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["pending_selection_close_is_fair_and_cancels"] =
+      pendingSelectionResizeRequested && pendingSelectionCaptureRequested
+      && pendingSelectionCaptureCompleted && pendingSelectionCopyRequested
+      && pendingSelectionCopyAdmitted && pendingSelectionOwnerProbe
+      && pendingSelectionCloseRequested && pendingSelectionInputRejected
+      && pendingSelectionCancelledCallbacks == 1 && pendingSelectionReaped
+    expect(checks["pending_selection_close_is_fair_and_cancels"] == true,
+      "pending selection: resize=\(pendingSelectionResizeRequested), capture=\(pendingSelectionCaptureCompleted), copy=\(pendingSelectionCopyAdmitted), probe=\(pendingSelectionOwnerProbe), close=\(pendingSelectionCloseRequested), input_rejected=\(pendingSelectionInputRejected), cancelled_callbacks=\(pendingSelectionCancelledCallbacks), reaped=\(pendingSelectionReaped)")
     let searchable = own(Session(launch: spec(
       #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; 3000.times{|i| print(i==1000 ? "SEARCH_NEEDLE\r\n" : "row#{i}\r\n")}; print "SEARCH_READY"; STDIN.read(1)'"#)))
     var searchReady = false

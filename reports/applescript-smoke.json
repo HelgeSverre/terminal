@@ -3,17 +3,17 @@
   "failure": null,
   "source": {
     "bundle_path": "/Users/helge/code/terminal/dist/Terminal.app",
-    "revision": "a49a5af1774c3b824aade7d4e054dbc1fbc63ce9",
-    "executable_sha256": "18bfbc24f59e73e36e860fd3ded7086f1f66b759d39b684c2fabeeeb4d42f66e",
-    "code_signature": "Executable=/Users/helge/code/terminal/dist/Terminal.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20400 size=29104 flags=0x2(adhoc) hashes=903+3 location=embedded\nSignature=adhoc\nInfo.plist entries=16\nTeamIdentifier=not set\nSealed Resources version=2 rules=13 files=24\nInternal requirements count=0 size=12\n"
+    "revision": "c8c7faef12a52b35843ba74b87848ad50bdee3bd",
+    "executable_sha256": "1ba249aca37b94dfed51ebac7c3f69d3b7340f53990c93464b5a895f024c3d45",
+    "code_signature": "Executable=/Users/helge/code/terminal/dist/Terminal.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20400 size=23792 flags=0x2(adhoc) hashes=737+3 location=embedded\nSignature=adhoc\nInfo.plist entries=16\nTeamIdentifier=not set\nSealed Resources version=2 rules=13 files=24\nInternal requirements count=0 size=12\n"
   },
   "fixture": {
     "bundle_id": "no.helgesverre.terminal.automation-fixture",
     "display_name": "Terminal Automation Fixture",
     "path": "/Users/helge/code/terminal/target/automation-fixture/Terminal Automation Fixture.app",
-    "pid": 97537,
+    "pid": 4073,
     "signing_identity": "Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)",
-    "code_signature": "Executable=/Users/helge/code/terminal/target/automation-fixture/Terminal Automation Fixture.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal.automation-fixture\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20500 size=29142 flags=0x10000(runtime) hashes=903+3 location=embedded\nSignature size=9059\nAuthority=Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=8 Nov 2026 at 10:35:14\nInfo.plist entries=16\nTeamIdentifier=9Z2L5FBZS3\nRuntime Version=26.2.0\nSealed Resources version=2 rules=13 files=24\nInternal requirements count=1 size=204\n"
+    "code_signature": "Executable=/Users/helge/code/terminal/target/automation-fixture/Terminal Automation Fixture.app/Contents/MacOS/Terminal\nIdentifier=no.helgesverre.terminal.automation-fixture\nFormat=app bundle with Mach-O thin (arm64)\nCodeDirectory v=20500 size=23830 flags=0x10000(runtime) hashes=737+3 location=embedded\nSignature size=9058\nAuthority=Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=9 Nov 2026 at 05:47:50\nInfo.plist entries=16\nTeamIdentifier=9Z2L5FBZS3\nRuntime Version=26.2.0\nSealed Resources version=2 rules=13 files=24\nInternal requirements count=1 size=204\n"
   },
   "permission": {
     "status": 0,
@@ -93,7 +93,7 @@
       ],
       "timeout_seconds": 4,
       "script_sha256": "35218b19ef5c9abb0fbcbf80d042cd041c75c4d5c49ffb10d6930c1665d5a30b",
-      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\n",
+      "stdout": "no.helgesverre.terminal.pane.FAD1E002-C491-41ED-BD1B-5BE23920BB42\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -129,7 +129,7 @@
       ],
       "timeout_seconds": 4,
       "script_sha256": "47ce571b300fca9fba11170f638e821c883e4fca764a828879d9783ef2fdda87",
-      "stdout": "no.helgesverre.terminal.pane.355DF705-F705-4146-9B7C-11DC7F395F10\n",
+      "stdout": "no.helgesverre.terminal.pane.D37C3A97-B20A-4541-AA6E-AA8BDF0A5176\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -143,11 +143,11 @@
         "-l",
         "AppleScript",
         "-e",
-        "tell application id \"no.helgesverre.terminal.automation-fixture\" to split right pane id \"no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\""
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to split right pane id \"no.helgesverre.terminal.pane.FAD1E002-C491-41ED-BD1B-5BE23920BB42\""
       ],
       "timeout_seconds": 4,
-      "script_sha256": "097ffcd53874ad3f764e6f18144c0a0d070e5fb36f8894b64a6882747e77224e",
-      "stdout": "no.helgesverre.terminal.pane.BD12CBA8-9254-4CCC-8B47-8F306DBEE408\n",
+      "script_sha256": "532f0bc2ac85eaad45fea7e1ee81920f964ad530c61ee524dae9fa26968a6d52",
+      "stdout": "no.helgesverre.terminal.pane.B67FEA0F-0B1D-4EFE-B453-736E00219ACA\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -161,11 +161,11 @@
         "-l",
         "AppleScript",
         "-e",
-        "tell application id \"no.helgesverre.terminal.automation-fixture\" to split below pane id \"no.helgesverre.terminal.pane.BD12CBA8-9254-4CCC-8B47-8F306DBEE408\""
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to split below pane id \"no.helgesverre.terminal.pane.B67FEA0F-0B1D-4EFE-B453-736E00219ACA\""
       ],
       "timeout_seconds": 4,
-      "script_sha256": "ed118ec6ba6f48b8813373a6a395866d20eb8a3852a278919aea800c164494d1",
-      "stdout": "no.helgesverre.terminal.pane.DE247733-5DE8-4247-94B3-2729F7E05113\n",
+      "script_sha256": "a9cefa143b5b174f5c9f738eaa92edf0b2ba28c1285b74ee299bf55d0f9dfaf3",
+      "stdout": "no.helgesverre.terminal.pane.093672B5-B8A1-4207-8EB0-C6C8C1B452C5\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -201,7 +201,7 @@
       ],
       "timeout_seconds": 4,
       "script_sha256": "90c2f2bed0190717250d087e043ead87be0005facf1af601d6437651d0c157c6",
-      "stdout": "no.helgesverre.terminal.pane.BA957549-4800-477B-B3A0-D1B3868CCEA8\n",
+      "stdout": "no.helgesverre.terminal.pane.780162F6-755A-4527-ADD7-FD3645B3291C\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -219,7 +219,7 @@
       ],
       "timeout_seconds": 4,
       "script_sha256": "3b1c76041dfd08f5b6a2f1b252ac47dbeb9004c1db418b0587c5611b7e89064a",
-      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379, no.helgesverre.terminal.pane.BD12CBA8-9254-4CCC-8B47-8F306DBEE408, no.helgesverre.terminal.pane.DE247733-5DE8-4247-94B3-2729F7E05113, no.helgesverre.terminal.pane.355DF705-F705-4146-9B7C-11DC7F395F10, no.helgesverre.terminal.pane.BA957549-4800-477B-B3A0-D1B3868CCEA8\n",
+      "stdout": "no.helgesverre.terminal.pane.FAD1E002-C491-41ED-BD1B-5BE23920BB42, no.helgesverre.terminal.pane.B67FEA0F-0B1D-4EFE-B453-736E00219ACA, no.helgesverre.terminal.pane.093672B5-B8A1-4207-8EB0-C6C8C1B452C5, no.helgesverre.terminal.pane.D37C3A97-B20A-4541-AA6E-AA8BDF0A5176, no.helgesverre.terminal.pane.780162F6-755A-4527-ADD7-FD3645B3291C\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -233,11 +233,11 @@
         "-l",
         "AppleScript",
         "-e",
-        "tell application id \"no.helgesverre.terminal.automation-fixture\" to focus pane pane id \"no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\""
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to focus pane pane id \"no.helgesverre.terminal.pane.FAD1E002-C491-41ED-BD1B-5BE23920BB42\""
       ],
       "timeout_seconds": 4,
-      "script_sha256": "adee3612ad7041bcf9efbc393411dd35200bf3aa4909cca3e12332f7a63a42df",
-      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\n",
+      "script_sha256": "1386de3a31e7344d9b2d028ba8143422555f1cc4163b4738b07b954b66b2384d",
+      "stdout": "no.helgesverre.terminal.pane.FAD1E002-C491-41ED-BD1B-5BE23920BB42\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -316,6 +316,24 @@
       "timed_out": false
     },
     {
+      "name": "reject invalid word characters",
+      "language": "AppleScript",
+      "command": [
+        "/usr/bin/osascript",
+        "-l",
+        "AppleScript",
+        "-e",
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to configure preferences word characters \"not valid\""
+      ],
+      "timeout_seconds": 4,
+      "script_sha256": "d2712e251fdfe60a4a88649e62f5911c5769db55ee285d55f6db40de37d681f8",
+      "stdout": "68:117: execution error: Terminal Automation Fixture got an error: Enter up to 64 word characters without spaces or control characters. (-1700)\n",
+      "exit_status": 1,
+      "signaled": false,
+      "signal": null,
+      "timed_out": false
+    },
+    {
       "name": "show settings while focused",
       "language": "AppleScript",
       "command": [
@@ -341,10 +359,10 @@
         "-l",
         "JavaScript",
         "-e",
-        "ObjC.import('AppKit');\nconst application = $.NSRunningApplication.runningApplicationWithProcessIdentifier(97537);\nif (application) application.hide;\n"
+        "ObjC.import('AppKit');\nconst application = $.NSRunningApplication.runningApplicationWithProcessIdentifier(4073);\nif (application) application.hide;\n"
       ],
       "timeout_seconds": 4,
-      "script_sha256": "782d3062c9b1e5f53f0372d05e4ad4d6e9f45474be2fa1a599e6da4362b86746",
+      "script_sha256": "2e1dc0bb75daf99c2d515c5eeb37148a9babde92614c50a3a2ae3819ce44038b",
       "stdout": "false\n",
       "exit_status": 0,
       "signaled": false,
@@ -363,7 +381,7 @@
       ],
       "timeout_seconds": 4,
       "script_sha256": "711871e5817aa8b1a1dda9051f6459856a46bcf41f111e8644aaa8c74493ac9e",
-      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\n",
+      "stdout": "no.helgesverre.terminal.pane.FAD1E002-C491-41ED-BD1B-5BE23920BB42\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -381,7 +399,7 @@
       ],
       "timeout_seconds": 4,
       "script_sha256": "9fa7c95f8a1de04af793f70bb05b4b4f692029f7cccd789bec2809723103dd46",
-      "stdout": "AUTOMATION_RECEIPT cd91bc6a737e0e94fb65266623f4fcc947\nb577688893497eb3db0001e920020a\n                              \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+      "stdout": "AUTOMATION_RECEIPT cd91bc6a737e0e94fb65266623f4fcc947b57\n7688893497eb3db0001e920020a\n                           \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -395,11 +413,11 @@
         "-l",
         "AppleScript",
         "-e",
-        "tell application id \"no.helgesverre.terminal.automation-fixture\" to configure preferences font size 15.0 scrollback rows 1000 option sends escape true follows tail on input false starting directory \"/tmp\""
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to configure preferences font size 15.0 scrollback rows 1000 option sends escape true follows tail on input false starting directory \"/tmp\" word characters \"@_/-@\""
       ],
       "timeout_seconds": 4,
-      "script_sha256": "cf80bed605239eeabbcd73dee652061b0d7cc9b1c042507c759af8731a4cbd81",
-      "stdout": "font size 15, scrollback rows 1000, starting directory /tmp\n",
+      "script_sha256": "59674ba3dfdd1355011beab3f58c48da2800b136570c446705b5c5db536c87f2",
+      "stdout": "font size 15, scrollback rows 1000, starting directory /tmp, word characters -/@_\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -417,7 +435,7 @@
       ],
       "timeout_seconds": 4,
       "script_sha256": "29e4b90e5035d9c6e1bf6043a9a378513ca4b5ff0c8a036d998688ae13ca42a0",
-      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\n",
+      "stdout": "no.helgesverre.terminal.pane.FAD1E002-C491-41ED-BD1B-5BE23920BB42\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -431,10 +449,10 @@
         "-l",
         "AppleScript",
         "-e",
-        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.BA957549-4800-477B-B3A0-D1B3868CCEA8\""
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.780162F6-755A-4527-ADD7-FD3645B3291C\""
       ],
       "timeout_seconds": 4,
-      "script_sha256": "11504fd6f31b7be72682e9b92a2cda5f9b481ea0b1141459c6adecf482f97640",
+      "script_sha256": "97c35993a415dd12aba985b23680abd2333039abf16ab72589d77230843381f3",
       "stdout": "true\n",
       "exit_status": 0,
       "signaled": false,
@@ -449,10 +467,10 @@
         "-l",
         "AppleScript",
         "-e",
-        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.DE247733-5DE8-4247-94B3-2729F7E05113\""
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.093672B5-B8A1-4207-8EB0-C6C8C1B452C5\""
       ],
       "timeout_seconds": 4,
-      "script_sha256": "3669ad4f9915199850dfb946a47b9bc73c37225e917291aec5cd9bebc552178e",
+      "script_sha256": "f8d65fc864c3da116b923bb7fc19fb4c355711592818602343f2e8496ec7e4d9",
       "stdout": "true\n",
       "exit_status": 0,
       "signaled": false,
@@ -467,10 +485,10 @@
         "-l",
         "AppleScript",
         "-e",
-        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.BD12CBA8-9254-4CCC-8B47-8F306DBEE408\""
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.B67FEA0F-0B1D-4EFE-B453-736E00219ACA\""
       ],
       "timeout_seconds": 4,
-      "script_sha256": "fee3340204d7e37c6a5995a9b0e499acf0aac935d0d1e2e22aac274b73197b97",
+      "script_sha256": "bded850965a9d884fe9ded0ecf5bcb4c738939e7309751fad79f433915523f4d",
       "stdout": "true\n",
       "exit_status": 0,
       "signaled": false,
@@ -485,10 +503,10 @@
         "-l",
         "AppleScript",
         "-e",
-        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.355DF705-F705-4146-9B7C-11DC7F395F10\""
+        "tell application id \"no.helgesverre.terminal.automation-fixture\" to close pane pane id \"no.helgesverre.terminal.pane.D37C3A97-B20A-4541-AA6E-AA8BDF0A5176\""
       ],
       "timeout_seconds": 4,
-      "script_sha256": "31f5f331ed4f248263d3803f0f56d41c2b96e8eb865324e51d63b5796d762a77",
+      "script_sha256": "815378eabffdcf62fff492a9c5644d41bc11b5ea3ab1bec77b1cff6921e56831",
       "stdout": "true\n",
       "exit_status": 0,
       "signaled": false,
@@ -507,7 +525,7 @@
       ],
       "timeout_seconds": 4,
       "script_sha256": "3b1c76041dfd08f5b6a2f1b252ac47dbeb9004c1db418b0587c5611b7e89064a",
-      "stdout": "no.helgesverre.terminal.pane.3EDA7E00-D9E5-452B-85B3-9BDD2ED98379\n",
+      "stdout": "no.helgesverre.terminal.pane.FAD1E002-C491-41ED-BD1B-5BE23920BB42\n",
       "exit_status": 0,
       "signaled": false,
       "signal": null,
@@ -544,16 +562,16 @@
       "signal": null
     },
     "recorded_child_pids": [
-      97542,
-      97556,
-      97669,
-      97693,
-      97712
+      4080,
+      4098,
+      4096,
+      4123,
+      4138
     ],
     "recorded_children_exited": true,
     "active_fixture_pids_after_cleanup": []
   },
-  "fixture_stdout_stderr": "2026-11-08 10:35:18.375 Terminal[97537:25020680] Session: Process exited (status 1); draining output\n2026-11-08 10:35:18.573 Terminal[97537:25020680] Session: Process exited (status 1); draining output\n",
+  "fixture_stdout_stderr": "2026-11-09 05:47:53.833 Terminal[4073:29537015] Session: Process exited (status 1); draining output\n2026-11-09 05:47:54.020 Terminal[4073:29537015] Session: Process exited (status 1); draining output\n",
   "scenarios": [
     "permission",
     "invalid-target",

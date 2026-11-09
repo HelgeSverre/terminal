@@ -23,8 +23,12 @@ import AppKit
     CellSnapshot(text: text, kind: kind, style: plainStyle, link: link, flags: 0)
   }
 
-  private static func row(_ cells: [CellSnapshot], columns: Int, soft: Bool = false) -> RowSnapshot {
-    RowSnapshot(cells: cells + Array(repeating: cell("", "Empty"), count: max(0, columns - cells.count)), soft_wrapped: soft)
+  private static func row(
+    _ cells: [CellSnapshot], columns: Int, soft: Bool = false, id: UInt64 = 0, revision: UInt64 = 0
+  ) -> RowSnapshot {
+    RowSnapshot(
+      cells: cells + Array(repeating: cell("", "Empty"), count: max(0, columns - cells.count)),
+      soft_wrapped: soft, id: id, revision: revision)
   }
 
   private static func snapshot(_ rows: [RowSnapshot], columns: Int, revision: UInt64 = 1) -> TerminalSnapshot {
@@ -42,6 +46,19 @@ import AppKit
 
   private static func cells(_ text: String, link: String? = nil) -> [CellSnapshot] {
     text.map { cell(String($0), link: link) }
+  }
+
+  private static func projectedSnapshot(
+    _ rows: [RowSnapshot], columns: Int, revision: UInt64 = 1,
+    selection: TerminalSelectionSnapshot = .none
+  ) -> TerminalSnapshot {
+    var value = snapshot(rows, columns: columns, revision: revision)
+    value.selectionPresentation = TerminalSelectionPresentation(
+      snapshotID: revision, documentGeneration: UUID(), screen: .primary,
+      geometryEpoch: value.geometry_epoch, columns: columns,
+      rows: rows.map { .init(id: $0.id, revision: $0.revision, softWrapped: $0.soft_wrapped) })
+    value.selection = selection
+    return value
   }
 
   private static func plainURLCrossesSoftWrapAndKeepsCellMapping() {
@@ -254,6 +271,257 @@ import AppKit
     precondition(!old.accessibilityPerformPress())
   }
 
+  private static func selectionProjectionPreservesClustersAndDisjointCells() {
+    let wide = TerminalSelectionSnapshot(
+      revision: 1, phase: .committed, mode: .linear,
+      segments: [.init(row: 0, start: 1, end: 2)])
+    let wideAndCombining = projectedSnapshot([
+      row([
+        cell("a"), cell("界", "Lead2"), cell("", "Continuation"), cell("e\u{301}"),
+      ], columns: 4, id: 11, revision: 4),
+    ], columns: 4, selection: wide)
+    let projection = AccessibilityProjection(snapshot: wideAndCombining)
+    // A half-wide-cell segment is rounded to the single complete AX grapheme.
+    precondition(projection.selectedRanges() == [NSRange(location: 1, length: 1)])
+    precondition(projection.selectedText() == "界")
+    guard let wideHit = projection.presentedRange(for: [NSRange(location: 1, length: 1)]) else {
+      fatalError("wide AX range did not produce owner hit")
+    }
+    precondition(wideHit.start.row == 0 && wideHit.start.boundary == 1 && wideHit.start.affinity == .before)
+    precondition(wideHit.end.row == 0 && wideHit.end.boundary == 3 && wideHit.end.affinity == .after)
+
+    let combining = TerminalSelectionSnapshot(
+      revision: 2, phase: .committed, mode: .linear,
+      segments: [.init(row: 0, start: 3, end: 4)])
+    let combiningSnapshot = projectedSnapshot([
+      row([
+        cell("a"), cell("界", "Lead2"), cell("", "Continuation"), cell("e\u{301}"),
+      ], columns: 4, id: 11, revision: 4),
+    ], columns: 4, selection: combining)
+    let combiningProjection = AccessibilityProjection(snapshot: combiningSnapshot)
+    precondition(combiningProjection.selectedText() == "e\u{301}")
+    // UTF-16 interior positions cannot split a composed cell into terminal hits.
+    precondition(combiningProjection.presentedRange(for: [NSRange(location: 3, length: 1)]) == nil)
+
+    let rectangles = projectedSnapshot([
+      row(cells("abcd"), columns: 4, id: 21, revision: 3),
+      row(cells("ABCD"), columns: 4, id: 22, revision: 3),
+    ], columns: 4, selection: TerminalSelectionSnapshot(
+      revision: 3, phase: .committed, mode: .rectangular,
+      // Deliberately unsorted: projection normalizes snapshot segment order.
+      segments: [.init(row: 1, start: 3, end: 4), .init(row: 0, start: 3, end: 4),
+                 .init(row: 1, start: 0, end: 1), .init(row: 0, start: 0, end: 1)]))
+    let rectangularProjection = AccessibilityProjection(snapshot: rectangles)
+    let ranges = rectangularProjection.selectedRanges()
+    precondition(ranges == [NSRange(location: 0, length: 1), NSRange(location: 3, length: 1),
+                            NSRange(location: 5, length: 1), NSRange(location: 8, length: 1)])
+    precondition(rectangularProjection.selectedText() == "adAD")
+    precondition(AccessibilityProjection(snapshot: projectedSnapshot([
+      row(cells("abcd"), columns: 4, id: 21, revision: 3),
+    ], columns: 4)).selectedRanges().isEmpty)
+    guard let rectangle = rectangularProjection.presentedRange(
+      for: [NSRange(location: 5, length: 1), NSRange(location: 0, length: 1)]
+    ) else { fatalError("physical AX rectangle did not produce owner hits") }
+    precondition(rectangle.mode == .rectangular && rectangle.start.row == 0 && rectangle.start.boundary == 0)
+    precondition(rectangle.end.row == 1 && rectangle.end.boundary == 1)
+    // Two legitimate but unequal row ranges are not a rectangle and must not
+    // be widened into a selection containing omitted cells.
+    precondition(rectangularProjection.presentedRange(
+      for: [NSRange(location: 0, length: 1), NSRange(location: 6, length: 1)]
+    ) == nil)
+  }
+
+  private static func linearSelectionIncludesPhysicalBreaksAndBlankRows() {
+    func linear(_ segments: [TerminalSelectionSnapshot.Segment]) -> TerminalSelectionSnapshot {
+      TerminalSelectionSnapshot(revision: 8, phase: .committed, mode: .linear, segments: segments)
+    }
+    func selectedText(_ rows: [RowSnapshot], _ segments: [TerminalSelectionSnapshot.Segment]) -> (String?, [NSRange]) {
+      let value = projectedSnapshot(rows, columns: 4, selection: linear(segments))
+      let projection = AccessibilityProjection(snapshot: value)
+      return (projection.selectedText(), projection.selectedRanges())
+    }
+
+    let ordinary = selectedText([
+      row(cells("abcd"), columns: 4, id: 41, revision: 1),
+      row(cells("wxyz"), columns: 4, id: 42, revision: 1),
+    ], [.init(row: 0, start: 1, end: 4), .init(row: 1, start: 0, end: 3)])
+    precondition(ordinary.0 == "bcd\nwxy")
+    precondition(ordinary.1 == [NSRange(location: 1, length: 7)])
+
+    let interior = selectedText([
+      row(cells("abcd"), columns: 4, id: 43, revision: 1),
+      row([], columns: 4, id: 44, revision: 1),
+      row(cells("wxyz"), columns: 4, id: 45, revision: 1),
+    ], [.init(row: 0, start: 2, end: 4), .init(row: 1, start: 0, end: 4),
+        .init(row: 2, start: 0, end: 2)])
+    precondition(interior.0 == "cd\n\nwx")
+    precondition(interior.1 == [NSRange(location: 2, length: 6)])
+
+    let leading = selectedText([
+      row([], columns: 4, id: 46, revision: 1),
+      row(cells("abcd"), columns: 4, id: 47, revision: 1),
+    ], [.init(row: 0, start: 0, end: 4), .init(row: 1, start: 0, end: 2)])
+    precondition(leading.0 == "\nab")
+    precondition(leading.1 == [NSRange(location: 0, length: 3)])
+
+    let trailing = selectedText([
+      row(cells("abcd"), columns: 4, id: 48, revision: 1),
+      row([], columns: 4, id: 49, revision: 1),
+      row([], columns: 4, id: 50, revision: 1),
+    ], [.init(row: 0, start: 2, end: 4), .init(row: 1, start: 0, end: 4),
+        .init(row: 2, start: 0, end: 4)])
+    precondition(trailing.0 == "cd\n\n")
+    precondition(trailing.1 == [NSRange(location: 2, length: 4)])
+
+    let allBlank = selectedText([
+      row([], columns: 4, id: 51, revision: 1),
+      row([], columns: 4, id: 52, revision: 1),
+      row([], columns: 4, id: 53, revision: 1),
+    ], [.init(row: 0, start: 0, end: 4), .init(row: 1, start: 0, end: 4),
+        .init(row: 2, start: 0, end: 4)])
+    precondition(allBlank.0 == "\n\n")
+    precondition(allBlank.1 == [NSRange(location: 0, length: 2)])
+
+    let softWrapped = selectedText([
+      row(cells("abcd"), columns: 4, soft: true, id: 54, revision: 1),
+      row(cells("wxyz"), columns: 4, id: 55, revision: 1),
+    ], [.init(row: 0, start: 1, end: 4), .init(row: 1, start: 0, end: 2)])
+    // AX text is a physical-row projection, so a soft wrap remains a newline
+    // here even though terminal clipboard serialization joins it.
+    precondition(softWrapped.0 == "bcd\nwx")
+    precondition(softWrapped.1 == [NSRange(location: 1, length: 6)])
+
+    let clippedValue = projectedSnapshot([
+      row(cells("abcd"), columns: 4, id: 56, revision: 1),
+      row(cells("wxyz"), columns: 4, id: 57, revision: 1),
+      row(cells("QRST"), columns: 4, id: 58, revision: 1),
+    ], columns: 4, selection: linear([
+      .init(row: 0, start: 1, end: 4), .init(row: 1, start: 0, end: 4),
+      .init(row: 2, start: 0, end: 2),
+    ]))
+    let clipped = AccessibilityProjection(snapshot: clippedValue, limit: 5)
+    precondition(clipped.truncated)
+    // The last selected row is outside the bounded projection. Its visible
+    // prefix still remains a single linear AX range, including row zero's
+    // physical break, rather than degrading to disjoint selected cells.
+    precondition(clipped.selectedText() == "bcd\n")
+    precondition(clipped.selectedRanges() == [NSRange(location: 1, length: 4)])
+
+    let boundaryRows = [
+      row(cells("abcd"), columns: 4, id: 59, revision: 1),
+      row(cells("wxyz"), columns: 4, id: 60, revision: 1),
+    ]
+    let setterSnapshot = projectedSnapshot(boundaryRows, columns: 4)
+    let setterProjection = AccessibilityProjection(snapshot: setterSnapshot)
+    guard let setter = setterProjection.presentedRange(for: [NSRange(location: 0, length: 5)]) else {
+      fatalError("physical first-line AX range did not produce owner hits")
+    }
+    precondition(setter.mode == .linear && setter.start.row == 0 && setter.start.boundary == 0)
+    precondition(setter.end.row == 1 && setter.end.boundary == 0)
+
+    let boundary = AccessibilityProjection(snapshot: projectedSnapshot(
+      boundaryRows, columns: 4, selection: linear([
+        .init(row: 0, start: 0, end: 4), .init(row: 1, start: 0, end: 0),
+      ])))
+    precondition(boundary.selectedText() == "abcd\n")
+    precondition(boundary.selectedRanges() == [NSRange(location: 0, length: 5)])
+
+    let newlineOnly = AccessibilityProjection(snapshot: projectedSnapshot(
+      boundaryRows, columns: 4, selection: linear([
+        .init(row: 0, start: 4, end: 4), .init(row: 1, start: 0, end: 0),
+      ])))
+    precondition(newlineOnly.selectedText() == "\n")
+    precondition(newlineOnly.selectedRanges() == [NSRange(location: 4, length: 1)])
+
+    let emptyFirstRows = [
+      row([], columns: 4, id: 61, revision: 1),
+      row(cells("abcd"), columns: 4, id: 62, revision: 1),
+    ]
+    let emptyFirstSetter = AccessibilityProjection(snapshot: projectedSnapshot(emptyFirstRows, columns: 4))
+    guard let emptyFirst = emptyFirstSetter.presentedRange(for: [NSRange(location: 0, length: 1)]) else {
+      fatalError("empty first-row newline did not produce owner hits")
+    }
+    precondition(emptyFirst.mode == .linear && emptyFirst.start.row == 0 && emptyFirst.start.boundary == 4)
+    precondition(emptyFirst.end.row == 1 && emptyFirst.end.boundary == 0)
+
+    let allBlankRows = [
+      row([], columns: 4, id: 63, revision: 1),
+      row([], columns: 4, id: 64, revision: 1),
+      row([], columns: 4, id: 65, revision: 1),
+    ]
+    let allBlankSetter = AccessibilityProjection(snapshot: projectedSnapshot(allBlankRows, columns: 4))
+    guard let allBlank = allBlankSetter.presentedRange(for: [NSRange(location: 0, length: 2)]) else {
+      fatalError("all-blank physical newlines did not produce owner hits")
+    }
+    precondition(allBlank.mode == .linear && allBlank.start.row == 0 && allBlank.start.boundary == 4)
+    precondition(allBlank.end.row == 2 && allBlank.end.boundary == 0)
+
+    let soleZero = AccessibilityProjection(snapshot: projectedSnapshot(
+      boundaryRows, columns: 4, selection: linear([.init(row: 0, start: 2, end: 2)])))
+    precondition(soleZero.selectedRanges().isEmpty && soleZero.selectedText() == nil)
+    let rectangleZero = AccessibilityProjection(snapshot: projectedSnapshot(
+      boundaryRows, columns: 4, selection: TerminalSelectionSnapshot(
+        revision: 9, phase: .committed, mode: .rectangular,
+        segments: [.init(row: 0, start: 4, end: 4), .init(row: 1, start: 0, end: 0)])))
+    precondition(rectangleZero.selectedRanges().isEmpty && rectangleZero.selectedText() == nil)
+  }
+
+  private static func selectionSetterRejectsClippingAndStalePresentation() {
+    let rows = [row(cells("abcdef"), columns: 6, id: 31, revision: 9)]
+    let current = projectedSnapshot(rows, columns: 6, revision: 7)
+    let clipped = AccessibilityProjection(snapshot: current, limit: 4)
+    precondition(clipped.truncated)
+    precondition(clipped.presentedRange(for: [NSRange(location: 0, length: 3)]) != nil)
+    // Reaching clipped output would let the host silently claim an unseen
+    // terminal endpoint, so only the complete prefix above is accepted.
+    precondition(clipped.presentedRange(for: [NSRange(location: 0, length: 4)]) == nil)
+
+    let visible = AccessibilityProjection(snapshot: current)
+    precondition(visible.presentedRange(for: []) == nil)
+    precondition(visible.presentedRange(for: [NSRange(location: 0, length: 0)]) == nil)
+
+    var independentSelectionRevision = projectedSnapshot(rows, columns: 6, revision: 191)
+    independentSelectionRevision.selectionPresentation = TerminalSelectionPresentation(
+      snapshotID: 4, documentGeneration: UUID(), screen: .primary,
+      geometryEpoch: independentSelectionRevision.geometry_epoch, columns: independentSelectionRevision.cols,
+      rows: rows.map { .init(id: $0.id, revision: $0.revision, softWrapped: $0.soft_wrapped) })
+    precondition(AccessibilityProjection(snapshot: independentSelectionRevision).presentedRange(
+      for: [NSRange(location: 0, length: 1)]) != nil)
+
+    var missingPresentationID = current
+    missingPresentationID.selectionPresentation = TerminalSelectionPresentation(
+      snapshotID: 0, documentGeneration: UUID(), screen: .primary,
+      geometryEpoch: current.geometry_epoch, columns: current.cols,
+      rows: rows.map { .init(id: $0.id, revision: $0.revision, softWrapped: $0.soft_wrapped) })
+    precondition(AccessibilityProjection(snapshot: missingPresentationID).presentedRange(
+      for: [NSRange(location: 0, length: 1)]) == nil)
+
+    var missingIdentity = current
+    missingIdentity.selectionPresentation = nil
+    precondition(AccessibilityProjection(snapshot: missingIdentity).presentedRange(for: [NSRange(location: 0, length: 1)]) == nil)
+
+    var staleID = current
+    staleID.selectionPresentation = TerminalSelectionPresentation(
+      snapshotID: current.revision, documentGeneration: UUID(), screen: .primary,
+      geometryEpoch: current.geometry_epoch, columns: current.cols,
+      rows: [.init(id: 999, revision: 9, softWrapped: false)])
+    precondition(AccessibilityProjection(snapshot: staleID).presentedRange(for: [NSRange(location: 0, length: 1)]) == nil)
+
+    var staleWrap = current
+    staleWrap.selectionPresentation = TerminalSelectionPresentation(
+      snapshotID: current.revision, documentGeneration: UUID(), screen: .primary,
+      geometryEpoch: current.geometry_epoch, columns: current.cols,
+      rows: [.init(id: 31, revision: 9, softWrapped: true)])
+    precondition(AccessibilityProjection(snapshot: staleWrap).presentedRange(for: [NSRange(location: 0, length: 1)]) == nil)
+
+    var staleRevision = current
+    staleRevision.selectionPresentation = TerminalSelectionPresentation(
+      snapshotID: 4, documentGeneration: UUID(), screen: .primary,
+      geometryEpoch: current.geometry_epoch, columns: current.cols,
+      rows: [.init(id: 31, revision: 8, softWrapped: false)])
+    precondition(AccessibilityProjection(snapshot: staleRevision).presentedRange(for: [NSRange(location: 0, length: 1)]) == nil)
+  }
+
   static func main() {
     _ = NSApplication.shared
     plainURLCrossesSoftWrapAndKeepsCellMapping()
@@ -266,6 +534,9 @@ import AppKit
     denseAXMappingsStayIndexed()
     ordinaryGridDiagnostic()
     accessibilityUsesOneLinkAcrossSoftWrapAndRejectsStalePress()
-    print("PASS visible links: plain/OSC8 priority, wraps, UTF-16 cells, AX consistency and stale rejection")
+    selectionProjectionPreservesClustersAndDisjointCells()
+    linearSelectionIncludesPhysicalBreaksAndBlankRows()
+    selectionSetterRejectsClippingAndStalePresentation()
+    print("PASS visible links: projection, AX links, selected UTF-16 ranges and stale setter rejection")
   }
 }

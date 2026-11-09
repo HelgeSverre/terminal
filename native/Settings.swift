@@ -6,6 +6,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   private let familyName = NSTextField(labelWithString: "Obel Mono")
   private let historyRows = NSTextField(string: "")
   private let startingDirectory = NSTextField(string: "")
+  private let wordCharacters = NSTextField(string: "")
   private let option = NSButton(
     checkboxWithTitle: "Option key sends Escape", target: nil, action: nil)
   private let followTail = NSButton(
@@ -16,7 +17,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   init(onApply: @escaping (TerminalPreferences) -> Void) {
     self.onApply = onApply
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 440, height: 520),
+      contentRect: NSRect(x: 0, y: 0, width: 440, height: 560),
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     super.init(window: window)
     window.title = "Settings"
@@ -87,7 +88,15 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     fontSize.onChange = { [weak self] in self?.validate() }
     let sizeRow = row("Size", control: fontSize, unit: "pt")
     stack.addArrangedSubview(sizeRow)
-    stack.setCustomSpacing(24, after: sizeRow)
+    stack.setCustomSpacing(12, after: sizeRow)
+    wordCharacters.widthAnchor.constraint(equalToConstant: 180).isActive = true
+    wordCharacters.setAccessibilityLabel("Extra word characters")
+    wordCharacters.setAccessibilityIdentifier("no.helgesverre.terminal.settings.word-characters")
+    wordCharacters.toolTip = "Additional characters included when selecting words. Blank uses Unicode word boundaries."
+    wordCharacters.delegate = self
+    let wordRow = row("Word characters", control: wordCharacters, unit: "")
+    stack.addArrangedSubview(wordRow)
+    stack.setCustomSpacing(24, after: wordRow)
     section("Scrollback")
     historyRows.widthAnchor.constraint(equalToConstant: 100).isActive = true
     historyRows.alignment = .right
@@ -153,6 +162,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     option.state = prefs.optionSendsEscape ? .on : .off
     followTail.state = prefs.followTailOnInput ? .on : .off
     startingDirectory.stringValue = prefs.startingDirectoryText
+    wordCharacters.stringValue = prefs.selectionWordProfile.punctuation
     validate()
   }
   func present() {
@@ -165,7 +175,8 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     try TerminalPreferences.edited(
       fontSize: fontSize.stringValue, historyRows: historyRows.stringValue,
       optionSendsEscape: option.state == .on, followTailOnInput: followTail.state == .on,
-      startingDirectory: startingDirectory.stringValue)
+      startingDirectory: startingDirectory.stringValue,
+      selectionWordCharacters: wordCharacters.stringValue)
   }
   private func validate() {
     do {

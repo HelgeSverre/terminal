@@ -6,13 +6,15 @@ struct TerminalPreferences {
   let optionSendsEscape: Bool
   let followTailOnInput: Bool
   let startingDirectory: String
+  let selectionWordProfile: TerminalSelectionWordProfile
   enum ValidationError: LocalizedError {
-    case font, history, directory
+    case font, history, directory, wordCharacters
     var errorDescription: String? {
       switch self {
       case .font: return "Enter a font size from 8–40 pt."
       case .history: return "Enter a scrollback limit from 0–50,000 rows."
       case .directory: return "Choose an existing starting directory."
+      case .wordCharacters: return "Enter up to 64 word characters without spaces or control characters."
       }
     }
   }
@@ -49,15 +51,20 @@ struct TerminalPreferences {
     return path.hasPrefix(Self.home + "/") ? "~" + path.dropFirst(Self.home.count) : startingDirectory
   }
   var session: TerminalSessionConfiguration {
-    TerminalSessionConfiguration(historyRows: historyRows, followTailOnInput: followTailOnInput)
+    TerminalSessionConfiguration(historyRows: historyRows, followTailOnInput: followTailOnInput,
+      selectionWordProfile: selectionWordProfile)
   }
   static func edited(fontSize: String, historyRows: String, optionSendsEscape: Bool,
-                     followTailOnInput: Bool, startingDirectory: String) throws -> Self {
+                     followTailOnInput: Bool, startingDirectory: String,
+                     selectionWordCharacters: String) throws -> Self {
     guard let font = Double(fontSize), font.isFinite, (8...40).contains(font) else { throw ValidationError.font }
     guard let rows = Int(historyRows), (0...50_000).contains(rows) else { throw ValidationError.history }
     guard let directory = Self.directory(startingDirectory) else { throw ValidationError.directory }
+    guard let profile = TerminalSelectionWordProfile(punctuation: selectionWordCharacters)
+    else { throw ValidationError.wordCharacters }
     return Self(fontSize: font, historyRows: rows, optionSendsEscape: optionSendsEscape,
-                followTailOnInput: followTailOnInput, startingDirectory: directory)
+                followTailOnInput: followTailOnInput, startingDirectory: directory,
+                selectionWordProfile: profile)
   }
   // Transient launch options never modify saved preferences, nor inspect child argv.
   static func launchInteger(_ name: String, within range: ClosedRange<Int>) -> Int? {
@@ -87,7 +94,9 @@ struct TerminalPreferences {
       optionSendsEscape: defaults.bool(forKey: "optionSendsEscape"),
       followTailOnInput: defaults.object(forKey: "followTailOnInput") == nil
         || defaults.bool(forKey: "followTailOnInput"),
-      startingDirectory: defaults.string(forKey: "startingDirectory") ?? Self.home)
+      startingDirectory: defaults.string(forKey: "startingDirectory") ?? Self.home,
+      selectionWordProfile: defaults.string(forKey: "selectionWordCharacters")
+        .flatMap { TerminalSelectionWordProfile(punctuation: $0) } ?? .standard)
   }
   func save() {
     let d = UserDefaults.standard
@@ -96,14 +105,18 @@ struct TerminalPreferences {
     d.set(optionSendsEscape, forKey: "optionSendsEscape")
     d.set(followTailOnInput, forKey: "followTailOnInput")
     d.set(startingDirectory, forKey: "startingDirectory")
+    d.set(selectionWordProfile.punctuation, forKey: "selectionWordCharacters")
   }
 }
 
 struct TerminalSessionConfiguration {
   let historyRows: Int
   let followTailOnInput: Bool
-  init(historyRows: Int = 50_000, followTailOnInput: Bool = true) {
+  let selectionWordProfile: TerminalSelectionWordProfile
+  init(historyRows: Int = 50_000, followTailOnInput: Bool = true,
+       selectionWordProfile: TerminalSelectionWordProfile = .standard) {
     self.historyRows = min(50_000, max(0, historyRows))
     self.followTailOnInput = followTailOnInput
+    self.selectionWordProfile = selectionWordProfile
   }
 }

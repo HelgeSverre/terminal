@@ -1,0 +1,14 @@
+Command: just visible-links-test
+Receipt source: direct completed focused-test capture; the target did not retain a raw redirected log, so this durable checkpoint copy was written without rerunning.
+Checkpoint source scope: initial multiline linear/newline projection, blank rows, clipping, and zero-width endpoint getter coverage before the later blank-newline setter and independent-ID corrections.
+
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 42 app sources; 34 test groups; 436 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print visible_links) -framework Foundation -framework AppKit -framework CoreText -o target/native/visible-links-tests
+target/native/visible-links-tests
+INFO visible-links max-grid cells=1048576 index-bytes=4194304 candidate-max-utf16=8192 elapsed-ms=285.14
+INFO visible-links non-delimited cells=1048576 elapsed-ms=238.05
+INFO visible-links dense-ax links=4096 build-ms=67.88 query-and-children-ms=20.04
+INFO visible-links ordinary-grid cells=3000 urls=30 elapsed-ms=1.76
+PASS visible links: projection, AX links, selected UTF-16 ranges and stale setter rejection

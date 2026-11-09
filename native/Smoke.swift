@@ -63,6 +63,15 @@ import Darwin
   var startupSnapshots = 0
   var startupPromptSnapshots = 0
   var startupReadySnapshots = 0
+  // Selection now belongs to the terminal owner. Keep the old modifier
+  // regression check, but wait until its immutable publication is visible
+  // before asking the AppKit surface to receive modifier changes.
+  var startupGateReady = false
+  var modifierSelection: NSRange?
+  var modifierSelectionPending = false
+  var modifierSelectionResult: Bool?
+  var finalizing = false
+  var finalAccessibilityRange: NSRange?
   init(window: TerminalWindow, path: String) {
     controller = window
     self.path = path
@@ -83,10 +92,44 @@ import Darwin
     pane.onObservedSnapshot = { [weak self] snapshot in self?.observe(snapshot) }
     pane.session.semanticProbe { _ in }
   }
-  private func modifierKeysPreserveSelection(_ pane: TerminalCanvasView) -> Bool {
-    let selection = pane.accessibilityRange(for: 0)
-    guard selection.location != NSNotFound, selection.length > 0 else { return false }
+  private func beginModifierKeysPreserveSelection(_ pane: TerminalCanvasView) {
+    let visible = pane.accessibilityVisibleCharacterRange()
+    let text = pane.accessibilityString(for: visible).map { $0 as NSString }
+    let firstCharacter = text?.rangeOfCharacter(from: CharacterSet.newlines.inverted).location ?? NSNotFound
+    let selection = firstCharacter == NSNotFound ? NSRange(location: NSNotFound, length: 0)
+      : pane.accessibilityRange(for: firstCharacter)
+    guard selection.location != NSNotFound, selection.length > 0 else {
+      modifierSelectionResult = false
+      advanceStartupAfterModifierCheck()
+      return
+    }
+    modifierSelection = selection
+    modifierSelectionPending = true
+    measurements["modifier_requested_range"] = ["location": selection.location, "length": selection.length]
+    measurements["modifier_requested_text"] = pane.accessibilityString(for: selection) ?? ""
     pane.setAccessibilitySelectedTextRange(selection)
+  }
+  private func observeModifierKeysSelection(_ snapshot: TerminalSnapshot) {
+    guard startupGateReady, modifierSelectionPending, let expected = modifierSelection,
+      snapshot.selection.phase == .committed,
+      !AccessibilityProjection(snapshot: snapshot).selectedRanges().isEmpty,
+      let pane = controller.panes.first
+    else { return }
+    modifierSelectionPending = false
+    measurements["modifier_requested_range"] = ["location": expected.location, "length": expected.length]
+    measurements["modifier_published_ranges"] = AccessibilityProjection(snapshot: snapshot).selectedRanges().map {
+      ["location": $0.location, "length": $0.length]
+    }
+    // Canvas publishes its observation before it updates its AX projection.
+    // Let that presentation turn finish; this is a notification ordering
+    // boundary, not an arbitrary timing delay.
+    DispatchQueue.main.async { [weak self, weak pane] in
+      guard let self, let pane, self.phase == -1 else { return }
+      self.modifierSelectionResult = self.deliverModifierKeysPreserving(expected, to: pane)
+      self.advanceStartupAfterModifierCheck()
+    }
+  }
+  private func deliverModifierKeysPreserving(_ selection: NSRange, to pane: TerminalCanvasView) -> Bool {
     let event = { (flags: NSEvent.ModifierFlags, key: UInt16) in
       NSEvent.keyEvent(
         with: .flagsChanged, location: .zero, modifierFlags: flags,
@@ -103,6 +146,12 @@ import Darwin
       guard pane.accessibilitySelectedTextRange() == selection else { return false }
     }
     return true
+  }
+  private func advanceStartupAfterModifierCheck() {
+    guard phase == -1, startupGateReady, let modifierSelectionResult else { return }
+    checks["modifier_keys_preserve_selection"] = modifierSelectionResult
+    phase = 0
+    runCommand()
   }
   private func runCommand() {
     guard let pane = controller.panes.first else { return }
@@ -134,6 +183,10 @@ import Darwin
     return true
   }
   func observe(_ snapshot: TerminalSnapshot) {
+    if finalizing {
+      observeFinalAccessibilitySelection(snapshot)
+      return
+    }
     if phase == -1 {
       startupSnapshots += 1
       if snapshot.at_prompt { startupPromptSnapshots += 1 }
@@ -141,14 +194,24 @@ import Darwin
       guard snapshot.input_ready == true && snapshot.at_prompt && snapshot.modes.bracketed_paste else {
         return
       }
-      checks["startup_input_ready"] = true
-      measurements["startup_gate_at_prompt"] = snapshot.at_prompt
-      measurements["startup_gate_bracketed_paste"] = snapshot.modes.bracketed_paste
-      if let pane = controller.panes.first {
-        checks["modifier_keys_preserve_selection"] = modifierKeysPreserveSelection(pane)
+      if !startupGateReady {
+        startupGateReady = true
+        checks["startup_input_ready"] = true
+        measurements["startup_gate_at_prompt"] = snapshot.at_prompt
+        measurements["startup_gate_bracketed_paste"] = snapshot.modes.bracketed_paste
+        if let pane = controller.panes.first {
+          // Canvas invokes observers before installing this immutable
+          // projection. AX range conversion must use the next applied view.
+          DispatchQueue.main.async { [weak self, weak pane] in
+            guard let self, let pane, self.phase == -1, self.modifierSelectionResult == nil else { return }
+            self.beginModifierKeysPreserveSelection(pane)
+          }
+        } else {
+          modifierSelectionResult = false
+        }
       }
-      phase = 0
-      runCommand()
+      observeModifierKeysSelection(snapshot)
+      advanceStartupAfterModifierCheck()
       return
     }
     let lines = snapshot.rows.map { $0.cells.map { $0.text }.joined() }
@@ -322,10 +385,6 @@ import Darwin
     } else if phase == 12
       && lines.contains(where: { $0.trimmingCharacters(in: .whitespaces) == "KITTY_SELECTION_READY" })
     {
-      if let pane = controller.panes.first {
-        checks["modifier_keys_preserve_selection"] =
-          checks["modifier_keys_preserve_selection"] == true && modifierKeysPreserveSelection(pane)
-      }
       phase = 13
       if idle {
         controller.closePane(nil)
@@ -469,9 +528,58 @@ import Darwin
       finish(timedOut: false)
     }
   }
+  private func observeFinalAccessibilitySelection(_ snapshot: TerminalSnapshot) {
+    guard let expected = finalAccessibilityRange,
+      AccessibilityProjection(snapshot: snapshot).selectedRanges().contains(expected),
+      let pane = controller.panes.first
+    else { return }
+    finalAccessibilityRange = nil
+    // `onObservedSnapshot` deliberately precedes Canvas's projection update.
+    // Read AX back on the next main turn, after that exact owner snapshot has
+    // become the view's applied projection.
+    DispatchQueue.main.async { [weak self, weak pane] in
+      guard let self, let pane, self.finalizing else { return }
+      self.checkFinalAccessibility(on: pane, expectedSelection: expected)
+      self.completeFinish(timedOut: false)
+    }
+  }
+  private func checkFinalAccessibility(on pane: TerminalCanvasView, expectedSelection: NSRange) {
+    let visible = pane.accessibilityVisibleCharacterRange()
+    let text = pane.accessibilityString(for: visible)
+    let frame = pane.accessibilityFrame(for: expectedSelection)
+    checks["accessibility_text_ranges"] =
+      visible.location == 0 && visible.length == pane.accessibilityNumberOfCharacters()
+      && text?.utf16.count == visible.length
+      && pane.accessibilityLine(for: 0) == 0
+      && pane.accessibilityRange(forLine: 0).location == 0
+      && pane.accessibilitySelectedTextRange() == expectedSelection
+      && pane.accessibilitySelectedText() == pane.accessibilityString(for: expectedSelection)
+      && pane.accessibilityRange(for: NSPoint(x: frame.midX, y: frame.midY)) == expectedSelection
+      && !pane.isAccessibilitySelectorAllowed(NSSelectorFromString("setAccessibilityValue:"))
+      && frame.width > 0 && frame.height > 0
+    measurements["accessibility_utf16_count"] = visible.length
+    measurements["accessibility_first_range_frame"] = NSStringFromRect(frame)
+    if let text {
+      let styled = (text as NSString).rangeOfCharacter(from: CharacterSet.newlines.inverted)
+      if styled.location != NSNotFound, let attributed = pane.accessibilityAttributedString(for: styled) {
+        let attributes = attributed.attributes(at: 0, effectiveRange: nil)
+        let run = pane.accessibilityStyleRange(for: styled.location)
+        checks["accessibility_attributed_text"] = attributed.string == pane.accessibilityString(for: styled)
+          && attributes[.accessibilityFont] is [String: Any]
+          && attributes[.accessibilityForegroundColor].map { CFGetTypeID($0 as CFTypeRef) == CGColor.typeID } == true
+          && attributes[.accessibilityBackgroundColor].map { CFGetTypeID($0 as CFTypeRef) == CGColor.typeID } == true
+          && run.location != NSNotFound && NSLocationInRange(styled.location, run)
+      }
+    }
+  }
   func finish(timedOut: Bool) {
     guard Self.active != nil else { return }
-    Self.active = nil
+    if finalizing {
+      // The outer smoke liveness bound remains authoritative if an owner
+      // request was rejected or never published.
+      if timedOut { completeFinish(timedOut: true) }
+      return
+    }
     checks["completed_without_timeout"] = !timedOut
     // Count output lines, not readline/kernel echo redraws. A duplicate commit
     // executes the semicolon-terminated command twice and must fail this check.
@@ -481,39 +589,22 @@ import Darwin
     measurements["startup_prompt_snapshot_count"] = startupPromptSnapshots
     measurements["startup_input_ready_snapshot_count"] = startupReadySnapshots
     measurements["startup_timeout_phase"] = phase
-    if let pane = controller.panes.first {
-      let visible = pane.accessibilityVisibleCharacterRange()
-      let first = pane.accessibilityRange(for: 0)
-      let text = pane.accessibilityString(for: visible)
-      if first.location != NSNotFound, first.length > 0 {
-        let frame = pane.accessibilityFrame(for: first)
-        pane.setAccessibilitySelectedTextRange(first)
-        checks["accessibility_text_ranges"] =
-          visible.location == 0 && visible.length == pane.accessibilityNumberOfCharacters()
-          && text?.utf16.count == visible.length
-          && pane.accessibilityLine(for: 0) == 0
-          && pane.accessibilityRange(forLine: 0).location == 0
-          && pane.accessibilitySelectedTextRange() == first
-          && pane.accessibilitySelectedText() == pane.accessibilityString(for: first)
-          && pane.accessibilityRange(for: NSPoint(x: frame.midX, y: frame.midY)) == first
-          && !pane.isAccessibilitySelectorAllowed(NSSelectorFromString("setAccessibilityValue:"))
-          && frame.width > 0 && frame.height > 0
-        measurements["accessibility_utf16_count"] = visible.length
-        measurements["accessibility_first_range_frame"] = NSStringFromRect(frame)
-      }
-      if let text {
-        let styled = (text as NSString).rangeOfCharacter(from: CharacterSet.newlines.inverted)
-        if styled.location != NSNotFound, let attributed = pane.accessibilityAttributedString(for: styled) {
-          let attributes = attributed.attributes(at: 0, effectiveRange: nil)
-          let run = pane.accessibilityStyleRange(for: styled.location)
-          checks["accessibility_attributed_text"] = attributed.string == pane.accessibilityString(for: styled)
-            && attributes[.accessibilityFont] is [String: Any]
-            && attributes[.accessibilityForegroundColor].map { CFGetTypeID($0 as CFTypeRef) == CGColor.typeID } == true
-            && attributes[.accessibilityBackgroundColor].map { CFGetTypeID($0 as CFTypeRef) == CGColor.typeID } == true
-            && run.location != NSNotFound && NSLocationInRange(styled.location, run)
-        }
-      }
+    guard !timedOut, let pane = controller.panes.first else {
+      completeFinish(timedOut: timedOut)
+      return
     }
+    let first = pane.accessibilityRange(for: 0)
+    guard first.location != NSNotFound, first.length > 0 else {
+      completeFinish(timedOut: false)
+      return
+    }
+    finalizing = true
+    finalAccessibilityRange = first
+    pane.setAccessibilitySelectedTextRange(first)
+  }
+  private func completeFinish(timedOut: Bool) {
+    guard Self.active != nil else { return }
+    Self.active = nil
     (NSApp.delegate as? AppDelegate)?.settings(nil)
     if let settings = NSApp.windows.first(where: { $0.title == "Settings" && $0.isVisible }) {
       checks["settings_window"] = true

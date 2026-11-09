@@ -23,6 +23,11 @@ struct AccessibilityProjection {
   private let palette: CellPalette
   private let styles: [StyledRange]
   private let characters: NSString
+  private let cachedSelectedRanges: [NSRange]
+  /// Proof captured from the exact snapshot that produced this text. Keeping
+  /// it here prevents a caller from combining one projection with a newer or
+  /// legacy snapshot when submitting an AX setter range.
+  private let selectionPresentation: TerminalSelectionPresentation?
   private let visibleLinks: VisibleLinkProjection
   private struct LinkMapping {
     let occurrence: VisibleLinkProjection.Occurrence
@@ -37,6 +42,7 @@ struct AccessibilityProjection {
   init(snapshot: TerminalSnapshot, limit: Int = 262_144) {
     columns = snapshot.cols
     gridCount = snapshot.cols * snapshot.rows.count
+    selectionPresentation = Self.validSelectionPresentation(in: snapshot)
     palette = CellPalette(snapshot: snapshot)
     let projection = VisibleLinkProjection(snapshot: snapshot)
     visibleLinks = projection
@@ -103,6 +109,9 @@ struct AccessibilityProjection {
     spans = mapping
     truncated = clipped
     styles = styling
+    cachedSelectedRanges = Self.selectedRanges(
+      for: snapshot.selection, columns: snapshot.cols,
+      gridCount: snapshot.cols * snapshot.rows.count, spans: mapping, lines: offsets, length: count)
     linkMappings = projection.occurrences.compactMap { occurrence in
       let item = Self.linkMapping(for: occurrence, spans: mapping)
       return item.ranges.isEmpty ? nil : item
@@ -115,6 +124,230 @@ struct AccessibilityProjection {
   func string(in range: NSRange) -> String? {
     guard valid(range) else { return nil }
     return characters.substring(with: range)
+  }
+
+  /// The UTF-16 ranges corresponding to the concrete selected grid cells.
+  ///
+  /// A rectangular selection can have holes in an AX line.  Keep those holes
+  /// as separate ranges instead of taking their enclosing union: AX selected
+  /// text must never imply that an unselected cell was selected.  The core
+  /// owns capture/validation; this is only the bounded, displayed projection.
+  func selectedRanges() -> [NSRange] {
+    cachedSelectedRanges
+  }
+  private static func selectedRanges(
+    for selection: TerminalSelectionSnapshot, columns: Int, gridCount: Int, spans: [Span], lines: [NSRange],
+    length: Int
+  ) -> [NSRange] {
+    guard selection.phase != .none, columns > 0 else { return [] }
+    let rowCount = gridCount / columns
+    let segments = normalizedSegments(
+      selection.segments, mode: selection.mode, columns: columns, rowCount: rowCount)
+    guard !segments.isEmpty else { return [] }
+
+    // Linear terminal selection is continuous through physical rows. The AX
+    // projection represents those rows with newline spans, including blank
+    // ones, so expose one equally continuous UTF-16 range. Rectangles keep
+    // their individual cells/ranges below and therefore retain their gaps.
+    if selection.mode == .linear, segments.count > 1,
+      segments.enumerated().allSatisfy({ item in
+        item.element.row == segments[0].row + item.offset
+      }),
+      let first = segments.first, let last = segments.last,
+      let start = textOffset(row: first.row, boundary: first.start, start: true,
+                             columns: columns, spans: spans, lines: lines)
+    {
+      let end = last.row < lines.count
+        ? textOffset(row: last.row, boundary: last.end, start: false,
+                     columns: columns, spans: spans, lines: lines)
+        : length
+      guard let end, end >= start else { return [] }
+      return end > start ? [NSRange(location: start, length: end - start)] : []
+    }
+
+    var result: [NSRange] = []
+    for segment in segments {
+      let lower = segment.row * columns + segment.start
+      let upper = segment.row * columns + segment.end
+      var index = Self.firstSpanIndex(endingAfter: lower, spans: spans)
+      while index < spans.count, spans[index].gridStart < upper {
+        let span = spans[index]
+        index += 1
+        // Newline spans bridge grid rows but are not selected terminal cells.
+        // Intersecting a Lead2 span deliberately rounds an invalid half-cell
+        // boundary out to its complete grapheme cluster.
+        guard span.cells > 0, span.gridEnd > lower, span.gridStart < upper else { continue }
+        appendSelectedRange(span.range, to: &result)
+      }
+    }
+    return result
+  }
+
+  private static func normalizedSegments(
+    _ source: [TerminalSelectionSnapshot.Segment], mode: TerminalSelectionMode, columns: Int, rowCount: Int
+  ) -> [TerminalSelectionSnapshot.Segment] {
+    var segments = source.compactMap { segment -> TerminalSelectionSnapshot.Segment? in
+      guard (0..<rowCount).contains(segment.row),
+        (0...columns).contains(segment.start), (0...columns).contains(segment.end),
+        segment.start <= segment.end,
+        mode == .linear || segment.start < segment.end
+      else { return nil }
+      return segment
+    }
+    segments.sort {
+      $0.row != $1.row ? $0.row < $1.row
+        : ($0.start != $1.start ? $0.start < $1.start : $0.end < $1.end)
+    }
+    // A core linear gesture can end (or begin) at the next physical row's
+    // zero boundary. Retain that endpoint so AX preserves the intervening
+    // newline. A lone zero remains empty, and zero rectangle spans remain
+    // excluded above; malformed interior zero spans cannot imply content.
+    for index in segments.indices where segments[index].start == segments[index].end {
+      guard mode == .linear,
+        (index == segments.startIndex || index == segments.index(before: segments.endIndex))
+      else { return [] }
+    }
+    return segments
+  }
+
+  /// Finds the physical AX insertion point for one terminal row boundary.
+  /// Trailing/entirely blank cells have no individual text spans, so their
+  /// corresponding newline span supplies the before-break position.
+  private static func textOffset(
+    row: Int, boundary: Int, start: Bool, columns: Int, spans: [Span], lines: [NSRange]
+  ) -> Int? {
+    guard lines.indices.contains(row), (0...columns).contains(boundary) else { return nil }
+    let line = lines[row]
+    let beforeBreak = NSMaxRange(line) - (row + 1 < lines.count ? 1 : 0)
+    guard boundary < columns else { return beforeBreak }
+    let grid = row * columns + boundary
+    var index = firstSpanIndex(endingAfter: grid, spans: spans)
+    while index < spans.count {
+      let span = spans[index]
+      guard span.row == row else { break }
+      index += 1
+      guard span.gridStart <= grid, grid < span.gridEnd else { continue }
+      guard span.cells > 0 else { return span.range.location }
+      return start || grid == span.gridStart ? span.range.location : NSMaxRange(span.range)
+    }
+    return beforeBreak
+  }
+
+  /// AX's selected-text value is the concatenation of its selected character
+  /// ranges.  In particular, it is not a substring spanning rectangular gaps.
+  func selectedText() -> String? {
+    let ranges = selectedRanges()
+    guard !ranges.isEmpty else { return nil }
+    return ranges.compactMap { string(in: $0) }.joined()
+  }
+
+  /// Converts AX UTF-16 selection ranges into owner-validated terminal
+  /// endpoints. A single range is linear. Several ranges are accepted only
+  /// when they are the rows of one physical rectangle; unsupported disjoint
+  /// shapes are rejected instead of enclosing unselected terminal cells.
+  func presentedRange(
+    for ranges: [NSRange]
+  ) -> (start: TerminalSelectionHit, end: TerminalSelectionHit, mode: TerminalSelectionMode)? {
+    guard !ranges.isEmpty, ranges.allSatisfy({ $0.length > 0 && valid($0) }),
+      selectionPresentation != nil
+    else { return nil }
+
+    let ordered = ranges.sorted {
+      $0.location != $1.location ? $0.location < $1.location : $0.length < $1.length
+    }
+    for index in ordered.indices.dropFirst() {
+      guard NSMaxRange(ordered[index - 1]) < ordered[index].location else { return nil }
+    }
+    // The final UTF-16 boundary of a clipped projection has no proof that it
+    // is the real terminal endpoint. Earlier complete displayed ranges remain
+    // useful, but setters may never claim to reach unseen text.
+    guard !truncated || !ordered.contains(where: { NSMaxRange($0) == length }) else { return nil }
+    let endpoints = ordered.compactMap { range -> (TerminalSelectionHit, TerminalSelectionHit)? in
+      guard let start = hit(atUTF16Boundary: range.location, start: true),
+        let end = hit(atUTF16Boundary: NSMaxRange(range), start: false)
+      else { return nil }
+      return (start, end)
+    }
+    guard endpoints.count == ordered.count, let first = endpoints.first, let last = endpoints.last else { return nil }
+    guard endpoints.count > 1 else { return (first.0, first.1, .linear) }
+
+    // AppKit's multi-range selection represents a physical rectangular block
+    // here: one complete range per successive displayed row, all sharing the
+    // same terminal boundaries. Do not infer a rectangle from arbitrary AX
+    // disjoint ranges, because that would include cells the caller omitted.
+    let startColumn = first.0.boundary
+    let endColumn = first.1.boundary
+    guard startColumn < endColumn,
+      endpoints.enumerated().allSatisfy({ item in
+        let (offset, endpoint) = item
+        return endpoint.0.row == endpoint.1.row
+          && endpoint.0.row == first.0.row + offset
+          && endpoint.0.boundary == startColumn
+          && endpoint.1.boundary == endColumn
+      })
+    else { return nil }
+    return (first.0, last.1, .rectangular)
+  }
+
+  private static func validSelectionPresentation(
+    in snapshot: TerminalSnapshot
+  ) -> TerminalSelectionPresentation? {
+    guard let presentation = snapshot.selectionPresentation,
+      presentation.snapshotID != 0,
+      presentation.geometryEpoch == snapshot.geometry_epoch,
+      presentation.columns == snapshot.cols,
+      presentation.rows.count == snapshot.rows.count,
+      presentation.screen == (snapshot.alternate ? .alternate : .primary),
+      zip(snapshot.rows, presentation.rows).allSatisfy({ row, proof in
+        row.id != 0 && row.id == proof.id && row.revision == proof.revision
+          && row.soft_wrapped == proof.softWrapped
+      })
+    else { return nil }
+    return presentation
+  }
+
+  private static func appendSelectedRange(_ next: NSRange, to ranges: inout [NSRange]) {
+    guard next.length > 0 else { return }
+    if let last = ranges.last, next.location <= NSMaxRange(last) {
+      ranges[ranges.count - 1].length = max(NSMaxRange(last), NSMaxRange(next)) - last.location
+    } else {
+      ranges.append(next)
+    }
+  }
+
+  private func hit(
+    atUTF16Boundary offset: Int, start: Bool
+  ) -> TerminalSelectionHit? {
+    guard (0...length).contains(offset) else { return nil }
+    let firstAfter = Self.firstSpanIndex(endingAfterText: offset, spans: spans)
+    let previous = firstAfter > 0 ? spans[firstAfter - 1] : nil
+    let next = firstAfter < spans.count ? spans[firstAfter] : nil
+
+    // A boundary inside a composed scalar or wide-cell span cannot be
+    // represented as a terminal cell boundary.
+    if let next, next.range.location < offset, offset < NSMaxRange(next.range) { return nil }
+
+    let chosen: (Span, Int, TerminalSelectionAffinity)?
+    if start, let next, next.cells == 0, next.range.location == offset {
+      // Physical AX newlines have no terminal cell. Their leading UTF-16
+      // boundary is the preceding row's terminal boundary, including a
+      // completely blank row whose only projected character is this newline.
+      chosen = (next, columns, .after)
+    } else if !start, let previous, previous.cells == 0, NSMaxRange(previous.range) == offset {
+      // The newline's trailing boundary is the next physical row at column
+      // zero. This remains valid even when that next row is blank.
+      return selectionPresentation?.hit(row: previous.row + 1, boundary: 0, affinity: .before)
+    } else if start, let next, next.cells > 0, next.range.location == offset {
+      chosen = (next, next.column, .before)
+    } else if let previous, previous.cells > 0, NSMaxRange(previous.range) == offset {
+      chosen = (previous, previous.column + previous.cells, .after)
+    } else if let next, next.cells > 0, next.range.location == offset {
+      chosen = (next, next.column, .before)
+    } else {
+      chosen = nil
+    }
+    guard let (span, boundary, affinity) = chosen else { return nil }
+    return selectionPresentation?.hit(row: span.row, boundary: boundary, affinity: affinity)
   }
   /// First run whose end follows the index. The end index is a valid result
   /// for empty projections and queries at the end of the text.
@@ -310,6 +543,19 @@ struct AccessibilityProjection {
     while lower < upper {
       let middle = lower + (upper - lower) / 2
       if spans[middle].gridEnd <= grid {
+        lower = middle + 1
+      } else {
+        upper = middle
+      }
+    }
+    return lower
+  }
+  private static func firstSpanIndex(endingAfterText offset: Int, spans: [Span]) -> Int {
+    var lower = 0
+    var upper = spans.count
+    while lower < upper {
+      let middle = lower + (upper - lower) / 2
+      if NSMaxRange(spans[middle].range) <= offset {
         lower = middle + 1
       } else {
         upper = middle

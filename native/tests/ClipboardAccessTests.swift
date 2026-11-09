@@ -28,6 +28,10 @@ import Foundation
       "cancel_dismisses_active", "late_decision_cannot_write", "next_queued_completes",
       "pty_write_reaches_private_pasteboard", "eof_cancels_pending_write",
       "late_close_handler_delivered_once", "read_query_denied_without_host_request",
+      "user_copy_empty_string", "user_copy_stale_completion_rejected", "user_copy_newer_request_wins", "user_copy_external_change_wins",
+      "user_copy_capture_survives_later_pty_mutation", "user_copy_closed_session_cannot_write",
+      "newer_user_copy_beats_stale_osc52", "later_osc52_allow_beats_user_copy",
+      "rejected_copy_preserves_allowed_osc52",
       "all_owned_children_reaped",
     ].map { ($0, false) })
     var ownedSessions: [Session] = []
@@ -51,6 +55,44 @@ import Foundation
       LaunchSpec(
         executable: "/bin/sh", arguments: ["/bin/sh", "-c", script], cwd: "/tmp",
         launcher: root + "/dist/Terminal.app/Contents/MacOS/TerminalLauncher")
+    }
+    func text(_ snapshot: TerminalSnapshot) -> String {
+      snapshot.rows.flatMap(\.cells).map(\.text).joined()
+    }
+    func selectedSession(
+      _ value: String, display: String? = nil, selection: Range<Int>? = nil,
+      trailingOutput: String? = nil
+    ) -> (Session, UInt64)? {
+      let displayed = display ?? value
+      let selectedRange = selection ?? 0..<value.count
+      let suffix = trailingOutput.map { "; sleep 0.15; printf '\($0)'" } ?? ""
+      let session = own(Session(launch: spec("sleep 0.05; printf '\(displayed)'\(suffix); sleep 1")))
+      var latest: TerminalSnapshot?
+      session.onSnapshot = { latest = $0 }
+      drain(until: { latest.map(text)?.contains(displayed) == true })
+      guard let shown = latest, let presentation = shown.selectionPresentation,
+        let start = presentation.hit(row: 0, boundary: selectedRange.lowerBound),
+        let end = presentation.hit(row: 0, boundary: selectedRange.upperBound)
+      else {
+        expect(false, "missing presentation for copy fixture \(value)")
+        return nil
+      }
+      var selectionResult: Result<String?, TerminalSelectionFailure>?
+      guard session.selection(.range(start: start, end: end, mode: .linear), completion: { selectionResult = $0 }) else {
+        expect(false, "selection admission failed for copy fixture \(value)")
+        return nil
+      }
+      drain(until: {
+        guard let latest else { return false }
+        return selectionResult != nil && latest.selection.phase == .committed
+      })
+      guard let selectionResult, case .success = selectionResult,
+        let revision = latest?.selection.revision, revision > 0
+      else {
+        expect(false, "selection failed for copy fixture \(value): \(String(describing: selectionResult))")
+        return nil
+      }
+      return (session, revision)
     }
 
     let pasteboard = NSPasteboard(name: NSPasteboard.Name("terminal-clipboard-test-\(runID)"))
@@ -200,6 +242,118 @@ import Foundation
     checks["read_query_denied_without_host_request"] = readDenied && !queryRequestedHostClipboard
     reader.close()
 
+    let copyPasteboard = NSPasteboard(name: NSPasteboard.Name("terminal-clipboard-copy-\(runID)"))
+    let copyAccess = ClipboardAccess(pasteboard: copyPasteboard)
+    if let (empty, revision) = selectedSession("", display: "x", selection: 1..<2) {
+      copyPasteboard.clearContents()
+      let beforeEmptyCopy = Data("before empty copy".utf8)
+      expect(copyPasteboard.setData(beforeEmptyCopy, forType: .string), "could not seed empty-copy pasteboard")
+      let changeCount = copyPasteboard.changeCount
+      copyAccess.copy(from: empty, selectionRevision: revision)
+      // Cocoa omits a zero-length string from `string(forType:)`; a changed
+      // private pasteboard generation proves this successful empty selection
+      // was copied rather than treated as a non-copy (`nil`).
+      drain(until: {
+        copyPasteboard.changeCount != changeCount
+          && copyPasteboard.data(forType: .string) != beforeEmptyCopy
+      })
+      checks["user_copy_empty_string"] = copyPasteboard.changeCount != changeCount
+        && copyPasteboard.data(forType: .string) != beforeEmptyCopy
+    }
+    if let (first, firstRevision) = selectedSession("first pane"),
+      let (second, secondRevision) = selectedSession("second pane")
+    {
+      copyPasteboard.clearContents()
+      copyAccess.copy(from: first, selectionRevision: firstRevision)
+      copyAccess.copy(from: second, selectionRevision: secondRevision)
+      drain(until: { copyPasteboard.data(forType: .string) == Data("second pane".utf8) })
+      let newestWon = copyPasteboard.data(forType: .string) == Data("second pane".utf8)
+      checks["user_copy_stale_completion_rejected"] = newestWon
+      checks["user_copy_newer_request_wins"] = newestWon
+    }
+    if let (external, revision) = selectedSession("external source") {
+      copyPasteboard.clearContents()
+      copyAccess.copy(from: external, selectionRevision: revision)
+      copyPasteboard.clearContents()
+      _ = copyPasteboard.setData(Data("outside owner".utf8), forType: .string)
+      RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+      checks["user_copy_external_change_wins"] = copyPasteboard.data(forType: .string) == Data("outside owner".utf8)
+    }
+    if let (captured, revision) = selectedSession("captured text", trailingOutput: "CHANGED") {
+      copyPasteboard.clearContents()
+      copyAccess.copy(from: captured, selectionRevision: revision)
+      drain(until: { copyPasteboard.data(forType: .string) == Data("captured text".utf8) })
+      var mutatedAfterCopy = false
+      captured.onSnapshot = { mutatedAfterCopy = text($0).contains("CHANGED") }
+      drain(until: { mutatedAfterCopy }, timeout: 0.5)
+      checks["user_copy_capture_survives_later_pty_mutation"] =
+        mutatedAfterCopy && copyPasteboard.data(forType: .string) == Data("captured text".utf8)
+    }
+    if let (closedCopy, revision) = selectedSession("closed source") {
+      copyPasteboard.clearContents()
+      _ = copyPasteboard.setData(Data("before close".utf8), forType: .string)
+      closedCopy.close()
+      copyAccess.copy(from: closedCopy, selectionRevision: revision)
+      RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+      checks["user_copy_closed_session_cannot_write"] =
+        copyPasteboard.data(forType: .string) == Data("before close".utf8)
+    }
+    let orderingPasteboard = NSPasteboard(name: NSPasteboard.Name("terminal-clipboard-ordering-\(runID)"))
+    var orderingDecisions: [(ClipboardAccessDecision) -> Void] = []
+    let orderingAccess = ClipboardAccess(pasteboard: orderingPasteboard, decide: { _, _, completion in
+      orderingDecisions.append(completion)
+      return nil
+    })
+    if let (copySource, revision) = selectedSession("user ordering") {
+      var delayedOSC52Completion: ((Bool) -> Void)?
+      let delayedOSC52 = ClipboardWriteRequest(
+        sessionID: UUID(), data: Data("stale osc52".utf8), live: { true },
+        completion: { allowed, completion in
+          if allowed { delayedOSC52Completion = completion }
+          else { completion(false) }
+        })
+      orderingAccess.request(delayedOSC52, from: nil)
+      orderingDecisions.removeFirst()(.allow)
+      orderingAccess.copy(from: copySource, selectionRevision: revision)
+      delayedOSC52Completion?(true)
+      drain(until: { orderingPasteboard.data(forType: .string) == Data("user ordering".utf8) })
+      checks["newer_user_copy_beats_stale_osc52"] =
+        orderingPasteboard.data(forType: .string) == Data("user ordering".utf8)
+
+      orderingAccess.copy(from: copySource, selectionRevision: revision)
+      let laterOSC52 = Fixture()
+      orderingAccess.request(laterOSC52.request(data: Data("later osc52".utf8)), from: nil)
+      if orderingDecisions.isEmpty {
+        expect(false, "missing later OSC 52 decision")
+      } else {
+        orderingDecisions.removeFirst()(.allow)
+        drain(until: { orderingPasteboard.data(forType: .string) == Data("later osc52".utf8) })
+        checks["later_osc52_allow_beats_user_copy"] =
+          orderingPasteboard.data(forType: .string) == Data("later osc52".utf8)
+      }
+    }
+    if let (rejectedCopy, revision) = selectedSession("rejected copy") {
+      var delayedAllowedCompletion: ((Bool) -> Void)?
+      let delayedAllowed = ClipboardWriteRequest(
+        sessionID: UUID(), data: Data("allowed after rejection".utf8), live: { true },
+        completion: { allowed, completion in
+          if allowed { delayedAllowedCompletion = completion }
+          else { completion(false) }
+        })
+      orderingAccess.request(delayedAllowed, from: nil)
+      if orderingDecisions.isEmpty {
+        expect(false, "missing delayed allowed OSC 52 decision")
+      } else {
+        orderingDecisions.removeFirst()(.allow)
+        rejectedCopy.close()
+        orderingAccess.copy(from: rejectedCopy, selectionRevision: revision)
+        delayedAllowedCompletion?(true)
+        drain(until: { orderingPasteboard.data(forType: .string) == Data("allowed after rejection".utf8) })
+        checks["rejected_copy_preserves_allowed_osc52"] =
+          orderingPasteboard.data(forType: .string) == Data("allowed after rejection".utf8)
+      }
+    }
+
     ownedSessions.forEach { $0.close() }
     var unreaped = Set(ownedSessions.indices)
     let cleanupDeadline = Date().addingTimeInterval(3)
@@ -230,6 +384,6 @@ import Foundation
       FileHandle.standardError.write(Data("FAIL ClipboardAccessTests [\(runID)]: could not write report: \(error)\n".utf8))
     }
     if !passed || reportWriteFailed { exit(1) }
-    print("PASS clipboard: one-shot, queued/cancelled decisions, EOF/late close, and private PTY OSC 52")
+    print("PASS clipboard: one-shot OSC 52 policy, ordered explicit copies, EOF/late close, and private PTY fixtures")
   }
 }

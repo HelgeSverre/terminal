@@ -83,6 +83,10 @@ private final class TerminalEmulator {
   private(set) var columns: Int
   private(set) var rowCount: Int
   private var document: TerminalDocument
+  private let selection = TerminalSelection()
+  private var selectionDocumentGeneration = UUID()
+  private var selectionSnapshotID: UInt64 = 0
+  private var pendingSelectionRevision: UInt64?
   private struct PendingResize {
     let geometry: TerminalResizeGeometry
     var revision: UInt64
@@ -303,6 +307,7 @@ private final class TerminalEmulator {
       // The watchdog publishes the same committed document. Keep a clean
       // resize generation current without concealing any earlier mutation.
       if pendingResize?.revision == previousRevision { pendingResize?.revision = revision }
+      if pendingSelectionRevision == previousRevision { pendingSelectionRevision = revision }
     }
   }
   private func repeatLastPrinted() {
@@ -492,6 +497,7 @@ private final class TerminalEmulator {
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
   private func reset() {
+    selectionDocumentGeneration = UUID(); selection.reset(); pendingSelectionRevision = nil
     graphics.clear()
     document = TerminalDocument(columns: columns, rows: rowCount)
     advanceSearchGeneration()
@@ -985,12 +991,51 @@ private final class TerminalEmulator {
     pendingClipboardRequests.insert(requestID)
     clipboardRequests.append((requestID, data))
   }
+  private var selectionScreen: TerminalSelectionScreen { usingAlternate ? .alternate : .primary }
+  private func validatedSelection() {
+    if selection.hasPendingWork {
+      if pendingSelectionRevision != revision { selection.cancel(in: &document, preservePrevious: false); pendingSelectionRevision = nil }
+      else { return }
+    }
+    if selection.hasSelection { selection.validate(in: document, lookup: TerminalSelectionLookup(document)) }
+  }
+  private func selectionFailure(_ reason: TerminalSelectionFailure) -> TerminalSelectionProgress {
+    selection.report(reason); selectionViewChanged()
+    return .rejected(reason)
+  }
+  private func selectionViewChanged() {
+    let previous = revision
+    revision &+= 1
+    if pendingResize?.revision == previous { pendingResize?.revision = revision }
+    if pendingSelectionRevision == previous { pendingSelectionRevision = revision }
+  }
+  func beginSelection(_ action: TerminalSelectionAction) -> TerminalSelectionProgress {
+    guard pendingResize == nil else { return selectionFailure(.busy) }
+    if let error = selection.begin(action, in: &document, screen: selectionScreen,
+      documentGeneration: selectionDocumentGeneration, geometryEpoch: geometryEpoch, snapshotID: selectionSnapshotID) {
+      return selectionFailure(error)
+    }
+    if selection.hasPendingWork { pendingSelectionRevision = revision; return .pending }
+    selectionViewChanged()
+    return .completed(copiedText: nil)
+  }
+  func advanceSelection() -> TerminalSelectionProgress {
+    guard let expected = pendingSelectionRevision else { return selectionFailure(.noSelection) }
+    guard expected == revision else { selection.cancel(in: &document, preservePrevious: false); pendingSelectionRevision = nil; return selectionFailure(.staleTarget) }
+    guard let result = selection.advance(in: &document) else { return .pending }
+    pendingSelectionRevision = nil
+    switch result {
+    case .failure(let error): return selectionFailure(error)
+    case .success(let text): selectionViewChanged(); return .completed(copiedText: text)
+    }
+  }
+  func cancelSelection() { selection.cancel(in: &document, preservePrevious: pendingSelectionRevision == revision); pendingSelectionRevision = nil }
   private var resizeGeometry: TerminalResizeGeometry {
     TerminalResizeGeometry(columns: columns, rows: rowCount, cellWidth: cellPixelWidth, cellHeight: cellPixelHeight)
   }
   func beginResize(_ geometry: TerminalResizeGeometry) -> TerminalResizeProgress {
     guard geometry.isValid else { return .rejected(.invalidGeometry, retained: resizeGeometry) }
-    guard pendingResize == nil else { return .rejected(.resizeInProgress, retained: resizeGeometry) }
+    guard pendingResize == nil, !selection.hasPendingWork else { return .rejected(.resizeInProgress, retained: resizeGeometry) }
     if geometry.columns == columns && geometry.rows == rowCount {
       cellPixelWidth = geometry.cellWidth; cellPixelHeight = geometry.cellHeight
       return .committed(resizeGeometry)
@@ -1000,10 +1045,12 @@ private final class TerminalEmulator {
     return .pending
   }
   private func makeResizeTransaction(_ geometry: TerminalResizeGeometry) -> DocumentReflowTransaction {
+    validatedSelection()
     let promptStyle = !usingAlternate && geometry.columns != columns && primary.atPrompt && primary.promptRedraw
       ? eraseStyle() : nil
     return DocumentReflowTransaction(source: document, geometry: geometry,
-      anchor: viewAnchor, promptEraseStyle: promptStyle, historyRows: historyLimit, historyBytes: historyByteLimit)
+      anchor: viewAnchor, promptEraseStyle: promptStyle, historyRows: historyLimit, historyBytes: historyByteLimit,
+      primarySelection: selection.reflowInput(.primary), alternateSelection: selection.reflowInput(.alternate))
   }
   func advanceResize() -> TerminalResizeProgress {
     guard var pending = pendingResize else { return .rejected(.noOperation, retained: resizeGeometry) }
@@ -1061,6 +1108,8 @@ private final class TerminalEmulator {
     resolveViewportAnchor(clamp: true)
     graphics.pruneAnchors(retaining: replacement.retainedRowIDs)
     changed(geometry: true)
+    selection.applyReflow(replacement.selection, document: document,
+      documentGeneration: selectionDocumentGeneration, geometryEpoch: geometryEpoch, snapshotID: selectionSnapshotID)
     pending.transaction.retire()
     pendingResize = nil
     return .committed(resizeGeometry)
@@ -1232,6 +1281,8 @@ private final class TerminalEmulator {
   func snapshotValue(scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
     tick(now)
     guard !publicationGated else { return (nil, nil) }
+    selectionSnapshotID &+= 1
+    validatedSelection()
     let selected = selectSnapshot(scroll: scroll)
     let cursor = screen
     if let error = TerminalSnapshot.geometryError(columns: columns, rows: selected.rows.count) {
@@ -1264,7 +1315,7 @@ private final class TerminalEmulator {
         cells.append(CellSnapshot(text: cell.text, kind: kinds[Int(cell.kind)], style: style,
                                   link: cell.link, flags: Int(cell.flags)))
       }
-      rows.append(RowSnapshot(cells: cells, soft_wrapped: row.softWrapped))
+      rows.append(RowSnapshot(cells: cells, soft_wrapped: row.softWrapped, id: row.id, revision: row.revision))
     }
     let search = visibleSearchHighlights(in: selected.rows).map {
       SearchHighlight(row: $0["row"]!, start: $0["start"]!, end: $0["end"]!)
@@ -1286,7 +1337,11 @@ private final class TerminalEmulator {
                            focus: focusReporting, mouse: mouseMode, sgr_mouse: sgrMouse,
                            reverse_video: reverseVideo, newline: newlineMode),
       alternate: usingAlternate, title: title, cwd: currentDirectory, history_rows: history.count,
-      palette: colors, default_fg: foreground, default_bg: background), nil)
+      palette: colors, default_fg: foreground, default_bg: background,
+      selectionPresentation: TerminalSelectionPresentation(snapshotID: selectionSnapshotID,
+        documentGeneration: selectionDocumentGeneration, screen: selectionScreen, geometryEpoch: geometryEpoch,
+        columns: columns, rows: selected.rows.map { .init(id: $0.id, revision: $0.revision, softWrapped: $0.softWrapped) }),
+      selection: selection.snapshot(screen: selectionScreen, rows: selected.rows)), nil)
   }
   func isValid() -> Bool {
     document.hasValidInvariants(primary) && document.hasValidInvariants(alternate) &&
@@ -1468,9 +1523,10 @@ private final class TerminalEmulator {
     guard !publicationGated else { return false }
     guard let callback else { return false }
     let selected = selectSnapshot(scroll: scroll)
-    let metadataObject = snapshotMetadata(cursor: screen, offset: selected.offset,
+    var metadataObject = snapshotMetadata(cursor: screen, offset: selected.offset,
                                           followingTail: selected.followingTail,
                                           search: visibleSearchHighlights(in: selected.rows))
+    metadataObject["row_identities"] = selected.rows.map { ["id": $0.id, "revision": $0.revision] }
     #if SNAPSHOT_ABI_DIAGNOSTICS
     SnapshotABIDiagnostics.jsonPublications += 1
     #endif
@@ -1540,6 +1596,13 @@ private func core(_ pointer: OpaquePointer?) -> TerminalEmulator? { pointer.map 
 // row/cell storage. The returned value survives later mutation and destruction.
 func swiftTerminalSnapshot(_ pointer: OpaquePointer?, scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
   core(pointer)?.snapshotValue(scroll: scroll, now: now) ?? (nil, nil)
+}
+enum TerminalSelectionBridge {
+  static func begin(core pointer: OpaquePointer, action: TerminalSelectionAction) -> TerminalSelectionProgress {
+    core(pointer)!.beginSelection(action)
+  }
+  static func advance(core pointer: OpaquePointer) -> TerminalSelectionProgress { core(pointer)!.advanceSelection() }
+  static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelSelection() }
 }
 enum TerminalResizeBridge {
   static func begin(core pointer: OpaquePointer, columns: Int, rows: Int,

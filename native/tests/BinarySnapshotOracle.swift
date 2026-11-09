@@ -5,6 +5,8 @@ import Foundation
 // metadata uses JSON. All views are copied on the owner before the callback returns.
 enum BinarySnapshotOracle {
   private struct Header: Decodable {
+    struct RowIdentity: Decodable { let id: UInt64; let revision: UInt64 }
+    let row_identities: [RowIdentity]?
     let at_prompt: Bool
     let input_ready: Bool?
     let search: [SearchHighlight]
@@ -98,6 +100,10 @@ enum BinarySnapshotOracle {
           return
         }
         let kinds = ["Empty", "Lead1", "Lead2", "Continuation", "WrapSpacer"]
+        guard header.row_identities == nil || header.row_identities?.count == rowCount else {
+          capture.error = "Invalid snapshot row identities"
+          return
+        }
         var rows: [RowSnapshot] = []
         rows.reserveCapacity(rowCount)
         for row in 0..<rowCount {
@@ -127,7 +133,8 @@ enum BinarySnapshotOracle {
                 text: text, kind: kinds[Int(cell.kind)], style: style, link: link,
                 flags: Int(cell.cell_flags)))
           }
-          rows.append(RowSnapshot(cells: output, soft_wrapped: wraps[row] != 0))
+          rows.append(RowSnapshot(cells: output, soft_wrapped: wraps[row] != 0,
+            id: header.row_identities?[row].id ?? 0, revision: header.row_identities?[row].revision ?? 0))
         }
         capture.snapshot = TerminalSnapshot(
           at_prompt: header.at_prompt,

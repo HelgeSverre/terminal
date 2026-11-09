@@ -93,6 +93,32 @@ struct TerminalKeyEvent {
 }
 // The PTY and Rust handle are confined to this queue. Main receives immutable decoded values.
 final class Session: @unchecked Sendable {
+  typealias SelectionCompletion = @MainActor (Result<String?, TerminalSelectionFailure>) -> Void
+  private final class SelectionDelivery {
+    let completion: SelectionCompletion
+    let cost: Int
+    let retainsCopyResult: Bool
+    private let lock = NSLock()
+    private var result: Result<String?, TerminalSelectionFailure>
+    private var delivering = false
+    init(completion: @escaping SelectionCompletion, cost: Int, retainsCopyResult: Bool,
+         result: Result<String?, TerminalSelectionFailure>) {
+      self.completion = completion; self.cost = cost; self.retainsCopyResult = retainsCopyResult
+      self.result = result
+    }
+    func cancel() {
+      lock.lock()
+      if !delivering { result = .failure(.cancelled) }
+      lock.unlock()
+    }
+    func takeForDelivery() -> Result<String?, TerminalSelectionFailure> {
+      lock.lock()
+      delivering = true
+      let resolved = result
+      lock.unlock()
+      return resolved
+    }
+  }
   private struct StreamStatistics {
     var readCallbacks = 0, readCalls = 0, outputEvents = 0, pumpSchedules = 0, pumpTurns = 0, feedCalls = 0, queueHighWater = 0, suspends = 0, resumes = 0, publishCalls = 0
     var feedBytes: UInt64 = 0, readNanoseconds: UInt64 = 0, feedNanoseconds: UInt64 = 0, snapshotNanoseconds: UInt64 = 0, pumpNanoseconds: UInt64 = 0
@@ -108,6 +134,10 @@ final class Session: @unchecked Sendable {
     case raw(Data, Int)
     case shortcut(Data, Int)
     case resize(Int, Int, Int, Int, Bool)
+    // A selection operation remains at the FIFO head until the core's bounded
+    // builder resolves it. `began` prevents a resumed owner turn from
+    // reinterpreting a hit against a newer document.
+    case selection(TerminalSelectionAction, SelectionCompletion?, Int, Bool, Bool)
     case configure(TerminalSessionConfiguration)
     case scroll(Int)
     case find(String, @MainActor (HistorySearchOutcome) -> Void)
@@ -151,12 +181,18 @@ final class Session: @unchecked Sendable {
   private var cellHeightPx = 16
   private var resizePending = false
   private var queuedResizeCount = 0
+  private var selectionPending = false
   private var configuration = TerminalSessionConfiguration()
   private var imageCache: [ImageKey: ImagePixels] = [:]
   private var publishScheduled = false
   private var streamStatistics: StreamStatistics?
   private let admission = NSLock()
   private var admittedBytes = 0
+  // A copied String can be 16 MiB. One result may wait for the main actor;
+  // further copy requests receive bounded backpressure instead of retaining
+  // an unbounded set of immutable completion payloads.
+  private var outstandingSelectionCopyCompletions = 0
+  private var selectionDeliveries: [SelectionDelivery] = []
   private var accepting = true
   private let publication = NSLock()
   private var latest: TerminalSnapshot?
@@ -279,6 +315,39 @@ final class Session: @unchecked Sendable {
     case accepted, busy, closed
     var message: String { self == .busy ? "Input busy" : "Input closed" }
   }
+  private static let selectionBaseCost = 256
+  private static let selectionPresentationCost = 128
+  private static let selectionProofRowCost = MemoryLayout<TerminalSelectionPresentation.Row>.stride
+  private static func selectionCost(_ action: TerminalSelectionAction) -> Int? {
+    func hitCost(_ hit: TerminalSelectionHit) -> Int? {
+      let (proofBytes, proofOverflow) = hit.presentation.rows.count.multipliedReportingOverflow(
+        by: selectionProofRowCost)
+      guard !proofOverflow else { return nil }
+      let (presentationBytes, presentationOverflow) = proofBytes.addingReportingOverflow(
+        selectionPresentationCost)
+      return presentationOverflow ? nil : presentationBytes
+    }
+    let hits: [TerminalSelectionHit]
+    switch action {
+    case .begin(let hit, _), .extend(let hit): hits = [hit]
+    case .range(let start, let end, _): hits = [start, end]
+    case .commit, .clear, .copy, .wordProfile: hits = []
+    }
+    var cost = selectionBaseCost
+    for hit in hits {
+      guard let costForHit = hitCost(hit) else { return nil }
+      let (next, overflow) = cost.addingReportingOverflow(costForHit)
+      guard !overflow else { return nil }
+      cost = next
+    }
+    return cost
+  }
+  private static func selectionIsControl(_ action: TerminalSelectionAction) -> Bool {
+    if case .clear = action { return true }
+    if case .commit = action { return true }
+    if case .wordProfile = action { return true }
+    return false
+  }
   private func reserve(_ cost: Int, control: Bool = false) -> Admission {
     admission.lock()
     defer { admission.unlock() }
@@ -288,6 +357,17 @@ final class Session: @unchecked Sendable {
     admittedBytes += cost
     return .accepted
   }
+  private func reserveSelection(_ cost: Int, control: Bool, retainsCopyResult: Bool) -> Admission {
+    admission.lock()
+    defer { admission.unlock() }
+    let limit = 2 * 1024 * 1024 - (control ? 0 : 65_536)
+    guard accepting else { return .closed }
+    guard !retainsCopyResult || outstandingSelectionCopyCompletions == 0 else { return .busy }
+    guard cost <= limit, admittedBytes + cost <= limit else { return .busy }
+    admittedBytes += cost
+    if retainsCopyResult { outstandingSelectionCopyCompletions += 1 }
+    return .accepted
+  }
   private func release(_ cost: Int) {
     admission.lock()
     admittedBytes -= cost
@@ -295,6 +375,40 @@ final class Session: @unchecked Sendable {
   }
   private func stopAcceptingInput() {
     admission.lock(); accepting = false; admission.unlock()
+  }
+  private func finishSelection(cost: Int, completion: SelectionCompletion?, retainsCopyResult: Bool,
+                               result: Result<String?, TerminalSelectionFailure>) {
+    selectionPending = false
+    guard let completion else {
+      precondition(!retainsCopyResult)
+      release(cost)
+      return
+    }
+    let delivery = SelectionDelivery(completion: completion, cost: cost,
+                                     retainsCopyResult: retainsCopyResult, result: result)
+    selectionDeliveries.append(delivery)
+    DispatchQueue.main.async { [self, delivery] in
+      admission.lock()
+      let cancelled = !accepting
+      admission.unlock()
+      if cancelled { delivery.cancel() }
+      delivery.completion(delivery.takeForDelivery())
+      release(delivery.cost)
+      if delivery.retainsCopyResult {
+        admission.lock()
+        outstandingSelectionCopyCompletions -= 1
+        admission.unlock()
+      }
+      queue.async { [self, delivery] in
+        selectionDeliveries.removeAll { $0 === delivery }
+      }
+    }
+  }
+  private func clearSelectionForAcceptedInput(_ core: OpaquePointer) {
+    // Input has reached the core only after every earlier selection event has
+    // settled. Clear is an immediate owner-side action; it must never begin a
+    // second resumable operation without a matching FIFO event to advance it.
+    if case .completed = TerminalSelectionBridge.begin(core: core, action: .clear) {}
   }
   private func notifyClipboardClosed() {
     guard !clipboardClosedNotified else { return }
@@ -455,11 +569,19 @@ final class Session: @unchecked Sendable {
       // An admitted event waits for write capacity; it is never silently rejected.
       guard writeBytes + text.utf8.count + 256 <= 3 * 1024 * 1024 else { return }
       collectingPaste = key == 1
+      let writesBefore = writeID
       let accepted = terminal_input(
         core, text, key, modifiers, event, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
       collectingPaste = false
       release(cost)
       if !accepted { report("Input rejected by encoding policy") }
+      // The C ABI returns true when an input request was understood even if no
+      // bytes were encoded (disabled focus reporting, a modifier, or an
+      // unknown physical key). Only bytes accepted for PTY delivery are a
+      // semantic edit that retires the owner-held selection.
+      if accepted && writeID != writesBefore && key != 2 && event != 2, let core {
+        clearSelectionForAcceptedInput(core)
+      }
       if accepted && key != 2 && event != 2 && configuration.followTailOnInput { terminal_view_follow_tail(core) }
     case .keyInput(let input, let cost):
       if writeEnded {
@@ -473,23 +595,33 @@ final class Session: @unchecked Sendable {
         break
       }
       guard writeBytes <= 3 * 1024 * 1024 - wireBytes else { return }
+      let writesBefore = writeID
       let accepted = terminal_input_with_metadata(
         core, input.adapterText, input.key, input.modifiers, input.event,
         input.text, input.legacyText, input.shiftedScalar, input.baseLayoutScalar,
         Unmanaged.passUnretained(self).toOpaque(), Self.collect)
       release(cost)
       if !accepted { report("Input rejected by encoding policy") }
+      if accepted && writeID != writesBefore && input.isKeyAction, let core {
+        clearSelectionForAcceptedInput(core)
+      }
       if accepted && input.isKeyAction && configuration.followTailOnInput {
         terminal_view_follow_tail(core)
       }
     case .clipboardDecision(let requestID, let allowed, let completion):
       let accepted = acceptingClipboardRequests && terminal_complete_clipboard_request(core, requestID)
       DispatchQueue.main.async { completion(accepted && allowed) }
-    case .raw(let bytes, let cost), .shortcut(let bytes, let cost):
+    case .raw(let bytes, let cost):
       guard writeBytes + bytes.count <= 3 * 1024 * 1024 else { return }
       writeID += 1
       if !writeEnded { writes.append(WriteTransaction(id: writeID, data: bytes, kind: .ordinary)) }
-      if case .shortcut = event, configuration.followTailOnInput { terminal_view_follow_tail(core) }
+      release(cost)
+    case .shortcut(let bytes, let cost):
+      guard writeBytes + bytes.count <= 3 * 1024 * 1024 else { return }
+      writeID += 1
+      if !writeEnded { writes.append(WriteTransaction(id: writeID, data: bytes, kind: .ordinary)) }
+      if !bytes.isEmpty, let core { clearSelectionForAcceptedInput(core) }
+      if configuration.followTailOnInput { terminal_view_follow_tail(core) }
       release(cost)
     case .resize(let cols, let rows, let cw, let ch, let began):
       if !began && cols == columns && rows == rowCount && cw == cellWidthPx && ch == cellHeightPx {
@@ -534,9 +666,38 @@ final class Session: @unchecked Sendable {
         queuedResizeCount -= 1
         report("Resize rejected: \(reason)")
       }
+    case .selection(let action, let completion, let cost, let began, let retainsCopyResult):
+      guard let core else {
+        finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
+                        result: .failure(.cancelled))
+        break
+      }
+      let progress = began
+        ? TerminalSelectionBridge.advance(core: core)
+        : TerminalSelectionBridge.begin(core: core, action: action)
+      switch progress {
+      case .pending:
+        selectionPending = true
+        events[head] = .selection(action, completion, cost, true, retainsCopyResult)
+        complete = false
+        // The snapshot remains the last coherent selection while the bridge
+        // captures rows or assembles a copy in bounded owner turns.
+        publishNeeded = false
+      case .completed(let copiedText):
+        finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
+                        result: .success(copiedText))
+      case .rejected(let failure):
+        finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
+                        result: .failure(failure))
+      }
     case .configure(let value):
       configuration = value
       terminal_set_history_limit(core, UInt32(value.historyRows))
+      // Configuration is semantic FIFO state: a later word gesture observes
+      // this profile, while an already captured gesture keeps its own value.
+      if let core {
+        _ = TerminalSelectionBridge.begin(core: core, action: .wordProfile(value.selectionWordProfile))
+      }
     case .scroll(let delta): terminal_view_scroll(core, Int64(delta))
     case .find(let query, let completion): historySearch.start(query, completion: completion)
     case .searchAdvance: historySearch.advance()
@@ -869,6 +1030,37 @@ final class Session: @unchecked Sendable {
       enqueue(.clearDisplay)
     }
   }
+  /// Submits an immutable, presentation-proven selection gesture. The host
+  /// never reads cells or derives copied text; success carries the core-built
+  /// copy (where `nil` means a non-copy selection action).
+  @discardableResult func selection(
+    _ action: TerminalSelectionAction,
+    completion: (@MainActor (Result<String?, TerminalSelectionFailure>) -> Void)? = nil
+  ) -> Bool {
+    guard let cost = Self.selectionCost(action) else {
+      report("Selection request exceeds queue limit")
+      return false
+    }
+    let retainsCopyResult: Bool = {
+      if case .copy = action { return completion != nil }
+      return false
+    }()
+    let admission = reserveSelection(cost, control: Self.selectionIsControl(action),
+                                     retainsCopyResult: retainsCopyResult)
+    guard admission == .accepted else {
+      report(admission.message)
+      return false
+    }
+    queue.async { [self] in
+      guard !closed else {
+        finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
+                        result: .failure(.cancelled))
+        return
+      }
+      enqueue(.selection(action, completion, cost, false, retainsCopyResult))
+    }
+    return true
+  }
   func find(_ query: String, completion: @escaping @MainActor (HistorySearchOutcome) -> Void) {
     queue.async { [self] in
       guard !closed else {
@@ -958,15 +1150,25 @@ final class Session: @unchecked Sendable {
       notifyClipboardClosed()
       closed = true
       historySearch.cancel()
+      // A completed copy can still be awaiting its main-actor callback. Close
+      // changes every not-yet-delivered result to cancellation before teardown.
+      for delivery in selectionDeliveries { delivery.cancel() }
       if resizePending, let core {
         TerminalResizeBridge.cancel(core: core)
         resizePending = false
+      }
+      if selectionPending, let core {
+        TerminalSelectionBridge.cancel(core: core)
+        selectionPending = false
       }
       for index in head..<events.count {
         switch events[index] {
         case .input(_, _, _, _, let cost), .keyInput(_, let cost), .raw(_, let cost), .shortcut(_, let cost): release(cost)
         case .find(_, let completion): DispatchQueue.main.async { completion(.cancelled) }
         case .clipboardDecision(_, _, let completion): DispatchQueue.main.async { completion(false) }
+        case .selection(_, let completion, let cost, _, let retainsCopyResult):
+          finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
+                          result: .failure(.cancelled))
         default: break
         }
       }

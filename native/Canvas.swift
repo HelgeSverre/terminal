@@ -11,12 +11,11 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   private var hoveredLink: VisibleLinkProjection.Occurrence?
   private var linkModifierMonitor: Any?
   private var localLinkPress = false
-  private var lastAccessibleSelection = NSRange(location: NSNotFound, length: 0)
+  private var selectionNotice: NSTextField?
+  private var lastAccessibleSelection: [NSRange] = []
   private var accessibilityNotificationScheduled = false
   private var accessibilityValueChanged = false
   private var accessibilitySelectionChanged = false
-  private var pendingSnapshot: TerminalSnapshot?
-  private var selection: GridSelection?
   private var dragging = false
   private var originatingKey: NSEvent?
   private struct DeliveredKey {
@@ -104,25 +103,14 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     session.onSnapshot = { [weak self] value in
       guard let self else { return }
       onObservedSnapshot?(value)
-      if let old = snapshot, old.history_epoch != value.history_epoch {
-        selection = nil
-        pendingSnapshot = nil
-      }
       if let old = snapshot,
-        old.document_epoch != value.document_epoch || old.screen_epoch != value.screen_epoch
-          || old.geometry_epoch != value.geometry_epoch
+        old.selectionPresentation?.documentGeneration != value.selectionPresentation?.documentGeneration
+          || old.alternate != value.alternate || old.geometry_epoch != value.geometry_epoch
       {
-        // A frozen selection/preedit cannot hide a new screen or target old
-        // coordinates after a destructive reset or committed geometry change.
-        selection = nil
-        pendingSnapshot = nil
+        // Composition is pane-local, while selection belongs to the owner.
         if hasMarkedText() {
           cancelComposition()
         }
-      }
-      if selection != nil {
-        pendingSnapshot = value
-        return
       }
       display(value)
     }
@@ -149,8 +137,13 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     detachRenderingSurface()
   }
   private func display(_ value: TerminalSnapshot) {
+    let previousSelectionRevision = snapshot?.selection.revision
     snapshot = value
     accessible = AccessibilityProjection(snapshot: value)
+    if previousSelectionRevision != value.selection.revision,
+      let failure = value.selection.issue {
+      showSelectionNotice(failure)
+    }
     updateLinkHoverForCurrentPointer(modifiers: NSEvent.modifierFlags)
     onTitle?(value.title)
     setAccessibilityValue(accessible?.text ?? "")
@@ -183,23 +176,43 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   override func accessibilitySelectedTextRange() -> NSRange {
     guard let accessible else { return NSRange(location: 0, length: 0) }
-    if selection == nil && snapshot?.following_tail == false {
+    let ranges = accessible.selectedRanges()
+    if ranges.count == 1 { return ranges[0] }
+    if ranges.count > 1 { return NSRange(location: NSNotFound, length: 0) }
+    if snapshot?.selection.phase == .committed || snapshot?.following_tail == false {
       return NSRange(location: NSNotFound, length: 0)
     }
     let caret = (snapshot?.cursor.row ?? 0) * accessible.columns + (snapshot?.cursor.col ?? 0)
-    return accessible.textRange(
-      gridStart: selection?.lower ?? caret, gridEnd: selection?.upper ?? caret)
+    return accessible.textRange(gridStart: caret, gridEnd: caret)
+  }
+  override func accessibilitySelectedTextRanges() -> [NSValue]? {
+    guard let accessible else { return [] }
+    let ranges = accessible.selectedRanges()
+    if !ranges.isEmpty { return ranges.map { NSValue(range: $0) } }
+    let caret = accessibilitySelectedTextRange()
+    return caret.location == NSNotFound ? [] : [NSValue(range: caret)]
   }
   override func setAccessibilitySelectedTextRange(_ range: NSRange) {
-    guard let cells = accessible?.gridRange(for: range) else { return }
-    selection = GridSelection(start: cells.lowerBound, end: cells.upperBound)
-    redraw()
+    setAccessibilitySelectedTextRanges([NSValue(range: range)])
+  }
+  override func setAccessibilitySelectedTextRanges(_ ranges: [NSValue]?) {
+    let ranges = ranges?.map(\.rangeValue) ?? []
+    if ranges.isEmpty || ranges.allSatisfy({ $0.length == 0 }) {
+      requestSelection(.clear)
+      return
+    }
+    guard let range = accessible?.presentedRange(for: ranges) else { return }
+    requestSelection(.range(start: range.start, end: range.end, mode: range.mode))
   }
   override func accessibilitySelectedText() -> String? {
-    accessible?.string(in: accessibilitySelectedTextRange())
+    accessible?.selectedText()
   }
   override func accessibilityString(for range: NSRange) -> String? { accessible?.string(in: range) }
-  override func accessibilityChildren() -> [Any]? { accessible?.linkElements(parent: self) ?? [] }
+  override func accessibilityChildren() -> [Any]? {
+    var children: [Any] = accessible?.linkElements(parent: self) ?? []
+    if let selectionNotice { children.append(selectionNotice) }
+    return children
+  }
   override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
     accessible?.attributedString(in: range, fontSize: fontPoints, parent: self)
   }
@@ -262,6 +275,10 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   func updateFocus() {
     let value = window?.isKeyWindow == true && window?.firstResponder === self
     if !value {
+      if dragging {
+        dragging = false
+        _ = session.selection(.commit)
+      }
       hoveredLink = nil
       releaseOwnedKeys()
       if hasMarkedText() { cancelComposition() }
@@ -373,13 +390,60 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       1, min(4096, Int((bounds.width * scale - CGFloat(2 * insetPixels)) / CGFloat(cellWidth))))
     let rows = max(
       1, min(4096, Int((bounds.height * scale - CGFloat(2 * insetPixels)) / CGFloat(cellHeight))))
-    clearSelection()
     session.resize(cols: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
+    positionSelectionNotice()
     inputContext?.invalidateCharacterCoordinates()
     redraw()
   }
+  private func showSelectionNotice(_ failure: TerminalSelectionFailure) {
+    guard window != nil else { return }
+    let message: String
+    switch failure {
+    case .evicted: message = "Selected text left scrollback."
+    case .changedContent: message = "Selected text changed."
+    case .staleTarget: message = "Output changed. Select the text again."
+    case .limitExceeded: message = "Selection is too large."
+    case .busy: message = "Selection is busy. Try again."
+    case .noSelection, .cancelled: return
+    }
+    selectionNotice?.removeFromSuperview()
+    let notice = NSTextField(labelWithString: "  \(message)  ")
+    notice.font = .systemFont(ofSize: 11)
+    notice.textColor = TerminalTheme.color(TerminalTheme.secondary)
+    notice.backgroundColor = TerminalTheme.color(TerminalTheme.background)
+    notice.drawsBackground = true
+    notice.alignment = .center
+    notice.lineBreakMode = .byTruncatingTail
+    notice.wantsLayer = true
+    notice.layer?.cornerRadius = 4
+    notice.layer?.masksToBounds = true
+    notice.setAccessibilityLabel(message)
+    notice.setAccessibilityIdentifier("no.helgesverre.terminal.selection-notice")
+    selectionNotice = notice
+    addSubview(notice)
+    positionSelectionNotice()
+    NSAccessibility.post(element: self, notification: .announcementRequested,
+      userInfo: [.announcement: message, .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self, weak notice] in
+      guard let self, let notice, selectionNotice === notice else { return }
+      notice.removeFromSuperview()
+      selectionNotice = nil
+    }
+  }
+  private func positionSelectionNotice() {
+    guard let notice = selectionNotice else { return }
+    notice.sizeToFit()
+    let width = min(notice.frame.width, max(1, bounds.width - 16))
+    notice.frame = NSRect(x: max(8, bounds.width - width - 8), y: 8,
+      width: width, height: max(20, notice.frame.height))
+  }
+  @discardableResult private func requestSelection(_ action: TerminalSelectionAction) -> Bool {
+    let admitted = session.selection(action)
+    if !admitted { showSelectionNotice(.busy) }
+    return admitted
+  }
   private func redraw() {
-    let selected = accessibilitySelectedTextRange()
+    let selected = accessibilitySelectedTextRanges()?.map(\.rangeValue) ?? []
     if selected != lastAccessibleSelection {
       lastAccessibleSelection = selected
       accessibilityChanged(selection: true)
@@ -393,25 +457,14 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
         snapshot: value, width: Int(bounds.width * scale), height: Int(bounds.height * scale),
         inset: insetPixels, cellWidth: cellWidth, cellHeight: cellHeight,
         fontSize: fontPoints * scale,
-        focused: focused, scrolled: !value.following_tail,
-        selection: selection, marked: marked.string,
+        focused: focused, marked: marked.string,
         linkUnderline: hoveredLink?.gridSegments ?? []))
-    }
-  }
-  private func clearSelection() {
-    selection = nil
-    if let value = pendingSnapshot {
-      pendingSnapshot = nil
-      display(value)
     }
   }
   @discardableResult private func send(
     _ text: String = "", key: UInt32 = 0, mods: UInt32 = 0, event: UInt32 = 0
   ) -> Bool {
     let accepted = session.input(text, key: key, modifiers: mods, event: event)
-    if accepted && key != 2 && event != 2 {
-      clearSelection()
-    }
     redraw()
     return accepted
   }
@@ -424,12 +477,12 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   @discardableResult private func sendKey(_ mapped: NativeKeyMap.KeyEvent, event: UInt32) -> Bool {
     let input = physicalEvent(mapped, event: event)
     let accepted = session.input(input)
-    if accepted && input.isKeyAction { clearSelection() }
     redraw()
     return accepted
   }
   // Scripted text is a committed text operation, not a synthetic key event.
-  // Keep the input-method and selection transitions owned by the canvas.
+  // Composition remains attached to the original pane. Session owns selection
+  // transitions for accepted semantic input.
   @discardableResult func submitAutomationText(_ text: String) -> Bool {
     let accepted = send(text)
     if accepted { cancelComposition() }
@@ -447,7 +500,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     }
     switch NativeKeyMap.route(event) {
     case .shortcut(let text):
-      if session.shortcut(text) { clearSelection() }
+      _ = session.shortcut(text)
       redraw()
     case .encoded(let mapped):
       if sendKey(mapped, event: event.isARepeat ? 1 : 0) {
@@ -582,13 +635,22 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     let p = convert(event.locationInWindow, from: nil)
     let row = max(
       0, min(value.rows.count - 1, Int((p.y * scale - CGFloat(insetPixels)) / CGFloat(cellHeight))))
-    var col = max(
+    let col = max(
       0, min(value.cols - 1, Int((p.x * scale - CGFloat(insetPixels)) / CGFloat(cellWidth))))
-    if value.rows[row].cells[col].kind == "Continuation" { col = max(0, col - 1) }
     return row * value.cols + col
+  }
+  private func selectionHit(_ event: NSEvent) -> TerminalSelectionHit? {
+    guard let value = snapshot, value.cols > 0, !value.rows.isEmpty else { return nil }
+    let point = convert(event.locationInWindow, from: nil)
+    let row = max(0, min(value.rows.count - 1,
+      Int((point.y * scale - CGFloat(insetPixels)) / CGFloat(cellHeight))))
+    let boundary = max(0, min(value.cols,
+      Int((point.x * scale - CGFloat(insetPixels)) / CGFloat(cellWidth))))
+    return value.selectionHit(row: row, boundary: boundary)
   }
   override func mouseDown(with event: NSEvent) {
     localLinkPress = false
+    dragging = false
     window?.makeFirstResponder(self)
     if event.clickCount == 1, event.modifierFlags.contains(.command),
       let occurrence = linkOccurrence(locationInWindow: event.locationInWindow) {
@@ -600,48 +662,23 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       return
     }
     if reportMouse(event, button: 0, release: false) { return }
-    clearSelection()
-    dragging = true
-    let index = cellIndex(event)
-    selection = GridSelection(start: index, end: index)
-    if event.clickCount == 2, let value = snapshot {
-      let row = index / value.cols
-      let col = index % value.cols
-      func word(_ c: CellSnapshot) -> Bool {
-        c.text.unicodeScalars.contains {
-          CharacterSet.alphanumerics.contains($0) || "_-/.:~".unicodeScalars.contains($0)
-        }
-      }
-      var a = col
-      var b = col + 1
-      while a > 0 && word(value.rows[row].cells[a - 1]) { a -= 1 }
-      while b < value.cols && word(value.rows[row].cells[b]) { b += 1 }
-      selection = GridSelection(start: row * value.cols + a, end: row * value.cols + b)
-      dragging = false
-    } else if event.clickCount >= 3, let value = snapshot {
-      selection = GridSelection(
-        start: index / value.cols * value.cols, end: (index / value.cols + 1) * value.cols)
-      dragging = false
-    }
-    redraw()
+    guard let hit = selectionHit(event) else { return }
+    let granularity: TerminalSelectionGranularity = event.modifierFlags.contains(.option)
+      ? .rectangular : event.clickCount >= 3 ? .line : event.clickCount == 2 ? .word : .character
+    dragging = requestSelection(.begin(hit, granularity: granularity))
   }
   override func mouseDragged(with event: NSEvent) {
     if localLinkPress { return }
-    if reportMouse(event, button: 32, release: false) { return }
-    guard dragging, let start = selection?.start, let value = snapshot else { return }
-    let index = cellIndex(event)
-    selection = GridSelection(
-      start: start,
-      end: index
-        + (value.rows[index / value.cols].cells[index % value.cols].kind == "Lead2" ? 2 : 1))
-    redraw()
+    if dragging {
+      if let hit = selectionHit(event) { requestSelection(.extend(hit)) }
+    } else { _ = reportMouse(event, button: 32, release: false) }
   }
   override func mouseUp(with event: NSEvent) {
     if localLinkPress { localLinkPress = false; return }
-    if reportMouse(event, button: 0, release: true) { return }
-    dragging = false
-    if selection?.lower == selection?.upper { clearSelection() }
-    redraw()
+    if dragging {
+      dragging = false
+      requestSelection(.commit)
+    } else { _ = reportMouse(event, button: 0, release: true) }
   }
   override func rightMouseDown(with event: NSEvent) {
     if !reportMouse(event, button: 2, release: false) {
@@ -684,37 +721,13 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       }
     } else {
       let amount = Int(event.scrollingDeltaY / (event.hasPreciseScrollingDeltas ? 3 : 1))
-      clearSelection()
       session.scroll(amount)
     }
   }
   @objc func copy(_ sender: Any?) {
-    guard let selection, let value = snapshot else { return }
-    var text = ""
-    for r in 0..<value.rows.count {
-      let start = max(0, selection.lower - r * value.cols)
-      var end = min(value.cols, selection.upper - r * value.cols)
-      let originalEnd = end
-      guard start < end else { continue }
-      let row = value.rows[r]
-      if end == value.cols {
-        while end > start && row.cells[end - 1].kind == "Empty"
-          && row.cells[end - 1].style.background.index == nil
-          && row.cells[end - 1].style.background.rgb == nil
-        { end -= 1 }
-      }
-      var piece = ""
-      for c in start..<end {
-        let cell = row.cells[c]
-        piece += cell.kind == "Empty" ? " " : cell.text
-      }
-      text += piece
-      if originalEnd == value.cols && !row.soft_wrapped && selection.upper > (r + 1) * value.cols {
-        text += "\n"
-      }
-    }
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(text, forType: .string)
+    guard let value = snapshot, value.selection.phase != .none,
+      let delegate = NSApp.delegate as? AppDelegate else { return }
+    delegate.clipboardAccess.copy(from: session, selectionRevision: value.selection.revision)
   }
   @objc func cancelPaste(_ sender: Any?) { session.cancelPaste() }
   @objc func clearScreen(_ sender: Any?) {
@@ -724,9 +737,11 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     if let text = NSPasteboard.general.string(forType: .string) { send(text, key: 1) }
   }
   override func selectAll(_ sender: Any?) {
-    guard let value = snapshot else { return }
-    selection = GridSelection(start: 0, end: value.cols * value.rows.count)
-    redraw()
+    guard let value = snapshot,
+      let start = value.selectionHit(row: 0, boundary: 0),
+      let end = value.selectionHit(row: value.rows.count - 1, boundary: value.cols)
+    else { return }
+    requestSelection(.range(start: start, end: end, mode: .linear))
   }
   @objc func increaseFont(_ sender: Any?) {
     fontPoints = min(40, fontPoints + 1)
