@@ -76,11 +76,13 @@ counted as shipped.
 Run with no competing builds, profilers or other throughput tests:
 
 ```shell
-just benchmark-ghostty reports/ghostty-comparison-next
+just benchmark-terminals reports/terminal-comparison-next
 ```
 
-This builds the release app, freezes copies, records provenance and runs both
-orders. It refuses an existing report directory. See [benchmarking](../../docs/benchmarking.md)
+The current command also includes Kitty. The original two-app runner is
+preserved at `9354d3a`. The command builds the release app, freezes copies,
+records provenance and runs both orders. It refuses an existing report
+directory. See [benchmarking](../../docs/benchmarking.md)
 for the separate history/SQL and display-smoothness tests.
 
 ## Layout and release-preflight check

@@ -1,0 +1,94 @@
+{
+  "ascii_short_lines": {
+    "terminal": {
+      "mean_of_trial_medians": 60.5892385,
+      "trial_medians": [
+        60.100217,
+        61.07826
+      ]
+    },
+    "ghostty": {
+      "mean_of_trial_medians": 247.541264,
+      "trial_medians": [
+        239.012877,
+        256.069651
+      ]
+    },
+    "kitty": {
+      "mean_of_trial_medians": 107.5353615,
+      "trial_medians": [
+        107.952015,
+        107.118708
+      ]
+    }
+  },
+  "ascii_long_lines": {
+    "terminal": {
+      "mean_of_trial_medians": 78.863212,
+      "trial_medians": [
+        79.748394,
+        77.97803
+      ]
+    },
+    "ghostty": {
+      "mean_of_trial_medians": 257.49570900000003,
+      "trial_medians": [
+        247.146233,
+        267.845185
+      ]
+    },
+    "kitty": {
+      "mean_of_trial_medians": 110.00007500000001,
+      "trial_medians": [
+        109.933147,
+        110.067003
+      ]
+    }
+  },
+  "ansi_truecolor": {
+    "terminal": {
+      "mean_of_trial_medians": 31.954946,
+      "trial_medians": [
+        32.000896,
+        31.908996
+      ]
+    },
+    "ghostty": {
+      "mean_of_trial_medians": 176.3281285,
+      "trial_medians": [
+        176.495246,
+        176.161011
+      ]
+    },
+    "kitty": {
+      "mean_of_trial_medians": 43.417296,
+      "trial_medians": [
+        43.454526,
+        43.380066
+      ]
+    }
+  },
+  "unicode": {
+    "terminal": {
+      "mean_of_trial_medians": 16.424922000000002,
+      "trial_medians": [
+        16.155562,
+        16.694282
+      ]
+    },
+    "ghostty": {
+      "mean_of_trial_medians": 174.1781485,
+      "trial_medians": [
+        174.272955,
+        174.083342
+      ]
+    },
+    "kitty": {
+      "mean_of_trial_medians": 113.1161275,
+      "trial_medians": [
+        113.316053,
+        112.916202
+      ]
+    }
+  }
+}

@@ -7,9 +7,9 @@ require 'open3'
 require 'tmpdir'
 require_relative 'native_smoke'
 
-# A fixed comparison contract: optimized local app, installed Ghostty, two
+# A fixed comparison contract: optimized local app, installed references, two
 # opposite orders, one driver, isolated bundles, and owned-process cleanup.
-class GhosttyComparison
+class TerminalComparison
   def initialize(output)
     @root = File.expand_path('..', __dir__)
     @output = File.expand_path(output)
@@ -36,11 +36,12 @@ class GhosttyComparison
     @result['runner_sha256'] = Digest::SHA256.file(__FILE__).hexdigest
     Dir.mktmpdir('terminal-ghostty-comparison-') do |temporary|
       @result['stage'] = 'freeze_apps'
-      apps = { 'terminal' => File.join(@root, 'dist/Terminal.app'), 'ghostty' => '/Applications/Ghostty.app' }
+      apps = { 'terminal' => File.join(@root, 'dist/Terminal.app'), 'ghostty' => '/Applications/Ghostty.app',
+               'kitty' => '/Applications/kitty.app' }
       @result['apps'] = {}
       apps.transform_values!.with_index do |app, index|
-        name = index.zero? ? 'terminal' : 'ghostty'
-        executable = name == 'terminal' ? 'Terminal' : 'ghostty'
+        name = apps.keys[index]
+        executable = name == 'terminal' ? 'Terminal' : name
         source_executable = File.join(app, 'Contents/MacOS', executable)
         raise "Missing #{source_executable}" unless File.executable?(source_executable)
         @result['apps'][name] = { 'executable_sha256' => Digest::SHA256.file(source_executable).hexdigest,
@@ -54,6 +55,7 @@ class GhosttyComparison
         frozen_executable
       end
       @result['ghostty_version'] = capture(apps.fetch('ghostty'), '+version')
+      @result['kitty_version'] = capture(apps.fetch('kitty'), '--version')
       config = File.join(@output, 'ghostty.conf')
       File.write(config, <<~CONFIG)
         config-default-files = false
@@ -72,7 +74,7 @@ class GhosttyComparison
         quit-after-last-window-closed = true
         window-save-state = never
       CONFIG
-      [%w[terminal ghostty], %w[ghostty terminal]].each_with_index do |order, index|
+      [%w[terminal ghostty kitty], %w[kitty ghostty terminal]].each_with_index do |order, index|
         trial = { 'order' => order, 'apps' => {} }
         @result['trials'] << trial
         order.each do |name|
@@ -100,10 +102,24 @@ class GhosttyComparison
     report = File.join(@output, "#{index}-#{name}.json")
     raise "Refusing to overwrite #{report}" if File.exist?(report)
     args = ['--output', report, '--terminal', name, '--bytes', @bytes.to_s, '--runs', @runs.to_s, '--columns', '100', '--rows', '30']
-    command = if name == 'terminal'
+    command = case name
+    when 'terminal'
       [executable, '--columns', '100', '--rows', '30', '--font-size', '14', '--history-limit', '10000', '--exit-after-command', '--execute', driver, *args]
-    else
+    when 'ghostty'
       [executable, '--config-default-files=false', "--config-file=#{config}", '-e', driver, *args]
+    when 'kitty'
+      settings = {
+        'font_family' => 'Obel Mono', 'font_size' => '14',
+        'initial_window_width' => '100c', 'initial_window_height' => '30c',
+        'remember_window_size' => 'no', 'cursor_blink_interval' => '0',
+        'scrollback_lines' => '10000', 'background_opacity' => '1',
+        'shell_integration' => 'disabled', 'window_padding_width' => '8',
+        'macos_quit_when_last_window_closed' => 'yes', 'confirm_os_window_close' => '0'
+      }
+      [executable, '--config', 'NONE', '--session', 'none',
+       *settings.flat_map { |key, value| ['--override', "#{key}=#{value}"] }, driver, *args]
+    else
+      raise "Unknown terminal #{name}"
     end
     process = nil
     record = { 'natural_exit' => false }
@@ -147,9 +163,9 @@ class GhosttyComparison
 end
 
 if $PROGRAM_NAME == __FILE__
-  abort 'Usage: ruby tools/compare_ghostty.rb NEW_REPORT_DIRECTORY' unless ARGV.length == 1
+  abort 'Usage: ruby tools/compare_terminals.rb NEW_REPORT_DIRECTORY' unless ARGV.length == 1
   Signal.trap('TERM') { raise Interrupt, 'Comparison terminated' }
   Signal.trap('INT') { raise Interrupt, 'Comparison interrupted' }
-  GhosttyComparison.new(ARGV.first).run
-  puts 'PASS Ghostty comparison; both orders completed with no surviving owned processes'
+  TerminalComparison.new(ARGV.first).run
+  puts 'PASS terminal comparison; both orders completed with no surviving owned processes'
 end

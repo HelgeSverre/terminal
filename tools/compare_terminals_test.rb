@@ -3,11 +3,11 @@
 require 'json'
 require 'minitest/autorun'
 require 'tmpdir'
-require_relative 'compare_ghostty'
+require_relative 'compare_terminals'
 
-class GhosttyComparisonTest < Minitest::Test
+class TerminalComparisonTest < Minitest::Test
   class FixtureProcess
-    attr_accessor :interrupt_on_pid, :exit_success, :on_wait
+    attr_accessor :interrupt_on_pid, :exit_success, :on_wait, :command
     attr_reader :cleaned
     def initialize = @exit_success = true
     def pid
@@ -26,21 +26,21 @@ class GhosttyComparisonTest < Minitest::Test
     end
   end
 
-  def trial(process, report: nil, failed: nil)
+  def trial(process, report: nil, failed: nil, name: 'ghostty')
     Dir.mktmpdir('ghostty-comparison-test-') do |directory|
-      subject = GhosttyComparison.allocate
+      subject = TerminalComparison.allocate
       subject.instance_variable_set(:@output, directory)
       subject.instance_variable_set(:@bytes, 1)
       subject.instance_variable_set(:@runs, 1)
-      path = File.join(directory, '1-ghostty.json')
+      path = File.join(directory, "1-#{name}.json")
       process.on_wait = lambda do
         File.write(path, JSON.generate(report)) if report
         File.write("#{path}.failed", failed) if failed
       end
       original = NativeSmokeProcess.method(:new)
       begin
-        NativeSmokeProcess.define_singleton_method(:new) { |*_args, **_options| process }
-        subject.send(:measure, 'ghostty', '/fixture/ghostty', '/fixture/driver', '/fixture/config', 1, { 'apps' => {} })
+        NativeSmokeProcess.define_singleton_method(:new) { |command, **_options| process.command = command; process }
+        subject.send(:measure, name, "/fixture/#{name}", '/fixture/driver', '/fixture/config', 1, { 'apps' => {} })
       ensure
         NativeSmokeProcess.define_singleton_method(:new, original)
       end
@@ -84,6 +84,15 @@ class GhosttyComparisonTest < Minitest::Test
   def test_valid_owned_report_is_accepted_and_cleaned
     process = FixtureProcess.new
     trial(process, report: report)
+    assert process.cleaned
+  end
+
+  def test_kitty_uses_an_isolated_grid_and_quits_with_its_window
+    process = FixtureProcess.new
+    trial(process, name: 'kitty', report: report.merge('terminal' => 'kitty'))
+    assert_equal %w[/fixture/kitty --config NONE --session none], process.command.first(5)
+    %w[initial_window_width=100c initial_window_height=30c shell_integration=disabled
+       macos_quit_when_last_window_closed=yes].each { |option| assert_includes process.command, option }
     assert process.cleaned
   end
 end

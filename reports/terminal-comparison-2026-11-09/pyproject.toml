@@ -1,0 +1,12 @@
+[project]
+name = "terminal-throughput-chart"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "matplotlib>=3.11.2",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.4",
+]

@@ -1,12 +1,23 @@
 # Performance measurements
 
-The [2026-11-09 Swift–Ghostty baseline](../reports/ghostty-swift-2026-11-09/README.md)
-uses the current Swift app, ten samples per workload and reversed launch orders.
-It includes raw results, limits and a feature comparison. Reproduce it with:
+The [current three-app comparison](../reports/terminal-comparison-2026-11-09/README.md)
+measures the Swift app, Ghostty and Kitty with ten samples per workload in two
+reversed launch orders. Run it with the reference apps installed:
 
 ```shell
-just benchmark-ghostty reports/ghostty-comparison-next
+just benchmark-terminals reports/terminal-comparison-next
 ```
+
+This freezes independent copies, verifies report ownership and geometry, and
+requires natural app/child exit. It leaves existing sessions and configurations
+alone. All apps use 100×30 cells and configured Obel Mono 14; native cell-pixel
+sizes differ. The driver measures PTY processing through an ordered reply,
+including backpressure; it does not measure displayed FPS or input-to-photon
+latency. Alternate-screen workloads exclude retained history.
+
+The earlier [Swift–Ghostty baseline](../reports/ghostty-swift-2026-11-09/README.md)
+retains its raw results, limits and feature comparison. Its two-app runner is
+preserved in repository history; the current command includes Kitty too.
 
 The three-app pilots below predate the Swift cutover and measured the Rust-backed
 app. They are retained as historical results.
