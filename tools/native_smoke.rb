@@ -65,6 +65,12 @@ class NativeSmokeProcess
     survivors
   end
 
+  # Reports may come from a terminal-serving child of the launched app. Keep
+  # ownership evidence after exit, when there are deliberately no live PIDs.
+  def observed_owned?(pid)
+    pid.is_a?(Integer) && @owned.key?(pid)
+  end
+
   private
 
   def processes

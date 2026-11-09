@@ -436,7 +436,17 @@ idle: build (_native-smoke "idle")
 
 # Full local gate, including the GUI smoke
 [group('check')]
-check: test smoke pane-lifecycle-smoke
+check: test smoke pane-lifecycle-smoke startup-grid-smoke
+
+# Check requested startup grids before the first canvas layout, with owned fixtures.
+[group('check')]
+startup-grid-smoke: build
+    ruby tools/startup_grid_smoke.rb dist/Terminal.app reports/startup-grid.json
+
+# Compare the optimized app with Ghostty in both launch orders; preserve raw samples.
+[group('bench')]
+@benchmark-ghostty output="reports/ghostty-comparison": release-build
+    ruby tools/compare_ghostty.rb "$1"
 
 # Compare PTY throughput: just benchmark terminal|ghostty|kitty [new-report-directory]
 [group('bench')]

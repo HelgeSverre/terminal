@@ -43,7 +43,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   var onObservedSnapshot: ((TerminalSnapshot) -> Void)?
   func refresh() { redraw() }
   func contentSize(columns: Int, rows: Int) -> NSSize {
-    updateGeometry()
+    updateMetrics()
     return NSSize(
       width: CGFloat(columns * cellWidth + 2 * insetPixels) / scale,
       height: CGFloat(rows * cellHeight + 2 * insetPixels) / scale)
@@ -400,12 +400,18 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   private var insetPixels: Int { Int((TerminalTheme.contentInset * scale).rounded()) }
   private var scale: CGFloat { window?.backingScaleFactor ?? 2 }
-  private func updateGeometry() {
-    guard bounds.width > 16, bounds.height > 16 else { return }
+  /// Grid sizing is also needed before the first AppKit layout pass, when the
+  /// canvas still has a zero frame. Keep font metrics independent of bounds so
+  /// a requested startup grid does not use the seed cell dimensions.
+  private func updateMetrics() {
     let font = TerminalFont.appKit(size: fontPoints)
     cellWidth = max(
       1, Int(ceil(("M" as NSString).size(withAttributes: [.font: font]).width * scale)))
     cellHeight = max(1, Int(ceil((font.ascender - font.descender + 3) * scale)))
+  }
+  private func updateGeometry() {
+    guard bounds.width > 16, bounds.height > 16 else { return }
+    updateMetrics()
     if let layer = layer as? CAMetalLayer {
       layer.contentsScale = scale
       layer.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)

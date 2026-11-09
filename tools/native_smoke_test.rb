@@ -15,7 +15,12 @@ class NativeSmokeProcessTest < Minitest::Test
       begin
         assert_nil runner.wait(0.5)
         child = Integer(File.read(path))
+        assert runner.observed_owned?(runner.pid)
+        assert runner.observed_owned?(child)
+        refute runner.observed_owned?(sentinel)
+        refute runner.observed_owned?(nil)
         assert_empty runner.cleanup
+        assert runner.observed_owned?(child), 'ownership evidence survives child exit'
         assert_raises(Errno::ESRCH) { Process.kill(0, child) }
         Process.kill(0, sentinel)
       ensure
