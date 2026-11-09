@@ -700,3 +700,8 @@ tab-navigation-test:
 [group('check')]
 editing-input-isolation app output:
     ruby tools/editing_input_isolation_test.rb "$1" "$2"
+
+# Compare the same malformed/partitioned CSI corpus against two frozen Swift refs.
+[group('check')]
+compare-csi baseline candidate output:
+    ruby tools/compare_csi_dispatch.rb "$1" "$2" "$3"

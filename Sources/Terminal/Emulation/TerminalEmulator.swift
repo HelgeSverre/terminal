@@ -175,6 +175,9 @@ private final class TerminalEmulator {
   // CSI input itself is capped at 16 KiB, so this reusable numeric scratch is
   // bounded by the parser's existing sequence limit.
   private var csiParameterScratch: [Int] = []
+  private var csiBytes: [UInt8] = []
+  // Preserve the old scalar-backed String limit: bytes >= 0x80 took two UTF-8 bytes.
+  private var csiUTF8Count = 0
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))
@@ -183,6 +186,7 @@ private final class TerminalEmulator {
     tabs = (0..<self.columns).map { $0 > 0 && $0.isMultiple(of: 8) }
     decodedScalars.reserveCapacity(1024)
     csiParameterScratch.reserveCapacity(16)
+    csiBytes.reserveCapacity(64)
   }
 
   private var screen: TerminalScreen {
@@ -375,11 +379,14 @@ private final class TerminalEmulator {
         else if byte == 0x42 { charsetSpecial[slot] = false }
       case .csi:
         if (0x40...0x7e).contains(byte) {
-          handleCSI(sequence, final: Character(UnicodeScalar(byte))); parser = .ground
+          handleCSI(csiBytes, final: byte); parser = .ground
           if repeatRemaining > 0 { return offset + 1 }
         }
-        else if sequence.utf8.count < 16_384 { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
-        else { parser = .ground; sequence = "" }
+        else if csiUTF8Count < 16_384 {
+          csiBytes.append(byte)
+          csiUTF8Count += byte < 0x80 ? 1 : 2
+        }
+        else { parser = .ground; csiBytes.removeAll(keepingCapacity: true); csiUTF8Count = 0 }
       case .osc:
         if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
         else if byte == 0x07 { finishString(); parser = .ground }
@@ -441,7 +448,7 @@ private final class TerminalEmulator {
   private func handleEscapedByte(_ byte: UInt8) {
     parser = .ground
     switch byte {
-    case 0x5b: sequence = ""; parser = .csi
+    case 0x5b: csiBytes.removeAll(keepingCapacity: true); csiUTF8Count = 0; parser = .csi
     case 0x5d: sequence = ""; parser = .osc
     case 0x5f: sequence = ""; parser = .apc
     case 0x28: parser = .charset(0)
@@ -537,8 +544,8 @@ private final class TerminalEmulator {
   // syntax bytes are ignored between digits, while each semicolon creates an
   // empty/defaulted field when needed. Every value consumed by a non-SGR
   // command is bounded to UInt32, matching the wire protocol.
-  private static func parseCSIParameters(_ raw: String, final: Character,
-                                         into parameters: inout [Int]) -> CSIParameterPacket? {
+  private static func parseCSIParameters<Bytes: Collection>(_ bytes: Bytes, final: UInt8,
+                                         into parameters: inout [Int]) -> CSIParameterPacket? where Bytes.Element == UInt8 {
     // The streaming CSI parser stores one input byte per scalar. A non-ASCII
     // scalar cannot be terminal parameter syntax; reject it instead of
     // silently turning a numeric-looking malformed byte into default zero.
@@ -547,10 +554,9 @@ private final class TerminalEmulator {
     var rawHasDigits = false
     var filtered: UInt32 = 0
     var filteredHasDigits = false
-    let bytes = raw.utf8
     let hasColon = bytes.contains(0x3a)
-    let preservingColonSGR = final == "m" && hasColon
-    let keyboardPrefix = final == "u" && (bytes.first == 0x3e || bytes.first == 0x3d)
+    let preservingColonSGR = final == 0x6d && hasColon
+    let keyboardPrefix = final == 0x75 && (bytes.first == 0x3e || bytes.first == 0x3d)
     let preservesRawSyntax = preservingColonSGR || keyboardPrefix
     var keyboardValue: UInt32 = 0
     var keyboardHasDigits = false
@@ -606,15 +612,22 @@ private final class TerminalEmulator {
       : nil
     return CSIParameterPacket(values: parameters, keyboardFlags: keyboardFlags, hasColon: hasColon)
   }
-  private func handleCSI(_ raw: String, final: Character) {
+  private func handleCSI(_ raw: [UInt8], final: UInt8) {
     switch final {
-    case "m", "n", "c", "u": break
+    case 0x6d, 0x6e, 0x63, 0x75: break
     default: resetClusterBoundary()
     }
     guard let packet = Self.parseCSIParameters(raw, final: final, into: &csiParameterScratch) else { return }
+    // SGR changes the pen only. Preserve the usual semantic revision without
+    // copying and writing back an unchanged screen or clearing pending wrap.
+    if final == 0x6d {
+      applySGR(packet.values, colonSyntax: packet.hasColon ? String(decoding: raw, as: UTF8.self) : nil)
+      changed()
+      return
+    }
     let params = packet.values
-    let first = raw.utf8.first
-    let last = raw.utf8.last
+    let first = raw.first
+    let last = raw.last
     let privateMode = first == 0x3f
     let n = max(1, params.first ?? 0)
     var s = screen
@@ -622,44 +635,43 @@ private final class TerminalEmulator {
     var semanticChange = true
     var clearsPending = true
     switch final {
-    case "A": moveCursorVertically(&s, up: true, count: n)
-    case "B": moveCursorVertically(&s, up: false, count: n)
-    case "C": s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, s.cursorColumn + n)
-    case "D": s.cursorColumn = max(originMode ? horizontalMargins.left : 0, s.cursorColumn - n)
-    case "E":
+    case 0x41: moveCursorVertically(&s, up: true, count: n)
+    case 0x42: moveCursorVertically(&s, up: false, count: n)
+    case 0x43: s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, s.cursorColumn + n)
+    case 0x44: s.cursorColumn = max(originMode ? horizontalMargins.left : 0, s.cursorColumn - n)
+    case 0x45:
       moveCursorVertically(&s, up: false, count: n)
       let left = horizontalMargins.left
       s.cursorColumn = s.cursorColumn >= left ? left : 0
-    case "F":
+    case 0x46:
       moveCursorVertically(&s, up: true, count: n)
       let left = horizontalMargins.left
       s.cursorColumn = s.cursorColumn >= left ? left : 0
-    case "G": s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + n - 1)
-    case "d": s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + n - 1)
-    case "H", "f": s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + max(0, (params.first ?? 1) - 1)); s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + max(0, (params.dropFirst().first ?? 1) - 1))
-    case "J": eraseDisplay(params.first ?? 0, selective: privateMode); changedActiveScreen = true
-    case "K": eraseLine(params.first ?? 0); changedActiveScreen = true
-    case "@": insertCharacters(n); changedActiveScreen = true
-    case "P": deleteCharacters(n); changedActiveScreen = true
-    case "X": eraseCharacters(n); changedActiveScreen = true
-    case "L": insertLines(n); changedActiveScreen = true
-    case "M": deleteLines(n); changedActiveScreen = true
-    case "I": tab(false, count: n); changedActiveScreen = true
-    case "Z": tab(true, count: n); changedActiveScreen = true
-    case "g":
+    case 0x47: s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + n - 1)
+    case 0x64: s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + n - 1)
+    case 0x48, 0x66: s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + max(0, (params.first ?? 1) - 1)); s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + max(0, (params.dropFirst().first ?? 1) - 1))
+    case 0x4a: eraseDisplay(params.first ?? 0, selective: privateMode); changedActiveScreen = true
+    case 0x4b: eraseLine(params.first ?? 0); changedActiveScreen = true
+    case 0x40: insertCharacters(n); changedActiveScreen = true
+    case 0x50: deleteCharacters(n); changedActiveScreen = true
+    case 0x58: eraseCharacters(n); changedActiveScreen = true
+    case 0x4c: insertLines(n); changedActiveScreen = true
+    case 0x4d: deleteLines(n); changedActiveScreen = true
+    case 0x49: tab(false, count: n); changedActiveScreen = true
+    case 0x5a: tab(true, count: n); changedActiveScreen = true
+    case 0x67:
       if params.first == 3 { tabs = Array(repeating: false, count: columns); tabsCleared = true }
       else if params.first ?? 0 == 0 { tabs[s.cursorColumn] = false }
-    case "r": setVerticalMargins(params); changedActiveScreen = true
-    case "S": resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: true)
-    case "T": resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: false, allowHistory: false)
-    case "b":
+    case 0x72: setVerticalMargins(params); changedActiveScreen = true
+    case 0x53: resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: true)
+    case 0x54: resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: false, allowHistory: false)
+    case 0x62:
       repeatRemaining = lastPrinted.isEmpty ? 0 : min(1_000_000, max(0, params.first ?? 1))
       clearsPending = false
-    case "m": applySGR(params, colonSyntax: packet.hasColon ? raw : nil); clearsPending = false
-    case "s":
+    case 0x73:
       if leftRightMargins { setHorizontalMargins(params); changedActiveScreen = true }
       else { s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedOrigin = originMode }
-    case "u":
+    case 0x75:
       clearsPending = false
       if first == 0x3e {
         if s.keyboardStack.count == 32 { s.keyboardStack.removeFirst() }
@@ -669,24 +681,24 @@ private final class TerminalEmulator {
       else if first == 0x3c { for _ in 0..<min(32, n) { s.keyboardFlags = s.keyboardStack.popLast() ?? 0 } }
       else if first == 0x3d {
         let flags = (packet.keyboardFlags ?? 0) & 31
-        let action = raw.split(separator: ";", omittingEmptySubsequences: false).dropFirst().first.flatMap { Int($0) } ?? 1
+        let action = String(decoding: raw, as: UTF8.self).split(separator: ";", omittingEmptySubsequences: false).dropFirst().first.flatMap { Int($0) } ?? 1
         if action == 1 { s.keyboardFlags = flags }
         else if action == 2 { s.keyboardFlags |= flags }
         else if action == 3 { s.keyboardFlags &= ~flags }
       }
       else { originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false }
-    case "n": clearsPending = false; if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = s.cursorRow + 1 - (originMode ? s.topMargin : 0); let column = s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0); replies.append(contentsOf: "\u{1b}[\(row);\(column)R".utf8) }
-    case "c": clearsPending = false; replies.append(contentsOf: "\u{1b}[?62;4c".utf8)
-    case "p" where privateMode && last == 0x24:
+    case 0x6e: clearsPending = false; if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = s.cursorRow + 1 - (originMode ? s.topMargin : 0); let column = s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0); replies.append(contentsOf: "\u{1b}[\(row);\(column)R".utf8) }
+    case 0x63: clearsPending = false; replies.append(contentsOf: "\u{1b}[?62;4c".utf8)
+    case 0x70 where privateMode && last == 0x24:
       clearsPending = false
       replies.append(contentsOf: "\u{1b}[?\(params.first ?? 0);\(params.first == 69 ? (leftRightMargins ? 1 : 2) : 0)$y".utf8)
-    case "p" where last == 0x21: softReset(); changedActiveScreen = true
-    case "q" where last == 0x22: protectedOutput = (params.first ?? 0) == 1; clearsPending = false
-    case "q" where last == 0x20: s.cursorShape = UInt8(min(6, max(0, params.first ?? 0))); clearsPending = false
-    case "q": clearsPending = false; semanticChange = false
-    case "h", "l":
-      if privateMode, params.allSatisfy({ [47, 1047, 1049].contains($0) }), params.allSatisfy({ _ in usingAlternate == (final == "h") }) { semanticChange = false }
-      changedActiveScreen = setMode(params, enabled: final == "h", privateMode: privateMode)
+    case 0x70 where last == 0x21: softReset(); changedActiveScreen = true
+    case 0x71 where last == 0x22: protectedOutput = (params.first ?? 0) == 1; clearsPending = false
+    case 0x71 where last == 0x20: s.cursorShape = UInt8(min(6, max(0, params.first ?? 0))); clearsPending = false
+    case 0x71: clearsPending = false; semanticChange = false
+    case 0x68, 0x6c:
+      if privateMode, params.allSatisfy({ [47, 1047, 1049].contains($0) }), params.allSatisfy({ _ in usingAlternate == (final == 0x68) }) { semanticChange = false }
+      changedActiveScreen = setMode(params, enabled: final == 0x68, privateMode: privateMode)
     default: break
     }
     // DEC alternate-screen modes swap the screen object.  Keeping the swap
@@ -694,10 +706,10 @@ private final class TerminalEmulator {
     // stale primary copy back into the newly active alternate buffer.
     if !changedActiveScreen { if clearsPending { s.pendingWrap = false }; screen = s }
     // Scroll commits its replacement screen before eviction resolves anchors.
-    if final == "S" { enforceHistoryLimits() }
+    if final == 0x53 { enforceHistoryLimits() }
     if graphics.hasPlacements {
       switch final {
-      case "J", "L", "M", "S", "T", "h", "l": pruneGraphicsAnchors()
+      case 0x4a, 0x4c, 0x4d, 0x53, 0x54, 0x68, 0x6c: pruneGraphicsAnchors()
       default: break
       }
     }
@@ -792,7 +804,7 @@ private final class TerminalEmulator {
             let count = mode == 2 ? 5 : mode == 5 ? 3 : 1
             if group + count <= groups.count {
               var nestedParameters: [Int] = []
-              if let packet = Self.parseCSIParameters(String(groups[group..<(group + count)].joined(separator: ";")), final: "m", into: &nestedParameters) {
+              if let packet = Self.parseCSIParameters(groups[group..<(group + count)].joined(separator: ";").utf8, final: 0x6d, into: &nestedParameters) {
                 applySGR(packet.values, colonSyntax: nil)
               }
               group += count
