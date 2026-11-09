@@ -1,0 +1,7 @@
+{
+  "Sources/Terminal/Emulation/TerminalDocument.swift": "a0e0700251e0e7628fd162041dbbb747ec9c6cebb831e4d6629af8c11f43e828",
+  "Sources/Terminal/Emulation/DocumentReflow.swift": "083715643a6cd69a1efcee1773158b973c6e4771acf84e7da001370657c8a22d",
+  "Tests/TerminalTests/TerminalDocumentOwnershipTests.swift": "831270a40bf50dddbdaf4bed73f1ba7c46c44a11adf56a07ef8a8b777a937770",
+  "Tests/TerminalTests/EmulatorTests.swift": "ab1b23d17bf7270649268d7d29ca5112b21c6bb9d7dfcb17e08a6982a077bbd8",
+  "Tests/TerminalTests/TerminalReflowSemanticTests.swift": "7a9f6b13be81075e48075f86bd19415abfd252ae67fdbeb7ab52fb7a8955ba3e"
+}

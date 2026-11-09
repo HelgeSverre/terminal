@@ -1,0 +1,8 @@
+{
+  "path": "Tests/TerminalTests/TerminalDocumentOwnershipTests.swift",
+  "before_sha256": "90fb2051d864984988ae5fac06be823405a25f7dcb32ff6fc398c6d3dee02bad",
+  "after_sha256": "831270a40bf50dddbdaf4bed73f1ba7c46c44a11adf56a07ef8a8b777a937770",
+  "change": "Identical baseline/candidate assertion that empty kept-capacity buffers remain physically charged",
+  "production_changed": false,
+  "benchmark_binaries_changed": false
+}

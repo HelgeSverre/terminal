@@ -1,0 +1,6 @@
+{
+  "Sources/Terminal/Emulation/TerminalDocument.swift": "541a439041fe248b2bdeaf7cb32dd366dbd193e9b9234d0707278f51b3ccc75f",
+  "Sources/Terminal/Emulation/TerminalEmulator.swift": "7ea8d32c0dbae04a4880cf3ecdbc917d558fb6385559c33c1110773c7b885c4b",
+  "Tests/TerminalTests/TerminalDocumentOwnershipTests.swift": "f9e700e073e067f7e3b31d296a8a11c0ee2b2cc2d1e5a216f8f0c913656c2e95",
+  "Tests/TerminalTests/EmulatorTests.swift": "67551149fd1c9bcd4ed44112af44890b76e40d1646121eb81c733983923fad2f"
+}
