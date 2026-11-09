@@ -65,7 +65,8 @@ class TerminalComparison
         background-opacity = 1
         window-width = 100
         window-height = 30
-        window-padding-x = 8
+        # Eight points produced 101 columns on the Retina benchmark screen.
+        window-padding-x = 0
         window-padding-y = 8
         scrollback-limit-lines = 10000
         scrollback-limit-bytes = 67108864
@@ -113,7 +114,7 @@ class TerminalComparison
         'initial_window_width' => '100c', 'initial_window_height' => '30c',
         'remember_window_size' => 'no', 'cursor_blink_interval' => '0',
         'scrollback_lines' => '10000', 'background_opacity' => '1',
-        'shell_integration' => 'disabled', 'window_padding_width' => '8',
+        'shell_integration' => 'disabled', 'window_padding_width' => '0',
         'macos_quit_when_last_window_closed' => 'yes', 'confirm_os_window_close' => '0'
       }
       [executable, '--config', 'NONE', '--session', 'none',
