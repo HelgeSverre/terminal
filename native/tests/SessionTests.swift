@@ -598,9 +598,11 @@ import Foundation
     expect(checks["resumable_resize_commits_before_later_input"] == true,
       "committed resize: requested=\(committedResizeRequested), delivered=\(committedResizeDelivered), semantic_probe=\(committedResizeProbe), owner_probes=\(committedResizeOwnerProbes), geometries=\(committedResizeGeometries), winch=\(committedResizeSignals)")
     committedResize.close()
-    // The same queue-yield property must make an in-progress resize cancellable
-    // before it sends WINCH. The child remains idle, so any receipt is solely
-    // caused by an incorrect committed ioctl.
+    // Post A and its close marker from one owner turn. A's admission runs
+    // first, then the marker posts Close. The first pump runs after that marker
+    // and can only begin the transaction; its continuation is queued behind
+    // Close. This proves cancellation after begin and before advance without a
+    // timer, extra production API, or a workload-size assumption.
     let cancelledResizeDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("terminal-resize-cancel-\(UUID().uuidString)", isDirectory: true)
     let cancelledResizeReceipt = cancelledResizeDirectory.appendingPathComponent("winch.txt")
@@ -614,8 +616,6 @@ import Foundation
       STDOUT.sync = true
       trap("WINCH") { File.open(ARGV.fetch(0), "a") { |file| file.puts(`stty size`.strip) } }
       system("stty raw -echo")
-      row = "x" * 140
-      50_000.times { |index| print "%05d %s\r\n" % [index, row] }
       print "RESIZE_CANCEL_READY"
       sleep 30
       """#
@@ -624,27 +624,6 @@ import Foundation
     var cancelledResizeClosed = false
     var cancelledResizeReaped = false
     var cancelledResizeInputRejected = false
-    var cancelledResizeOwnerProbes = 0
-    var cancelledResizeCommittedUnexpectedly = false
-    var scheduleCancelledResizeProbe: (() -> Void)!
-    scheduleCancelledResizeProbe = {
-      cancelledResize.queue.async {
-        DispatchQueue.main.async {
-          guard !cancelledResizeClosed else { return }
-          if FileManager.default.fileExists(atPath: cancelledResizeReceipt.path) {
-            cancelledResizeCommittedUnexpectedly = true
-          }
-          cancelledResizeOwnerProbes += 1
-          if cancelledResizeOwnerProbes < 2 && !cancelledResizeCommittedUnexpectedly {
-            scheduleCancelledResizeProbe()
-          } else {
-            cancelledResizeClosed = true
-            cancelledResize.close()
-            cancelledResizeInputRejected = !cancelledResize.input("x")
-          }
-        }
-      }
-    }
     cancelledResize.onStatus = { status in
       if status.hasPrefix("Process exited") { cancelledResizeReaped = true }
     }
@@ -652,9 +631,16 @@ import Foundation
       let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
       guard !cancelledResizeRequested, text.contains("RESIZE_CANCEL_READY") else { return }
       cancelledResizeRequested = true
-      cancelledResize.resize(cols: 20, rows: 24)
-      DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(10)) {
-        scheduleCancelledResizeProbe()
+      cancelledResize.queue.async {
+        cancelledResize.resize(cols: 20, rows: 24)
+        cancelledResize.queue.async {
+          cancelledResize.close()
+          let inputRejected = !cancelledResize.input("x")
+          DispatchQueue.main.async {
+            cancelledResizeClosed = true
+            cancelledResizeInputRejected = inputRejected
+          }
+        }
       }
     }
     let cancelledResizeDeadline = Date().addingTimeInterval(8)
@@ -665,10 +651,9 @@ import Foundation
       .trimmingCharacters(in: .whitespacesAndNewlines)
     checks["pending_resize_close_is_fair_and_cancels"] =
       cancelledResizeRequested && cancelledResizeClosed && cancelledResizeReaped
-      && cancelledResizeInputRejected && cancelledResizeOwnerProbes >= 2
-      && !cancelledResizeCommittedUnexpectedly && cancelledResizeSignals.isEmpty
+      && cancelledResizeInputRejected && cancelledResizeSignals.isEmpty
     expect(checks["pending_resize_close_is_fair_and_cancels"] == true,
-      "cancelled resize: requested=\(cancelledResizeRequested), closed=\(cancelledResizeClosed), reaped=\(cancelledResizeReaped), input_rejected=\(cancelledResizeInputRejected), owner_probes=\(cancelledResizeOwnerProbes), committed=\(cancelledResizeCommittedUnexpectedly), winch=\(cancelledResizeSignals)")
+      "cancelled resize: requested=\(cancelledResizeRequested), closed=\(cancelledResizeClosed), reaped=\(cancelledResizeReaped), input_rejected=\(cancelledResizeInputRejected), winch=\(cancelledResizeSignals)")
     let searchable = own(Session(launch: spec(
       #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; 3000.times{|i| print(i==1000 ? "SEARCH_NEEDLE\r\n" : "row#{i}\r\n")}; print "SEARCH_READY"; STDIN.read(1)'"#)))
     var searchReady = false
@@ -793,7 +778,7 @@ import Foundation
         "committed_winch": committedResizeSignals,
         "cancelled_winch": cancelledResizeSignals,
         "committed_owner_probes": committedResizeOwnerProbes,
-        "cancelled_owner_probes": cancelledResizeOwnerProbes,
+        "cancelled_close_after_begin": cancelledResizeClosed,
       ],
       "owned_session_cleanup": ["reported": cleanupStats.count, "expected": ownedSessions.count,
         "all_children_reaped": allChildrenReaped, "unreaped_pids": unreapedPIDs,

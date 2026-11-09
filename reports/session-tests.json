@@ -1,5 +1,5 @@
 {
-  "cancel_to_reap_seconds" : 0.013049006462097168,
+  "cancel_to_reap_seconds" : 0.0029950141906738281,
   "checks" : {
     "all_owned_children_reaped" : true,
     "cancel_close_under_three_seconds" : true,
@@ -44,110 +44,110 @@
   "failures" : [
 
   ],
-  "finished_at" : "2026-11-09T02:09:57Z",
+  "finished_at" : "2026-11-09T02:26:56Z",
   "owned_session_cleanup" : {
     "all_children_reaped" : true,
     "expected" : 17,
     "reported" : 17,
     "states" : [
       {
-        "child_pid" : 61322,
+        "child_pid" : 78219,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 0
       },
       {
-        "child_pid" : 61319,
+        "child_pid" : 78221,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 1
       },
       {
-        "child_pid" : 61331,
+        "child_pid" : 78234,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 2
       },
       {
-        "child_pid" : 61321,
+        "child_pid" : 78247,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 3
       },
       {
-        "child_pid" : 61340,
+        "child_pid" : 78239,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 4
       },
       {
-        "child_pid" : 61432,
+        "child_pid" : 78246,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 5
       },
       {
-        "child_pid" : 61328,
+        "child_pid" : 78228,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 6
       },
       {
-        "child_pid" : 61426,
+        "child_pid" : 78253,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 7
       },
       {
-        "child_pid" : 61334,
+        "child_pid" : 78237,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 8
       },
       {
-        "child_pid" : 61420,
+        "child_pid" : 78309,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 9
       },
       {
-        "child_pid" : 61333,
+        "child_pid" : 78351,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 10
       },
       {
-        "child_pid" : 61359,
+        "child_pid" : 78300,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 11
       },
       {
-        "child_pid" : 61375,
+        "child_pid" : 78260,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 12
       },
       {
-        "child_pid" : 61366,
+        "child_pid" : 78363,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 13
       },
       {
-        "child_pid" : 61347,
+        "child_pid" : 78318,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 14
       },
       {
-        "child_pid" : 61341,
+        "child_pid" : 78357,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 15
       },
       {
-        "child_pid" : 61353,
+        "child_pid" : 78240,
         "child_reaped" : true,
         "child_reaped_reported" : true,
         "session" : 16
@@ -159,7 +159,7 @@
   },
   "passed" : true,
   "resumable_reflow" : {
-    "cancelled_owner_probes" : 2,
+    "cancelled_close_after_begin" : true,
     "cancelled_winch" : "",
     "committed_owner_probes" : 2,
     "committed_winch" : [
@@ -171,8 +171,8 @@
     ],
     "rejected_winch" : ""
   },
-  "run_id" : "F29070C1-3CCE-4D10-A60D-A1573532EF45",
-  "started_at" : "2026-11-09T02:09:53Z",
+  "run_id" : "21692023-108D-4D50-AC66-6B0D6104A08F",
+  "started_at" : "2026-11-09T02:26:53Z",
   "statuses" : [
     "PTY ended; waiting for process exit",
     "Process exited (status 0); draining output",
