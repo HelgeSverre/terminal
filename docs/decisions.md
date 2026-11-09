@@ -14,34 +14,43 @@ its drawable/presentation lifecycle. Drawables and instance buffers are retained
 by submitted command buffers; shared glyph-atlas mutation currently drains GPU
 sampling before writes. That conservative implementation needs further profiling.
 
-## Rust core and AppKit host
+## Swift terminal emulator and AppKit host
 
-Helge subsequently confirmed keeping Rust for now. A versioned C bridge confines
-opaque terminal handles to a serial owner; Swift receives owned immutable values.
-Cells cross a typed, row-major C callback buffer with length-delimited text/links,
-packed symbolic colors and style flags. Small cursor/mode/palette/image metadata
-still uses JSON. Swift copies the borrowed views on the owner before the callback
-returns; no Rust row pointer escapes its lifetime. The original full JSON API
-remains for headless tools and exact equivalence tests. Retained row handles and
-revision-based row reuse remain future optimizations. The terminal core builds
-and tests without AppKit or Metal.
+The initial Rust implementation is preserved at `rust-before-swift-9190820`.
+Helge authorized replacing it once the Swift experiment reached 70% of matched
+Rust throughput, with 80% as a stretch goal. The final standard-workload pair
+reached 86.9–92.2%; the separate full-SQL stress case reached 67.9% and remains
+an optimization gap. Swift makes the executable smaller and removes the Rust
+toolchain from active development, while the measured full-app build is slightly
+slower. See [the cutover record](swift-cutover.md) for exact measurements and limits.
+
+The terminal emulator and document now share one Swift compiler module with the
+native host. Session queues retain exclusive mutation ownership; presentation
+uses direct immutable snapshots. The versioned C and JSON APIs remain for
+compatibility tests and headless tools, rather than the normal rendering path.
+`native/Emulation` owns interpretation, document/history, protocol input, search,
+graphics state and snapshots; `native/Text` owns streaming Unicode processing.
 
 Each session currently has a serial Dispatch queue combining PTY readiness and
 terminal mutation. Dispatch sources use the native kernel readiness mechanism;
 no dedicated OS thread is created per session. This preserves single ownership
 but does not yet implement the original shared-reactor/owner-lane separation.
-Each pane currently owns a Metal layer/render queue; a window-level compositor
-and shared glyph service remain a planned consolidation.
+Each pane owns a Metal layer. A shared rendering service owns glyph residency,
+bounded raster work and the process-wide glyph budget; broader rendering and
+resource-recovery gates remain open.
 
 ## Unicode and resource identity
 
-Width uses pinned unicode-width 0.2.3 (Unicode 18). Segmentation is vendored at
-upstream commit 4444c95cf31f3bae48aa98b9f96b66332a8836fd, whose generated tables
-are Unicode 18. Upstream generator, licenses, and table source are retained.
-Tests assert both Unicode versions. Cells are 16 bytes with inline scalar text;
-only multi-scalar clusters use row-local resource storage. Row resource IDs are
-scoped to their immutable resource maps, so snapshot copies cannot alias a later
-reused local ID.
+Width and segmentation retain the pinned Unicode 18 behavior from the Rust
+implementation. Neutral inputs, provenance, licenses and Swift generators live
+under `tools/unicode`; regeneration requires no Cargo registry or Rust source.
+The official 853-case grapheme corpus and targeted width fixtures are mandatory.
+
+Rows retain stable identities and copy-on-write storage; scalar text lives in
+inline slots while multi-scalar text and links use sparse row payloads. Swift's
+physical slot layout differs from Rust's former 16-byte cell. Historical
+retention charges remain a compatibility contract and must not be presented as
+the actual allocation size or a complete process-memory budget.
 
 ## Launch
 
