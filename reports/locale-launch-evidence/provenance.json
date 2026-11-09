@@ -1,0 +1,31 @@
+{
+  "purpose": "Private, controlled reproduction of the cd completion duplication report; no user terminal history or AX text is retained.",
+  "installed_release_0_2_0": {
+    "bundle_executable": "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/release/Helge Terminal.app/Contents/MacOS/Terminal",
+    "sha256": "070795fdd413fdc44d428a1fd13d1d413836e3fe763fbb5cf63db0e94c66d0d7",
+    "mach_o_uuid": "39C7E16F-AE66-32F5-8281-DEB566364F52",
+    "code_signature": "Developer ID Application: Liseth Solutions AS (9Z2L5FBZS3)"
+  },
+  "private_diagnostic_clone": {
+    "bundle_executable": "/tmp/terminal-cd-private-0.2.0-1aCbKo/Terminal.app/Contents/MacOS/Terminal",
+    "sha256": "57fe2903874776c5dceff205c8e79244326cb5494cbdf2f8a33b016656a2c48f",
+    "mach_o_uuid": "39C7E16F-AE66-32F5-8281-DEB566364F52",
+    "note": "The Mach-O UUID matches the installed release code, but the executable bytes and signature identity do not: the clone is private diagnostic material and is not the installed signed binary."
+  },
+  "harness": {
+    "trace_source_sha256": "b20fba57a1e38557693641554f051b3b28382156c22a3157dc81a3bed7ae06af",
+    "trace_dylib_sha256": "b8c6bd93ba200d06dee7f086003e715a14e65280ac68b34eff5fdcb45244fcc5",
+    "runner_sha256": "3d3ddb19f9803a016b8eca7ce1bc649fc68190af7dd0518ebd2c824438720549",
+    "event_route": "synthetic AppKit NSApp.sendEvent; not physical HID"
+  },
+  "clean_ab": {
+    "no_locale_red_report": "ui-020-80to132-doubletab-paced-repeated-no-locale-clean-v2.json",
+    "no_locale_red_report_sha256": "3c873029109a11ddccfeb7f6d8269641676249710f794e525c53738199f580dd",
+    "utf8_green_report": "ui-020-80to132-doubletab-paced-repeated-utf8-control-v1.json",
+    "utf8_green_report_sha256": "883adccaf432795a491d5d662f221549e1712ba75a81cf98fbe7af2586cd934f",
+    "controlled_input": "cd cresca<TAB><TAB>",
+    "rounds_per_condition": 3,
+    "geometry": "initial 80 columns, then 132 columns; font size 12",
+    "privacy": "Reports retain only boolean AX classifications and fixed controlled input, never AX text or raw PTY output."
+  }
+}

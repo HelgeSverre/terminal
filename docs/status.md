@@ -44,6 +44,11 @@ Implemented and locally exercised:
   The whole-transcript native search path has been removed.
 - PTY launcher/status handshake, native readiness, ordered owner input/replies,
   partial writes, exit drain/reap, close escalation, write pressure limits.
+- Child-only UTF-8 locale defaults for desktop launches with missing/empty LANG.
+  macOS language/country candidates are validated with a usable UTF-8 fallback;
+  explicit LANG/LC_* overrides and the parent's environment remain untouched.
+  A controlled double-Tab locale A/B and real PTY regression cover the Unicode
+  prompt redisplay defect; see `reports/locale-launch-evidence/summary.md`.
 - Metal glyph atlas/instanced quads, demand-only rendering, Retina metrics.
   Atlas pages grow lazily. Pressure uses bounded direct glyph textures, then a
   visible replacement after the exact-glyph budget is exhausted; oversized

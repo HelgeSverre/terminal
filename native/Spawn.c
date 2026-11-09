@@ -9,9 +9,48 @@
 #include <sys/wait.h>
 #include <stdio.h>
 #include <limits.h>
+#include <locale.h>
+#include <langinfo.h>
+#include <xlocale.h>
+#include <CoreFoundation/CFLocale.h>
+#include <CoreFoundation/CFString.h>
 extern char **environ;
-typedef struct { char **values; char *directory; char *original; } SpawnEnvironment;
-static void destroy_environment(SpawnEnvironment *env){free(env->values);free(env->directory);free(env->original);}
+typedef struct { char **values; char *directory; char *original; char *language; } SpawnEnvironment;
+static void destroy_environment(SpawnEnvironment *env){free(env->values);free(env->directory);free(env->original);free(env->language);}
+
+static int utf8_locale_supported(const char *name){
+    locale_t locale=newlocale(LC_ALL_MASK,name,NULL);
+    if(!locale)return 0;
+    const char *encoding=nl_langinfo_l(CODESET,locale);
+    int supported=encoding&&(!strcmp(encoding,"UTF-8")||!strcmp(encoding,"UTF8"));
+    freelocale(locale);
+    return supported;
+}
+
+// Launch Services does not normally supply LANG. Give every PTY child a
+// usable UTF-8 default without changing this process's locale/environment.
+// Cocoa can produce combinations such as en_NO that libc does not install.
+static char *default_language(void){
+    char selected[256]="en_US.UTF-8";
+    CFLocaleRef locale=CFLocaleCopyCurrent();
+    if(locale){
+        CFTypeRef language=CFLocaleGetValue(locale,kCFLocaleLanguageCode);
+        CFTypeRef country=CFLocaleGetValue(locale,kCFLocaleCountryCode);
+        char language_code[96],country_code[96],candidate[256];
+        if(language&&country&&CFGetTypeID(language)==CFStringGetTypeID()&&CFGetTypeID(country)==CFStringGetTypeID()
+            &&CFStringGetCString(language,language_code,sizeof language_code,kCFStringEncodingUTF8)
+            &&CFStringGetCString(country,country_code,sizeof country_code,kCFStringEncodingUTF8)){
+            int length=snprintf(candidate,sizeof candidate,"%s_%s.UTF-8",language_code,country_code);
+            if(length>0&&(size_t)length<sizeof candidate&&utf8_locale_supported(candidate))
+                memcpy(selected,candidate,(size_t)length+1);
+        }
+        CFRelease(locale);
+    }
+    if(!utf8_locale_supported(selected)){errno=EINVAL;return NULL;}
+    char *entry=NULL;
+    if(asprintf(&entry,"LANG=%s",selected)<0){errno=ENOMEM;return NULL;}
+    return entry;
+}
 // Only normal interactive zsh launches are wrapped. Explicit commands keep
 // their original startup semantics. The signed bundle owns the integration.
 static int make_environment(const char *launcher,const char *executable,char *const argv[],size_t argc,SpawnEnvironment *out){
@@ -26,14 +65,19 @@ static int make_environment(const char *launcher,const char *executable,char *co
         int length=snprintf(entry,sizeof(entry),"%s/.zshenv",shim);
         wrap=len>0&&(size_t)len<sizeof(shim)&&length>0&&(size_t)length<sizeof(entry)&&access(entry,R_OK)==0;
     }
+    const char *language=NULL;
+    for(size_t i=0;i<count;i++)if(!strncmp(environ[i],"LANG=",5)&&environ[i][5]&&!language)language=environ[i];
+    if(!language){out->language=default_language();if(!out->language)return errno;language=out->language;}
     size_t n=0;
     for(size_t i=0;i<count;i++){
         const char *value=environ[i];
+        if(!strncmp(value,"LANG=",5))continue;
         if(!strncmp(value,"VK_",3)||!strncmp(value,"TERM=",5)||!strncmp(value,"COLORTERM=",10)||!strncmp(value,"TERM_PROGRAM=",13))continue;
         if(wrap&&(!strncmp(value,"ZDOTDIR=",8)||!strncmp(value,"HELGE_TERMINAL_",15)))continue;
         out->values[n++]=environ[i];
     }
     out->values[n++]="TERM=xterm-256color";out->values[n++]="COLORTERM=truecolor";out->values[n++]="TERM_PROGRAM=HelgeTerminal";
+    out->values[n++]=(char *)language;
     if(wrap){
         const char *original=getenv("ZDOTDIR");
         if(asprintf(&out->directory,"ZDOTDIR=%s",shim)<0||asprintf(&out->original,"HELGE_TERMINAL_ORIGINAL_ZDOTDIR=%s",original?original:"")<0)return ENOMEM;

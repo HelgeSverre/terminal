@@ -1,0 +1,41 @@
+{
+  "typing_key_interval_ms": 50,
+  "screenshot": "ui-020-80to132-doubletab-paced-repeated-no-locale-clean-v2.png",
+  "post_tab_ax_has_cdcd": true,
+  "verdict": "red_duplicate_cd",
+  "passed": true,
+  "initial_columns_requested": 80,
+  "second_tab_timing": "100ms",
+  "resized_columns_requested": 132,
+  "interference": {
+    "focus_lost": false,
+    "key_window_at_capture": true
+  },
+  "ax_text_persisted": false,
+  "rounds": [
+    {
+      "round": 0,
+      "ax_has_expected_prefix": true,
+      "ax_has_cdcd": true
+    },
+    {
+      "round": 1,
+      "ax_has_expected_prefix": true,
+      "ax_has_cdcd": true
+    },
+    {
+      "round": 2,
+      "ax_has_expected_prefix": true,
+      "ax_has_cdcd": true
+    }
+  ],
+  "font_size_requested": 12,
+  "input": "cd cresca<TAB><TAB>",
+  "route": "synthetic_AppKit_NSEvent_not_physical_HID",
+  "post_tab_ax_has_expected_prefix": true,
+  "runner": {
+    "app_pid": 76551,
+    "cleanup_survivors": [],
+    "app_status_observed": true
+  }
+}

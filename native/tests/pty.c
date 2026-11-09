@@ -12,6 +12,36 @@
 static char launcher[4096];
 static void reply(void *context,const uint8_t *bytes,size_t count){int fd=*(int *)context;while(count){ssize_t n=write(fd,bytes,count);if(n>0){bytes+=n;count-=n;}else if(errno!=EINTR){assert(errno==EAGAIN);struct pollfd p={fd,POLLOUT,0};assert(poll(&p,1,1000)>0);}}}
 static double now(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return t.tv_sec+t.tv_nsec/1e9;}
+static char *saved_locale(const char *name){const char *value=getenv(name);return value?strdup(value):NULL;}
+static void restore_locale(const char *name,char *value){if(value){assert(setenv(name,value,1)==0);free(value);}else assert(unsetenv(name)==0);}
+static void expect_locale_unchanged(const char *name,const char *before){const char *after=getenv(name);assert((before==NULL&&after==NULL)||(before&&after&&!strcmp(before,after)));}
+static void run_locale(const char *lang,const char *all,const char *ctype,const char *expected_lang,const char *expected_codeset){
+    char *old_lang=saved_locale("LANG"),*old_all=saved_locale("LC_ALL"),*old_ctype=saved_locale("LC_CTYPE");
+    if(lang)assert(setenv("LANG",lang,1)==0);else assert(unsetenv("LANG")==0);
+    if(all)assert(setenv("LC_ALL",all,1)==0);else assert(unsetenv("LC_ALL")==0);
+    if(ctype)assert(setenv("LC_CTYPE",ctype,1)==0);else assert(unsetenv("LC_CTYPE")==0);
+    char *before_lang=saved_locale("LANG"),*before_all=saved_locale("LC_ALL"),*before_ctype=saved_locale("LC_CTYPE");
+    const char *script="lang_count=$(env | awk -F= '$1==\"LANG\"{n++} END{print n+0}'); codeset=$(/usr/bin/locale charmap); printf 'LOCALE LANG=<%s> LC_ALL=<%s> LC_CTYPE=<%s> LANG_COUNT=%s CODESET=%s' \"${LANG-}\" \"${LC_ALL-}\" \"${LC_CTYPE-}\" \"$lang_count\" \"$codeset\"";
+    char *argv[]={"/bin/sh","-c",(char *)script,NULL};TerminalProcess p=terminal_spawn_args(launcher,"/bin/sh","/tmp",80,24,argv);assert(p.error==0);
+    char output[4096];size_t used=0;int eof=0,status_eof=0,reaped=0,outcome=0;unsigned char status[16];size_t status_used=0;double deadline=now()+10;
+    while((!eof||!status_eof||!reaped)&&now()<deadline){
+        struct pollfd fds[2]={{p.master,POLLIN,0},{p.status,POLLIN,0}};poll(fds,2,20);
+        if(!eof){ssize_t n=read(p.master,output+used,sizeof(output)-used-1);if(n>0)used+=(size_t)n;else if(n==0||(n<0&&errno==EIO))eof=1;else assert(errno==EAGAIN||errno==EINTR);}
+        if(!status_eof){ssize_t n=read(p.status,status+status_used,sizeof(status)-status_used);if(n>0)status_used+=(size_t)n;else if(n==0)status_eof=1;else assert(errno==EAGAIN||errno==EINTR);}
+        if(!reaped){int result=waitpid(p.pid,&outcome,WNOHANG);assert(result>=0);if(result==p.pid)reaped=1;}
+    }
+    assert(eof&&status_eof&&reaped&&status_used==0&&WIFEXITED(outcome)&&WEXITSTATUS(outcome)==0);output[used]=0;close(p.master);close(p.status);
+    if(expected_lang){
+        char expected[256];int length=snprintf(expected,sizeof(expected),"LOCALE LANG=<%s> LC_ALL=<%s> LC_CTYPE=<%s> LANG_COUNT=1 CODESET=%s",expected_lang,all?all:"",ctype?ctype:"",expected_codeset);assert(length>0&&(size_t)length<sizeof(expected));
+        if(!strstr(output,expected))fprintf(stderr,"locale PTY mismatch: %s\n",output);assert(strstr(output,expected));
+    }else{
+        assert(strstr(output,"LOCALE LANG=<")&&!strstr(output,"LOCALE LANG=<>"));
+        assert(strstr(output,"LC_ALL=<> LC_CTYPE=<> LANG_COUNT=1 CODESET=UTF-8"));
+    }
+    expect_locale_unchanged("LANG",before_lang);expect_locale_unchanged("LC_ALL",before_all);expect_locale_unchanged("LC_CTYPE",before_ctype);free(before_lang);free(before_all);free(before_ctype);
+    restore_locale("LANG",old_lang);restore_locale("LC_ALL",old_all);restore_locale("LC_CTYPE",old_ctype);
+    printf("PASS PTY locale: LANG=%s LC_ALL=%s LC_CTYPE=%s CODESET=%s\n",expected_lang?expected_lang:"<default>",all?all:"",ctype?ctype:"",expected_codeset);
+}
 static void run(const char *executable,const char *cwd,const char *script,int expected_error,const char *expected_text){
     char *argv[]={(char *)executable,"-c",(char *)script,NULL};
     TerminalProcess p=terminal_spawn_args(launcher,executable,cwd,123,37,argv);assert(p.error==0);
@@ -33,6 +63,12 @@ static void run(const char *executable,const char *cwd,const char *script,int ex
     printf("PASS PTY: %s (%zu bytes, child reaped, final output drained)\n",expected_text,used);
 }
 int main(int argc,char **argv){assert(argc==2);snprintf(launcher,sizeof launcher,"%s",argv[1]);
+    run_locale(NULL,NULL,NULL,NULL,"UTF-8");
+    run_locale("",NULL,NULL,NULL,"UTF-8");
+    run_locale("en_US.UTF-8",NULL,NULL,"en_US.UTF-8","UTF-8");
+    run_locale("C",NULL,NULL,"C","US-ASCII");
+    run_locale("en_US.UTF-8","C",NULL,"en_US.UTF-8","US-ASCII");
+    run_locale("en_US.UTF-8",NULL,"C","en_US.UTF-8","US-ASCII");
     run("/bin/sh","/tmp","printf 'cwd=';pwd; stty size;test -t 0 && test -t 1 && test -t 2; printf 'CONTROLLING=';ps -o tpgid= -p $$;printf 'DONE'",0,"37 123");
     run("/bin/sh","/tmp","i=0;while [ $i -lt 20000 ];do printf 'final-burst-';i=$((i+1));done;printf 'FINAL_SENTINEL'",0,"FINAL_SENTINEL");
     run("/does-not-exist","/tmp","",ENOENT,"exec failure");
@@ -44,5 +80,4 @@ int main(int argc,char **argv){assert(argc==2);snprintf(launcher,sizeof launcher
     run("/bin/sh","/tmp","tmux -L terminal-smoke-$$ -f /dev/null new-session 'printf TMUX_CORPUS; sleep 0.2'; printf TMUX_CORPUS_OK",0,"TMUX_CORPUS_OK");
     run("/bin/sh","/tmp","printf 'one\ntwo\n' | fzf --bind 'load:accept' && printf FZF_CORPUS_OK",0,"FZF_CORPUS_OK");
     return 0;
-
 }
