@@ -5,9 +5,10 @@ yellow visual language. `Sources/Terminal/Settings.swift` owns the window, schem
 and shared field renderer; `Sources/Terminal/Theme.swift` owns its palette.
 This document describes the local implementation, not a published release.
 
-The five sections are General, Text, Scrollback, Panes, and Keyboard. The HTML
-prototype supplies the sidebar and row structure. Its dynamic section demo and
-SidePulse hardware controls are not part of this implementation. The font family
+This SidePulse branch has six sections: General, Text, Scrollback, Panes, Keyboard,
+and SidePulse Pro. The HTML prototype supplies the sidebar and row structure. Its
+dynamic section demo remains omitted. SidePulse Pro retains the branch's enable
+preference, live status, color legend, and Test lights action. The font family
 is read-only and reflects `TerminalFont.appKit`, rather than promising a chooser.
 
 ## Extending the schema
@@ -16,7 +17,7 @@ is read-only and reflects `TerminalFont.appKit`, rather than promising a chooser
 The `sections` array drives both navigation and panes. Add one section entry to
 create both; keep its ID stable for accessibility clients.
 
-`Field` supports `text`, `number`, `check`, `segment`, `readOnly`, and `note`.
+`Field` supports `text`, `number`, `check`, `segment`, `readOnly`, `action`, and `note`.
 `render(_:)` supplies the common label column, optional helper, separator, and
 control layout. Reuse an existing field type by adding an entry to `fields`.
 `Presentation` is the single owner of a control's accessibility ID, label,
@@ -87,3 +88,14 @@ General. The focused capture confirms the existing yellow accent and rounded
 input treatment. Helge approved this design on 2026-11-09 and authorized the
 SidePulse branch port. That branch keeps its hardware controls; the base app
 does not gain hardware integration from this redesign. No release is claimed.
+
+## SidePulse branch verification
+
+`just settings-window-test` constructs the real six-section window with volatile
+preferences and a recording Apply callback. It verifies visible hardware controls,
+semantic navigation, draft retention, hidden-field validation, Cancel/reopen, and
+atomic application of core and SidePulse preferences without persistence or device
+writes. `just sidepulse-test` exercises the existing hardware protocol and policy
+through injected test writers. Status polling remains scoped to the visible window
+and stops on close; Test lights follows the applied preference, not an unsaved
+checkbox draft.

@@ -133,3 +133,9 @@ Press Cmd+1 through Cmd+8 to select a tab by its position. Cmd+9 selects the
 last tab. Cmd+Option+Left and Cmd+Option+Right select the previous or next tab,
 wrapping at the ends. These shortcuts apply to the current window's tab group.
 A shortcut for a tab that does not exist does nothing.
+
+## SidePulse Pro
+
+Settings can enable automatic command-status lights on a mounted SidePulse Pro.
+The experimental integration defaults to off and includes a test-light button.
+See [SidePulse setup, behavior, and hardware checks](sidepulse.md).

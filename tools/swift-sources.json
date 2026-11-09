@@ -53,7 +53,9 @@
     "Sources/Terminal/IO/SessionEventQueue.swift",
     "Sources/Terminal/IO/PTYDescriptorLifetime.swift",
     "Sources/Terminal/IO/PTYReadBroker.swift",
-    "Sources/Terminal/IO/PTYReadEndpoint.swift"
+    "Sources/Terminal/IO/PTYReadEndpoint.swift",
+    "Sources/Terminal/TerminalActivity.swift",
+    "Sources/Terminal/SidePulse.swift"
   ],
   "emulation": [
     "Sources/Terminal/Text/TerminalWidth.swift",
@@ -72,7 +74,8 @@
     "Sources/Terminal/Text/SelectionWordProfile.swift",
     "Sources/Terminal/Emulation/TerminalSelection.swift",
     "Sources/Terminal/Emulation/PresentedContent.swift",
-    "Sources/Terminal/Emulation/TerminalEmulator.swift"
+    "Sources/Terminal/Emulation/TerminalEmulator.swift",
+    "Sources/Terminal/TerminalActivity.swift"
   ],
   "tests": {
     "terminfo_probe": [
@@ -93,6 +96,7 @@
       "Sources/Terminal/Emulation/TerminalSelection.swift",
       "Sources/Terminal/Emulation/PresentedContent.swift",
       "Sources/Terminal/Emulation/TerminalEmulator.swift",
+      "Sources/Terminal/TerminalActivity.swift",
       "Tests/Programs/TerminfoProbe.swift"
     ],
     "metal_upload_probe": [
@@ -115,7 +119,8 @@
       "Sources/Terminal/Text/SelectionWordProfile.swift",
       "Sources/Terminal/Emulation/TerminalSelection.swift",
       "Sources/Terminal/Emulation/PresentedContent.swift",
-      "Sources/Terminal/Emulation/TerminalEmulator.swift"
+      "Sources/Terminal/Emulation/TerminalEmulator.swift",
+      "Sources/Terminal/TerminalActivity.swift"
     ]
   }
 }

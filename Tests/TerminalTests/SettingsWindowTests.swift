@@ -13,6 +13,7 @@ import Testing
       "fontSize": 14, "historyRows": 50000, "optionSendsEscape": false,
       "followTailOnInput": true, "startingDirectory": NSHomeDirectory(),
       "selectionWordCharacters": "_-/.:~", "showPaneTitles": true, "inactivePaneDim": 5,
+      "sidePulseEnabled": false,
     ], forName: UserDefaults.argumentDomain)
     var applied: [TerminalPreferences] = []
     let settings = TerminalSettingsWindow { applied.append($0) }
@@ -93,6 +94,36 @@ import Testing
     settings.present()
     #expect(font.stringValue == "14" && history.stringValue == "50000" && apply.isEnabled)
     #expect(palette.selected == .standard, "Cancel must discard the unsaved default color")
+    // SidePulse section: controls fit, an unsaved enable never unlocks the
+    // hardware test, Cancel discards it, and Apply delivers it atomically.
+    select("sidepulse")
+    content.layoutSubtreeIfNeeded()
+    for suffix in ["sidepulse-enabled", "sidepulse-status", "sidepulse-test", "apply"] {
+      let view = find(suffix, as: NSView.self)
+      let frame = content.convert(view.bounds, from: view)
+      #expect(!view.isHiddenOrHasHiddenAncestor && content.bounds.contains(frame),
+        "Control clipped or hidden: \(suffix): \(frame)")
+    }
+    let enabled = find("sidepulse-enabled", as: NSButton.self)
+    let test = find("sidepulse-test", as: NSButton.self)
+    #expect(test.title == "Test lights" && !test.isEnabled && enabled.state == .off)
+    enabled.performClick(nil)
+    select("text")
+    _ = edit(font, "41")
+    select("sidepulse")
+    #expect(enabled.state == .on && font.stringValue == "41")
+    #expect(!apply.isEnabled && !test.isEnabled,
+      "Hidden invalid draft must block Apply; unsaved enable must not enable hardware testing")
+    find("cancel", as: NSButton.self).performClick(nil)
+    settings.present()
+    #expect(enabled.state == .off && font.stringValue == "14" && apply.isEnabled)
+    enabled.performClick(nil)
+    select("text")
+    _ = edit(font, "18")
+    let appliedBefore = applied.count
+    apply.performClick(nil)
+    #expect(applied.count == appliedBefore + 1 && applied.last?.sidePulseEnabled == true && applied.last?.fontSize == 18)
+    #expect(!UserDefaults.standard.bool(forKey: "sidePulseEnabled"))
     settings.close()
   }
 }

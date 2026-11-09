@@ -326,10 +326,14 @@ final class Session: @unchecked Sendable {
   private let publication = NSLock()
   private var latest: TerminalSnapshot?
   private var deliveryScheduled = false
+  private var pendingActivity: (TerminalActivity, Bool)?
+  private var activityDeliveryScheduled = false
   @MainActor private var deliveredDirectory: String?
   @MainActor var siblingLaunch: LaunchSpec { .shell.inheritingDirectory(deliveredDirectory) }
   private lazy var historySearch = HistorySearch(session: self)
   private let clipboardSessionID = UUID()
+  let sidePulseID = UUID()
+  var onActivity: (@MainActor (TerminalActivity, Bool) -> Void)?
   var onSnapshot: (@MainActor (TerminalSnapshot) -> Void)?
   var onStatus: (@MainActor (String) -> Void)?
   var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
@@ -745,6 +749,9 @@ final class Session: @unchecked Sendable {
       readBroker.consumed(used, completedNode: false)
       bytesParsed += UInt64(used)
       if used > 0 { lastParseNs = DispatchTime.now().uptimeNanoseconds }
+      if let activity = swiftTerminalTakeActivity(core) {
+        publishActivity(activity, running: swiftTerminalCommandRunning(core))
+      }
       drainReplies()
       drainClipboardWrites()
       if offset + used < bytes.count || terminal_has_work(core) {
@@ -992,6 +999,24 @@ final class Session: @unchecked Sendable {
           kind: owner.collectingPaste
             ? .paste(bracketed: data.starts(with: Data("\u{1b}[200~".utf8))) : .ordinary))
     }
+  // Like snapshot publication, activity retains only the latest owner state
+  // while Main is busy. PTY output must not enqueue unbounded UI callbacks.
+  private func publishActivity(_ activity: TerminalActivity, running: Bool) {
+    publication.lock()
+    pendingActivity = (activity, running)
+    if activityDeliveryScheduled { publication.unlock(); return }
+    activityDeliveryScheduled = true
+    publication.unlock()
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.publication.lock()
+      let value = self.pendingActivity
+      self.pendingActivity = nil
+      self.activityDeliveryScheduled = false
+      self.publication.unlock()
+      if let value { self.onActivity?(value.0, value.1) }
+    }
+  }
   private func drainReplies() {
     terminal_replies(core, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
   }
