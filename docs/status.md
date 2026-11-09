@@ -84,9 +84,14 @@ Implemented and locally exercised:
   real VoiceOver validation remains separate.
 - Plain http/https/mailto URLs and OSC 8 hyperlinks share one visible-link
   projection. Cmd-hover underlines the target, Cmd-click opens it, and AX link
-  children support semantic agent clicks. Actual Hanimex serve/Vite browser
+  children support semantic agent clicks. Both activation routes validate
+  presented row proofs on the owner before Canvas opens the captured URL;
+  unrelated output/history movement can preserve a link while stale content
+  rejects. A shared bounded resolver also validates selection hits. Actual Hanimex serve/Vite browser
   navigation and clean fixture shutdown pass; see
   `reports/visible-links-evidence/summary.md` for scope and timing limits.
+  The optimized owner-validation candidate and post-EOF interaction regression
+  are documented in `reports/presented-links-evidence/summary.md`.
 - DECLRMM/DECSLRM, per-screen horizontal margins, origin-aware coordinates/replies,
   regional wrap/tab/CR/BS, rectangular scrolling and insert/delete with wide-edge
   repair and no partial-width history. Partial-width image scrolling currently
@@ -114,7 +119,9 @@ Implemented and locally exercised:
   for all retained strings and reject impossible write bounds before admission.
 - Final-window closure quits the app and reaps PTY children; closed sessions
   silently reject late focus/key releases. PTY EOF closes input admission while
-  leaving the final screen and history searchable.
+  leaving the final screen and history searchable, selectable and copyable,
+  including owner-validated link activation. Explicit close separately closes
+  interaction admission and cancels undelivered results.
 - Project-owned terminfo source and compiled bundle database, with exact `tput`
   expansion checks and real parser replay. The entry omits unrendered blink and
   unsupported private extensions; the shell keeps the documented
@@ -123,8 +130,9 @@ Implemented and locally exercised:
 
 Current automated evidence:
 
-- Owner selection/copy has focused owner, real-PTY Session, private clipboard,
-  document/reflow and accessibility projection gates. The evidence packet in
+- Owner selection/copy passes full macOS CI at `e7431fc` (run `42564093682`),
+  plus native normal/editing/selection checks (30/30, 14/14 and 16/16), the private
+  AppleScript fixture, real-PTY Session and private clipboard gates. The evidence packet in
   `reports/owner-selection-evidence/summary.md` distinguishes source checkpoints
   and final integration results from physical input and VoiceOver claims.
 - Version 0.2.1 runtime `b9d3a81` passes full macOS CI at test-only correction
@@ -235,9 +243,7 @@ Required work remaining before the requested completion gate:
 - Broader selection/search navigation, live-edit and fractional pixel-scrolling
   validation. Selection now has owner-validated, eviction-aware endpoints and
   reflow mapping; multi-display and long-lived interaction coverage remains
-  incomplete. Hyperlink activation still needs the same owner-side presented
-  proof validation used for selection, beyond the existing displayed-generation
-  checks.
+  incomplete.
 - Shared reactor/owner lanes, complete end-to-end admission accounting, global
   memory budgets and broader queue-race tests. Transactional paste cancellation
   with bracket closure is implemented and tested at every partial-write offset.

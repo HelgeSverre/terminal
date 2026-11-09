@@ -89,9 +89,29 @@ struct TerminalSelectionPresentation: Equatable, Codable {
 
   func hit(row: Int, boundary: Int, affinity: TerminalSelectionAffinity = .before) -> TerminalSelectionHit? {
     guard TerminalSnapshot.geometryError(columns: columns, rows: rows.count) == nil,
-      rows.indices.contains(row), rows[row].id != 0, (0...columns).contains(boundary)
+      snapshotID != 0, rows.indices.contains(row), rows[row].id != 0, (0...columns).contains(boundary)
     else { return nil }
     return TerminalSelectionHit(presentation: self, row: row, boundary: boundary, affinity: affinity)
+  }
+}
+
+/// Metadata proving the visible content that supplied an action. Ranges are
+/// ordered, one nonempty enclosing range per contributing physical row. The
+/// owner also validates every intervening presented row; no cells are retained.
+struct TerminalPresentedContent: Equatable {
+  struct RowRange: Equatable {
+    let row: Int
+    let columns: Range<Int>
+  }
+  let presentation: TerminalSelectionPresentation
+  let rows: [RowRange]
+  var retainedByteCount: Int? {
+    let (proof, proofOverflow) = presentation.rows.capacity.multipliedReportingOverflow(
+      by: MemoryLayout<TerminalSelectionPresentation.Row>.stride)
+    let (ranges, rangeOverflow) = rows.capacity.multipliedReportingOverflow(by: MemoryLayout<RowRange>.stride)
+    let (total, totalOverflow) = proof.addingReportingOverflow(ranges)
+    let (retained, retainedOverflow) = total.addingReportingOverflow(MemoryLayout<Self>.stride)
+    return proofOverflow || rangeOverflow || totalOverflow || retainedOverflow ? nil : retained
   }
 }
 

@@ -12,7 +12,7 @@
     "Emulation/HistorySearch.swift",
     "Emulation/TerminalDocument.swift",
     "Emulation/DocumentReflow.swift",
-    "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift",
+    "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift",
     "Statistics.swift",
     "Geometry.swift",
     "Font.swift",
@@ -52,25 +52,25 @@
     "Emulation/HistorySearch.swift",
     "Emulation/TerminalDocument.swift",
     "Emulation/DocumentReflow.swift",
-    "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift"
+    "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift"
   ],
   "tests": {
-    "terminfo_probe": ["Text/TerminalWidth.swift","Text/TerminalWidthTables.swift","Text/TerminalText.swift","Text/Unicode18GraphemeTables.swift","Emulation/TerminalInputEncoder.swift","Emulation/ClipboardProtocol.swift","Emulation/KittyGraphics.swift","Emulation/TerminalPalette.swift","Text/UnicodeLowercase.swift","Emulation/HistorySearch.swift","Emulation/TerminalDocument.swift","Emulation/DocumentReflow.swift","Emulation/TerminalSnapshot.swift","Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift","Emulation/TerminalEmulator.swift","tests/TerminfoProbe.swift"],
+    "terminfo_probe": ["Text/TerminalWidth.swift","Text/TerminalWidthTables.swift","Text/TerminalText.swift","Text/Unicode18GraphemeTables.swift","Emulation/TerminalInputEncoder.swift","Emulation/ClipboardProtocol.swift","Emulation/KittyGraphics.swift","Emulation/TerminalPalette.swift","Text/UnicodeLowercase.swift","Emulation/HistorySearch.swift","Emulation/TerminalDocument.swift","Emulation/DocumentReflow.swift","Emulation/TerminalSnapshot.swift","Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift","Emulation/TerminalEmulator.swift","tests/TerminfoProbe.swift"],
     "metal_upload_probe": ["tests/MetalUploadProbe.swift"],
     "terminal_palette": ["Emulation/TerminalPalette.swift", "tests/TerminalPaletteTests.swift"],
     "terminal_graphics_oracle": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
-      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift",
       "tests/TerminalGraphicsOracleTests.swift"
     ],
     "pty": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
-      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift"
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift"
     ],
     "transport": ["Transport.swift", "tests/TransportTests.swift"],
     "session": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
-      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift",
       "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
       "CellPalette.swift", "VisibleLinkProjection.swift", "AccessibilityProjection.swift", "tests/SessionTests.swift"
     ],
@@ -81,13 +81,13 @@
     "preferences": ["Text/SelectionWordProfile.swift", "Preferences.swift", "tests/PreferencesTests.swift"],
     "snapshot_bridge": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
-      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift",
       "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
       "CellPalette.swift", "VisibleLinkProjection.swift", "AccessibilityProjection.swift", "tests/BinarySnapshotOracle.swift", "tests/SnapshotBridgeTests.swift"
     ],
     "keymap": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
-      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift",
       "Preferences.swift", "KeyMap.swift", "tests/KeyMapTests.swift"
     ],
     "emulator": [
@@ -103,14 +103,14 @@
       "Emulation/TerminalPalette.swift",
       "Text/UnicodeLowercase.swift",
       "Emulation/HistorySearch.swift",
-      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift",
+      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift",
       "tests/TerminalSnapshotTestSupport.swift",
       "tests/EmulatorTests.swift"
     ],
     "terminal_document_oracle": [
       "Emulation/TerminalDocument.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
       "Emulation/DocumentReflow.swift",
-      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift",
       "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalDocumentOracleTests.swift"
     ],
     "terminal_document_ownership": [
@@ -121,27 +121,27 @@
     "terminal_viewport_oracle": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift",
       "Text/TerminalText.swift", "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift",
-      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalViewportOracleTests.swift"
+      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalViewportOracleTests.swift"
     ],
     "terminal_reflow_semantics": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift",
       "Text/TerminalText.swift", "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift",
-      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalReflowSemanticTests.swift"
+      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalReflowSemanticTests.swift"
     ],
     "terminal_prompt_clear_oracle": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift",
       "Text/TerminalText.swift", "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift",
-      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalPromptClearOracleTests.swift"
+      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalPromptClearOracleTests.swift"
     ],
     "terminal_scheduler_oracle": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift",
       "Text/TerminalText.swift", "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift",
-      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalSchedulerOracleTests.swift"
+      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalSchedulerOracleTests.swift"
     ],
     "terminal_semantic_regression": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift",
       "Text/TerminalText.swift", "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift",
-      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalSemanticRegressionTests.swift"
+      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift", "tests/TerminalSemanticRegressionTests.swift"
     ],
     "unicode18_corpus": [
       "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift", "tests/Unicode18CorpusTests.swift"
@@ -157,27 +157,48 @@
     ],
     "clipboard_access": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
-      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift", "Preferences.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift", "Preferences.swift",
       "Font.swift", "Transport.swift", "Session.swift", "ClipboardAccess.swift", "SnapshotBridge.swift",
       "CellPalette.swift", "VisibleLinkProjection.swift", "AccessibilityProjection.swift", "tests/ClipboardAccessTests.swift"
     ],
     "terminal_boundary_regression": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
-      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift",
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift",
       "tests/TerminalBoundaryRegressionTests.swift"
     ],
     "osc52_protocol": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
-      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift", "tests/OSC52ProtocolTests.swift"
+      "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift", "tests/OSC52ProtocolTests.swift"
     ],
     "terminal_width": ["Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "tests/TerminalWidthTests.swift"],
     "unicode_lowercase": ["Text/UnicodeLowercase.swift", "tests/UnicodeLowercaseTests.swift"],
     "history_search": ["Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "tests/HistorySearchTests.swift"],
+    "presented_content": [
+      "Emulation/TerminalDocument.swift",
+      "Emulation/DocumentReflow.swift",
+      "Text/TerminalWidth.swift",
+      "Text/TerminalWidthTables.swift",
+      "Text/Unicode18GraphemeTables.swift",
+      "Text/TerminalText.swift",
+      "Emulation/TerminalInputEncoder.swift",
+      "Emulation/ClipboardProtocol.swift",
+      "Emulation/KittyGraphics.swift",
+      "Emulation/TerminalPalette.swift",
+      "Text/UnicodeLowercase.swift",
+      "Emulation/HistorySearch.swift",
+      "Emulation/TerminalSnapshot.swift",
+      "Text/SelectionWordProfile.swift",
+      "Emulation/TerminalSelection.swift",
+      "Emulation/PresentedContent.swift",
+      "Emulation/TerminalEmulator.swift",
+      "tests/TerminalSnapshotTestSupport.swift",
+      "tests/PresentedContentTests.swift"
+    ],
     "terminal_selection": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift",
       "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift", "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift",
       "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift",
-      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift",
+      "Emulation/TerminalSnapshot.swift", "Text/SelectionWordProfile.swift", "Emulation/TerminalSelection.swift", "Emulation/PresentedContent.swift", "Emulation/TerminalEmulator.swift", "tests/TerminalSnapshotTestSupport.swift",
       "tests/TerminalSelectionTests.swift"
     ],
     "visible_links": [

@@ -18,27 +18,7 @@ enum TerminalSelectionProgress {
   case rejected(TerminalSelectionFailure)
 }
 
-// The same concrete document view serves hit validation, expansion and copy.
-// Screen lookup is built once per owner operation; history already has its
-// own O(1) identity index. No closure can escape with a mutable grid borrow.
-struct TerminalSelectionLookup {
-  let primary: [UInt64: Int]
-  let alternate: [UInt64: Int]
-  init(_ document: TerminalDocument) {
-    primary = Dictionary(uniqueKeysWithValues: document.primary.rows.enumerated().map { ($0.element.id, $0.offset) })
-    alternate = Dictionary(uniqueKeysWithValues: document.alternate.rows.enumerated().map { ($0.element.id, $0.offset) })
-  }
-  func index(_ id: UInt64, screen: TerminalSelectionScreen, in document: TerminalDocument) -> Int? {
-    if screen == .alternate { return alternate[id] }
-    if let index = document.history.index(ofRowID: id) { return index }
-    return primary[id].map { document.history.count + $0 }
-  }
-}
 extension TerminalDocument {
-  func selectionRow(at index: Int, screen: TerminalSelectionScreen) -> TerminalRow {
-    if screen == .alternate { return alternate.rows[index] }
-    return index < history.count ? history[index] : primary.rows[index - history.count]
-  }
   mutating func observeSelection(at index: Int, screen: TerminalSelectionScreen, observation: TerminalRow.SelectionObservation?) {
     if screen == .alternate { alternate.rows[index].selectionObservation = observation }
     else if index >= history.count { primary.rows[index - history.count].selectionObservation = observation }
@@ -287,20 +267,16 @@ final class TerminalSelection {
     case .range(let start, let end, let m): origin = start; head = end; granularity = .character; mode = m; phase = .committed
     default: return nil
     }
-    func resolve(_ hit: TerminalSelectionHit, revalidateRevision: Bool) -> Int? {
-      guard hit.presentation.rows.indices.contains(hit.row), hit.presentation.rows.count <= 4096,
-            hit.presentation.columns == document.columns,
-            hit.documentGeneration == documentGeneration, hit.screen == screen,
-            hit.geometryEpoch == geometryEpoch, hit.snapshotID <= snapshotID,
-            (0...document.columns).contains(hit.boundary),
-            let index = lookup.index(hit.rowID, screen: screen, in: document) else { return nil }
-      let row = document.selectionRow(at: index, screen: screen)
-      return !revalidateRevision || (row.revision == hit.rowRevision && row.softWrapped == hit.presentation.rows[hit.row].softWrapped) ? index : nil
-    }
+    let context = TerminalPresentationContext(documentGeneration: documentGeneration, screen: screen,
+      geometryEpoch: geometryEpoch, snapshotID: snapshotID, columns: document.columns)
     // The stored drag origin has already been observed precisely; unrelated
     // later writes on its row do not make that origin stale.
     let extending: Bool = { if case .extend = action { return true }; return false }()
-    guard let originIndex = resolve(origin, revalidateRevision: !extending), let headIndex = resolve(head, revalidateRevision: true) else { return .staleTarget }
+    let resolvedOrigin = extending
+      ? lookup.acceptedBoundary(.init(rowID: origin.rowID, column: origin.boundary, after: origin.affinity == .after), screen: screen, in: document)
+      : lookup.presentedHit(origin, context: context, in: document)
+    guard let originIndex = resolvedOrigin,
+      let headIndex = lookup.presentedHit(head, context: context, in: document) else { return .staleTarget }
     var presented: [UInt64: TerminalSelectionPresentation.Row] = [:]
     if !extending { for row in origin.presentation.rows { presented[row.id] = row } }
     for row in head.presentation.rows { presented[row.id] = row }
@@ -423,7 +399,7 @@ final class TerminalSelection {
         let unseenHistory = selected.screen == .primary && index < document.history.count && work.presented[row.id] == nil
         let proven: Bool
         if let presented = work.presented[row.id] {
-          proven = work.presentedPositions[index] == row.id && presented.revision == row.revision && presented.softWrapped == row.softWrapped
+          proven = work.presentedPositions[index] == row.id && TerminalSelectionLookup.matches(row, proof: presented)
         } else { proven = alreadySelected || expandedWord || unseenHistory }
         guard proven else {
           cancel(in: &document); return .failure(.staleTarget)

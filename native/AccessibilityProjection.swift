@@ -1,5 +1,7 @@
 import AppKit
 
+typealias TerminalLinkActivationHandler = @MainActor (VisibleLinkProjection.Activation) -> Bool
+
 /// A bounded UTF-16 projection of the displayed immutable grid. No terminal-owner or GPU calls.
 struct AccessibilityProjection {
   private struct StyledRange {
@@ -370,7 +372,9 @@ struct AccessibilityProjection {
     return offset < styles.count ? styles[offset].range : NSRange(location: NSNotFound, length: 0)
   }
   @MainActor
-  func attributedString(in range: NSRange, fontSize: CGFloat, parent: NSView) -> NSAttributedString? {
+  func attributedString(
+    in range: NSRange, fontSize: CGFloat, parent: NSView, activate: @escaping TerminalLinkActivationHandler
+  ) -> NSAttributedString? {
     guard let value = string(in: range), fontSize.isFinite, fontSize > 0 else { return nil }
     let result = NSMutableAttributedString(string: value)
     var fonts: [Int: [String: Any]] = [:]
@@ -418,7 +422,7 @@ struct AccessibilityProjection {
     while mappingIndex < linkMappings.count {
       let mapping = linkMappings[mappingIndex]
       guard let first = mapping.ranges.first, first.location < NSMaxRange(range) else { break }
-      let link = links.element(occurrence: mapping.occurrence, ranges: mapping.ranges, parent: parent)
+      let link = links.element(occurrence: mapping.occurrence, ranges: mapping.ranges, parent: parent, activate: activate)
       for textRange in mapping.ranges {
         let overlap = NSIntersectionRange(textRange, range)
         guard overlap.length > 0 else { continue }
@@ -429,15 +433,25 @@ struct AccessibilityProjection {
     }
     return result.copy() as? NSAttributedString
   }
+  /// Pure formatting callers get inert AX links; Canvas supplies the only
+  /// handler that can enqueue an owner-validated activation.
+  @MainActor
+  func attributedString(in range: NSRange, fontSize: CGFloat, parent: NSView) -> NSAttributedString? {
+    attributedString(in: range, fontSize: fontSize, parent: parent, activate: { _ in false })
+  }
   /// Virtual children for the AX tree.  They deliberately use the same cache
   /// as attributed text so an agent can resolve a child and a character-range
   /// link to the identical AX object.
   @MainActor
-  func linkElements(parent: NSView) -> [AccessibleTerminalLink] {
+  func linkElements(parent: NSView, activate: @escaping TerminalLinkActivationHandler) -> [AccessibleTerminalLink] {
     linkMappings.compactMap { mapping in
       guard mapping.fullyProjected else { return nil }
-      return links.element(occurrence: mapping.occurrence, ranges: mapping.ranges, parent: parent)
+      return links.element(occurrence: mapping.occurrence, ranges: mapping.ranges, parent: parent, activate: activate)
     }
+  }
+  @MainActor
+  func linkElements(parent: NSView) -> [AccessibleTerminalLink] {
+    linkElements(parent: parent, activate: { _ in false })
   }
   /// AppKit exports weak AX references. Keep virtual links alive for the
   /// projection's lifetime, including after the attributed query is returned.
@@ -446,14 +460,17 @@ struct AccessibilityProjection {
     private var elements: [Int: AccessibleTerminalLink] = [:]
     nonisolated init() {}
 
-    func element(occurrence: VisibleLinkProjection.Occurrence, ranges: [NSRange], parent: NSView) -> AccessibleTerminalLink {
+    func element(
+      occurrence: VisibleLinkProjection.Occurrence, ranges: [NSRange], parent: NSView,
+      activate: @escaping TerminalLinkActivationHandler
+    ) -> AccessibleTerminalLink {
       if self.parent !== parent {
         elements.removeAll()
         self.parent = parent
       }
       let key = occurrence.gridSegments.first?.lowerBound ?? -1
       if let element = elements[key] { return element }
-      let element = AccessibleTerminalLink(occurrence: occurrence, ranges: ranges, parent: parent)
+      let element = AccessibleTerminalLink(occurrence: occurrence, ranges: ranges, parent: parent, activate: activate)
       elements[key] = element
       return element
     }
@@ -578,18 +595,23 @@ struct AccessibilityProjection {
   }
 }
 
-/// A link reference in an AX attributed string. It owns URL validation and
-/// revalidates against the current projection before acting on a cached link.
+/// A link reference in an AX attributed string. It remains a lightweight AX
+/// object; only Canvas may enqueue its immutable activation with the owner.
 @MainActor
 final class AccessibleTerminalLink: NSAccessibilityElement {
   let occurrence: VisibleLinkProjection.Occurrence
   private let ranges: [NSRange]
   private weak var owner: NSView?
+  private let activate: TerminalLinkActivationHandler
 
-  init(occurrence: VisibleLinkProjection.Occurrence, ranges: [NSRange], parent: NSView) {
+  init(
+    occurrence: VisibleLinkProjection.Occurrence, ranges: [NSRange], parent: NSView,
+    activate: @escaping TerminalLinkActivationHandler
+  ) {
     self.occurrence = occurrence
     self.ranges = ranges
     owner = parent
+    self.activate = activate
     super.init()
     setAccessibilityElement(true)
     setAccessibilityRole(.link)
@@ -604,22 +626,7 @@ final class AccessibleTerminalLink: NSAccessibilityElement {
   }
   override func isAccessibilityEnabled() -> Bool { owner?.window != nil }
   override func accessibilityPerformPress() -> Bool {
-    guard let owner, owner.window != nil, !ranges.isEmpty else { return false }
-    for range in ranges {
-      guard range.length > 0, let current = owner.accessibilityAttributedString(for: range),
-        current.length == range.length
-      else { return false }
-      var matches = true
-      current.enumerateAttribute(.accessibilityLink, in: NSRange(location: 0, length: current.length)) {
-        value, _, stop in
-        guard let link = value as? AccessibleTerminalLink, link.occurrence == occurrence else {
-          matches = false
-          stop.pointee = true
-          return
-        }
-      }
-      guard matches else { return false }
-    }
-    return NSWorkspace.shared.open(occurrence.target)
+    guard let owner, owner.window != nil, !ranges.isEmpty, let activation = occurrence.activation else { return false }
+    return activate(activation)
   }
 }

@@ -119,6 +119,35 @@ import AppKit
     precondition(!links.contains { $0.label.contains("blocked") })
   }
 
+  private static func activationCarriesOnlyValidatedPresentedRows() {
+    let target = "https://target.test/"
+    let rows = [
+      row(cells("abcd", link: target), columns: 4, soft: true, id: 71, revision: 5),
+      row(cells("efgh", link: target), columns: 4, id: 72, revision: 6),
+    ]
+    let value = projectedSnapshot(rows, columns: 4, revision: 19)
+    guard let activation = VisibleLinkProjection(snapshot: value).occurrences.first?.activation else {
+      fatalError("presented OSC 8 link lacked activation proof")
+    }
+    precondition(activation.target.absoluteString == target)
+    precondition(activation.content.presentation == value.selectionPresentation)
+    precondition(activation.content.rows == [
+      .init(row: 0, columns: 0..<4), .init(row: 1, columns: 0..<4),
+    ])
+
+    // Old persisted metadata can be visible/readable, but never supplies a
+    // link activation without current row identity and revision proof.
+    let legacy = snapshot(rows, columns: 4)
+    precondition(VisibleLinkProjection(snapshot: legacy).occurrences.first?.activation == nil)
+    var stale = value
+    stale.selectionPresentation = TerminalSelectionPresentation(
+      snapshotID: 9, documentGeneration: UUID(), screen: .primary,
+      geometryEpoch: value.geometry_epoch, columns: value.cols,
+      rows: [.init(id: 71, revision: 4, softWrapped: true),
+             .init(id: 72, revision: 6, softWrapped: false)])
+    precondition(VisibleLinkProjection(snapshot: stale).occurrences.first?.activation == nil)
+  }
+
   private static func policyRejectsUnsafeOrAmbiguousTargets() {
     precondition(VisibleLinkProjection.openableURL(for: "HTTPS://localhost:5173/") != nil)
     precondition(VisibleLinkProjection.openableURL(for: "mailto:dev@example.test") != nil)
@@ -269,6 +298,26 @@ import AppKit
     // A cached AX object must reject after a new snapshot rather than opening
     // a target at stale grid coordinates.
     precondition(!old.accessibilityPerformPress())
+  }
+
+  private static func accessibilityPressForwardsProjectionActivation() {
+    let value = projectedSnapshot([
+      row(cells("https://ax.test"), columns: 16, id: 81, revision: 2),
+    ], columns: 16)
+    let projection = AccessibilityProjection(snapshot: value)
+    let owner = LinkOwner(projection)
+    let window = NSWindow(contentRect: .init(x: 0, y: 0, width: 1, height: 1),
+                          styleMask: .borderless, backing: .buffered, defer: false)
+    window.contentView = owner
+    defer { window.contentView = nil; window.close() }
+    var received: VisibleLinkProjection.Activation?
+    guard let link = projection.linkElements(parent: owner, activate: { activation in
+      received = activation
+      return true
+    }).first else { fatalError("presented AX link missing") }
+    precondition(link.accessibilityPerformPress())
+    precondition(received?.target.absoluteString == "https://ax.test")
+    precondition(received?.content.rows == [.init(row: 0, columns: 0..<15)])
   }
 
   private static func selectionProjectionPreservesClustersAndDisjointCells() {
@@ -527,6 +576,7 @@ import AppKit
     plainURLCrossesSoftWrapAndKeepsCellMapping()
     unicodeAndHardBreakBoundaries()
     osc8WinsAndInvalidOSC8BlocksFallback()
+    activationCarriesOnlyValidatedPresentedRows()
     policyRejectsUnsafeOrAmbiguousTargets()
     capsDenseCandidatesWithoutDroppingValidEarlyLinks()
     maximumGeometryStreamingDiagnostic()
@@ -534,6 +584,7 @@ import AppKit
     denseAXMappingsStayIndexed()
     ordinaryGridDiagnostic()
     accessibilityUsesOneLinkAcrossSoftWrapAndRejectsStalePress()
+    accessibilityPressForwardsProjectionActivation()
     selectionProjectionPreservesClustersAndDisjointCells()
     linearSelectionIncludesPhysicalBreaksAndBlankRows()
     selectionSetterRejectsClippingAndStalePresentation()

@@ -1,0 +1,28 @@
+{
+  "source_hashes": {
+    "native/Emulation/PresentedContent.swift": "9190f31549700be2dbc04c49165d9ab9190d180de33067ed2129e2756d8e70c6",
+    "native/Emulation/TerminalSelection.swift": "c46d7951049e4947bd979e6641404e20fadf9863576bedde49ce742cdd47b4fd",
+    "native/Emulation/TerminalEmulator.swift": "01f2d939ecaeffe957278e4d658e38fb312e0c53b38badb4e0c13f312971380d",
+    "native/Emulation/TerminalSnapshot.swift": "1aaac81b232517c9474944771240d6b3a9a95f8c58ba10d71b2b4a0a982f489f",
+    "native/tests/PresentedContentTests.swift": "db51eb0de0a1421ab6fef4e45cad928381262ef18e7b2eeb3e9d07ea38868106",
+    "native/tests/TerminalSelectionTests.swift": "33b6315911d630027582ed26e62b9973b37a3bbec8d41e282d3948a0799d5c11",
+    "tools/swift-sources.json": "4a7ccd40eea637bf381de881953d54aa5dee985200f7079449d5ea0bba7f029b"
+  },
+  "evidence": {
+    "presented-content-final.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "presented-content-final.log": "4bf9871b98ff6decf62f71a84c0331101db2c6ba21f866b8a52024c8e3165cf5",
+    "presented-content-first.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "presented-content-first.log": "4bf9871b98ff6decf62f71a84c0331101db2c6ba21f866b8a52024c8e3165cf5",
+    "presented-selection-regression.exit": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+    "presented-selection-regression.log": "7a0bb49e07cd1eee175b3fb3bee35df8b85a9bbe92cdd56d8671e669f68a1b00"
+  },
+  "gates": {
+    "presented_content": "presented-content-final.exit",
+    "selection_regression": "presented-selection-regression.exit"
+  },
+  "notes": [
+    "Final owner gate exit0; shared selection extraction gate exit0 before final private check-and-capture factory tightening.",
+    "Read-only metadata validation only; URL policy and opening outside Core.",
+    "No GUI/app/Session integration claim; other owners run those gates."
+  ]
+}

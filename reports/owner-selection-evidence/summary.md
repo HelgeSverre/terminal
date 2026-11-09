@@ -29,6 +29,10 @@ cells. Same-row empty clicks remain unselected.
 
 ## Focused receipts
 
+Full macOS CI also passes at `e7431fc8944d912d1319b1ab93ecce6c7d6d74bf`:
+[run 42564093682](https://github.com/HelgeSverre/terminal/actions/runs/42564093682).
+`ci-e7431fc.json` records its exact source, outcome and retained full-log hash.
+
 | Gate | Evidence |
 |---|---|
 | Final owner selection | `hard-boundary-source-receipt.json`, `hard-boundary-final.log`: pass, source hashes captured |

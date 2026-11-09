@@ -33,6 +33,7 @@ import Foundation
         "closed_focus_and_key_releases_are_quiet",
         "closed_text_input_is_reported", "committed_text_round_trip", "all_owned_children_reaped",
         "finished_pty_refuses_text", "finished_pty_retains_search",
+        "finished_pty_retains_selection_copy_and_link_actions",
         "physical_key_reaches_pty",
         "typed_metadata_rejected", "typed_legacy_metadata_rejected", "expanded_key_write_rejected",
         "typed_key_paths_admitted", "modifier_keys_preserve_anchored_viewport",
@@ -45,6 +46,8 @@ import Foundation
         "selection_accepted_input_clears_owner_state", "selection_copy_callback_raw_reaches_pty",
         "selection_copy_delivery_is_bounded",
         "accessibility_presented_range_round_trips_through_session",
+        "link_activation_accepts_unchanged_history_proof",
+        "pending_link_activation_close_cancels_and_reaps",
         "pending_selection_close_is_fair_and_cancels",
       ].map { ($0, false) })
     checks["split_inherits_cwd"] = false
@@ -311,6 +314,105 @@ import Foundation
       RunLoop.main.run(until: Date().addingTimeInterval(0.01))
     }
     finished.close()
+    // EOF ends PTY input, not the read-only terminal owner. A final immutable
+    // screen must still prove selection/copy and a projected link activation
+    // after the short-lived child has been reaped; ordinary text remains
+    // rejected because there is no writer.
+    let finishedActions = own(Session(launch: rubySpec(#"""
+      STDOUT.sync = true
+      print "FINISHED_SELECT \e]8;;https://example.test/finished\e\\FINISHED_LINK\e]8;;\e\\"
+      """#, [])))
+    var finishedActionSnapshot: TerminalSnapshot?
+    var finishedActionReadEnded = false
+    var finishedActionReaped = false
+    var finishedActionSelectionRequested = false
+    var finishedActionSelectionCompleted = false
+    var finishedActionSelectionPublished = false
+    var finishedActionCopyRequested = false
+    var finishedActionCopyText: String?
+    var finishedActionLinkRequested = false
+    var finishedActionLinkAccepted = false
+    var finishedActionSelectionBeforeLink: TerminalSelectionSnapshot?
+    var finishedActionSelectionPreserved = false
+    finishedActions.onStatus = { status in
+      if status.hasPrefix("Process exited") { finishedActionReaped = true }
+    }
+    finishedActions.onSnapshot = { snapshot in
+      let text = snapshot.rows.flatMap { $0.cells }.map(\.text).joined()
+      if text.contains("FINISHED_SELECT") { finishedActionSnapshot = snapshot }
+      if finishedActionSelectionCompleted, !snapshot.selection.segments.isEmpty {
+        finishedActionSelectionPublished = true
+      }
+      if finishedActionLinkAccepted,
+         snapshot.selection == finishedActionSelectionBeforeLink {
+        finishedActionSelectionPreserved = true
+      }
+    }
+    let finishedActionsEOFDeadline = Date().addingTimeInterval(3)
+    while !(finishedActionReadEnded && finishedActionReaped && finishedActionSnapshot != nil)
+      && Date() < finishedActionsEOFDeadline
+    {
+      finishedActions.statistics { stats in
+        finishedActionReadEnded = stats["read_ended"] as? Bool == true
+      }
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    var finishedActionActivation: VisibleLinkProjection.Activation?
+    if let snapshot = finishedActionSnapshot,
+       let row = selectionRow(snapshot, containing: "FINISHED_SELECT"),
+       let start = snapshot.selectionHit(row: row, boundary: 0),
+       let end = snapshot.selectionHit(row: row, boundary: "FINISHED_SELECT".utf8.count),
+       let occurrence = VisibleLinkProjection(snapshot: snapshot).occurrences.first(where: {
+         $0.target.absoluteString == "https://example.test/finished"
+       })
+    {
+      finishedActionActivation = occurrence.activation
+      finishedActionSelectionRequested = finishedActions.selection(
+        .range(start: start, end: end, mode: .linear)) { result in
+          if case .success = result { finishedActionSelectionCompleted = true }
+        }
+    }
+    let finishedSelectionDeadline = Date().addingTimeInterval(3)
+    while !(finishedActionSelectionCompleted && finishedActionSelectionPublished)
+      && Date() < finishedSelectionDeadline
+    {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    if let snapshot = finishedActionSnapshot, finishedActionSelectionCompleted,
+       finishedActionSelectionPublished,
+       !snapshot.selection.segments.isEmpty
+    {
+      finishedActionCopyRequested = finishedActions.selection(
+        .copy(expectedSelectionRevision: snapshot.selection.revision)) { result in
+          if case .success(let text) = result { finishedActionCopyText = text }
+        }
+    }
+    let finishedCopyDeadline = Date().addingTimeInterval(3)
+    while finishedActionCopyText == nil && Date() < finishedCopyDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    if let activation = finishedActionActivation, finishedActionCopyText == "FINISHED_SELECT" {
+      finishedActionSelectionBeforeLink = finishedActionSnapshot?.selection
+      finishedActionLinkRequested = finishedActions.activateLink(activation) { result in
+        if case .success(let target) = result {
+          finishedActionLinkAccepted = target.absoluteString == "https://example.test/finished"
+        }
+      }
+    }
+    let finishedLinkDeadline = Date().addingTimeInterval(3)
+    while !(finishedActionLinkAccepted && finishedActionSelectionPreserved)
+      && Date() < finishedLinkDeadline
+    {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["finished_pty_retains_selection_copy_and_link_actions"] =
+      finishedActionReadEnded && finishedActionReaped && finishedActionSelectionRequested
+      && finishedActionSelectionCompleted && finishedActionSelectionPublished && finishedActionCopyRequested
+      && finishedActionCopyText == "FINISHED_SELECT" && finishedActionLinkRequested
+      && finishedActionLinkAccepted && finishedActionSelectionPreserved
+    expect(checks["finished_pty_retains_selection_copy_and_link_actions"] == true,
+      "finished PTY read-only actions: eof=\(finishedActionReadEnded), reaped=\(finishedActionReaped), selection=\(finishedActionSelectionCompleted), selection_published=\(finishedActionSelectionPublished), copy=\(String(describing: finishedActionCopyText)), link=\(finishedActionLinkAccepted), selection_preserved=\(finishedActionSelectionPreserved)")
+    finishedActions.close()
     let physical = own(Session(launch: spec(
       #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; print "PHYSICAL_READY"; key=STDIN.read(1); print(key=="!" ? "\r\nPHYSICAL_KEY_OK" : "\r\nPHYSICAL_KEY_BAD")'"#)))
     var physicalSent = false, physicalDone = false
@@ -877,6 +979,124 @@ import Foundation
     expect(checks["accessibility_presented_range_round_trips_through_session"] == true,
       "accessibility selection round trip: requested=\(accessibilityRangeRequested), completed=\(accessibilityRangeCompleted), independent_counters=\(accessibilityCountersAreIndependent), getter_snapshot=\(accessibilityGetterCaptured), expected=\(String(describing: accessibilityRequestedRange)), actual_ranges=\(accessibilityGetterRanges), actual_text=\(String(describing: accessibilityGetterText)), exact_getter=\(accessibilityRangeRoundTripped)")
     selectionSession.close()
+    // Capture the activation only from the published link projection, then
+    // let its unchanged row move into history before submitting it. Session
+    // carries that exact URL plus immutable row proof; it must not reconstruct
+    // a link from newer text or disturb the active selection state.
+    let linkHistoryScript = #"""
+      STDOUT.sync = true
+      system("stty raw -echo")
+      print "\e]8;;https://example.test/session-link\e\\https://example.test/session-link\e]8;;\e\\"
+      if STDIN.read(1) == "h"
+        print "\r\nfirst\r\nsecond\r\nLINK_HISTORY_READY"
+      end
+      sleep 30
+      """#
+    let linkHistory = own(Session(launch: rubySpec(linkHistoryScript, [])))
+    var linkHistoryResizeRequested = false
+    var linkHistoryActivation: VisibleLinkProjection.Activation?
+    var linkHistoryOutputReceived = false
+    var linkHistoryActivationRequested = false
+    var linkHistoryAccepted = false
+    var linkHistorySelectionBefore: TerminalSelectionSnapshot?
+    var linkHistorySelectionPreserved = false
+    linkHistory.onSnapshot = { snapshot in
+      let text = snapshot.rows.flatMap { $0.cells }.map(\.text).joined()
+      if !linkHistoryResizeRequested, text.contains("https://example.test/session-link") {
+        linkHistoryResizeRequested = true
+        linkHistory.resize(cols: 80, rows: 2)
+        return
+      }
+      if linkHistoryActivation == nil, snapshot.rows.count == 2,
+         let occurrence = VisibleLinkProjection(snapshot: snapshot).occurrences.first(where: {
+           $0.target.absoluteString == "https://example.test/session-link"
+         }), let activation = occurrence.activation
+      {
+        linkHistoryActivation = activation
+        linkHistorySelectionBefore = snapshot.selection
+        linkHistory.rawInput(Data("h".utf8))
+      }
+      if text.contains("LINK_HISTORY_READY") { linkHistoryOutputReceived = snapshot.history_rows > 0 }
+      if linkHistoryOutputReceived, !linkHistoryActivationRequested, let activation = linkHistoryActivation {
+        linkHistoryActivationRequested = linkHistory.activateLink(activation) { result in
+          if case .success(let target) = result {
+            linkHistoryAccepted = target.absoluteString == "https://example.test/session-link"
+          }
+        }
+      }
+      if linkHistoryAccepted, snapshot.selection == linkHistorySelectionBefore {
+        linkHistorySelectionPreserved = true
+      }
+    }
+    let linkHistoryDeadline = Date().addingTimeInterval(8)
+    while !(linkHistoryAccepted && linkHistorySelectionPreserved) && Date() < linkHistoryDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["link_activation_accepts_unchanged_history_proof"] =
+      linkHistoryResizeRequested && linkHistoryActivation != nil && linkHistoryOutputReceived
+      && linkHistoryActivationRequested && linkHistoryAccepted && linkHistorySelectionPreserved
+    expect(checks["link_activation_accepts_unchanged_history_proof"] == true,
+      "link history activation: resize=\(linkHistoryResizeRequested), proof=\(linkHistoryActivation != nil), history=\(linkHistoryOutputReceived), requested=\(linkHistoryActivationRequested), accepted=\(linkHistoryAccepted), selection_preserved=\(linkHistorySelectionPreserved)")
+    linkHistory.close()
+    // Use a large presented snapshot so validation has a pending turn. Post A
+    // (admission) and B (close) from one owner turn: A queues Pump P behind
+    // B, P begins and queues its continuation behind Close, so Close cancels
+    // after begin but before any advance without timing assumptions.
+    let pendingLinkScript = #"""
+      STDOUT.sync = true
+      system("stty raw -echo")
+      print "\e]8;;https://example.test/pending-link\e\\https://example.test/pending-link\e]8;;\e\\"
+      sleep 30
+      """#
+    let pendingLink = own(Session(launch: rubySpec(pendingLinkScript, [])))
+    var pendingLinkResizeRequested = false
+    var pendingLinkActivation: VisibleLinkProjection.Activation?
+    var pendingLinkAdmitted = false
+    var pendingLinkCloseRequested = false
+    var pendingLinkInputRejected = false
+    var pendingLinkCancelledCallbacks = 0
+    var pendingLinkReaped = false
+    pendingLink.onStatus = { status in
+      if status.hasPrefix("Process exited") { pendingLinkReaped = true }
+    }
+    pendingLink.onSnapshot = { snapshot in
+      let text = snapshot.rows.flatMap { $0.cells }.map(\.text).joined()
+      if !pendingLinkResizeRequested, text.contains("https://example.test/pending-link") {
+        pendingLinkResizeRequested = true
+        pendingLink.resize(cols: 80, rows: 512)
+        return
+      }
+      guard pendingLinkActivation == nil, snapshot.rows.count == 512,
+            let occurrence = VisibleLinkProjection(snapshot: snapshot).occurrences.first(where: {
+              $0.target.absoluteString == "https://example.test/pending-link"
+            }), let activation = occurrence.activation
+      else { return }
+      pendingLinkActivation = activation
+      pendingLink.queue.async {
+        let admitted = pendingLink.activateLink(activation) { result in
+          if case .failure(.cancelled) = result { pendingLinkCancelledCallbacks += 1 }
+        }
+        DispatchQueue.main.async { pendingLinkAdmitted = admitted }
+        pendingLink.queue.async {
+          pendingLink.close()
+          let inputRejected = !pendingLink.input("x")
+          DispatchQueue.main.async {
+            pendingLinkCloseRequested = true
+            pendingLinkInputRejected = inputRejected
+          }
+        }
+      }
+    }
+    let pendingLinkDeadline = Date().addingTimeInterval(8)
+    while !(pendingLinkReaped && pendingLinkCancelledCallbacks == 1) && Date() < pendingLinkDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["pending_link_activation_close_cancels_and_reaps"] =
+      pendingLinkResizeRequested && pendingLinkActivation != nil && pendingLinkAdmitted
+      && pendingLinkCloseRequested && pendingLinkInputRejected
+      && pendingLinkCancelledCallbacks == 1 && pendingLinkReaped
+    expect(checks["pending_link_activation_close_cancels_and_reaps"] == true,
+      "pending link activation: resize=\(pendingLinkResizeRequested), proof=\(pendingLinkActivation != nil), admitted=\(pendingLinkAdmitted), close=\(pendingLinkCloseRequested), input_rejected=\(pendingLinkInputRejected), cancelled_callbacks=\(pendingLinkCancelledCallbacks), reaped=\(pendingLinkReaped)")
     // A 4,096-row selection makes both capture and copy resumable. Queue a
     // direct owner probe and urgent close behind the first copy pump: the
     // probe must run between bounded turns, while Close cancels the operation

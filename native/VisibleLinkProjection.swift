@@ -7,25 +7,41 @@ import Foundation
 /// accessibility consume the same occurrences so they cannot disagree about
 /// what a click means.
 struct VisibleLinkProjection {
+  /// An immutable, owner-validatable link activation. The URL policy and
+  /// visible-cell proof are both established by this projection; consumers
+  /// must not reconstruct either from a label, an AX string, or a pointer.
+  struct Activation: Equatable {
+    let target: URL
+    let content: TerminalPresentedContent
+
+    fileprivate init(target: URL, content: TerminalPresentedContent) {
+      self.target = target
+      self.content = content
+    }
+  }
   struct Occurrence: Equatable {
     let target: URL
     /// Physical cell ranges, including both cells of a wide grapheme.
     let gridSegments: [Range<Int>]
     /// The visible spelling, without an artificial separator at a soft wrap.
     let label: String
+    /// Missing for legacy or mismatched presentation metadata. The link can
+    /// remain visible to AX, but it cannot bypass owner validation.
+    let activation: Activation?
     private let snapshotIdentity: SnapshotIdentity
 
-    fileprivate init(target: URL, gridSegments: [Range<Int>], label: String,
+    fileprivate init(target: URL, gridSegments: [Range<Int>], label: String, activation: Activation?,
                      snapshotIdentity: SnapshotIdentity) {
       self.target = target
       self.gridSegments = gridSegments
       self.label = label
+      self.activation = activation
       self.snapshotIdentity = snapshotIdentity
     }
 
     static func == (lhs: Occurrence, rhs: Occurrence) -> Bool {
       lhs.target == rhs.target && lhs.gridSegments == rhs.gridSegments && lhs.label == rhs.label
-        && lhs.snapshotIdentity == rhs.snapshotIdentity
+        && lhs.activation == rhs.activation && lhs.snapshotIdentity == rhs.snapshotIdentity
     }
   }
 
@@ -68,12 +84,15 @@ struct VisibleLinkProjection {
       document: snapshot.document_epoch, history: snapshot.history_epoch,
       screen: snapshot.screen_epoch, viewport: snapshot.viewport_clamp_revision,
       scrollOffset: snapshot.scroll_offset, followingTail: snapshot.following_tail)
+    let presentation = Self.validatedPresentation(in: snapshot)
     var found: [Occurrence] = []
     var grid = [Int32](repeating: -1, count: gridProduct.partialValue)
     var emitted = Set<OccurrenceKey>()
 
     func append(_ target: URL, _ parts: [CellPart], label: String) {
-      guard !parts.isEmpty, found.count < Self.maximumOccurrences else { return }
+      guard !parts.isEmpty, found.count < Self.maximumOccurrences,
+        Self.openableURL(for: target.absoluteString) != nil
+      else { return }
       var segments: [Range<Int>] = []
       for part in parts {
         if let last = segments.last, last.upperBound == part.grid.lowerBound {
@@ -84,7 +103,10 @@ struct VisibleLinkProjection {
       }
       guard emitted.insert(OccurrenceKey(target: target.absoluteString, segments: segments)).inserted else { return }
       let occurrence = Occurrence(
-        target: target, gridSegments: segments, label: label, snapshotIdentity: identity)
+        target: target, gridSegments: segments, label: label,
+        activation: Self.activation(target: target, segments: segments, presentation: presentation,
+                                    columns: snapshot.cols, rowCount: snapshot.rows.count),
+        snapshotIdentity: identity)
       let occurrenceIndex = Int32(found.count)
       found.append(occurrence)
       for segment in segments where segment.lowerBound >= 0 && segment.upperBound <= grid.count {
@@ -182,6 +204,55 @@ struct VisibleLinkProjection {
     guard byGrid.indices.contains(index) else { return nil }
     let stored = byGrid[index]
     return stored >= 0 && Int(stored) < occurrences.count ? occurrences[Int(stored)] : nil
+  }
+
+  private static func activation(
+    target: URL, segments: [Range<Int>], presentation: TerminalSelectionPresentation?, columns: Int, rowCount: Int
+  ) -> Activation? {
+    guard let presentation, presentation.columns == columns, presentation.rows.count == rowCount,
+      !segments.isEmpty
+    else { return nil }
+    var rows: [TerminalPresentedContent.RowRange] = []
+    for segment in segments {
+      guard segment.lowerBound >= 0, segment.lowerBound < segment.upperBound,
+        segment.upperBound <= columns * rowCount
+      else { return nil }
+      var lower = segment.lowerBound
+      while lower < segment.upperBound {
+        let row = lower / columns
+        let column = lower % columns
+        let upper = min(segment.upperBound, (row + 1) * columns)
+        let range = column..<(upper - row * columns)
+        guard !range.isEmpty else { return nil }
+        if let last = rows.last, last.row == row {
+          rows[rows.count - 1] = .init(
+            row: row,
+            columns: min(last.columns.lowerBound, range.lowerBound)..<max(last.columns.upperBound, range.upperBound))
+        } else {
+          rows.append(.init(row: row, columns: range))
+        }
+        lower = upper
+      }
+    }
+    guard rows.count <= 4_096 else { return nil }
+    return Activation(target: target, content: TerminalPresentedContent(presentation: presentation, rows: rows))
+  }
+
+  /// Mirrors the projection's proof boundary: an action must be based on the
+  /// displayed, owner-addressable rows, not merely a current URL string.
+  private static func validatedPresentation(in snapshot: TerminalSnapshot) -> TerminalSelectionPresentation? {
+    guard let presentation = snapshot.selectionPresentation,
+      presentation.snapshotID != 0,
+      presentation.geometryEpoch == snapshot.geometry_epoch,
+      presentation.columns == snapshot.cols,
+      presentation.rows.count == snapshot.rows.count,
+      presentation.screen == (snapshot.alternate ? .alternate : .primary),
+      zip(snapshot.rows, presentation.rows).allSatisfy({ row, proof in
+        row.id != 0 && row.id == proof.id && row.revision == proof.revision
+          && row.soft_wrapped == proof.softWrapped
+      })
+    else { return nil }
+    return presentation
   }
 
   /// The only URL validation used for OSC 8, plain recognition, Canvas and AX.

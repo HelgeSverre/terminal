@@ -87,6 +87,12 @@ private final class TerminalEmulator {
   private var selectionDocumentGeneration = UUID()
   private var selectionSnapshotID: UInt64 = 0
   private var pendingSelectionRevision: UInt64?
+  private struct PendingPresentedContent {
+    var revision: UInt64
+    let historyEpoch: UInt64
+    let validator: TerminalPresentedContentValidator
+  }
+  private var pendingPresentedContent: PendingPresentedContent?
   private struct PendingResize {
     let geometry: TerminalResizeGeometry
     var revision: UInt64
@@ -308,6 +314,7 @@ private final class TerminalEmulator {
       // resize generation current without concealing any earlier mutation.
       if pendingResize?.revision == previousRevision { pendingResize?.revision = revision }
       if pendingSelectionRevision == previousRevision { pendingSelectionRevision = revision }
+      if pendingPresentedContent?.revision == previousRevision { pendingPresentedContent?.revision = revision }
     }
   }
   private func repeatLastPrinted() {
@@ -1010,6 +1017,7 @@ private final class TerminalEmulator {
     if pendingSelectionRevision == previous { pendingSelectionRevision = revision }
   }
   func beginSelection(_ action: TerminalSelectionAction) -> TerminalSelectionProgress {
+    guard pendingPresentedContent == nil else { return .rejected(.busy) }
     guard pendingResize == nil else { return selectionFailure(.busy) }
     if let error = selection.begin(action, in: &document, screen: selectionScreen,
       documentGeneration: selectionDocumentGeneration, geometryEpoch: geometryEpoch, snapshotID: selectionSnapshotID) {
@@ -1030,12 +1038,33 @@ private final class TerminalEmulator {
     }
   }
   func cancelSelection() { selection.cancel(in: &document, preservePrevious: pendingSelectionRevision == revision); pendingSelectionRevision = nil }
+  func beginPresentedContent(_ content: TerminalPresentedContent) -> TerminalPresentedContentProgress {
+    guard pendingPresentedContent == nil, pendingResize == nil, !selection.hasPendingWork else { return .rejected(.busy) }
+    let context = TerminalPresentationContext(documentGeneration: selectionDocumentGeneration,
+      screen: selectionScreen, geometryEpoch: geometryEpoch, snapshotID: selectionSnapshotID, columns: columns)
+    switch TerminalPresentedContentValidator.begin(content, context: context) {
+    case .failure(let error): return .rejected(error)
+    case .success(let validator):
+      pendingPresentedContent = PendingPresentedContent(revision: revision, historyEpoch: historyEpoch, validator: validator)
+      return .pending
+    }
+  }
+  func advancePresentedContent() -> TerminalPresentedContentProgress {
+    guard let pending = pendingPresentedContent else { return .rejected(.cancelled) }
+    guard pending.revision == revision, pending.historyEpoch == historyEpoch else {
+      pendingPresentedContent = nil; return .rejected(.staleTarget)
+    }
+    let result = pending.validator.advance(in: document)
+    if case .pending = result {} else { pendingPresentedContent = nil }
+    return result
+  }
+  func cancelPresentedContent() { pendingPresentedContent = nil }
   private var resizeGeometry: TerminalResizeGeometry {
     TerminalResizeGeometry(columns: columns, rows: rowCount, cellWidth: cellPixelWidth, cellHeight: cellPixelHeight)
   }
   func beginResize(_ geometry: TerminalResizeGeometry) -> TerminalResizeProgress {
     guard geometry.isValid else { return .rejected(.invalidGeometry, retained: resizeGeometry) }
-    guard pendingResize == nil, !selection.hasPendingWork else { return .rejected(.resizeInProgress, retained: resizeGeometry) }
+    guard pendingResize == nil, !selection.hasPendingWork, pendingPresentedContent == nil else { return .rejected(.resizeInProgress, retained: resizeGeometry) }
     if geometry.columns == columns && geometry.rows == rowCount {
       cellPixelWidth = geometry.cellWidth; cellPixelHeight = geometry.cellHeight
       return .committed(resizeGeometry)
@@ -1281,13 +1310,14 @@ private final class TerminalEmulator {
   func snapshotValue(scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
     tick(now)
     guard !publicationGated else { return (nil, nil) }
-    selectionSnapshotID &+= 1
     validatedSelection()
     let selected = selectSnapshot(scroll: scroll)
     let cursor = screen
     if let error = TerminalSnapshot.geometryError(columns: columns, rows: selected.rows.count) {
       return (nil, error)
     }
+    guard selectionSnapshotID < UInt64.max else { return (nil, "Snapshot identity exhausted") }
+    selectionSnapshotID += 1
     let colors = palette.snapshotPalette
     let foreground = palette.snapshotDefaultForeground
     let background = palette.snapshotDefaultBackground
@@ -1603,6 +1633,13 @@ enum TerminalSelectionBridge {
   }
   static func advance(core pointer: OpaquePointer) -> TerminalSelectionProgress { core(pointer)!.advanceSelection() }
   static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelSelection() }
+}
+enum TerminalPresentedContentBridge {
+  static func begin(core pointer: OpaquePointer, content: TerminalPresentedContent) -> TerminalPresentedContentProgress {
+    core(pointer)!.beginPresentedContent(content)
+  }
+  static func advance(core pointer: OpaquePointer) -> TerminalPresentedContentProgress { core(pointer)!.advancePresentedContent() }
+  static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelPresentedContent() }
 }
 enum TerminalResizeBridge {
   static func begin(core pointer: OpaquePointer, columns: Int, rows: Int,

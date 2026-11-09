@@ -1,0 +1,132 @@
+{
+  "checks": {
+    "application_mouse_does_not_select": true,
+    "completed_without_timeout": true,
+    "fixture_ready": true,
+    "line_triple_click": true,
+    "ordinary_forward_copy": true,
+    "ordinary_reverse_copy": true,
+    "original_pane_close_cancels_pending": true,
+    "output_preserves_selection": true,
+    "plain_click_publishes_caret_without_selection": true,
+    "private_board_unchanged_after_close": true,
+    "private_copy": true,
+    "rectangular_ax_multirange_has_no_union_holes": true,
+    "rectangular_option_drag": true,
+    "reflow_retains_selection": true,
+    "wide_drag": true,
+    "word_double_click": true
+  },
+  "counts": {
+    "passed_checks": 16,
+    "required_checks": 16
+  },
+  "expected_known_text": [
+    "WORD_TOKEN",
+    "猫",
+    "SEL_WIDE_猫_TOKEN",
+    "LINE_TOKEN",
+    "abcde",
+    "ABCDE",
+    "CLICK_TAIL",
+    "CLOSE_TOKEN"
+  ],
+  "measurements": {
+    "application_mouse_selection_revision": 21,
+    "close_token_hit": {
+      "boundary": 0,
+      "row": 9
+    },
+    "expected_copied_text": "WORD_TOKEN",
+    "fixture_epoch": 3,
+    "last_observed_stage": "awaitingMouseRoute",
+    "last_selection_phase": "none",
+    "last_selection_revision": 21,
+    "plain_click_caret_range": {
+      "length": 0,
+      "location": 117
+    },
+    "plain_click_selection_revision": 21,
+    "post_output_selection_revision": 12,
+    "post_output_selection_row_ids": [
+      116
+    ],
+    "raw_control_receipts": [
+      {
+        "command": "WORD",
+        "flush_attempted": true,
+        "owner_probe_delay_ms": 0.014083,
+        "raw_event_pumped": true
+      },
+      {
+        "command": "OUTPUT",
+        "flush_attempted": true,
+        "owner_probe_delay_ms": 0.015209,
+        "raw_event_pumped": true
+      },
+      {
+        "command": "LINE",
+        "flush_attempted": true,
+        "owner_probe_delay_ms": 0.021958,
+        "raw_event_pumped": true
+      },
+      {
+        "command": "RECT",
+        "flush_attempted": true,
+        "owner_probe_delay_ms": 0.021042,
+        "raw_event_pumped": true
+      },
+      {
+        "command": "TAIL",
+        "flush_attempted": true,
+        "owner_probe_delay_ms": 0.021334,
+        "raw_event_pumped": true
+      },
+      {
+        "command": "MOUSE",
+        "flush_attempted": true,
+        "owner_probe_delay_ms": 0.020542,
+        "raw_event_pumped": true
+      }
+    ],
+    "raw_control_statuses": [],
+    "rectangular_ax_ranges": [
+      {
+        "length": 5,
+        "location": 94
+      },
+      {
+        "length": 5,
+        "location": 100
+      }
+    ],
+    "rectangular_legacy_range": {
+      "length": 0,
+      "location": 9223372036854775807
+    },
+    "reflow_canvas_applied_selected_text": "WORD_TOKEN",
+    "reflow_copy_result": "WORD_TOKEN",
+    "reflow_epoch_after": 4,
+    "reflow_epoch_before": 3,
+    "reflow_final_columns": 64,
+    "reflow_final_rows": 18,
+    "reflow_selection_document_generation": "839C5D31-4462-4BE7-8786-83F148D78DC5",
+    "reflow_selection_geometry_coherent": true,
+    "reflow_selection_row_ids": [
+      144
+    ],
+    "reflow_selection_text": "WORD_TOKEN",
+    "timeout_stage": "awaitingClose",
+    "wide_selected_text": "猫",
+    "word_selection_revision": 12,
+    "word_selection_row_ids": [
+      116
+    ]
+  },
+  "note": "Synthetic NSApp mouse events route through the real pane handlers and private fixture pasteboard. This is not physical HID proof.",
+  "passed": true,
+  "runner": {
+    "app_exited": true,
+    "cleanup_survivors": []
+  }
+}

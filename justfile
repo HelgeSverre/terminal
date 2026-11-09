@@ -128,6 +128,7 @@ lint:
     just history-search-test
     just terminal-reflow-semantics
     just terminal-selection
+    just terminal-presented-content
     just terminal-prompt-clear-oracle
     just terminal-scheduler-oracle
     just terminal-semantic-regression
@@ -364,6 +365,14 @@ terminal-selection:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_selection) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-selection-tests
     target/native/terminal-selection-tests
+
+# Verify owner validation of the text presented by link gestures.
+[group('check')]
+terminal-presented-content:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print presented_content) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/presented-content-tests
+    target/native/presented-content-tests
 
 # Verify plain/OSC 8 links, cell/UTF-16 mapping and stale accessibility actions.
 [group('check')]

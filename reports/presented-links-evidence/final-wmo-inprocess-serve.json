@@ -1,0 +1,107 @@
+{
+  "mode": "serve",
+  "candidate": "final-wmo-inprocess",
+  "expect_navigation": true,
+  "app": "/Users/helge/.codex/artifacts/terminal-presented-links-20261109-052215/Terminal.app/Contents/MacOS/Terminal",
+  "pid": 34824,
+  "target": "http://127.0.0.1:49875",
+  "browser_before": [],
+  "steps": [
+    {
+      "action": "inspect",
+      "delivered": true,
+      "pid": 34824,
+      "point": [
+        702,
+        307.25
+      ],
+      "range": [
+        224,
+        22
+      ],
+      "url": "http://127.0.0.1:49875",
+      "url_frame": [
+        581,
+        294.5,
+        242,
+        25.5
+      ],
+      "window_frame": [
+        364,
+        131,
+        1116,
+        809
+      ]
+    },
+    {
+      "action": "clear",
+      "delivered": true,
+      "pid": 34824,
+      "point": [
+        702,
+        307.25
+      ],
+      "range": [
+        224,
+        22
+      ],
+      "url": "http://127.0.0.1:49875",
+      "url_frame": [
+        581,
+        294.5,
+        242,
+        25.5
+      ],
+      "window_frame": [
+        364,
+        131,
+        1116,
+        809
+      ]
+    },
+    {
+      "action": "hover",
+      "delivered": true,
+      "pid": 34824,
+      "point": [
+        702,
+        307.25
+      ],
+      "range": [
+        224,
+        22
+      ],
+      "url": "http://127.0.0.1:49875",
+      "url_frame": [
+        581,
+        294.5,
+        242,
+        25.5
+      ],
+      "window_frame": [
+        364,
+        131,
+        1116,
+        809
+      ]
+    },
+    {
+      "action": "inprocess_appkit_mouse_gesture",
+      "delivered": true
+    }
+  ],
+  "appkit_cmd_down_verified": true,
+  "browser_after": [
+    {
+      "pid": 20366,
+      "id": "1602968918",
+      "url": "http://127.0.0.1:49875/"
+    }
+  ],
+  "browser_navigation_verified": true,
+  "passed": true,
+  "owned_browser_tabs_closed": true,
+  "normal_window_close_delivered": true,
+  "normal_exit": true,
+  "cleanup_survivors": []
+}

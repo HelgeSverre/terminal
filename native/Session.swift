@@ -94,6 +94,7 @@ struct TerminalKeyEvent {
 // The PTY and Rust handle are confined to this queue. Main receives immutable decoded values.
 final class Session: @unchecked Sendable {
   typealias SelectionCompletion = @MainActor (Result<String?, TerminalSelectionFailure>) -> Void
+  typealias LinkCompletion = @MainActor (Result<URL, TerminalSelectionFailure>) -> Void
   private final class SelectionDelivery {
     let completion: SelectionCompletion
     let cost: Int
@@ -112,6 +113,29 @@ final class Session: @unchecked Sendable {
       lock.unlock()
     }
     func takeForDelivery() -> Result<String?, TerminalSelectionFailure> {
+      lock.lock()
+      delivering = true
+      let resolved = result
+      lock.unlock()
+      return resolved
+    }
+  }
+  private final class LinkDelivery {
+    let completion: LinkCompletion
+    let cost: Int
+    private let lock = NSLock()
+    private var result: Result<URL, TerminalSelectionFailure>
+    private var delivering = false
+    init(completion: @escaping LinkCompletion, cost: Int,
+         result: Result<URL, TerminalSelectionFailure>) {
+      self.completion = completion; self.cost = cost; self.result = result
+    }
+    func cancel() {
+      lock.lock()
+      if !delivering { result = .failure(.cancelled) }
+      lock.unlock()
+    }
+    func takeForDelivery() -> Result<URL, TerminalSelectionFailure> {
       lock.lock()
       delivering = true
       let resolved = result
@@ -138,6 +162,10 @@ final class Session: @unchecked Sendable {
     // builder resolves it. `began` prevents a resumed owner turn from
     // reinterpreting a hit against a newer document.
     case selection(TerminalSelectionAction, SelectionCompletion?, Int, Bool, Bool)
+    // A link validator owns only immutable displayed-row proof plus the
+    // already-recognized URL. It remains FIFO head until Core accepts or
+    // rejects the proof; Session never reparses policy or terminal text.
+    case link(TerminalPresentedContent, URL, LinkCompletion, Int, Bool)
     case configure(TerminalSessionConfiguration)
     case scroll(Int)
     case find(String, @MainActor (HistorySearchOutcome) -> Void)
@@ -182,6 +210,7 @@ final class Session: @unchecked Sendable {
   private var resizePending = false
   private var queuedResizeCount = 0
   private var selectionPending = false
+  private var linkPending = false
   private var configuration = TerminalSessionConfiguration()
   private var imageCache: [ImageKey: ImagePixels] = [:]
   private var publishScheduled = false
@@ -193,7 +222,12 @@ final class Session: @unchecked Sendable {
   // an unbounded set of immutable completion payloads.
   private var outstandingSelectionCopyCompletions = 0
   private var selectionDeliveries: [SelectionDelivery] = []
+  private var linkDeliveries: [LinkDelivery] = []
+  // EOF closes the PTY writer but leaves the retained terminal screen
+  // owner-validatable. Only explicit Session.close shuts that read-only
+  // interaction surface and cancels already-computed Main callbacks.
   private var accepting = true
+  private var interactionClosed = false
   private let publication = NSLock()
   private var latest: TerminalSnapshot?
   private var deliveryScheduled = false
@@ -318,6 +352,7 @@ final class Session: @unchecked Sendable {
   private static let selectionBaseCost = 256
   private static let selectionPresentationCost = 128
   private static let selectionProofRowCost = MemoryLayout<TerminalSelectionPresentation.Row>.stride
+  private static let linkBaseCost = 256
   private static func selectionCost(_ action: TerminalSelectionAction) -> Int? {
     func hitCost(_ hit: TerminalSelectionHit) -> Int? {
       let (proofBytes, proofOverflow) = hit.presentation.rows.count.multipliedReportingOverflow(
@@ -342,6 +377,12 @@ final class Session: @unchecked Sendable {
     }
     return cost
   }
+  private static func linkCost(content: TerminalPresentedContent, target: URL) -> Int? {
+    guard let proofBytes = content.retainedByteCount else { return nil }
+    let (withProof, proofOverflow) = linkBaseCost.addingReportingOverflow(proofBytes)
+    let (cost, urlOverflow) = withProof.addingReportingOverflow(target.absoluteString.utf8.count)
+    return proofOverflow || urlOverflow ? nil : cost
+  }
   private static func selectionIsControl(_ action: TerminalSelectionAction) -> Bool {
     if case .clear = action { return true }
     if case .commit = action { return true }
@@ -352,7 +393,16 @@ final class Session: @unchecked Sendable {
     admission.lock()
     defer { admission.unlock() }
     let limit = 2 * 1024 * 1024 - (control ? 0 : 65_536)
-    guard accepting else { return .closed }
+    guard accepting, !interactionClosed else { return .closed }
+    guard cost <= limit, admittedBytes + cost <= limit else { return .busy }
+    admittedBytes += cost
+    return .accepted
+  }
+  private func reserveInteraction(_ cost: Int, control: Bool = false) -> Admission {
+    admission.lock()
+    defer { admission.unlock() }
+    let limit = 2 * 1024 * 1024 - (control ? 0 : 65_536)
+    guard !interactionClosed else { return .closed }
     guard cost <= limit, admittedBytes + cost <= limit else { return .busy }
     admittedBytes += cost
     return .accepted
@@ -361,7 +411,7 @@ final class Session: @unchecked Sendable {
     admission.lock()
     defer { admission.unlock() }
     let limit = 2 * 1024 * 1024 - (control ? 0 : 65_536)
-    guard accepting else { return .closed }
+    guard !interactionClosed else { return .closed }
     guard !retainsCopyResult || outstandingSelectionCopyCompletions == 0 else { return .busy }
     guard cost <= limit, admittedBytes + cost <= limit else { return .busy }
     admittedBytes += cost
@@ -376,6 +426,12 @@ final class Session: @unchecked Sendable {
   private func stopAcceptingInput() {
     admission.lock(); accepting = false; admission.unlock()
   }
+  private func closeInteractions() {
+    admission.lock()
+    accepting = false
+    interactionClosed = true
+    admission.unlock()
+  }
   private func finishSelection(cost: Int, completion: SelectionCompletion?, retainsCopyResult: Bool,
                                result: Result<String?, TerminalSelectionFailure>) {
     selectionPending = false
@@ -389,7 +445,7 @@ final class Session: @unchecked Sendable {
     selectionDeliveries.append(delivery)
     DispatchQueue.main.async { [self, delivery] in
       admission.lock()
-      let cancelled = !accepting
+      let cancelled = interactionClosed
       admission.unlock()
       if cancelled { delivery.cancel() }
       delivery.completion(delivery.takeForDelivery())
@@ -401,6 +457,23 @@ final class Session: @unchecked Sendable {
       }
       queue.async { [self, delivery] in
         selectionDeliveries.removeAll { $0 === delivery }
+      }
+    }
+  }
+  private func finishLink(cost: Int, completion: @escaping LinkCompletion,
+                          result: Result<URL, TerminalSelectionFailure>) {
+    linkPending = false
+    let delivery = LinkDelivery(completion: completion, cost: cost, result: result)
+    linkDeliveries.append(delivery)
+    DispatchQueue.main.async { [self, delivery] in
+      admission.lock()
+      let cancelled = interactionClosed
+      admission.unlock()
+      if cancelled { delivery.cancel() }
+      delivery.completion(delivery.takeForDelivery())
+      release(delivery.cost)
+      queue.async { [self, delivery] in
+        linkDeliveries.removeAll { $0 === delivery }
       }
     }
   }
@@ -423,7 +496,7 @@ final class Session: @unchecked Sendable {
   }
   private var acceptingClipboardRequests: Bool {
     admission.lock(); defer { admission.unlock() }
-    return accepting
+    return accepting && !interactionClosed
   }
   private func start() {
     guard terminal_abi_version() == 1, let handle = terminal_create(80, 24) else {
@@ -689,6 +762,27 @@ final class Session: @unchecked Sendable {
       case .rejected(let failure):
         finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
                         result: .failure(failure))
+      }
+    case .link(let content, let target, let completion, let cost, let began):
+      guard let core else {
+        finishLink(cost: cost, completion: completion, result: .failure(.cancelled))
+        break
+      }
+      let progress = began
+        ? TerminalPresentedContentBridge.advance(core: core)
+        : TerminalPresentedContentBridge.begin(core: core, content: content)
+      switch progress {
+      case .pending:
+        linkPending = true
+        events[head] = .link(content, target, completion, cost, true)
+        complete = false
+        // Validation is metadata-only but may span bounded owner turns. The
+        // previously coherent snapshot remains the only published view.
+        publishNeeded = false
+      case .accepted:
+        finishLink(cost: cost, completion: completion, result: .success(target))
+      case .rejected(let failure):
+        finishLink(cost: cost, completion: completion, result: .failure(failure))
       }
     case .configure(let value):
       configuration = value
@@ -1061,6 +1155,32 @@ final class Session: @unchecked Sendable {
     }
     return true
   }
+  /// Validates a recognized URL against the immutable rows that were actually
+  /// presented to the user. URL parsing and policy stay in the projection;
+  /// this boundary only proves that those rows still describe the same content
+  /// before returning the exact captured URL to Canvas.
+  @discardableResult func activateLink(
+    _ activation: VisibleLinkProjection.Activation,
+    completion: @escaping LinkCompletion
+  ) -> Bool {
+    guard let cost = Self.linkCost(content: activation.content, target: activation.target) else {
+      report("Link activation exceeds queue limit")
+      return false
+    }
+    let admission = reserveInteraction(cost)
+    guard admission == .accepted else {
+      report(admission.message)
+      return false
+    }
+    queue.async { [self] in
+      guard !closed else {
+        finishLink(cost: cost, completion: completion, result: .failure(.cancelled))
+        return
+      }
+      enqueue(.link(activation.content, activation.target, completion, cost, false))
+    }
+    return true
+  }
   func find(_ query: String, completion: @escaping @MainActor (HistorySearchOutcome) -> Void) {
     queue.async { [self] in
       guard !closed else {
@@ -1144,7 +1264,7 @@ final class Session: @unchecked Sendable {
     }
   }
   func close() {
-    stopAcceptingInput()
+    closeInteractions()
     queue.async { [self] in
       guard !closed else { return }
       notifyClipboardClosed()
@@ -1153,6 +1273,7 @@ final class Session: @unchecked Sendable {
       // A completed copy can still be awaiting its main-actor callback. Close
       // changes every not-yet-delivered result to cancellation before teardown.
       for delivery in selectionDeliveries { delivery.cancel() }
+      for delivery in linkDeliveries { delivery.cancel() }
       if resizePending, let core {
         TerminalResizeBridge.cancel(core: core)
         resizePending = false
@@ -1160,6 +1281,10 @@ final class Session: @unchecked Sendable {
       if selectionPending, let core {
         TerminalSelectionBridge.cancel(core: core)
         selectionPending = false
+      }
+      if linkPending, let core {
+        TerminalPresentedContentBridge.cancel(core: core)
+        linkPending = false
       }
       for index in head..<events.count {
         switch events[index] {
@@ -1169,6 +1294,8 @@ final class Session: @unchecked Sendable {
         case .selection(_, let completion, let cost, _, let retainsCopyResult):
           finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
                           result: .failure(.cancelled))
+        case .link(_, _, let completion, let cost, _):
+          finishLink(cost: cost, completion: completion, result: .failure(.cancelled))
         default: break
         }
       }

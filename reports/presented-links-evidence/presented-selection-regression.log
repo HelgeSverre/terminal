@@ -1,0 +1,7 @@
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 43 app sources; 35 test groups; 474 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_selection) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-selection-tests
+target/native/terminal-selection-tests
+PASS actual copy-byte guard: 24903680 potential bytes, 44 copy turns, 32 REP turns
+PASS owner selection: exact writes, presented proofs, copy policy, row identity, screen state, cancellation

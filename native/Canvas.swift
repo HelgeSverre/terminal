@@ -209,12 +209,16 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   override func accessibilityString(for range: NSRange) -> String? { accessible?.string(in: range) }
   override func accessibilityChildren() -> [Any]? {
-    var children: [Any] = accessible?.linkElements(parent: self) ?? []
+    var children: [Any] = accessible?.linkElements(parent: self, activate: { [weak self] activation in
+      self?.activateLink(activation) ?? false
+    }) ?? []
     if let selectionNotice { children.append(selectionNotice) }
     return children
   }
   override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
-    accessible?.attributedString(in: range, fontSize: fontPoints, parent: self)
+    accessible?.attributedString(in: range, fontSize: fontPoints, parent: self, activate: { [weak self] activation in
+      self?.activateLink(activation) ?? false
+    })
   }
   override func accessibilityStyleRange(for index: Int) -> NSRange {
     accessible?.styleRange(for: index) ?? NSRange(location: NSNotFound, length: 0)
@@ -327,6 +331,21 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     let row = Int(y / CGFloat(cellHeight))
     guard column < snapshot.cols, row < snapshot.rows.count else { return nil }
     return accessible?.occurrence(atGrid: row * snapshot.cols + column)
+  }
+  /// The only UI boundary that opens links. Session first validates the
+  /// immutable presentation proof on its owner queue; this view never
+  /// reinterprets grid cells, labels, or a newer snapshot.
+  private func activateLink(_ activation: VisibleLinkProjection.Activation) -> Bool {
+    let admitted = session.activateLink(activation) { [weak self] result in
+      switch result {
+      case .success(let target):
+        NSWorkspace.shared.open(target)
+      case .failure(let failure):
+        self?.showSelectionNotice(failure)
+      }
+    }
+    if !admitted { showSelectionNotice(.busy) }
+    return admitted
   }
   private func updateLinkHoverForCurrentPointer(modifiers: NSEvent.ModifierFlags) {
     guard let window else { return }
@@ -658,7 +677,11 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       // previously hovered or cached target never drives activation.
       dragging = false
       localLinkPress = true
-      NSWorkspace.shared.open(occurrence.target)
+      guard let activation = occurrence.activation else {
+        showSelectionNotice(.staleTarget)
+        return
+      }
+      _ = activateLink(activation)
       return
     }
     if reportMouse(event, button: 0, release: false) { return }
