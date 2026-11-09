@@ -1,0 +1,56 @@
+{
+  "purpose": "Controlled reproduction and fix verification for duplicated cd after directory completion. No AX text, raw PTY data, or user history is retained.",
+  "route": "synthetic AppKit NSApp.sendEvent targeted to the private canvas window; not physical HID",
+  "environment": {
+    "unset": ["LANG", "LC_ALL", "LC_CTYPE", "NO_COLOR", "CLICOLOR", "CLICOLOR_FORCE", "FORCE_COLOR"],
+    "working_directory_requested": "/Users/helge/code",
+    "shell_working_directory_verified_by_controlled_pwd": true
+  },
+  "harness": {
+    "source": "CDCompletionUITrace.m",
+    "source_sha256": "e6268e38b785e1bbb0fca42c501584cf8022100213f305ef7768baef001a20d3",
+    "dylib": "cd-completion-ui-trace.dylib",
+    "dylib_sha256": "381ace8e219d2bf3cf59b0a9b27b0b1be1787333173311d5095e80e5b8bb013b",
+    "runner": "CDCompletionUIRunner.rb",
+    "runner_sha256": "0db279c4c0005b79867d2bcb64de91eab188f6d2bf29fdd276287f71dab68f5f",
+    "input_audit": "Each injected event is checked for the exact live canvas window, matching positive window number, and Canvas first responder. Foreign key or mouse input invalidates the result. OS foreground state is diagnostic only because this is not a physical-HID route."
+  },
+  "old_0_2_0_control": {
+    "source_bundle": "/Users/helge/.codex/artifacts/terminal-release-0.2.0-34bd618/Terminal.app",
+    "private_clone": "/tmp/terminal-old020-unmodified.8euSGP/Terminal.app",
+    "payload_executable_sha256": "57fe2903874776c5dceff205c8e79244326cb5494cbdf2f8a33b016656a2c48f",
+    "installed_signed_release_executable_sha256": "070795fdd413fdc44d428a1fd13d1d413836e3fe763fbb5cf63db0e94c66d0d7",
+    "mach_o_uuid": "39C7E16F-AE66-32F5-8281-DEB566364F52",
+    "report": "final-old020-cwd-targeted-v3.json",
+    "report_sha256": "3e1901eb79ee7b6dd2b1ed2310b511b29750bebb7ce18455002d5843a9224844",
+    "private_screenshot": "final-old020-cwd-targeted-v3.png",
+    "private_screenshot_sha256": "910c2845d1413ef74119bc63f281a7814993b782f4fe8256008e5fc34d4f6794",
+    "verdict": "red_duplicate_cd",
+    "three_rounds_duplicate_cd": true
+  },
+  "fixed_0_2_2_candidate": {
+    "frozen_bundle": "/Users/helge/.codex/artifacts/terminal-locale-0.2.2-20261109-095554/Terminal.app",
+    "private_clone": "/tmp/terminal-new022-cwd.E4nHCK/Terminal.app",
+    "payload_executable_sha256": "ec6f058eee1bf60a5297104fe4d4d4b14a30bbb88aaf1de5d02be78bf1422ea4",
+    "mach_o_uuid": "C8CB20C1-8D59-3ED5-9778-F4720FB1C233",
+    "report": "final-new022-cwd-targeted-v4.json",
+    "report_sha256": "a17bfb1c3c08687682a7919bed6e4370808c69dd5e4206802ac07ca856f95de4",
+    "private_screenshot": "final-new022-cwd-targeted-v4.png",
+    "private_screenshot_sha256": "0ba67259a6ff625aee316d893e64a87e67576afcb3d4f4e2d73dd1a310c7c356",
+    "verdict": "green_no_duplicate_cd",
+    "three_rounds_duplicate_cd": false
+  },
+  "shared_assertions": {
+    "rounds": 3,
+    "shell_cwd_verified": true,
+    "common_prefix_extended_to_crescat": true,
+    "visible_directory_completion_tokens": ["crescat-app", "crescat-printer"],
+    "expected_synthetic_key_or_mouse_events": 80,
+    "unexpected_key_or_mouse_events": 0,
+    "canvas_target_prerequisite_failed": false,
+    "owned_cleanup_survivors": []
+  },
+  "excluded_receipts": {
+    "reason": "Any run before explicit working-directory and controlled pwd verification is not completion evidence. Additional v1/v2 candidate receipts record timeout, foreign-input audit, or a stricter physical-focus interpretation and are retained only as diagnostic history."
+  }
+}

@@ -1,10 +1,26 @@
 # UTF-8 locale for desktop launches
 
-The reported `cd cresca<Tab><Tab>` duplication is reproducible with the old
-0.2.0 runtime when `LANG`, `LC_ALL` and `LC_CTYPE` are absent. With the same
+Command-line duplication is reproducible with the old 0.2.0 runtime when
+`LANG`, `LC_ALL` and `LC_CTYPE` are absent. With the same
 runtime, geometry, font and paced AppKit events, setting a UTF-8 `LANG` removes
 the duplication. The clean paired receipts cover three controlled rounds per
 environment. Earlier potentially interfered captures are excluded.
+
+Those initial paired captures did not independently assert the shell's working
+directory or require the Crescat completion list. They establish a locale-related
+redisplay failure, but do not validate the exact reported directory-completion
+case. A later home-directory run was also excluded after Helge identified that
+completion could not fire there. Corrected native validation must verify
+`/Users/helge/code` and actual completion-directory tokens.
+
+The corrected pair in `native-cwd/` now meets those prerequisites. Old 0.2.0
+duplicates `cd` in all three rounds; frozen 0.2.2 duplicates it in none. Both
+verify the actual shell PWD with a controlled `pwd`, require `crescat-app` and
+`crescat-printer` in the completion list, and check the extended `cd crescat`
+prefix. Each records 80 expected synthetic events, zero foreign input events,
+the exact live canvas/window/first-responder destination, and no surviving owned
+processes. These are targeted AppKit events, not physical keyboard proof;
+foreground activation is recorded separately from event destination validity.
 
 The missing locale leaves zsh using ASCII character classification while the
 terminal interprets UTF-8. This makes Unicode prompt-width calculations disagree

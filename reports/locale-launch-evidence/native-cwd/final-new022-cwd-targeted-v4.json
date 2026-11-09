@@ -1,0 +1,59 @@
+{
+  "typing_key_interval_ms": 50,
+  "working_directory_requested": "/Users/helge/code",
+  "screenshot": "final-new022-cwd-targeted-v4.png",
+  "shell_working_directory_verified": true,
+  "verdict": "green_no_duplicate_cd",
+  "passed": true,
+  "initial_columns_requested": 80,
+  "second_tab_timing": "100ms",
+  "resized_columns_requested": 132,
+  "post_tab_ax_has_cdcd": false,
+  "post_tab_completion_prerequisites_verified": true,
+  "rounds": [
+    {
+      "ax_has_expected_prefix": true,
+      "ax_has_cdcd": false,
+      "completion_directory_tokens_visible": true,
+      "round": 0,
+      "ax_common_prefix_extended_t": true
+    },
+    {
+      "ax_has_expected_prefix": true,
+      "ax_has_cdcd": false,
+      "completion_directory_tokens_visible": true,
+      "round": 1,
+      "ax_common_prefix_extended_t": true
+    },
+    {
+      "ax_has_expected_prefix": true,
+      "ax_has_cdcd": false,
+      "completion_directory_tokens_visible": true,
+      "round": 2,
+      "ax_common_prefix_extended_t": true
+    }
+  ],
+  "font_size_requested": 12,
+  "input": "cd cresca<TAB><TAB>",
+  "round_scope": "last accessible prompt segment, so prior completion output cannot satisfy a later round",
+  "route": "synthetic_AppKit_NSEvent_not_physical_HID",
+  "ax_text_persisted": false,
+  "focus_diagnostics_only": {
+    "different_key_window_at_focus_loss": false,
+    "key_window_at_capture": false,
+    "focus_lost": true,
+    "focus_lost_at_phase": 6,
+    "app_inactive_at_focus_loss": true
+  },
+  "input_audit": {
+    "expected_synthetic_key_or_mouse_events": 80,
+    "unexpected_key_or_mouse_event_type_phase_counts": {},
+    "unexpected_key_or_mouse_events": 0,
+    "target_window_canvas_prerequisite_failed": false
+  },
+  "runner": {
+    "app_pid": 45710,
+    "cleanup_survivors": [],
+    "app_status_observed": true
+  }
+}
