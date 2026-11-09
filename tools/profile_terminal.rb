@@ -80,7 +80,7 @@ class TerminalAppProfile
   private
 
   def build_driver
-    source = File.expand_path('../native/benchmarks/terminal-bench.c', __dir__)
+    source = File.expand_path('../Benchmarks/TerminalBench/terminal-bench.c', __dir__)
     @driver = File.join(@output, 'terminal-bench')
     build_log = File.join(@output, 'driver-build.log')
     output, status = Open3.capture2e(
@@ -111,6 +111,7 @@ class TerminalAppProfile
     @result['lifecycle']['app'] = { 'pid' => @app_process.pid, 'natural_exit' => false }
 
     early_exit = @app_process.wait(3.5)
+    raise File.read("#{report}.failed") if File.file?("#{report}.failed")
     raise "App exited before profiling: #{early_exit}" if early_exit
 
     raw_sample = File.join(@output, 'sample.txt')
@@ -132,10 +133,10 @@ class TerminalAppProfile
     @result['lifecycle']['sample'].merge!(status_record(sample_status), 'natural_exit' => true)
 
     app_status = @app_process.wait(180)
+    raise File.read("#{report}.failed") if File.file?("#{report}.failed")
     raise 'App benchmark timed out' unless app_status
     raise "App exited with #{app_status}" unless app_status.success?
     raise "App left children: #{@app_process.live_pids.join(', ')}" unless @app_process.live_pids.empty?
-    raise File.read("#{report}.failed") if File.file?("#{report}.failed")
     driver_report = JSON.parse(File.read(report))
     raise 'Driver report schema mismatch' unless driver_report.fetch('schema') == 2
     raise 'Driver report belongs to another process' unless driver_report.fetch('terminal_pid') == @app_process.pid

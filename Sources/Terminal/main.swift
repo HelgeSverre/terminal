@@ -49,8 +49,6 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       if finished { return "Terminal — Finished" }
       return reported.isEmpty ? "Terminal" : reported
     }
-
-    var headerTitle: String { windowTitle }
   }
 
   let automationID = UUID().uuidString
@@ -112,7 +110,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     var state = paneTitles[ObjectIdentifier(pane)] ?? PaneTitle()
     state.reported = title
     paneTitles[ObjectIdentifier(pane)] = state
-    panePresentation(for: pane)?.setTitle(state.headerTitle)
+    panePresentation(for: pane)?.setTitle(state.windowTitle)
     publishWindowTitle()
   }
 
@@ -121,7 +119,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     var state = paneTitles[ObjectIdentifier(pane)] ?? PaneTitle()
     state.finished = true
     paneTitles[ObjectIdentifier(pane)] = state
-    panePresentation(for: pane)?.setTitle(state.headerTitle)
+    panePresentation(for: pane)?.setTitle(state.windowTitle)
     publishWindowTitle()
   }
 
@@ -198,7 +196,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     let previousMinimum = root.map(terminalMinimumSize)
     let showHeader = preferences.showPaneTitles && panes.count > 1
     for pane in panes {
-      let title = paneTitles[ObjectIdentifier(pane)]?.headerTitle ?? "Terminal"
+      let title = paneTitles[ObjectIdentifier(pane)]?.windowTitle ?? "Terminal"
       panePresentation(for: pane)?.setTitle(title)
       panePresentation(for: pane)?.configure(
         showHeader: showHeader, active: pane === activePane, inactiveDim: preferences.inactivePaneDim)
@@ -492,7 +490,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
   func applyPreferences(_ preferences: TerminalPreferences) {
     preferences.save()
-    windows.lazy.flatMap(\.panes).forEach { $0.applyPreferences() }
+    windows.lazy.flatMap(\.panes).forEach { $0.applyPreferences(preferences) }
     windows.forEach { $0.applyPanePresentationPreferences(preferences) }
     preferencesWindow?.reload()
   }

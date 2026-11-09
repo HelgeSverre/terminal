@@ -1,6 +1,6 @@
 # Terminal identity and terminfo
 
-`native/Terminal.terminfo` is the project-owned description of the output
+`Resources/Terminal/Terminal.terminfo` is the project-owned description of the output
 sequences Terminal implements today. The build compiles it with `tic -x` into
 `Terminal.app/Contents/Resources/terminfo`, and `just test` verifies the
 compiled bundle, exact `tput` expansions, and a replay of representative

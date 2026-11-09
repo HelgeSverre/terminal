@@ -44,7 +44,7 @@ if let index = arguments.firstIndex(of: "--print"), arguments.indices.contains(i
   guard let values = graphSources(arguments[index + 1]) else {
     fputs("Unknown source group: \(arguments[index + 1])\n", stderr); exit(2)
   }
-  values.forEach { print("native/\($0)") }
+  values.forEach { print($0) }
   exit(0)
 }
 if arguments.contains("--verify") {
@@ -57,27 +57,32 @@ if arguments.contains("--verify") {
       fputs("Duplicate source in \(name)\n", stderr); exit(2)
     }
     for value in values {
-      let directory = root.appendingPathComponent("native").resolvingSymlinksInPath()
-      let source = directory.appendingPathComponent(value).standardizedFileURL.resolvingSymlinksInPath()
-      guard value.hasSuffix(".swift"), source.path.hasPrefix(directory.path + "/") else {
+      let allowedRoots = ["Sources/Terminal", "Tests/TerminalTests"]
+      let source = root.appendingPathComponent(value).standardizedFileURL.resolvingSymlinksInPath()
+      guard value.hasSuffix(".swift"), allowedRoots.contains(where: { directory in
+        value.hasPrefix(directory + "/")
+          && source.path.hasPrefix(root.appendingPathComponent(directory).resolvingSymlinksInPath().path + "/")
+      }) else {
         fputs("Invalid \(name) source path: \(value)\n", stderr); exit(2)
       }
-      let path = root.appendingPathComponent("native/\(value)").path
+      let path = source.path
       guard FileManager.default.fileExists(atPath: path) else {
         fputs("Missing \(name) source: \(path)\n", stderr); exit(2)
       }
       count += 1
     }
   }
-  let native = root.appendingPathComponent("native", isDirectory: true)
-  let nativeFiles = (FileManager.default.enumerator(at: native,
-    includingPropertiesForKeys: [.isRegularFileKey])?.allObjects as? [URL] ?? [])
-    .filter { $0.pathExtension == "swift" }
-    .map { String($0.path.dropFirst(native.path.count + 1)) }
-  let appFiles = Set(nativeFiles.filter { !$0.hasPrefix("tests/") })
-  let testFiles = Set(nativeFiles.filter { $0.hasPrefix("tests/") })
+  func swiftFiles(in directory: String) -> Set<String> {
+    let url = root.appendingPathComponent(directory, isDirectory: true)
+    return Set((FileManager.default.enumerator(at: url,
+      includingPropertiesForKeys: [.isRegularFileKey])?.allObjects as? [URL] ?? [])
+      .filter { $0.pathExtension == "swift" }
+      .map { String($0.path.dropFirst(root.path.count + 1)) })
+  }
+  let appFiles = swiftFiles(in: "Sources/Terminal")
+  let testFiles = swiftFiles(in: "Tests/TerminalTests")
   let declaredApp = Set(graph.app)
-  let declaredTests = Set((graph.tests ?? [:]).values.flatMap { $0 }.filter { $0.hasPrefix("tests/") })
+  let declaredTests = Set((graph.tests ?? [:]).values.flatMap { $0 }.filter { $0.hasPrefix("Tests/TerminalTests/") })
   guard appFiles == declaredApp else {
     fputs("App source graph mismatch; unlisted: \(appFiles.subtracting(declaredApp).sorted()), stale: \(declaredApp.subtracting(appFiles).sorted())\n", stderr); exit(2)
   }
@@ -90,7 +95,11 @@ if arguments.contains("--verify") {
   // Bundle assembly stays in justfile, but verify every non-Swift input that
   // its recipe compiles or copies so a source-only cache cannot hide a broken
   // header, shader, launch helper, plist, shell integration or font tree.
-  for relative in ["native/Bridge.h", "native/Spawn.c", "native/Launcher.c", "native/Terminal.metal", "native/Info.plist", "native/ShellIntegration", "assets/fonts"] {
+  for relative in ["Sources/Terminal/Interop/Bridge.h", "Sources/Terminal/Interop/Spawn.c",
+    "Sources/TerminalLauncher/Launcher.c", "Resources/Terminal/Terminal.metal",
+    "Resources/Terminal/Info.plist", "Resources/Terminal/Terminal.sdef",
+    "Resources/Terminal/Terminal.terminfo", "Resources/Terminal/ShellIntegration",
+    "assets/AppIcon.png", "assets/fonts"] {
     guard FileManager.default.fileExists(atPath: root.appendingPathComponent(relative).path) else {
       fputs("Missing bundle/build input: \(relative)\n", stderr); exit(2)
     }
@@ -98,7 +107,7 @@ if arguments.contains("--verify") {
   print("Swift source graph verified: \(graph.app.count) app sources; \(graph.tests?.count ?? 0) test groups; \(count) declared paths; bundle inputs present")
   exit(0)
 }
-let sources = graph.app.map { root.appendingPathComponent("native/\($0)").path }
+let sources = graph.app.map { root.appendingPathComponent($0).path }
 
 func run(_ arguments: [String]) throws {
   let task = Process()
@@ -238,17 +247,17 @@ if configuration == .release {
     // Distribution artifacts trade edit/rebuild speed for the optimizer's
     // complete view of the same app graph used by development.
     let graphURL = root.appendingPathComponent("tools/swift-sources.json")
-    let spawnSource = root.appendingPathComponent("native/Spawn.c")
+    let spawnSource = root.appendingPathComponent("Sources/Terminal/Interop/Spawn.c")
     let spawn = build.appendingPathComponent("Spawn.o").path
     let executable = build.appendingPathComponent("Terminal").path
     // A failed rebuild must not leave the conventional output naming old code.
     if fm.fileExists(atPath: executable) { try fm.removeItem(atPath: executable) }
-    let bridge = root.appendingPathComponent("native/Bridge.h").path
+    let bridge = root.appendingPathComponent("Sources/Terminal/Interop/Bridge.h").path
     let toolchain = try Toolchain.current()
     let cFlags = ["-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=15.0", "-isysroot", toolchain.sdkPath]
     let releaseFlags = [
       "-swift-version", "5", "-O", "-whole-module-optimization", "-target", "arm64-apple-macosx15.0",
-      "-sdk", toolchain.sdkPath, "-module-name", "TerminalIncremental", "-import-objc-header", bridge,
+      "-sdk", toolchain.sdkPath, "-module-name", "Terminal", "-import-objc-header", bridge,
       "-framework", "AppKit", "-framework", "QuartzCore", "-framework", "Metal", "-framework", "CoreText", "-framework", "ImageIO",
     ]
     let graphHash = sha256(try Data(contentsOf: graphURL))
@@ -276,7 +285,7 @@ if configuration == .release {
       toolchain: toolchain, cFlags: cFlags,
       sdkPath: toolchain.sdkPath,
       target: "arm64-apple-macosx15.0",
-      module: "TerminalIncremental",
+      module: "Terminal",
       flags: releaseFlags,
       executableSHA256: sha256(try Data(contentsOf: executableURL)),
       executableBytes: (attributes[.size] as? NSNumber)?.uint64Value ?? 0,
@@ -302,8 +311,8 @@ do {
   let fm = FileManager.default
   let toolchain = try Toolchain.current()
   let graphURL = root.appendingPathComponent("tools/swift-sources.json")
-  let bridgeURL = root.appendingPathComponent("native/Bridge.h")
-  let spawnSource = root.appendingPathComponent("native/Spawn.c")
+  let bridgeURL = root.appendingPathComponent("Sources/Terminal/Interop/Bridge.h")
+  let spawnSource = root.appendingPathComponent("Sources/Terminal/Interop/Spawn.c")
   let objectDirectory = build.appendingPathComponent("objects", isDirectory: true)
   let mapURL = build.appendingPathComponent("output-file-map.json")
   let spawn = build.appendingPathComponent("Spawn.o").path
@@ -314,7 +323,7 @@ do {
     "-framework", "CoreText", "-framework", "ImageIO"]
   let compileFlags = ["-incremental", "-c", "-swift-version", "5", "-O",
     "-target", "arm64-apple-macosx15.0", "-sdk", toolchain.sdkPath,
-    "-module-name", "TerminalIncremental", "-import-objc-header", bridgeURL.path,
+    "-module-name", "Terminal", "-import-objc-header", bridgeURL.path,
     "-output-file-map", mapURL.path]
   let graphHash = try fileHash(graphURL)
   let bridgeHash = try fileHash(bridgeURL)

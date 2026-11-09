@@ -52,14 +52,14 @@ by Rust `1.99.0 (b940084d7 2026-09-28)`. Its
 `35e8335ca053474f0baa2ac0525b062468b684253a99377e84563bc5033b9cd0`.
 
 The checked-in Swift generator validates that checksum and writes
-`native/Text/UnicodeLowercase.swift`. A clean clone can reproduce the runtime table
+`Sources/Terminal/Text/UnicodeLowercase.swift`. A clean clone can reproduce the runtime table
 without Rust or Foundation Unicode data:
 
 ```shell
 xcrun swiftc -parse-as-library tools/unicode/GenerateUnicodeLowercase.swift \
   -o target/native/generate-unicode-lowercase
 target/native/generate-unicode-lowercase \
-  tools/unicode/rust-unicode17-lowercase.txt native/Text/UnicodeLowercase.swift
+  tools/unicode/rust-unicode17-lowercase.txt Sources/Terminal/Text/UnicodeLowercase.swift
 ```
 
 The exhaustive `unicode-lowercase` test regenerates the same canonical records

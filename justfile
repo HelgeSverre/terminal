@@ -67,18 +67,18 @@ close-smoke: build
     APP_BUNDLE="$ROOT_DIR/dist/Terminal.app"
     case "$1" in development) CONFIGURATION=development; OUTPUT_DIRECTORY=swift-incremental ;; release) CONFIGURATION=release; OUTPUT_DIRECTORY=swift-release ;; *) echo "Unknown build configuration: $1" >&2; exit 2 ;; esac
     mkdir -p "$BUILD_DIR" "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
-    xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 native/Launcher.c -o "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
-    xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c native/Spawn.c -o "$BUILD_DIR/Spawn.o"
-    xcrun -sdk macosx metal -c native/Terminal.metal -o "$BUILD_DIR/Terminal.air"
+    xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 Sources/TerminalLauncher/Launcher.c -o "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
+    xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c Sources/Terminal/Interop/Spawn.c -o "$BUILD_DIR/Spawn.o"
+    xcrun -sdk macosx metal -c Resources/Terminal/Terminal.metal -o "$BUILD_DIR/Terminal.air"
     xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swift tools/SwiftIncrementalBuild.swift --configuration "$CONFIGURATION"
     cp "$ROOT_DIR/target/$OUTPUT_DIRECTORY/Terminal" "$APP_BUNDLE/Contents/MacOS/Terminal"
-    cp native/Info.plist "$APP_BUNDLE/Contents/Info.plist"
-    cp native/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
-    /usr/bin/tic -x -o "$APP_BUNDLE/Contents/Resources/terminfo" native/Terminal.terminfo
+    cp Resources/Terminal/Info.plist "$APP_BUNDLE/Contents/Info.plist"
+    cp Resources/Terminal/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
+    /usr/bin/tic -x -o "$APP_BUNDLE/Contents/Resources/terminfo" Resources/Terminal/Terminal.terminfo
     cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
-    ditto native/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
+    ditto Resources/Terminal/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
     ditto assets/fonts "$APP_BUNDLE/Contents/Resources/Fonts"
     codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
     codesign --force --sign - "$APP_BUNDLE"
@@ -125,13 +125,13 @@ reinstall: install
 # Format hand-written Swift; generated Unicode tables retain reproducible bytes.
 [group('check')]
 fmt:
-    ruby -e 'files=Dir.glob("{native,tools}/**/*.swift").reject { |f| File.foreach(f).first.to_s.start_with?("// Generated") }; exec("xcrun", "swift-format", "format", "--in-place", *files)'
+    ruby -e 'files=Dir.glob("{Sources,Tests,tools}/**/*.swift").reject { |f| File.foreach(f).first.to_s.start_with?("// Generated") }; exec("xcrun", "swift-format", "format", "--in-place", *files)'
 
 # Verify graph completeness and syntax without imposing a mass-format migration.
 [group('check')]
 lint:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    ruby -e 'Dir.glob("{native,tools}/**/*.swift").sort.each { |f| abort("Swift syntax failed: #{f}") unless system("xcrun", "swiftc", "-frontend", "-parse", f) }'
+    ruby -e 'Dir.glob("{Sources,Tests,tools}/**/*.swift").sort.each { |f| abort("Swift syntax failed: #{f}") unless system("xcrun", "swiftc", "-frontend", "-parse", f) }'
     ruby -e 'Dir.glob("tools/**/*.rb").sort.each { |f| abort("Ruby syntax failed: #{f}") unless system("ruby", "-c", f, out: File::NULL) }'
 
 # Run the complete Swift native transport/session/bridge test suite.
@@ -165,8 +165,8 @@ lint:
     just input-encoder
     just window-stress-motion-test
     just osc52-protocol
-    xcrun clang -Wall -Wextra -Werror -I native -c native/tests/pty.c -o target/native/swift-pty-tests.o
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty) target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
+    xcrun clang -Wall -Wextra -Werror -I Sources/Terminal/Interop -c Tests/TerminalTests/pty.c -o target/native/swift-pty-tests.o
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty) target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
     target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print transport) -o target/native/transport-tests
     target/native/transport-tests
@@ -178,9 +178,9 @@ lint:
     just _glyph-rendering-tests
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print preferences) -framework AppKit -o target/native/preferences-tests
     target/native/preferences-tests
-    xcrun swiftc -D SNAPSHOT_ABI_DIAGNOSTICS -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print snapshot_bridge) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/snapshot-bridge-tests
+    xcrun swiftc -D SNAPSHOT_ABI_DIAGNOSTICS -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print snapshot_bridge) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/snapshot-bridge-tests
     target/native/snapshot-bridge-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print keymap) -framework AppKit -framework CoreText -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/keymap-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print keymap) -framework AppKit -framework CoreText -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/keymap-tests
     target/native/keymap-tests
 
 # Compile and exercise Session against the assembled development bundle.
@@ -192,7 +192,7 @@ session-test: build _session-test
 _session-test:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print session) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print session) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests
     target/native/session-tests "$PWD"
 
 # Exercise a clean interactive zsh through Session's PTY, with macOS-style
@@ -205,7 +205,7 @@ shell-editing-test: build _shell-editing-test
 _shell-editing-test:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print shell_editing) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/shell-editing-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print shell_editing) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/shell-editing-tests
     env -u LANG -u LC_ALL -u LC_CTYPE -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE -u FORCE_COLOR target/native/shell-editing-tests "$PWD"
 
 # Swift terminal-state smoke; historical Rust oracles live in the archived branch.
@@ -213,7 +213,7 @@ _shell-editing-test:
 emulator-test:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print emulator) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/emulator-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print emulator) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/emulator-tests
     target/native/emulator-tests
 
 # Immutable search pages, cancellation, adjacency and revision proofs.
@@ -228,7 +228,7 @@ history-search-test:
 [group('check')]
 terminal-graphics-oracle:
     mkdir -p target/native
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_graphics_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-graphics-oracle-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_graphics_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-graphics-oracle-tests
     target/native/terminal-graphics-oracle-tests
 
 # Direct OSC palette grammar and reset semantics, independent of the parser.
@@ -300,21 +300,21 @@ _glyph-residency-tests:
 terminal-prompt-clear-oracle:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_prompt_clear_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-prompt-clear-oracle
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_prompt_clear_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-prompt-clear-oracle
     target/native/terminal-prompt-clear-oracle
 
 [group('check')]
 terminal-scheduler-oracle:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_scheduler_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-scheduler-oracle
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_scheduler_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-scheduler-oracle
     target/native/terminal-scheduler-oracle
 
 [group('check')]
 terminal-document-oracle:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_document_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-document-oracle-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_document_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-document-oracle-tests
     target/native/terminal-document-oracle-tests
 
 [group('check')]
@@ -328,28 +328,28 @@ terminal-document-ownership:
 terminal-viewport-oracle:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_viewport_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-viewport-oracle-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_viewport_oracle) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-viewport-oracle-tests
     target/native/terminal-viewport-oracle-tests
 
 [group('check')]
 terminal-reflow-semantics:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_reflow_semantics) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-reflow-semantics-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_reflow_semantics) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-reflow-semantics-tests
     target/native/terminal-reflow-semantics-tests
 
 [group('check')]
 terminal-semantic-regression:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_semantic_regression) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-semantic-regression
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_semantic_regression) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-semantic-regression
     target/native/terminal-semantic-regression
 
 [group('check')]
 terminal-boundary-regression:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_boundary_regression) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-boundary-regression
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_boundary_regression) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-boundary-regression
     target/native/terminal-boundary-regression
 
 [group('check')]
@@ -377,7 +377,7 @@ input-encoder:
 osc52-protocol:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print osc52_protocol) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/osc52-protocol-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print osc52_protocol) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/osc52-protocol-tests
     target/native/osc52-protocol-tests
 
 [group('check')]
@@ -399,7 +399,7 @@ unicode-lowercase:
 terminal-selection:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_selection) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-selection-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminal_selection) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminal-selection-tests
     target/native/terminal-selection-tests
 
 # Verify owner validation of the text presented by link gestures.
@@ -407,7 +407,7 @@ terminal-selection:
 terminal-presented-content:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print presented_content) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/presented-content-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print presented_content) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/presented-content-tests
     target/native/presented-content-tests
 
 # Verify plain/OSC 8 links, cell/UTF-16 mapping and stale accessibility actions.
@@ -461,7 +461,7 @@ startup-grid-smoke: build
     REPORT_DIR="$(cd "$REPORT_DIR" && pwd)"
     BYTES="${BENCH_BYTES:-16777216}"
     RUNS="${BENCH_RUNS:-5}"
-    xcrun clang -Wall -Wextra -Werror -O2 native/benchmarks/terminal-bench.c -o target/native/terminal-bench
+    xcrun clang -Wall -Wextra -Werror -O2 Benchmarks/TerminalBench/terminal-bench.c -o target/native/terminal-bench
     DRIVER="$ROOT_DIR/target/native/terminal-bench"
     REPORT="$REPORT_DIR/$TERMINAL_NAME.json"
     if [[ -e "$REPORT" ]]; then echo "Refusing to overwrite $REPORT; choose a new output directory." >&2; exit 2; fi
@@ -643,14 +643,15 @@ workflow-tests:
     ruby tools/compare_ghostty_test.rb
     ruby tools/compare_terminal_apps_test.rb
     ruby tools/profile_terminal_test.rb
+    ruby tools/session_stream_diagnostic_test.rb
     ruby tools/close_smoke_test.rb
     ruby tools/applescript_smoke_test.rb
-    xcrun clang -Wall -Wextra -Werror -O2 native/benchmarks/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
+    xcrun clang -Wall -Wextra -Werror -O2 Benchmarks/TerminalBench/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
     target/native/terminal-bench-clock-test
     xcrun swiftc -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/DistributionTests.swift -o target/native/distribution-tests
     target/native/distribution-tests
     mkdir -p target/native/automation-dictionary
-    xcrun sdp -fs -o target/native/automation-dictionary native/Terminal.sdef
+    xcrun sdp -fs -o target/native/automation-dictionary Resources/Terminal/Terminal.sdef
 
 [group('check')]
 terminfo-test: build _terminfo-test
@@ -663,7 +664,7 @@ _terminfo-test: _terminfo-probe
 _terminfo-probe:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify >&2
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminfo_probe) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminfo-probe
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminfo_probe) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminfo-probe
 
 # Replay stdin through the real Swift emulator and write JSON; replies go to stderr.
 [group('check')]
@@ -677,7 +678,7 @@ clipboard-access-test: build _clipboard-access-tests
 _clipboard-access-tests:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header native/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print clipboard_access) target/native/Spawn.o -framework AppKit -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/clipboard-access-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print clipboard_access) target/native/Spawn.o -framework AppKit -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/clipboard-access-tests
     target/native/clipboard-access-tests "$PWD"
 
 # Rebuild once, then require a true no-op without launching the executable.

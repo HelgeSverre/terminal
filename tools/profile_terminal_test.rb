@@ -3,9 +3,35 @@
 require 'json'
 require 'minitest/autorun'
 require 'tmpdir'
+require 'fileutils'
 require_relative 'profile_terminal'
 
 class ProfileTerminalTest < Minitest::Test
+  def test_early_driver_failure_precedes_nonzero_app_status_and_records_cleanup
+    Dir.mktmpdir('terminal-profile-driver-failure-') do |root|
+      app = File.join(root, 'Fixture.app')
+      FileUtils.mkdir_p(File.join(app, 'Contents/MacOS'))
+      executable = File.join(app, 'Contents/MacOS/Terminal')
+      File.write(executable, <<~'SCRIPT')
+        #!/bin/sh
+        while [ "$#" -gt 0 ]; do
+          if [ "$1" = --output ]; then shift; printf 'fixture profile driver failed' > "$1.failed"; exit 7; fi
+          shift
+        done
+        exit 8
+      SCRIPT
+      File.chmod(0o700, executable)
+      output = File.join(root, 'profile')
+      profile = TerminalAppProfile.new(app, output)
+      error = assert_raises(RuntimeError) { profile.run }
+      assert_equal 'fixture profile driver failed', error.message
+      report = JSON.parse(File.read(File.join(output, 'profile.json')))
+      refute report.fetch('passed')
+      assert_includes report.fetch('failure'), 'fixture profile driver failed'
+      assert_empty report.dig('lifecycle', 'app', 'cleanup_survivors')
+    end
+  end
+
   def test_cleanup_survivor_makes_a_completed_profile_fail
     Dir.mktmpdir('terminal-profile-cleanup-') do |root|
       sample = FakeOwnedProcess.new(survivors: [4242])

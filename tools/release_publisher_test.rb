@@ -185,8 +185,8 @@ class ReleasePublisherTest < Minitest::Test
 
   def with_fixture
     Dir.mktmpdir('release-publisher-') do |root|
-      Dir.mkdir(File.join(root, 'native'))
-      File.write(File.join(root, 'native/Info.plist'), <<~PLIST)
+      FileUtils.mkdir_p(File.join(root, 'Resources/Terminal'))
+      File.write(File.join(root, 'Resources/Terminal/Info.plist'), <<~PLIST)
         <plist version="1.0"><dict><key>CFBundleShortVersionString</key><string>1.2.3</string></dict></plist>
       PLIST
       yield root, FakeGitHub.new

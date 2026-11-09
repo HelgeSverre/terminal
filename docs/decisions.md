@@ -28,8 +28,8 @@ The terminal emulator and document now share one Swift compiler module with the
 native host. Session queues retain exclusive mutation ownership; presentation
 uses direct immutable snapshots. The versioned C and JSON APIs remain for
 compatibility tests and headless tools, rather than the normal rendering path.
-`native/Emulation` owns interpretation, document/history, protocol input, search,
-graphics state and snapshots; `native/Text` owns streaming Unicode processing.
+`Sources/Terminal/Emulation` owns interpretation, document/history, protocol input, search,
+graphics state and snapshots; `Sources/Terminal/Text` owns streaming Unicode processing.
 
 Each session currently has a serial Dispatch queue combining PTY readiness and
 terminal mutation. Dispatch sources use the native kernel readiness mechanism;

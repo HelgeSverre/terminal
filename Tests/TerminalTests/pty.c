@@ -1,4 +1,4 @@
-#include "../Bridge.h"
+#include "Bridge.h"
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>

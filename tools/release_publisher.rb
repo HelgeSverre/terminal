@@ -100,7 +100,7 @@ class ReleasePublisher
   private
 
   def bundle_version
-    plist = File.join(@root, 'native', 'Info.plist')
+    plist = File.join(@root, 'Resources', 'Terminal', 'Info.plist')
     fail! "missing #{plist}" unless File.file?(plist)
     value = File.read(plist)[
       /<key>\s*CFBundleShortVersionString\s*<\/key>\s*<string>\s*([^<\s]+)\s*<\/string>/m,

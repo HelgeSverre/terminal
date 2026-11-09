@@ -36,7 +36,7 @@ class TerminalAppComparison
   def run
     FileUtils.mkdir_p(@output)
     @driver = File.join(@output, 'terminal-bench')
-    source = File.expand_path('../native/benchmarks/terminal-bench.c', __dir__)
+    source = File.expand_path('../Benchmarks/TerminalBench/terminal-bench.c', __dir__)
     diagnostics, status = Open3.capture2e('xcrun', 'clang', '-Wall', '-Wextra', '-Werror', '-O2', source, '-o', @driver)
     File.write(File.join(@output, 'driver-build.log'), diagnostics)
     raise "Driver build failed: #{status}" unless status.success?
@@ -86,12 +86,12 @@ class TerminalAppComparison
       puts "Measuring #{label} app (PID #{process.pid})"
       STDOUT.flush
       status = process.wait(300)
+      raise File.read("#{report}.failed") if File.file?("#{report}.failed")
       raise "#{label} benchmark timed out" unless status
       record['exit_status'] = status.exitstatus
       raise "#{label} app exited with #{status}" unless status.success?
       raise "#{label} app left children: #{process.live_pids.join(', ')}" unless process.live_pids.empty?
       record['natural_exit'] = true
-      raise File.read("#{report}.failed") if File.file?("#{report}.failed")
       data = JSON.parse(File.read(report))
       raise "#{label} driver schema mismatch" unless data.fetch('schema') == 2
       raise "#{label} report belongs to another process" unless data.fetch('terminal_pid') == process.pid

@@ -2,7 +2,7 @@
 //
 // Derived from unicode-width 0.2.3 (Unicode 18.0.0), Copyright 2012-2026
 // The Rust Project Developers, under Apache-2.0 OR MIT.  See
-// native/THIRD_PARTY_NOTICES.md.
+// Resources/Terminal/THIRD_PARTY_NOTICES.md.
 
 import Foundation
 

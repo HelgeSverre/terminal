@@ -18,7 +18,7 @@ abort 'Choose a new output directory' if File.exist?(output)
 executable = File.join(app, 'Contents/MacOS/Terminal')
 abort 'Missing app executable' unless File.executable?(executable)
 FileUtils.mkdir_p(output)
-source = File.expand_path('../native/benchmarks/terminal-bench.c', __dir__)
+source = File.expand_path('../Benchmarks/TerminalBench/terminal-bench.c', __dir__)
 driver = File.join(output, 'terminal-bench')
 statistics = File.join(output, 'session.json')
 report = File.join(output, 'driver.json')
@@ -41,11 +41,11 @@ begin
   ])
   result['pid'] = process.pid
   status = process.wait(180)
+  raise File.read("#{report}.failed") if File.file?("#{report}.failed")
   raise 'Diagnostic timed out' unless status
   result['exit_status'] = status.exitstatus
   raise 'App did not exit successfully' unless status.success?
   raise 'Owned children survived app exit' unless process.live_pids.empty?
-  raise File.read("#{report}.failed") if File.file?("#{report}.failed")
   data = JSON.parse(File.read(report))
   raise 'Unexpected driver schema or process' unless data.fetch('schema') == 2 && data.fetch('terminal_pid') == process.pid
   raise 'Unexpected terminal label' unless data.fetch('terminal') == 'session-diagnostic'

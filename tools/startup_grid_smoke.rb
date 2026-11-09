@@ -21,7 +21,7 @@ begin
     raise 'App executable changed while freezing' unless frozen_hash == report['executable_sha256']
     report['frozen_executable_sha256'] = frozen_hash
     driver = File.join(directory, 'grid-driver')
-    raise 'Driver build failed' unless system('xcrun', 'clang', '-O2', File.join(root, 'native/benchmarks/terminal-bench.c'), '-o', driver)
+    raise 'Driver build failed' unless system('xcrun', 'clang', '-O2', File.join(root, 'Benchmarks/TerminalBench/terminal-bench.c'), '-o', driver)
     [[80, 24, 8], [100, 30, 14], [60, 14, 20]].each_with_index do |(columns, rows, font), index|
       path = File.join(directory, "#{index}.json")
       entry = { 'requested' => [columns, rows], 'font_size' => font }

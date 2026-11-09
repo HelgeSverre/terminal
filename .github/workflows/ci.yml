@@ -41,7 +41,7 @@ jobs:
         with:
           path: |
             target
-          key: macos-arm64-swift-${{ hashFiles('native/**', 'tools/SwiftIncrementalBuild.swift', 'tools/swift-sources.json', 'justfile') }}
+          key: macos-arm64-swift-${{ hashFiles('Sources/**', 'Tests/**', 'Resources/**', 'Benchmarks/**', 'assets/**', 'tools/SwiftIncrementalBuild.swift', 'tools/swift-sources.json', 'justfile') }}
       - name: Run Swift native tests
         env:
           TERMINAL_CI_GPU_POLICY: paravirtual

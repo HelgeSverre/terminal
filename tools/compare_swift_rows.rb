@@ -52,7 +52,10 @@ begin
     directory = File.join(output, label)
     FileUtils.mkdir_p(directory)
     archive = File.join(directory, 'sources.tar')
-    File.binwrite(archive, run_capture(['git', 'archive', sha, 'native', 'tools/swift-sources.json'], "#{output}/#{label}-archive.log"))
+    # Frozen checkpoints can precede the source-layout migration.
+    tree_roots = run_capture(['git', 'ls-tree', '--name-only', sha], "#{output}/#{label}-tree.log").lines.map(&:strip)
+    source_roots = %w[Sources Tests native].select { |path| tree_roots.include?(path) }
+    File.binwrite(archive, run_capture(['git', 'archive', sha, *source_roots, 'tools/swift-sources.json'], "#{output}/#{label}-archive.log"))
     run_capture(['/usr/bin/tar', '-xf', archive, '-C', directory], "#{output}/#{label}-extract.log")
     File.delete(archive)
     graph = JSON.parse(File.read("#{directory}/tools/swift-sources.json"))
@@ -60,17 +63,19 @@ begin
     # source group from the archived manifest; callers still supply only refs.
     groups = graph.fetch('tests')
     emulator_group = groups.key?('emulator') ? 'emulator' : 'swift_core'
+    canonical_paths = graph.fetch('app').first.start_with?('Sources/')
+    bridge = File.join(directory, canonical_paths ? 'Sources/Terminal/Interop/Bridge.h' : 'native/Bridge.h')
     sources = groups.fetch(emulator_group).reject do |path|
-      %w[tests/EmulatorTests.swift tests/SwiftCoreTests.swift].include?(path)
+      %w[EmulatorTests.swift SwiftCoreTests.swift].include?(File.basename(path))
     end
-                   .map { |path| "#{directory}/native/#{path}" }
+                   .map { |path| File.join(directory, canonical_paths ? path : "native/#{path}") }
     executable = "#{directory}/probe"
     command = ['xcrun', 'swiftc', '-swift-version', '5', '-O', '-whole-module-optimization', '-target', 'arm64-apple-macosx15.0',
-               '-module-name', 'RowStorageProbe', '-import-objc-header', "#{directory}/native/Bridge.h",
+               '-module-name', 'RowStorageProbe', '-import-objc-header', bridge,
                *sources, fixture, '-framework', 'Foundation', '-framework', 'CoreGraphics', '-framework', 'ImageIO', '-o', executable]
     run_capture(command, "#{output}/#{label}-build.log")
     result['revisions'][label] = { 'commit' => sha, 'build_command' => command,
-      'inputs' => (sources + ["#{directory}/native/Bridge.h"]).to_h { |path| [path.delete_prefix("#{directory}/"), Digest::SHA256.file(path).hexdigest] },
+      'inputs' => (sources + [bridge]).to_h { |path| [path.delete_prefix("#{directory}/"), Digest::SHA256.file(path).hexdigest] },
       'executable_sha256' => Digest::SHA256.file(executable).hexdigest }
   end
   calibration = JSON.parse(run_capture(["#{output}/baseline/probe"], "#{output}/calibration.log"))

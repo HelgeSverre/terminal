@@ -7,8 +7,8 @@ changes terminal editing semantics.
 Research baseline: `2be6503`. The stable window/pane identifiers and settings
 control identifiers described below have since been implemented. Pane/window
 identifiers include an immutable UUID. Development builds now implement an
-explicit AppleScript command surface in `native/Automation.swift` and
-`native/Terminal.sdef`; see [the current interface](automation.md). The object
+explicit AppleScript command surface in `Sources/Terminal/Automation.swift` and
+`Resources/Terminal/Terminal.sdef`; see [the current interface](automation.md). The object
 graph below remains research context, not a claim about the command interface.
 
 ## What is already truthful

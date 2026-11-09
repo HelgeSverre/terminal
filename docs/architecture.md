@@ -53,15 +53,20 @@ led to these rules.
 
 | Area | Entry point |
 | --- | --- |
-| Windows, pane tree, menus | [main.swift](../native/main.swift) |
-| Native input and accessibility | [Canvas.swift](../native/Canvas.swift) |
-| PTY and terminal-state ordering | [Session.swift](../native/Session.swift) |
-| Emulation and document storage | [Emulation](../native/Emulation) |
-| Unicode decoding and text tables | [Text](../native/Text) |
-| Rendering and glyph resources | [Renderer.swift](../native/Renderer.swift) |
-| Process setup | [Spawn.c](../native/Spawn.c) · [Launcher.c](../native/Launcher.c) |
+| Windows, pane tree, menus | [main.swift](../Sources/Terminal/main.swift) |
+| Native input and accessibility | [Canvas.swift](../Sources/Terminal/Canvas.swift) |
+| PTY and terminal-state ordering | [Session.swift](../Sources/Terminal/Session.swift) |
+| Emulation and document storage | [Emulation](../Sources/Terminal/Emulation) |
+| Unicode decoding and text tables | [Text](../Sources/Terminal/Text) |
+| Rendering and glyph resources | [Renderer.swift](../Sources/Terminal/Renderer.swift) |
+| Process setup | [Spawn.c](../Sources/Terminal/Interop/Spawn.c) · [Launcher.c](../Sources/TerminalLauncher/Launcher.c) |
 
-Directory boundaries group owners within one Swift compiler module.
+`Sources/Terminal` contains the application in one Swift compiler module.
+`Tests/TerminalTests` holds directly compiled test programs, `Resources/Terminal`
+holds bundle inputs, and `Benchmarks/TerminalBench` holds the PTY driver.
+The small `Sources/TerminalLauncher` C executable sets up shell launches.
+`justfile` assembles the bundle; the source manifest lists canonical repository
+paths and verifies that every Swift source belongs to its declared group.
 [Decisions](decisions.md) records the
 tradeoffs, and the [glossary](../GLOSSARY.md) defines project terms.
 
@@ -69,7 +74,7 @@ tradeoffs, and the [glossary](../GLOSSARY.md) defines project terms.
 
 Replay a byte stream without opening a window:
 
-```sh
+```shell
 printf '\033[31mhello\033[0m\r\n' | just replay 80 24
 ```
 

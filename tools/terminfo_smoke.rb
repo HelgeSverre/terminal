@@ -6,7 +6,7 @@ require 'open3'
 require 'tmpdir'
 
 root = File.expand_path('..', __dir__)
-source = File.join(root, 'native', 'Terminal.terminfo')
+source = File.join(root, 'Resources', 'Terminal', 'Terminal.terminfo')
 bundle_database = File.join(root, 'dist', 'Terminal.app', 'Contents', 'Resources', 'terminfo')
 probe = File.join(root, 'target', 'native', 'terminfo-probe')
 raise 'Run just terminfo-test to compile the Swift ABI probe' unless File.executable?(probe)

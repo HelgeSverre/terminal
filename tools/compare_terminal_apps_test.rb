@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require 'minitest/autorun'
+require 'tmpdir'
+require 'fileutils'
 require_relative 'compare_terminal_apps'
 
 class TerminalAppComparisonTest < Minitest::Test
@@ -31,6 +33,31 @@ class TerminalAppComparisonTest < Minitest::Test
 
   def test_accepts_execution_order_observations
     validate
+  end
+
+  def test_driver_failure_precedes_nonzero_app_status_and_reaps_process
+    Dir.mktmpdir('terminal-comparison-failure-') do |root|
+      app = File.join(root, 'Fixture.app')
+      FileUtils.mkdir_p(File.join(app, 'Contents/MacOS'))
+      executable = File.join(app, 'Contents/MacOS/Terminal')
+      File.write(executable, <<~'SCRIPT')
+        #!/bin/sh
+        while [ "$#" -gt 0 ]; do
+          if [ "$1" = --output ]; then shift; printf 'fixture driver failed' > "$1.failed"; exit 7; fi
+          shift
+        done
+        exit 8
+      SCRIPT
+      File.chmod(0o700, executable)
+      @comparison.instance_variable_set(:@output, root)
+      @comparison.instance_variable_set(:@driver, '/unused-driver')
+      @comparison.instance_variable_set(:@result, { 'apps' => {} })
+      error = assert_raises(RuntimeError) { @comparison.send(:measure, 'swift', app) }
+      assert_equal 'fixture driver failed', error.message
+      record = @comparison.instance_variable_get(:@result).fetch('apps').fetch('swift')
+      refute record.fetch('natural_exit')
+      assert_empty record.fetch('cleanup_survivors')
+    end
   end
 
   def test_rejects_aggregate_count_without_all_observations

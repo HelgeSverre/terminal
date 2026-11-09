@@ -91,18 +91,20 @@ struct TerminalPreferences {
     else { return nil }
     return value
   }
-  static func load() -> Self { load(from: .standard, migrateLegacyDomain: true) }
+  static func load() -> Self {
+    let defaults = UserDefaults.standard
 
-  // Tests and isolated tools can inject a private defaults suite; only the app
-  // performs the one-time bundle migration.
-  static func load(from defaults: UserDefaults, migrateLegacyDomain: Bool = false) -> Self {
     if Bundle.main.bundleIdentifier == "no.helgesverre.terminal",
-      migrateLegacyDomain,
       let previous = defaults.persistentDomain(forName: "no.helge.terminal") {
       for key in ["fontSize", "historyRows", "optionSendsEscape"] where defaults.object(forKey: key) == nil {
         if let value = previous[key] { defaults.set(value, forKey: key) }
       }
     }
+    return load(from: defaults)
+  }
+
+  // Injected defaults are read without migrating the application's domain.
+  static func load(from defaults: UserDefaults) -> Self {
     let font = defaults.object(forKey: "fontSize") == nil ? 14 : defaults.double(forKey: "fontSize")
     let rows =
       defaults.object(forKey: "historyRows") == nil

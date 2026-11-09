@@ -102,12 +102,12 @@ flowchart LR
 
 | Owner | Responsibility |
 | --- | --- |
-| [Window and pane tree](native/main.swift) | Windows, tabs, splits, focus, and minimum sizes |
-| [Pane presentation](native/PanePresentation.swift) | Pane headers, colors, and inactive dimming |
-| [Canvas](native/Canvas.swift) | Native input, selection, geometry, and accessibility |
-| [Session](native/Session.swift) | Child process, PTY transport, ordering, and snapshot publication |
-| [Emulation](native/Emulation) | VT parsing, screens, history, reflow, and graphics state |
-| [Rendering](native/Renderer.swift) | Drawable scheduling, glyph residency, and Metal commands |
+| [Window and pane tree](Sources/Terminal/main.swift) | Windows, tabs, splits, focus, and minimum sizes |
+| [Pane presentation](Sources/Terminal/PanePresentation.swift) | Pane headers, colors, and inactive dimming |
+| [Canvas](Sources/Terminal/Canvas.swift) | Native input, selection, geometry, and accessibility |
+| [Session](Sources/Terminal/Session.swift) | Child process, PTY transport, ordering, and snapshot publication |
+| [Emulation](Sources/Terminal/Emulation) | VT parsing, screens, history, reflow, and graphics state |
+| [Rendering](Sources/Terminal/Renderer.swift) | Drawable scheduling, glyph residency, and Metal commands |
 
 Panes share the renderer service and glyph budget. CoreText rasterizes glyphs;
 Metal draws cells and images. A small C launcher handles process setup. Design

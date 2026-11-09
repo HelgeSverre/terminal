@@ -9,7 +9,7 @@ That cask update also refreshes [tap.helgesver.re](https://tap.helgesver.re/).
 ## Publish a version
 
 Set `CFBundleShortVersionString` and increment `CFBundleVersion` in
-`native/Info.plist`. Commit the tested changes to `main`, then tag that commit:
+`Resources/Terminal/Info.plist`. Commit the tested changes to `main`, then tag that commit:
 
 ```shell
 git tag vX.Y.Z

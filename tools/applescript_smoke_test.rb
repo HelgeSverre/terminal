@@ -8,7 +8,7 @@ require_relative 'applescript_smoke'
 
 class AppleScriptSmokeTest < Minitest::Test
   def test_dictionary_exposes_selection_word_characters_with_the_automation_key
-    dictionary = File.read(File.expand_path('../native/Terminal.sdef', __dir__))
+    dictionary = File.read(File.expand_path('../Resources/Terminal/Terminal.sdef', __dir__))
     assert_match(
       /<parameter name="word characters" code="Hwrd" type="text" optional="yes".*<cocoa key="SelectionWordCharacters"\/><\/parameter>/,
       dictionary)

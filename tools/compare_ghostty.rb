@@ -28,7 +28,7 @@ class GhosttyComparison
   def run
     FileUtils.mkdir_p(@output)
     @result['stage'] = 'compile_driver'
-    source = File.join(@root, 'native/benchmarks/terminal-bench.c')
+    source = File.join(@root, 'Benchmarks/TerminalBench/terminal-bench.c')
     driver = File.join(@output, 'terminal-bench')
     capture('xcrun', 'clang', '-Wall', '-Wextra', '-Werror', '-O2', source, '-o', driver)
     @result['driver_source_sha256'] = Digest::SHA256.file(source).hexdigest

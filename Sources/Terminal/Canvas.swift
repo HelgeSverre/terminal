@@ -78,8 +78,9 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     self.session = session
     rendering = (NSApp.delegate as? AppDelegate)?.rendering
     super.init(frame: frame)
-    fontPoints = TerminalPreferences.load().fontSize
-    session.configure(TerminalPreferences.load().session)
+    let preferences = TerminalPreferences.load()
+    fontPoints = preferences.fontSize
+    session.configure(preferences.session)
     wantsLayer = true
     // Let AppKit map top-left placement into the backing layer's coordinate
     // system. Direct layer gravity has different vertical meaning when flipped.
@@ -272,9 +273,9 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     }
     return super.isAccessibilitySelectorAllowed(selector)
   }
-  func applyPreferences() {
-    fontPoints = TerminalPreferences.load().fontSize
-    session.configure(TerminalPreferences.load().session)
+  func applyPreferences(_ preferences: TerminalPreferences) {
+    fontPoints = preferences.fontSize
+    session.configure(preferences.session)
     updateGeometry()
   }
   func updateFocus() {
