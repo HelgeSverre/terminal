@@ -74,9 +74,12 @@ covering invalid font and history edits across navigation, `nan` and infinities,
 bounded arrow and stepper recovery, radio selection and keyboard navigation,
 blank directory behavior, Apply callback count, and Cancel/reopen behavior.
 An external accessibility client also exercised semantic sidebar activation.
-The temporary harness used for these checks is not a permanent repository test
-or CI guarantee. These checks do not establish behavior for future sections that
-exceed the fixed window's available height.
+The focused `just settings-window-test` is part of `just test` and CI. It drives
+the native field editor and semantic section navigation, checking invalid drafts,
+hidden-field validation, nonfinite recovery, font bounds, Apply, Cancel and no
+preference persistence. Directory chooser interaction and external accessibility
+client checks remain separate local verification. These checks do not establish
+behavior for future sections that exceed the fixed window's available height.
 
 Native captures in the session artifact directory
 `terminal-settings-sidebar-yellow` record General, Text, Panes, and focused

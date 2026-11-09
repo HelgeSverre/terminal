@@ -138,6 +138,7 @@ lint:
 [group('check')]
 @test: lint build
     just workflow-tests
+    just settings-window-test
     just visible-links-test
     just _terminfo-test
     just _clipboard-access-tests
@@ -208,6 +209,14 @@ _shell-editing-test:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print shell_editing) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/shell-editing-tests
     env -u LANG -u LC_ALL -u LC_CTYPE -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE -u FORCE_COLOR target/native/shell-editing-tests "$PWD"
+
+# Native settings editors, draft validation and Apply/Cancel semantics.
+[group('check')]
+settings-window-test:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 $(xcrun swift tools/SwiftIncrementalBuild.swift --print settings_window) -framework AppKit -framework CoreText -o target/native/settings-window-tests
+    target/native/settings-window-tests
 
 # Swift terminal-state smoke; historical Rust oracles live in the archived branch.
 [group('check')]

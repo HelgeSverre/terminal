@@ -604,6 +604,14 @@
       "Sources/Terminal/Emulation/PresentedContent.swift",
       "Sources/Terminal/Emulation/TerminalEmulator.swift",
       "Tests/TerminalTests/CSIDifferentialProbe.swift"
+    ],
+    "settings_window": [
+      "Sources/Terminal/Text/SelectionWordProfile.swift",
+      "Sources/Terminal/Preferences.swift",
+      "Sources/Terminal/Theme.swift",
+      "Sources/Terminal/Font.swift",
+      "Sources/Terminal/Settings.swift",
+      "Tests/TerminalTests/SettingsWindowTests.swift"
     ]
   }
 }
