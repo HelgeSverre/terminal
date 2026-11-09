@@ -1,0 +1,334 @@
+{
+  "source_sha": "0c1f4cf3e360e4549a66363cb231c3be6c14ed1d",
+  "executable_sha256": "1d3cc110074aa5383f2cd5cfdeaced2ff5ffe6e244f6bbd403378d97c349e516",
+  "app_version": "0.2.3 (9)",
+  "date": "2026-11-09",
+  "workloads": {
+    "files": {
+      "passed": true,
+      "workload_executable": "/Users/helge/.local/bin/files",
+      "workload_sha256": "48811589247f419f2af81a74cd57628c758bec8f59151ba8133b06f6ddad1e7d",
+      "rapid_resizes": 72,
+      "resize_interval_seconds": 1.9030531250173226,
+      "real_output_during_resize": {
+        "0": {
+          "events": 10,
+          "bytes": 6370
+        },
+        "1": {
+          "events": 0,
+          "bytes": 0
+        },
+        "2": {
+          "events": 10,
+          "bytes": 6370
+        },
+        "3": {
+          "events": 10,
+          "bytes": 6370
+        }
+      },
+      "final_screen": {
+        "actual_workload_marker": "TUI_STRESS_FILES_LISTING_READY",
+        "invariant": "every final pane visibly contains its real workload output marker after resize settles; any wrapper marker is diagnostic-only and not a workload proof",
+        "panes": [
+          {
+            "actual_workload_marker_visible": true,
+            "frame": [
+              28,
+              81,
+              1040,
+              372
+            ],
+            "identifier": "no.helgesverre.terminal.pane.9B40FDDA-92D3-4270-A4DE-72E01080633A",
+            "public_fixture_marker_visible": false,
+            "value_utf8_bytes": 584
+          },
+          {
+            "actual_workload_marker_visible": true,
+            "frame": [
+              28,
+              454,
+              1040,
+              372
+            ],
+            "identifier": "no.helgesverre.terminal.pane.3A334A9D-37DE-4CC3-B4E9-E0DB5ED240FD",
+            "public_fixture_marker_visible": false,
+            "value_utf8_bytes": 584
+          },
+          {
+            "actual_workload_marker_visible": true,
+            "frame": [
+              28,
+              827,
+              1040,
+              373
+            ],
+            "identifier": "no.helgesverre.terminal.pane.E9695FEA-0741-4571-A42D-B9F273629862",
+            "public_fixture_marker_visible": false,
+            "value_utf8_bytes": 637
+          }
+        ],
+        "pid": 38878,
+        "workload": "files"
+      },
+      "final_receipts": {
+        "0": {
+          "pane": 0,
+          "wrapper_pid": 38925,
+          "workload": "files",
+          "output_bytes": 21624,
+          "stopping": true,
+          "child_alive": false,
+          "workload_canaries": [
+            "files_listing"
+          ],
+          "failure": null
+        },
+        "1": {
+          "pane": 1,
+          "wrapper_pid": 38955,
+          "workload": "files",
+          "output_bytes": 4459,
+          "stopping": true,
+          "child_alive": false,
+          "workload_canaries": [
+            "files_listing"
+          ],
+          "failure": null
+        },
+        "2": {
+          "pane": 2,
+          "wrapper_pid": 38964,
+          "workload": "files",
+          "output_bytes": 17806,
+          "stopping": true,
+          "child_alive": false,
+          "workload_canaries": [
+            "files_listing"
+          ],
+          "failure": null
+        },
+        "3": {
+          "pane": 3,
+          "wrapper_pid": 39005,
+          "workload": "files",
+          "output_bytes": 13419,
+          "stopping": true,
+          "child_alive": false,
+          "workload_canaries": [
+            "files_listing"
+          ],
+          "failure": null
+        }
+      },
+      "cleanup": [
+        {
+          "pid": 38951,
+          "survivors": []
+        },
+        {
+          "pid": 38945,
+          "survivors": []
+        },
+        {
+          "pid": 38933,
+          "survivors": []
+        },
+        {
+          "pid": 38878,
+          "survivors": []
+        }
+      ],
+      "capture": {
+        "recording_finished": true,
+        "recording_valid": true
+      },
+      "helper_sha256": {
+        "Driver.swift": "2216845a2be2a06fe29c677fa2b21b766032e0ce96ced1569577820687da9b0a",
+        "TUIStressDriver": "41ba45c1a8a79f5423c2bfb07b97c0b1fc1f23c29fa7a81dadb79f929fa881bc",
+        "Capture.swift": "4cdbd455b1f0a533ce168c7cdf913f6cc32ae39933f5de76443d699e64e8c43c",
+        "TUIStressCapture": "08c743f6ef99af0498ced0f4f663e66ad0183004efd980b46e162bd4ca5fc902",
+        "fixture.rb": "79800a0a8553e7dbfa3173058e7b74bc4188cd681c43ed1fb57e5247eaa91b07",
+        "provider.rb": "b05865031750bc10ad475ada3195a32207ceee805bfaa46bad7cc1c17966b0b9"
+      },
+      "artifact_sha256": {
+        "identity.json": "1dd7daec440a6881f5fbc1fbf188d6c2b41437a2ed62d90f8ec6ff47914bb54a",
+        "input-events.json": "61ba480c6b2d2c325e75837a7c41a652195fb786ba63d45463deb6e2594162d7",
+        "final-screen.json": "b68bded45b8d80dba77a0de4e8fe0c9d9d84177d46c32efc869152b1ab4daa22",
+        "frames.jsonl": "be65f5b5a502bcc539b8374971b22a837dc54942f915cc2d33c17b2c9cba5ccd",
+        "capture.mp4": "9466bbb64f1cc0e55d1776f23effd032e03c603a32cf838decf10a1e0e314c70",
+        "summary.json": "0a5a2586c1d7f16f7dc9b084493f06d3cb095e039b45f9ddc8cf5fd3a73d5fd1"
+      },
+      "private_artifact_directory": "/tmp/terminal-tui-files-final-0c1f4cf-v2",
+      "visual_review": "Inspected contact sheet and full-size final frame; no stretched glyphs or missing expected colors observed in those samples. Synthetic capture marker classifications are inconclusive for these workloads."
+    },
+    "codex": {
+      "passed": true,
+      "workload_executable": "/Users/helge/.bun/install/global/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex",
+      "workload_sha256": "030316ecfbb41f4e7946e584b0063ef333b7a36cd312ba349f2f6869e39b62cc",
+      "rapid_resizes": 72,
+      "resize_interval_seconds": 2.295809666684363,
+      "real_output_during_resize": {
+        "0": {
+          "events": 107,
+          "bytes": 13162
+        },
+        "1": {
+          "events": 0,
+          "bytes": 0
+        },
+        "2": {
+          "events": 173,
+          "bytes": 35374
+        },
+        "3": {
+          "events": 174,
+          "bytes": 23812
+        }
+      },
+      "final_screen": {
+        "actual_workload_marker": "TUI_STRESS_RESPONSE",
+        "invariant": "every final pane visibly contains its real workload output marker after resize settles; any wrapper marker is diagnostic-only and not a workload proof",
+        "panes": [
+          {
+            "actual_workload_marker_visible": true,
+            "frame": [
+              28,
+              81,
+              1040,
+              372
+            ],
+            "identifier": "no.helgesverre.terminal.pane.8FE78875-A44E-4E90-A369-2E762B2CF8B1",
+            "public_fixture_marker_visible": false,
+            "value_utf8_bytes": 758
+          },
+          {
+            "actual_workload_marker_visible": true,
+            "frame": [
+              28,
+              454,
+              1040,
+              372
+            ],
+            "identifier": "no.helgesverre.terminal.pane.487F4BE9-D680-48C2-9225-0BF5904F5FD6",
+            "public_fixture_marker_visible": false,
+            "value_utf8_bytes": 784
+          },
+          {
+            "actual_workload_marker_visible": true,
+            "frame": [
+              28,
+              827,
+              1040,
+              373
+            ],
+            "identifier": "no.helgesverre.terminal.pane.A0AFCAF5-140B-41E3-A92F-28AC2B24A39F",
+            "public_fixture_marker_visible": false,
+            "value_utf8_bytes": 816
+          }
+        ],
+        "pid": 40097,
+        "workload": "codex"
+      },
+      "final_receipts": {
+        "0": {
+          "pane": 0,
+          "wrapper_pid": 40102,
+          "workload": "codex",
+          "output_bytes": 54788,
+          "stopping": true,
+          "child_alive": false,
+          "workload_canaries": [
+            "codex_banner",
+            "codex_response"
+          ],
+          "failure": null
+        },
+        "1": {
+          "pane": 1,
+          "wrapper_pid": 40174,
+          "workload": "codex",
+          "output_bytes": 15802,
+          "stopping": true,
+          "child_alive": false,
+          "workload_canaries": [
+            "codex_banner",
+            "codex_response"
+          ],
+          "failure": null
+        },
+        "2": {
+          "pane": 2,
+          "wrapper_pid": 40182,
+          "workload": "codex",
+          "output_bytes": 63600,
+          "stopping": true,
+          "child_alive": false,
+          "workload_canaries": [
+            "codex_banner",
+            "codex_response"
+          ],
+          "failure": null
+        },
+        "3": {
+          "pane": 3,
+          "wrapper_pid": 40330,
+          "workload": "codex",
+          "output_bytes": 39915,
+          "stopping": true,
+          "child_alive": false,
+          "workload_canaries": [
+            "codex_banner",
+            "codex_response"
+          ],
+          "failure": null
+        }
+      },
+      "cleanup": [
+        {
+          "pid": 40170,
+          "survivors": []
+        },
+        {
+          "pid": 40164,
+          "survivors": []
+        },
+        {
+          "pid": 40112,
+          "survivors": []
+        },
+        {
+          "pid": 40097,
+          "survivors": []
+        },
+        {
+          "pid": 40094,
+          "survivors": []
+        }
+      ],
+      "capture": {
+        "recording_finished": true,
+        "recording_valid": true
+      },
+      "helper_sha256": {
+        "Driver.swift": "2216845a2be2a06fe29c677fa2b21b766032e0ce96ced1569577820687da9b0a",
+        "TUIStressDriver": "41ba45c1a8a79f5423c2bfb07b97c0b1fc1f23c29fa7a81dadb79f929fa881bc",
+        "Capture.swift": "4cdbd455b1f0a533ce168c7cdf913f6cc32ae39933f5de76443d699e64e8c43c",
+        "TUIStressCapture": "08c743f6ef99af0498ced0f4f663e66ad0183004efd980b46e162bd4ca5fc902",
+        "fixture.rb": "79800a0a8553e7dbfa3173058e7b74bc4188cd681c43ed1fb57e5247eaa91b07",
+        "provider.rb": "b05865031750bc10ad475ada3195a32207ceee805bfaa46bad7cc1c17966b0b9"
+      },
+      "artifact_sha256": {
+        "identity.json": "8d5d77c0277f6d21c74d6525292050f1388b4ba08243b973381247deef5f0fbd",
+        "input-events.json": "81b2a854bdaf6557537b2d850e0063ba1fe32b466f2b6890b26f4ee02bbcfa8b",
+        "final-screen.json": "8374251316dc014b50e7156ed18d5a7a18657a6594b63ec8ddfca014e4d91fc4",
+        "frames.jsonl": "4e09b145b2024f5620db222306120e9aed66f05ce90ed23c58ac3bc5b66f00e4",
+        "capture.mp4": "48ce63a9884df015eab4dd264e9b3aa50e509360cf8454937d292f2341e643b6",
+        "summary.json": "5d3f2c60b3eeda9049ff72f4d321a8c276a9d231fae0bef178f74aeefda2a370"
+      },
+      "private_artifact_directory": "/tmp/terminal-tui-codex-final-0c1f4cf",
+      "visual_review": "Inspected contact sheet and full-size final frame; no stretched glyphs or missing expected colors observed in those samples. Synthetic capture marker classifications are inconclusive for these workloads."
+    }
+  }
+}

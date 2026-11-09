@@ -1,0 +1,24 @@
+{
+  "after" : {
+    "bottom" : "{{0, 0}, {1000, 251}}",
+    "bottom_height" : 251,
+    "height_ratio" : 0.63033873343151692,
+    "top" : "{{0, 252}, {1000, 428}}",
+    "top_height" : 428
+  },
+  "before" : {
+    "bottom" : "{{0, 0}, {610, 251}}",
+    "bottom_height" : 251,
+    "height_ratio" : 0.63033873343151692,
+    "top" : "{{0, 252}, {610, 428}}",
+    "top_height" : 428
+  },
+  "content_size" : "{720, 436}",
+  "error" : "window shrink violated nested leaf minimum",
+  "passed" : false,
+  "phase" : "finished",
+  "resized_leaf_frames" : [
+    "{{0, 359}, {720, 77}}",
+    "{{0, 282}, {720, 76}}"
+  ]
+}

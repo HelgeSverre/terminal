@@ -23,6 +23,19 @@ glyphs: build
 glyph-smoke: build (_native-smoke "glyph")
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
 
+# Compile and self-test the isolated real-workload pane-stress helpers. This
+# preparation recipe deliberately performs no GUI actions.
+[group('check')]
+tui-stress-prepare:
+    ruby tools/tui_stress/run.rb --prepare
+
+# Run one isolated real Files or Codex stress pass against the installed app.
+# The runner resolves matching local notarized provenance and copies the app to
+# a fresh /tmp report before launch; it never uses a live window.
+[group('check')]
+tui-stress workload="files":
+    ruby tools/tui_stress/run.rb --installed --workload "$1"
+
 # Close the last window; require both the app and its HUP-resistant child to exit
 [group('check')]
 close-smoke: build
@@ -149,6 +162,7 @@ lint:
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print transport) -o target/native/transport-tests
     target/native/transport-tests
     just _session-test
+    just _native-smoke pane-lifecycle
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print geometry) -o target/native/geometry-tests
     target/native/geometry-tests
     xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print statistics) -o target/native/statistics-tests
@@ -404,6 +418,10 @@ smoke: build (_native-smoke "normal")
 [group('check')]
 editing-smoke: build (_native-smoke "editing")
 
+# Nested pane promotion, minimum-size subdivision, and attached view geometry.
+[group('check')]
+pane-lifecycle-smoke: build (_native-smoke "pane-lifecycle")
+
 # Measure a visible pane at idle for 60 seconds, then quit the test instance
 [group('check')]
 idle: build (_native-smoke "idle")
@@ -594,6 +612,12 @@ resize-smoke: build
 [group('check')]
 workflow-tests:
     mkdir -p target/native
+    ruby tools/tui_stress/run.rb --self-test
+    ruby tools/tui_stress/fixture.rb --self-test
+    ruby tools/tui_stress/FixtureTests.rb
+    ruby tools/tui_stress/provider.rb --self-test
+    xcrun swiftc -parse-as-library -O tools/tui_stress/Driver.swift -o target/native/tui-stress-driver-tests
+    target/native/tui-stress-driver-tests --self-test
     ruby tools/glyph_policy_test.rb
     ruby tools/native_smoke_test.rb
     ruby tools/compare_terminal_apps_test.rb
