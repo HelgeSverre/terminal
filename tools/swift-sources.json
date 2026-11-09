@@ -37,6 +37,7 @@
     "SelectionSmoke.swift",
     "EditingSmoke.swift",
     "ResizeSmoke.swift",
+    "PaneLifecycleSmoke.swift",
     "main.swift"
   ],
   "emulation": [

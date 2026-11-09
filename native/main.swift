@@ -9,6 +9,27 @@ func selectionSmokeReportPath() -> String? {
   return URL(fileURLWithPath: CommandLine.arguments[index + 1]).standardizedFileURL.path
 }
 
+func paneLifecycleSmokeReportPath() -> String? {
+  guard let index = CommandLine.arguments.firstIndex(of: "--pane-lifecycle-smoke"),
+    CommandLine.arguments.indices.contains(index + 1)
+  else { return nil }
+  return URL(fileURLWithPath: CommandLine.arguments[index + 1]).standardizedFileURL.path
+}
+
+private func terminalMinimumSize(_ view: NSView) -> NSSize {
+  guard let split = view as? NSSplitView, split.arrangedSubviews.count == 2 else {
+    return NSSize(width: 200, height: 120)
+  }
+  let first = terminalMinimumSize(split.arrangedSubviews[0])
+  let second = terminalMinimumSize(split.arrangedSubviews[1])
+  return split.isVertical
+    ? NSSize(
+      width: first.width + second.width + split.dividerThickness,
+      height: max(first.height, second.height))
+    : NSSize(
+      width: max(first.width, second.width), height: first.height + second.height + split.dividerThickness)
+}
+
 func selectionSmokePasteboardName(reportPath: String) -> NSPasteboard.Name {
   var hash: UInt64 = 0xcbf29ce484222325
   for byte in reportPath.utf8 {
@@ -27,7 +48,9 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   private let diagnosticSplitLaunch: LaunchSpec?
   init(launch: LaunchSpec? = nil) {
     initialLaunch = launch
-    diagnosticSplitLaunch = CommandLine.arguments.contains("--resize-smoke") ? launch : nil
+    diagnosticSplitLaunch =
+      CommandLine.arguments.contains("--resize-smoke") || paneLifecycleSmokeReportPath() != nil
+      ? launch : nil
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 1000, height: 680),
       styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
@@ -116,24 +139,47 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     let pane = makePane(launch: current.session.siblingLaunch)
     pane.frame = split.bounds
     split.addArrangedSubview(pane)
+    // Divider constraints depend on valid child frames. Establish tiling before
+    // selecting the initial midpoint, as a user drag would.
+    split.adjustSubviews()
+    // A new nested split can raise an ancestor's minimum. Allocate that space
+    // before computing this split's midpoint so it never starts clipped.
+    reconcileLayout()
     let extent = vertical ? split.bounds.width : split.bounds.height
     split.setPosition((extent - split.dividerThickness) / 2, ofDividerAt: 0)
-    split.adjustSubviews()
-    if let root { window?.contentMinSize = minimumSize(root) }
+    reconcileLayout()
     window?.makeFirstResponder(pane)
     panes.forEach { $0.updateFocus() }
   }
-  private func minimumSize(_ view: NSView) -> NSSize {
-    guard let split = view as? NSSplitView, split.arrangedSubviews.count == 2 else {
-      return NSSize(width: 200, height: 120)
+  private func reconcileLayout() {
+    guard let root else { return }
+    let minimum = terminalMinimumSize(root)
+    window?.contentMinSize = minimum
+    if let window, let contentView = window.contentView,
+      contentView.bounds.width < minimum.width || contentView.bounds.height < minimum.height
+    {
+      window.setContentSize(NSSize(
+        width: max(contentView.bounds.width, minimum.width),
+        height: max(contentView.bounds.height, minimum.height)))
+      window.contentView?.layoutSubtreeIfNeeded()
     }
-    let a = minimumSize(split.arrangedSubviews[0])
-    let b = minimumSize(split.arrangedSubviews[1])
-    return split.isVertical
-      ? NSSize(
-        width: a.width + b.width + split.dividerThickness, height: max(a.height, b.height))
-      : NSSize(
-        width: max(a.width, b.width), height: a.height + b.height + split.dividerThickness)
+    reconcileSplit(root)
+  }
+  private func reconcileSplit(_ view: NSView) {
+    guard let split = view as? NSSplitView, split.arrangedSubviews.count == 2 else { return }
+    split.adjustSubviews()
+    let first = split.arrangedSubviews[0]
+    let second = split.arrangedSubviews[1]
+    let firstMinimum = terminalMinimumSize(first)
+    let secondMinimum = terminalMinimumSize(second)
+    let extent = split.isVertical ? split.bounds.width : split.bounds.height
+    let available = max(0, extent - split.dividerThickness)
+    let current = split.isVertical ? first.frame.width : first.frame.height
+    let minimum = split.isVertical ? firstMinimum.width : firstMinimum.height
+    let maximum = max(0, available - (split.isVertical ? secondMinimum.width : secondMinimum.height))
+    let position = min(max(current, minimum), maximum)
+    if abs(position - current) > 0.5 { split.setPosition(position, ofDividerAt: 0) }
+    split.arrangedSubviews.forEach(reconcileSplit)
   }
   @objc func closePane(_ sender: Any?) {
     guard panes.count > 1, let pane = window?.firstResponder as? TerminalCanvasView,
@@ -156,7 +202,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       survivor.autoresizingMask = [.width, .height]
       if root === split { root = survivor }
     }
-    if let root { window?.contentMinSize = minimumSize(root) }
+    reconcileLayout()
     window?.makeFirstResponder(panes.last)
     panes.forEach { $0.updateFocus() }
   }
@@ -212,7 +258,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     if let renderingError { NSLog("Metal initialization failed: %@", renderingError) }
     NSApp.setActivationPolicy(.regular)
     menu()
-    if CommandLine.arguments.contains("--resize-smoke") {
+    if let _ = paneLifecycleSmokeReportPath() {
+      let shell = LaunchSpec.shell
+      let launch = LaunchSpec(
+        executable: "/bin/sh", arguments: ["/bin/sh", "-c", "stty raw -echo; exec /bin/cat"],
+        cwd: shell.cwd, launcher: shell.launcher)
+      let window = TerminalWindow(launch: launch)
+      windows.append(window)
+      window.showWindow(nil)
+      window.window?.makeKeyAndOrderFront(nil)
+    } else if CommandLine.arguments.contains("--resize-smoke") {
       let fixtureDirectory = Bundle.main.bundleURL
         .appendingPathComponent("Contents/Resources/ShellIntegration/ResizeSmokeZsh").path
       setenv("ZDOTDIR", fixtureDirectory, 1)
@@ -287,6 +342,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     if let path = selectionSmokeReportPath(), let window = windows.first {
       SelectionSmokeTest.start(window: window, path: path)
+    }
+    if let path = paneLifecycleSmokeReportPath(), let window = windows.first {
+      PaneLifecycleSmokeTest.start(window: window, path: path)
     }
   }
   @objc func newWindow(_ sender: Any?) {
@@ -435,13 +493,20 @@ final class TerminalSplitView: NSSplitView, NSSplitViewDelegate {
   func splitView(
     _ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat,
     ofSubviewAt dividerIndex: Int
-  ) -> CGFloat { max(proposedMinimumPosition, isVertical ? 100 : 60) }
+  ) -> CGFloat {
+    guard arrangedSubviews.indices.contains(dividerIndex) else { return proposedMinimumPosition }
+    let minimum = terminalMinimumSize(arrangedSubviews[dividerIndex])
+    return max(proposedMinimumPosition, isVertical ? minimum.width : minimum.height)
+  }
   func splitView(
     _ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat,
     ofSubviewAt dividerIndex: Int
   ) -> CGFloat {
-    min(
-      proposedMaximumPosition, (isVertical ? bounds.width : bounds.height) - (isVertical ? 100 : 60)
+    guard arrangedSubviews.indices.contains(dividerIndex + 1) else { return proposedMaximumPosition }
+    let minimum = terminalMinimumSize(arrangedSubviews[dividerIndex + 1])
+    let extent = isVertical ? bounds.width : bounds.height
+    return min(
+      proposedMaximumPosition, extent - dividerThickness - (isVertical ? minimum.width : minimum.height)
     )
   }
 }
