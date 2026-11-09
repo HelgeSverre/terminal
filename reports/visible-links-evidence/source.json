@@ -1,0 +1,15 @@
+{
+  "created_at": "2026-11-09T01:59:21Z",
+  "baseline_commit": "33f446b02056b4be245e91ca630ee97395e141f2",
+  "overlay_sha256": {
+    "native/VisibleLinkProjection.swift": "cc6f47e6a764f99eedbeea49982a71e8549104dc0ff3c7501ffa9d6beab6924b",
+    "native/AccessibilityProjection.swift": "f0e1e57d70dc848ad897d0b576d7e322c27ee86c1480ab523676fb4bc6e2f4ac",
+    "native/Canvas.swift": "14de35eb6276a4051d842459f7544c686424c0e9c61c21372a872a0c0fa00e4e",
+    "native/Renderer.swift": "73225c63e5ebb73c9eaa87cef0f5036456eee34a360ae5586cc44924620dfe9a",
+    "native/tests/VisibleLinkProjectionTests.swift": "91b8c89fdd750214af64648e400ee762f3d119189e1bfaf0ab89272d78279b14",
+    "native/tests/SnapshotBridgeTests.swift": "53c8acfa4d51b2263c8e9c7865c8eb2a97c0f27758d334cf7fa528f1ab3616e1",
+    "tools/swift-sources.json": "18d2d7b8dc7368e1c87056e75c2e077c88fc04d039d5c81262aafc39b6e524cd",
+    "justfile": "fd945494459f4ccab05825536476f2705950feb0093d7109bc668ef8f88448c8"
+  },
+  "scope": "Committed emulator/session with final reviewed link presentation overlay only."
+}

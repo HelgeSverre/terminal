@@ -8,6 +8,9 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   private var surface: TerminalRendering.SurfaceLease?
   private var snapshot: TerminalSnapshot?
   private var accessible: AccessibilityProjection?
+  private var hoveredLink: VisibleLinkProjection.Occurrence?
+  private var linkModifierMonitor: Any?
+  private var localLinkPress = false
   private var lastAccessibleSelection = NSRange(location: NSNotFound, length: 0)
   private var accessibilityNotificationScheduled = false
   private var accessibilityValueChanged = false
@@ -92,6 +95,12 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     setAccessibilityRole(.textArea)
     setAccessibilityLabel("Terminal pane")
     setAccessibilityIdentifier("no.helgesverre.terminal.pane." + automationID)
+    // Every pane observes modifier changes so Cmd reveals the link beneath
+    // the pointer even when another pane owns the keyboard responder.
+    linkModifierMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+      self?.updateLinkHoverForCurrentPointer(modifiers: event.modifierFlags)
+      return event
+    }
     session.onSnapshot = { [weak self] value in
       guard let self else { return }
       onObservedSnapshot?(value)
@@ -136,11 +145,13 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     self.surface = nil
   }
   deinit {
+    if let linkModifierMonitor { NSEvent.removeMonitor(linkModifierMonitor) }
     detachRenderingSurface()
   }
   private func display(_ value: TerminalSnapshot) {
     snapshot = value
     accessible = AccessibilityProjection(snapshot: value)
+    updateLinkHoverForCurrentPointer(modifiers: NSEvent.modifierFlags)
     onTitle?(value.title)
     setAccessibilityValue(accessible?.text ?? "")
     accessibilityChanged(value: true)
@@ -188,6 +199,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     accessible?.string(in: accessibilitySelectedTextRange())
   }
   override func accessibilityString(for range: NSRange) -> String? { accessible?.string(in: range) }
+  override func accessibilityChildren() -> [Any]? { accessible?.linkElements(parent: self) ?? [] }
   override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
     accessible?.attributedString(in: range, fontSize: fontPoints, parent: self)
   }
@@ -250,6 +262,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   func updateFocus() {
     let value = window?.isKeyWindow == true && window?.firstResponder === self
     if !value {
+      hoveredLink = nil
       releaseOwnedKeys()
       if hasMarkedText() { cancelComposition() }
     }
@@ -264,13 +277,51 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     super.updateTrackingAreas()
     if let tracking { removeTrackingArea(tracking) }
     let area = NSTrackingArea(
-      rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self,
+      rect: .zero,
+      options: [.mouseMoved, .mouseEnteredAndExited, .cursorUpdate, .activeInKeyWindow, .inVisibleRect], owner: self,
       userInfo: nil)
     addTrackingArea(area)
     tracking = area
   }
   override func mouseMoved(with event: NSEvent) {
-    if snapshot?.modes.mouse == 1003 { _ = reportMouse(event, button: 35, release: false) }
+    updateLinkHover(locationInWindow: event.locationInWindow, modifiers: event.modifierFlags)
+    if !event.modifierFlags.contains(.command), snapshot?.modes.mouse == 1003 {
+      _ = reportMouse(event, button: 35, release: false)
+    }
+  }
+  override func mouseEntered(with event: NSEvent) {
+    updateLinkHover(locationInWindow: event.locationInWindow, modifiers: event.modifierFlags)
+  }
+  override func mouseExited(with event: NSEvent) {
+    if hoveredLink != nil { hoveredLink = nil; redraw() }
+  }
+  override func cursorUpdate(with event: NSEvent) {
+    updateLinkHover(locationInWindow: event.locationInWindow, modifiers: event.modifierFlags)
+  }
+  override func resetCursorRects() { addCursorRect(bounds, cursor: .iBeam) }
+
+  private func linkOccurrence(locationInWindow: NSPoint) -> VisibleLinkProjection.Occurrence? {
+    guard let snapshot, snapshot.cols > 0, !snapshot.rows.isEmpty else { return nil }
+    let point = convert(locationInWindow, from: nil)
+    let x = point.x * scale - CGFloat(insetPixels)
+    let y = point.y * scale - CGFloat(insetPixels)
+    guard x >= 0, y >= 0 else { return nil }
+    let column = Int(x / CGFloat(cellWidth))
+    let row = Int(y / CGFloat(cellHeight))
+    guard column < snapshot.cols, row < snapshot.rows.count else { return nil }
+    return accessible?.occurrence(atGrid: row * snapshot.cols + column)
+  }
+  private func updateLinkHoverForCurrentPointer(modifiers: NSEvent.ModifierFlags) {
+    guard let window else { return }
+    updateLinkHover(locationInWindow: window.mouseLocationOutsideOfEventStream, modifiers: modifiers)
+  }
+  private func updateLinkHover(locationInWindow: NSPoint, modifiers: NSEvent.ModifierFlags) {
+    let point = convert(locationInWindow, from: nil)
+    let active = window?.isKeyWindow == true && bounds.contains(point)
+    let value = active && modifiers.contains(.command)
+      ? linkOccurrence(locationInWindow: locationInWindow) : nil
+    if hoveredLink != value { hoveredLink = value; redraw() }
+    if active { (value == nil ? NSCursor.iBeam : NSCursor.pointingHand).set() }
   }
   override func rightMouseDragged(with event: NSEvent) {
     _ = reportMouse(event, button: 34, release: false)
@@ -343,7 +394,8 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
         inset: insetPixels, cellWidth: cellWidth, cellHeight: cellHeight,
         fontSize: fontPoints * scale,
         focused: focused, scrolled: !value.following_tail,
-        selection: selection, marked: marked.string))
+        selection: selection, marked: marked.string,
+        linkUnderline: hoveredLink?.gridSegments ?? []))
     }
   }
   private func clearSelection() {
@@ -415,6 +467,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       modifiers: modifiers(event.modifierFlags) & ~delivered.consumedModifiers, event: 2))
   }
   override func flagsChanged(with event: NSEvent) {
+    updateLinkHoverForCurrentPointer(modifiers: event.modifierFlags)
     guard let modifier = NativeKeyMap.modifierEvent(event) else { return }
     guard let resolved = modifierState.resolve(modifier) else { return }
     _ = sendKey(resolved.event, event: resolved.release ? 2 : 0)
@@ -535,7 +588,17 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     return row * value.cols + col
   }
   override func mouseDown(with event: NSEvent) {
+    localLinkPress = false
     window?.makeFirstResponder(self)
+    if event.clickCount == 1, event.modifierFlags.contains(.command),
+      let occurrence = linkOccurrence(locationInWindow: event.locationInWindow) {
+      // Resolve against the displayed generation at the user gesture; a
+      // previously hovered or cached target never drives activation.
+      dragging = false
+      localLinkPress = true
+      NSWorkspace.shared.open(occurrence.target)
+      return
+    }
     if reportMouse(event, button: 0, release: false) { return }
     clearSelection()
     dragging = true
@@ -560,15 +623,10 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
         start: index / value.cols * value.cols, end: (index / value.cols + 1) * value.cols)
       dragging = false
     }
-    if event.modifierFlags.contains(.command), let value = snapshot,
-      let link = value.rows[index / value.cols].cells[index % value.cols].link,
-      let url = AccessibleTerminalLink.url(link)
-    {
-      NSWorkspace.shared.open(url)
-    }
     redraw()
   }
   override func mouseDragged(with event: NSEvent) {
+    if localLinkPress { return }
     if reportMouse(event, button: 32, release: false) { return }
     guard dragging, let start = selection?.start, let value = snapshot else { return }
     let index = cellIndex(event)
@@ -579,6 +637,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     redraw()
   }
   override func mouseUp(with event: NSEvent) {
+    if localLinkPress { localLinkPress = false; return }
     if reportMouse(event, button: 0, release: true) { return }
     dragging = false
     if selection?.lower == selection?.upper { clearSelection() }

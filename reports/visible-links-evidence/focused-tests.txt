@@ -1,0 +1,10 @@
+mkdir -p target/native
+xcrun swift tools/SwiftIncrementalBuild.swift --verify
+Swift source graph verified: 39 app sources; 33 test groups; 380 declared paths; bundle inputs present
+xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print visible_links) -framework Foundation -framework AppKit -framework CoreText -o target/native/visible-links-tests
+target/native/visible-links-tests
+INFO visible-links max-grid cells=1048576 index-bytes=4194304 candidate-max-utf16=8192 elapsed-ms=290.06
+INFO visible-links non-delimited cells=1048576 elapsed-ms=246.53
+INFO visible-links dense-ax links=4096 build-ms=68.83 query-and-children-ms=19.99
+INFO visible-links ordinary-grid cells=3000 urls=30 elapsed-ms=1.81
+PASS visible links: plain/OSC8 priority, wraps, UTF-16 cells, AX consistency and stale rejection

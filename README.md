@@ -94,8 +94,9 @@ alternate-screen applications alone. Normal interactive zsh launches install
 prompt hooks from the app bundle while preserving your own startup files.
 Scroll locally to inspect history; incoming output keeps the reading position,
 and typing returns to the live screen. Alternate-screen programs retain the
-primary scroll position for return. Cmd-click
-an OSC 8 link to open an http/https/mailto URL. File drops paste quoted paths.
+primary scroll position for return. Hold Cmd over an http/https/mailto URL to
+underline it, then Cmd-click to open it. Plain URLs and OSC 8 hyperlinks share
+the same detection and accessible link actions. File drops paste quoted paths.
 
 The current shell is `$SHELL`, falling back to `/bin/zsh`, with its normal login
 configuration. Set the starting folder in Settings → Startup → Directory; `~`

@@ -187,9 +187,9 @@ import AppKit
     precondition(projection.attributedString(in: allText, fontSize: .nan, parent: parent) == nil)
     precondition(empty.attributedString(in: NSRange(location: 0, length: 0), fontSize: 14, parent: parent)?.length == 0)
     precondition(bounded.attributedString(in: NSRange(location: 0, length: 1), fontSize: 14, parent: parent)?.string == "A")
-    precondition(AccessibleTerminalLink.url("file:///tmp/example") == nil)
-    precondition(AccessibleTerminalLink.url("javascript:alert(1)") == nil)
-    precondition(AccessibleTerminalLink.url("HTTPS://example.test") != nil)
+    precondition(VisibleLinkProjection.openableURL(for: "file:///tmp/example") == nil)
+    precondition(VisibleLinkProjection.openableURL(for: "javascript:alert(1)") == nil)
+    precondition(VisibleLinkProjection.openableURL(for: "HTTPS://example.test") != nil)
     // Alternating styles exercise both ends of the sorted run index and
     // ranges crossing a synthetic newline without asking for the full grid.
     let stripedCore = terminal_create(128, 64)!

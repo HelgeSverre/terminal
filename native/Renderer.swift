@@ -22,6 +22,7 @@ struct RenderRequest {
   let scrolled: Bool
   let selection: GridSelection?
   let marked: String
+  let linkUnderline: [Range<Int>]
 }
 private struct Quad {
   var rect: SIMD4<Float>
@@ -633,6 +634,7 @@ final class TerminalRendering: @unchecked Sendable {
       directGlyphExhausted = false
       replacementGlyph = nil
       needsReset = false
+      var linkSegment = 0
       for (r, row) in snap.rows.enumerated() {
         let search = searchRows[r]
         for (c, cell) in row.cells.enumerated() {
@@ -704,8 +706,16 @@ final class TerminalRendering: @unchecked Sendable {
                 RendererMetrics.recordSubstituteGlyphFallback()
               }
             }
-            if cell.style.underline > 0 {
-              rect(x, y + request.cellHeight - 3, request.cellWidth * cells, 1, colors.underline(matching: fg))
+            let gridIndex = r * snap.cols + c
+            while linkSegment < request.linkUnderline.count,
+              request.linkUnderline[linkSegment].upperBound <= gridIndex {
+              linkSegment += 1
+            }
+            let linkHovered = linkSegment < request.linkUnderline.count
+              && request.linkUnderline[linkSegment].contains(gridIndex)
+            if cell.style.underline > 0 || linkHovered {
+              rect(x, y + request.cellHeight - 3, request.cellWidth * cells, 1,
+                   linkHovered ? fg : colors.underline(matching: fg))
             }
             if cell.style.strike {
               rect(x, y + request.cellHeight / 2, request.cellWidth * cells, 1, fg)

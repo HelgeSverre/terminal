@@ -25,7 +25,7 @@
     "ClipboardAccess.swift",
     "SnapshotBridge.swift",
     "CellPalette.swift",
-    "AccessibilityProjection.swift",
+    "VisibleLinkProjection.swift", "AccessibilityProjection.swift",
     "Theme.swift",
     "Settings.swift",
     "Renderer.swift",
@@ -71,7 +71,7 @@
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
       "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift",
       "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
-      "CellPalette.swift", "AccessibilityProjection.swift", "tests/SessionTests.swift"
+      "CellPalette.swift", "VisibleLinkProjection.swift", "AccessibilityProjection.swift", "tests/SessionTests.swift"
     ],
     "geometry": ["Geometry.swift", "tests/GeometryTests.swift"],
     "statistics": ["Statistics.swift", "tests/StatisticsTests.swift"],
@@ -82,7 +82,7 @@
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
       "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift",
       "Font.swift", "Preferences.swift", "Transport.swift", "Session.swift", "SnapshotBridge.swift",
-      "CellPalette.swift", "AccessibilityProjection.swift", "tests/BinarySnapshotOracle.swift", "tests/SnapshotBridgeTests.swift"
+      "CellPalette.swift", "VisibleLinkProjection.swift", "AccessibilityProjection.swift", "tests/BinarySnapshotOracle.swift", "tests/SnapshotBridgeTests.swift"
     ],
     "keymap": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
@@ -158,7 +158,7 @@
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
       "Emulation/TerminalInputEncoder.swift", "Emulation/ClipboardProtocol.swift", "Emulation/KittyGraphics.swift", "Emulation/TerminalPalette.swift", "Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "Emulation/TerminalSnapshot.swift", "Emulation/TerminalEmulator.swift", "Preferences.swift",
       "Font.swift", "Transport.swift", "Session.swift", "ClipboardAccess.swift", "SnapshotBridge.swift",
-      "CellPalette.swift", "AccessibilityProjection.swift", "tests/ClipboardAccessTests.swift"
+      "CellPalette.swift", "VisibleLinkProjection.swift", "AccessibilityProjection.swift", "tests/ClipboardAccessTests.swift"
     ],
     "terminal_boundary_regression": [
       "Emulation/TerminalDocument.swift", "Emulation/DocumentReflow.swift", "Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "Text/Unicode18GraphemeTables.swift", "Text/TerminalText.swift",
@@ -171,6 +171,14 @@
     ],
     "terminal_width": ["Text/TerminalWidth.swift", "Text/TerminalWidthTables.swift", "tests/TerminalWidthTests.swift"],
     "unicode_lowercase": ["Text/UnicodeLowercase.swift", "tests/UnicodeLowercaseTests.swift"],
-    "history_search": ["Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "tests/HistorySearchTests.swift"]
+    "history_search": ["Text/UnicodeLowercase.swift", "Emulation/HistorySearch.swift", "tests/HistorySearchTests.swift"],
+    "visible_links": [
+      "Emulation/TerminalSnapshot.swift",
+      "VisibleLinkProjection.swift",
+      "CellPalette.swift",
+      "Font.swift",
+      "AccessibilityProjection.swift",
+      "tests/VisibleLinkProjectionTests.swift"
+    ]
   }
 }

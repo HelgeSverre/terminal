@@ -5,7 +5,6 @@ struct AccessibilityProjection {
   private struct StyledRange {
     var range: NSRange
     let style: CellStyle?
-    let link: String?
   }
   struct Span {
     let range: NSRange
@@ -24,23 +23,34 @@ struct AccessibilityProjection {
   private let palette: CellPalette
   private let styles: [StyledRange]
   private let characters: NSString
+  private let visibleLinks: VisibleLinkProjection
+  private struct LinkMapping {
+    let occurrence: VisibleLinkProjection.Occurrence
+    let ranges: [NSRange]
+    let fullyProjected: Bool
+  }
+  /// Ordered once at construction, so AX queries do not rescan every span for
+  /// every visible URL.
+  private let linkMappings: [LinkMapping]
   private let links = Links()
   var length: Int { characters.length }
   init(snapshot: TerminalSnapshot, limit: Int = 262_144) {
     columns = snapshot.cols
     gridCount = snapshot.cols * snapshot.rows.count
     palette = CellPalette(snapshot: snapshot)
+    let projection = VisibleLinkProjection(snapshot: snapshot)
+    visibleLinks = projection
     var output = ""
     var offsets: [NSRange] = []
     var mapping: [Span] = []
     var styling: [StyledRange] = []
-    func style(_ range: NSRange, _ value: CellStyle?, link: String? = nil) {
+    func style(_ range: NSRange, _ value: CellStyle?) {
       guard range.length > 0 else { return }
       if let last = styling.last, NSMaxRange(last.range) == range.location,
-        last.style == value && last.link == link {
+        last.style == value {
         styling[styling.count - 1].range.length += range.length
       } else {
-        styling.append(StyledRange(range: range, style: value, link: link))
+        styling.append(StyledRange(range: range, style: value))
       }
     }
     var count = 0
@@ -68,7 +78,7 @@ struct AccessibilityProjection {
             cells: width, gridStart: row * columns + column,
             gridEnd: row * columns + column + width))
         output.append(string)
-        style(NSRange(location: count, length: size), cell.style, link: cell.link)
+        style(NSRange(location: count, length: size), cell.style)
         count += size
       }
       if !clipped && row + 1 < snapshot.rows.count {
@@ -93,6 +103,10 @@ struct AccessibilityProjection {
     spans = mapping
     truncated = clipped
     styles = styling
+    linkMappings = projection.occurrences.compactMap { occurrence in
+      let item = Self.linkMapping(for: occurrence, spans: mapping)
+      return item.ranges.isEmpty ? nil : item
+    }
   }
   func valid(_ range: NSRange) -> Bool {
     range.location != NSNotFound && range.location >= 0 && range.length >= 0
@@ -164,14 +178,33 @@ struct AccessibilityProjection {
         attributes[.accessibilityStrikethrough] = true
         attributes[.accessibilityStrikethroughColor] = Self.color(foreground)
       }
-      if let url = AccessibleTerminalLink.url(run.link) {
-        attributes[.accessibilityLink] = links.element(
-          url: url, range: run.range, label: characters.substring(with: run.range), parent: parent)
-      }
       result.addAttributes(attributes, range: NSRange(
         location: overlap.location - range.location, length: overlap.length))
     }
+    var mappingIndex = linkMappingIndex(after: range.location)
+    while mappingIndex < linkMappings.count {
+      let mapping = linkMappings[mappingIndex]
+      guard let first = mapping.ranges.first, first.location < NSMaxRange(range) else { break }
+      let link = links.element(occurrence: mapping.occurrence, ranges: mapping.ranges, parent: parent)
+      for textRange in mapping.ranges {
+        let overlap = NSIntersectionRange(textRange, range)
+        guard overlap.length > 0 else { continue }
+        result.addAttribute(.accessibilityLink, value: link, range: NSRange(
+          location: overlap.location - range.location, length: overlap.length))
+      }
+      mappingIndex += 1
+    }
     return result.copy() as? NSAttributedString
+  }
+  /// Virtual children for the AX tree.  They deliberately use the same cache
+  /// as attributed text so an agent can resolve a child and a character-range
+  /// link to the identical AX object.
+  @MainActor
+  func linkElements(parent: NSView) -> [AccessibleTerminalLink] {
+    linkMappings.compactMap { mapping in
+      guard mapping.fullyProjected else { return nil }
+      return links.element(occurrence: mapping.occurrence, ranges: mapping.ranges, parent: parent)
+    }
   }
   /// AppKit exports weak AX references. Keep virtual links alive for the
   /// projection's lifetime, including after the attributed query is returned.
@@ -180,14 +213,15 @@ struct AccessibilityProjection {
     private var elements: [Int: AccessibleTerminalLink] = [:]
     nonisolated init() {}
 
-    func element(url: URL, range: NSRange, label: String, parent: NSView) -> AccessibleTerminalLink {
+    func element(occurrence: VisibleLinkProjection.Occurrence, ranges: [NSRange], parent: NSView) -> AccessibleTerminalLink {
       if self.parent !== parent {
         elements.removeAll()
         self.parent = parent
       }
-      if let element = elements[range.location] { return element }
-      let element = AccessibleTerminalLink(url: url, range: range, label: label, parent: parent)
-      elements[range.location] = element
+      let key = occurrence.gridSegments.first?.lowerBound ?? -1
+      if let element = elements[key] { return element }
+      let element = AccessibleTerminalLink(occurrence: occurrence, ranges: ranges, parent: parent)
+      elements[key] = element
       return element
     }
   }
@@ -242,47 +276,104 @@ struct AccessibilityProjection {
     }
     return spans.filter { NSIntersectionRange($0.range, range).length > 0 }
   }
+  func occurrence(atGrid index: Int) -> VisibleLinkProjection.Occurrence? {
+    visibleLinks.occurrence(atGrid: index)
+  }
+  private static func linkMapping(
+    for occurrence: VisibleLinkProjection.Occurrence, spans: [Span]
+  ) -> LinkMapping {
+    var result: [NSRange] = []
+    var complete = true
+    for segment in occurrence.gridSegments {
+      var covered = segment.lowerBound
+      var index = firstSpanIndex(endingAfter: covered, spans: spans)
+      while index < spans.count, spans[index].gridStart < segment.upperBound {
+        let span = spans[index]
+        index += 1
+        guard span.cells > 0, span.gridEnd > covered else { continue }
+        guard span.gridStart <= covered else { complete = false; break }
+        if let last = result.last, NSMaxRange(last) == span.range.location {
+          result[result.count - 1].length += span.range.length
+        } else {
+          result.append(span.range)
+        }
+        covered = min(segment.upperBound, span.gridEnd)
+        if covered == segment.upperBound { break }
+      }
+      if covered != segment.upperBound { complete = false }
+    }
+    return LinkMapping(occurrence: occurrence, ranges: result, fullyProjected: complete)
+  }
+  private static func firstSpanIndex(endingAfter grid: Int, spans: [Span]) -> Int {
+    var lower = 0
+    var upper = spans.count
+    while lower < upper {
+      let middle = lower + (upper - lower) / 2
+      if spans[middle].gridEnd <= grid {
+        lower = middle + 1
+      } else {
+        upper = middle
+      }
+    }
+    return lower
+  }
+  private func linkMappingIndex(after location: Int) -> Int {
+    var lower = 0
+    var upper = linkMappings.count
+    while lower < upper {
+      let middle = lower + (upper - lower) / 2
+      if let last = linkMappings[middle].ranges.last, NSMaxRange(last) <= location {
+        lower = middle + 1
+      } else {
+        upper = middle
+      }
+    }
+    return lower
+  }
 }
 
 /// A link reference in an AX attributed string. It owns URL validation and
 /// revalidates against the current projection before acting on a cached link.
 @MainActor
 final class AccessibleTerminalLink: NSAccessibilityElement {
-  private let target: URL
-  private let range: NSRange
+  let occurrence: VisibleLinkProjection.Occurrence
+  private let ranges: [NSRange]
   private weak var owner: NSView?
 
-  static func url(_ text: String?) -> URL? {
-    guard let text, let url = URL(string: text),
-      ["https", "http", "mailto"].contains(url.scheme?.lowercased() ?? "") else { return nil }
-    return url
-  }
-  init(url: URL, range: NSRange, label: String, parent: NSView) {
-    target = url
-    self.range = range
+  init(occurrence: VisibleLinkProjection.Occurrence, ranges: [NSRange], parent: NSView) {
+    self.occurrence = occurrence
+    self.ranges = ranges
     owner = parent
     super.init()
     setAccessibilityElement(true)
     setAccessibilityRole(.link)
-    setAccessibilityLabel(label)
-    setAccessibilityURL(url)
+    setAccessibilityLabel(occurrence.label)
+    setAccessibilityURL(occurrence.target)
   }
   override func accessibilityParent() -> Any? { owner }
-  override func accessibilityFrame() -> NSRect { owner?.accessibilityFrame(for: range) ?? .zero }
+  override func accessibilityFrame() -> NSRect {
+    guard let owner else { return .zero }
+    let frame = ranges.reduce(into: NSRect.null) { $0 = $0.union(owner.accessibilityFrame(for: $1)) }
+    return frame.isNull ? .zero : frame
+  }
   override func isAccessibilityEnabled() -> Bool { owner?.window != nil }
   override func accessibilityPerformPress() -> Bool {
-    guard let owner, owner.window != nil, range.length > 0,
-      let current = owner.accessibilityAttributedString(for: range), current.length > 0 else { return false }
-    var matches = true
-    current.enumerateAttribute(.accessibilityLink, in: NSRange(location: 0, length: current.length)) {
-      value, _, stop in
-      guard let link = value as? AccessibleTerminalLink, link.target == target else {
-        matches = false
-        stop.pointee = true
-        return
+    guard let owner, owner.window != nil, !ranges.isEmpty else { return false }
+    for range in ranges {
+      guard range.length > 0, let current = owner.accessibilityAttributedString(for: range),
+        current.length == range.length
+      else { return false }
+      var matches = true
+      current.enumerateAttribute(.accessibilityLink, in: NSRange(location: 0, length: current.length)) {
+        value, _, stop in
+        guard let link = value as? AccessibleTerminalLink, link.occurrence == occurrence else {
+          matches = false
+          stop.pointee = true
+          return
+        }
       }
+      guard matches else { return false }
     }
-    guard matches else { return false }
-    return NSWorkspace.shared.open(target)
+    return NSWorkspace.shared.open(occurrence.target)
   }
 }

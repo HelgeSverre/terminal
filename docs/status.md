@@ -66,6 +66,11 @@ Implemented and locally exercised:
   arbitrary text replacement through AX is not exposed. In-process tests and an
   external AX client cover attributed-string serialization and UTF-16 queries;
   real VoiceOver validation remains separate.
+- Plain http/https/mailto URLs and OSC 8 hyperlinks share one visible-link
+  projection. Cmd-hover underlines the target, Cmd-click opens it, and AX link
+  children support semantic agent clicks. Actual Hanimex serve/Vite browser
+  navigation and clean fixture shutdown pass; see
+  `reports/visible-links-evidence/summary.md` for scope and timing limits.
 - DECLRMM/DECSLRM, per-screen horizontal margins, origin-aware coordinates/replies,
   regional wrap/tab/CR/BS, rectangular scrolling and insert/delete with wide-edge
   repair and no partial-width history. Partial-width image scrolling currently

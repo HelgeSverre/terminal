@@ -1,0 +1,43 @@
+{
+  "serve": {
+    "argv": [
+      "/Users/helge/.bun/bin/bun",
+      "x",
+      "serve",
+      "--no-clipboard",
+      "--listen",
+      "tcp://127.0.0.1:60592"
+    ],
+    "port": 60592,
+    "pid": 88342,
+    "http_status": "200",
+    "pty_bytes": 820,
+    "osc8_sequences": 0,
+    "printed_urls": [
+      "http://127.0.0.1:60592",
+      "http://192.168.10.124:60592"
+    ],
+    "sgr_sequences": 38,
+    "cleanup_survivors": []
+  },
+  "dev": {
+    "argv": [
+      "/Users/helge/.bun/bin/bun",
+      "run",
+      "dev",
+      "--port",
+      "60602",
+      "--strictPort"
+    ],
+    "port": 60602,
+    "pid": 88400,
+    "http_status": "200",
+    "pty_bytes": 400,
+    "osc8_sequences": 0,
+    "printed_urls": [
+      "http://127.0.0.1:60602/"
+    ],
+    "sgr_sequences": 36,
+    "cleanup_survivors": []
+  }
+}

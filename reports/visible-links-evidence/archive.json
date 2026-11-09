@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-11-09T02:00:59Z",
+  "path": "/Users/helge/.codex/artifacts/terminal-links-proof-2026-11-09.tar.gz",
+  "bytes": 23439481,
+  "sha256": "c43a63a0847958defc679fec14cf5c6f17d6f2bc9e50d467ca85da5037f6bc8f",
+  "contents": [
+    "terminal-links-preview-03",
+    "terminal-links-hanimex"
+  ],
+  "note": "Earlier failed/inconclusive automation attempts retained; only final Preview03 receipts plus ad-hoc baseline are acceptance evidence."
+}

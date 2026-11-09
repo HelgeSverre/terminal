@@ -116,6 +116,7 @@ lint:
 [group('check')]
 @test: lint build
     just workflow-tests
+    just visible-links-test
     just _terminfo-test
     just _clipboard-access-tests
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
@@ -354,6 +355,14 @@ unicode-lowercase:
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
     xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print unicode_lowercase) -framework Foundation -o target/native/unicode-lowercase-tests
     target/native/unicode-lowercase-tests
+
+# Verify plain/OSC 8 links, cell/UTF-16 mapping and stale accessibility actions.
+[group('check')]
+visible-links-test:
+    mkdir -p target/native
+    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print visible_links) -framework Foundation -framework AppKit -framework CoreText -o target/native/visible-links-tests
+    target/native/visible-links-tests
 
 # Exercise the real native app, PTY, IME, split panes and Metal, then quit it
 [group('check')]
