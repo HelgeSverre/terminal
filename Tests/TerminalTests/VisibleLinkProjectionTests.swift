@@ -571,7 +571,48 @@ import AppKit
     precondition(AccessibilityProjection(snapshot: staleRevision).presentedRange(for: [NSRange(location: 0, length: 1)]) == nil)
   }
 
+  private static func delimiterPolicyMatchesUnicodeReference() {
+    // Independent spelling of the established public policy. This deliberately
+    // uses Foundation classification even for ASCII to guard the fast path.
+    func reference(_ text: String) -> URL? {
+      guard !text.isEmpty, text.utf8.count <= 8192,
+        !text.unicodeScalars.contains(where: {
+          $0.properties.generalCategory == .control || CharacterSet.whitespacesAndNewlines.contains($0)
+        }), let parts = URLComponents(string: text), let scheme = parts.scheme?.lowercased(),
+        let url = parts.url else { return nil }
+      switch scheme {
+      case "http", "https": guard parts.host?.isEmpty == false else { return nil }
+      case "mailto": guard !parts.path.isEmpty else { return nil }
+      default: return nil
+      }
+      return url
+    }
+    var scalars = (0..<128).map { Unicode.Scalar($0)! }
+    scalars += [0x80, 0x85, 0x9f, 0xa0, 0x1680, 0x2000, 0x2007, 0x200b,
+                0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff].map { Unicode.Scalar($0)! }
+    var seed: UInt64 = 0x417fe9
+    for _ in 0..<1024 {
+      seed = seed &* 6364136223846793005 &+ 1442695040888963407
+      if let scalar = Unicode.Scalar(UInt32((seed >> 32) % 0x110000)) { scalars.append(scalar) }
+    }
+    for scalar in scalars {
+      for text in ["https://example.test/\(scalar)tail", "mailto:a\(scalar)@example.test", "\(scalar)https://example.test"] {
+        precondition(VisibleLinkProjection.openableURL(for: text) == reference(text), "URL delimiter policy changed for U+\(String(scalar.value, radix: 16))")
+      }
+    }
+    // Punctuation is a plain-token boundary, but remains governed separately
+    // by URLComponents inside explicit OSC 8 targets.
+    for delimiter in ["\u{0}", "\t", "\n", " ", "\u{7f}", "\u{85}", "\u{a0}", "\u{2028}", "\u{3000}", "\"", "'", "<", ">"] {
+      let parts = cells("https://a.test/" + delimiter + "https://b.test/")
+      let value = snapshot([row(parts, columns: parts.count)], columns: parts.count)
+      let result = VisibleLinkProjection(snapshot: value)
+      precondition(result.occurrences.map { $0.target.absoluteString } == ["https://a.test/", "https://b.test/"])
+    }
+  }
+
   static func main() {
+    delimiterPolicyMatchesUnicodeReference()
+
     _ = NSApplication.shared
     plainURLCrossesSoftWrapAndKeepsCellMapping()
     unicodeAndHardBreakBoundaries()

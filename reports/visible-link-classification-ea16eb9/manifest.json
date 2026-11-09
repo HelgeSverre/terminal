@@ -1,0 +1,14 @@
+{
+  "source_sha": "ea16eb90b403147a9983a8d98a39199ec422c432",
+  "baseline_sha256": "bdf2d05eabdad56cfe8860685babc3799ac07825cfdf4470bf313474732a3eba",
+  "scope": "immutable whitespace set and exact ASCII classification only",
+  "compiled": true,
+  "timed": true,
+  "validation": {
+    "existing_both": "pass with focused permanent tests",
+    "frozen_differential": "1170 ASCII/Unicode delimiters; occurrences, grid mappings, activation proof, caps all equal",
+    "timing": "B-C-C-B; 7 samples per trial; 64 projections/sample; 100x30; checksums identical",
+    "scope": "VisibleLinkProjection construction only, no app throughput or GUI claim",
+    "patch_apply_check": "both pass"
+  }
+}

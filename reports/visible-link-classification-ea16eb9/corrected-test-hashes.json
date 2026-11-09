@@ -1,0 +1,7 @@
+{
+  "VisibleLinkProjectionTests.swift": "7c08c12e74074062f23c1816c5cb967c3f8e4ad26285136fe1dcc4a493bf4288",
+  "visible-links-tests.patch": "170896dc881bfcf8ce74f9aa159b422cafb1bb8044e43898c7e253b961c1c45c",
+  "baseline-existing": "05b467b92e4840187bb68781359a21ad7b8b85f86ab2116c90b51b0395e32f90",
+  "candidate-existing": "8e593609a8683a6677243df20f4d1fff7955990a8538eb41662fa01363cc050d",
+  "candidate/VisibleLinkProjection.swift": "6144f4caab733d52d68f387e7737ab8a73cd4a951b2b5c8763a34fa89614b5c3"
+}

@@ -1,0 +1,5 @@
+INFO visible-links max-grid cells=1048576 index-bytes=4194304 candidate-max-utf16=8192 elapsed-ms=182.25
+INFO visible-links non-delimited cells=1048576 elapsed-ms=128.63
+INFO visible-links dense-ax links=4096 build-ms=58.64 query-and-children-ms=23.17
+INFO visible-links ordinary-grid cells=3000 urls=30 elapsed-ms=0.95
+PASS visible links: projection, AX links, selected UTF-16 ranges and stale setter rejection

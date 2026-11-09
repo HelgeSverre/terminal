@@ -69,6 +69,21 @@ struct VisibleLinkProjection {
   private let byGrid: [Int32]
   private static let maximumOccurrences = 4_096
   private static let maximumCandidateUTF16 = 8 * 1024
+  private static let whitespaceAndNewlines = CharacterSet.whitespacesAndNewlines
+
+  @inline(__always)
+  private static func isURLWhitespaceOrControl(_ scalar: Unicode.Scalar) -> Bool {
+    let value = scalar.value
+    // Exactly the ASCII subset of Unicode Control plus Foundation whitespace:
+    // C0, space, and DEL. Keep Foundation's existing Unicode policy outside it.
+    if value < 0x80 { return value <= 0x20 || value == 0x7f }
+    return scalar.properties.generalCategory == .control || whitespaceAndNewlines.contains(scalar)
+  }
+
+  @inline(__always)
+  private static func isPlainTerminator(_ scalar: Unicode.Scalar) -> Bool {
+    isURLWhitespaceOrControl(scalar) || scalar == "\"" || scalar == "'" || scalar == "<" || scalar == ">"
+  }
 
   init(snapshot: TerminalSnapshot) {
     let gridProduct = snapshot.cols.multipliedReportingOverflow(by: snapshot.rows.count)
@@ -158,10 +173,7 @@ struct VisibleLinkProjection {
       plainUTF16 = 0
     }
     func isTerminator(_ text: String) -> Bool {
-      text.unicodeScalars.contains {
-        $0.properties.generalCategory == .control || CharacterSet.whitespacesAndNewlines.contains($0)
-          || $0 == "\"" || $0 == "'" || $0 == "<" || $0 == ">"
-      }
+      text.unicodeScalars.contains(where: Self.isPlainTerminator)
     }
     for (rowIndex, row) in snapshot.rows.enumerated() {
       for (column, cell) in row.cells.enumerated() {
@@ -260,9 +272,7 @@ struct VisibleLinkProjection {
   /// bare host, local path, or arbitrary colon-delimited token into an action.
   static func openableURL(for text: String?) -> URL? {
     guard let text, !text.isEmpty, text.utf8.count <= 8 * 1024,
-      !text.unicodeScalars.contains(where: {
-        $0.properties.generalCategory == .control || CharacterSet.whitespacesAndNewlines.contains($0)
-      }),
+      !text.unicodeScalars.contains(where: isURLWhitespaceOrControl),
       let components = URLComponents(string: text),
       let scheme = components.scheme?.lowercased(),
       let url = components.url
@@ -312,9 +322,7 @@ struct VisibleLinkProjection {
     var terminators = Set<Int>()
     var scalarOffset = 0
     for scalar in text.unicodeScalars {
-      if scalar.properties.generalCategory == .control || CharacterSet.whitespacesAndNewlines.contains(scalar)
-        || scalar == "\"" || scalar == "'" || scalar == "<" || scalar == ">"
-      {
+      if isPlainTerminator(scalar) {
         terminators.insert(scalarOffset)
       }
       scalarOffset += scalar.utf16.count
