@@ -403,6 +403,58 @@ import Foundation
     feed(prefixedMotion, "X\u{1b}[>31CY")
     precondition(cells(snapshot(prefixedMotion), 0)[7]["text"] as? String == "Y")
   }
+  static func sgrCompatibility() {
+    // Expected styles were replayed through archived Rust 9190820's public
+    // ABI. Check the normal immutable Swift publication and legacy ABI alike.
+    func style(_ foreground: UInt32 = 0, _ background: UInt32 = 0,
+               _ underlineColor: UInt32 = 0, bold: Bool = false,
+               conceal: Bool = false, blink: Bool = false, underline: Int = 0) -> CellStyle {
+      CellStyle(foreground: TerminalColor(packed: foreground), background: TerminalColor(packed: background),
+        underline_color: TerminalColor(packed: underlineColor), underline: underline,
+        bold: bold, faint: false, italic: false, inverse: false, conceal: conceal,
+        strike: false, overline: false, blink: blink)
+    }
+    var fixtures: [(String, String, [CellStyle])] = [
+      ("empty parameter resets before colon color", "\u{1b}[31;44;1mA\u{1b}[;38:2::10:20:30mB",
+        [style(0x0100_0001, 0x0100_0004, bold: true), style(0x020a_141e)]),
+      ("SGR 28 reveals", "\u{1b}[8mA\u{1b}[28mB", [style(conceal: true), style()]),
+      ("SGR 6 blinks", "\u{1b}[6mA\u{1b}[25mB", [style(blink: true), style()]),
+      ("SGR 21 double underline", "\u{1b}[21mA\u{1b}[24mB", [style(underline: 2), style()]),
+      ("incomplete colon RGB ignored", "\u{1b}[31mA\u{1b}[38:2:1:2mB", [style(0x0100_0001), style(0x0100_0001)]),
+      ("colon RGB takes its three channels", "\u{1b}[38:2::1:2:3:99mA", [style(0x0201_0203)]),
+    ]
+    for command in [38, 48, 58] {
+      for invalid in [256, 4_294_967_295] {
+        for parameter in ["\(command);5;\(invalid)", "\(command):5:\(invalid)",
+                          "\(command);2;\(invalid);1;2", "\(command):2::1:\(invalid):2"] {
+          fixtures.append(("invalid extended color \(parameter)",
+            "\u{1b}[31;44;58;5;2mA\u{1b}[\(parameter);1mB",
+            [style(0x0100_0001, 0x0100_0004, 0x0100_0002),
+             style(0x0100_0001, 0x0100_0004, 0x0100_0002, bold: true)]))
+        }
+      }
+      let indexed = style(command == 38 ? 0x0100_00ff : 0,
+                          command == 48 ? 0x0100_00ff : 0, command == 58 ? 0x0100_00ff : 0)
+      let rgb = style(command == 38 ? 0x02ff_00ff : 0,
+                      command == 48 ? 0x02ff_00ff : 0, command == 58 ? 0x02ff_00ff : 0)
+      fixtures.append(("valid channel boundary \(command)",
+        "\u{1b}[\(command);5;255mA\u{1b}[\(command);2;255;0;255mB\u{1b}[\(command):5:255mC\u{1b}[\(command):2::255:0:255mD",
+        [indexed, rgb, indexed, rgb]))
+    }
+    for (name, wire, expected) in fixtures {
+      let terminal = terminal_create(32, 2)!
+      defer { terminal_destroy(terminal) }
+      feed(terminal, wire)
+      guard let direct = swiftTerminalSnapshot(terminal, scroll: 0, now: 0).snapshot else {
+        preconditionFailure("missing direct SGR snapshot: \(name)")
+      }
+      let json = try! JSONSerialization.data(withJSONObject: legacySnapshot(terminal, scroll: 0)["rows"]!)
+      let legacy = try! JSONDecoder().decode([RowSnapshot].self, from: json)
+      precondition(direct.rows == legacy, "direct/legacy SGR snapshot mismatch: \(name)")
+      let actual = direct.rows.flatMap(\.cells).filter { !$0.text.isEmpty }.map(\.style)
+      precondition(actual == expected, "SGR style mismatch: \(name)")
+    }
+  }
   static func csiScratchReuseEquivalence() {
     let grown = Array(repeating: "1", count: 256).joined(separator: ";")
     let text = "\u{1b}[" + grown + "mA" +
@@ -760,6 +812,7 @@ import Foundation
     decodedBatchEquivalence()
     indexHistoryUsesMutatedPrimaryForViewportClamp()
     csiASCIIParsing()
+    sgrCompatibility()
     csiScratchReuseEquivalence()
     carriageReturnEquivalence()
     searchABI()

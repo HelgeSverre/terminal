@@ -730,7 +730,7 @@ private final class TerminalEmulator {
       while group < groups.count {
         let value = groups[group]
         guard value.utf8.contains(0x3a) else {
-          guard let code = Int(value) else { group += 1; continue }
+          guard let code = value.isEmpty ? 0 : Int(value) else { group += 1; continue }
           // Keep extended semicolon colors together; handling them as single
           // values would lose the RGB/index operands beside a colon group.
           if [38, 48, 58].contains(code), group + 1 < groups.count,
@@ -762,18 +762,20 @@ private final class TerminalEmulator {
         else { group += 1; continue }
         switch mode {
         case 5:
-          guard let index = fields.dropFirst(2).first.flatMap({ Int($0) }) else { group += 1; continue }
-          let color = 0x0100_0000 | UInt32(max(0, min(255, index)))
+          guard let index = fields.dropFirst(2).first.flatMap({ Int($0) }),
+                (0...255).contains(index) else { group += 1; continue }
+          let color = 0x0100_0000 | UInt32(index)
           if code == 38 { pen.foreground = color }
           else if code == 48 { pen.background = color }
           else { pen.underline = color }
         case 2:
-          // ECMA-48 permits an optional color-space field between `2` and
-          // RGB. Using the final three fields supports both forms.
-          let rgb = fields.suffix(3).compactMap { Int($0) }
-          guard rgb.count == 3 else { group += 1; continue }
-          let color = 0x0200_0000 | UInt32(max(0, min(255, rgb[0])) << 16)
-            | UInt32(max(0, min(255, rgb[1])) << 8) | UInt32(max(0, min(255, rgb[2])))
+          // An optional color-space field precedes exactly three channels.
+          // Missing/invalid channels leave the existing color unchanged.
+          let start = fields.count >= 6 ? 3 : 2
+          guard fields.count >= start + 3 else { group += 1; continue }
+          let rgb = fields[start..<(start + 3)].compactMap { Int($0) }
+          guard rgb.count == 3, rgb.allSatisfy({ (0...255).contains($0) }) else { group += 1; continue }
+          let color = 0x0200_0000 | UInt32(rgb[0] << 16) | UInt32(rgb[1] << 8) | UInt32(rgb[2])
           if code == 38 { pen.foreground = color }
           else if code == 48 { pen.background = color }
           else { pen.underline = color }
@@ -793,15 +795,17 @@ private final class TerminalEmulator {
       case 2: pen.flags |= 2
       case 3: pen.flags |= 4
       case 4: pen.underlineKind = 1
-      case 5: pen.flags |= 128
+      case 5, 6: pen.flags |= 128
       case 7: pen.flags |= 8
       case 8: pen.flags |= 16
       case 9: pen.flags |= 32
       case 53: pen.flags |= 64
+      case 21: pen.underlineKind = 2
       case 22: pen.flags &= ~UInt16(3)
       case 23: pen.flags &= ~UInt16(4)
       case 24: pen.underlineKind = 0
       case 27: pen.flags &= ~UInt16(8)
+      case 28: pen.flags &= ~UInt16(16)
       case 25: pen.flags &= ~UInt16(128)
       case 29: pen.flags &= ~UInt16(32)
       case 55: pen.flags &= ~UInt16(64)
@@ -813,37 +817,23 @@ private final class TerminalEmulator {
       case 100...107: pen.background = 0x0100_0000 | UInt32(code - 100 + 8)
       case 38, 48, 58:
         if i + 2 < values.count && values[i + 1] == 5 {
-          let color = 0x0100_0000 | UInt32(max(0, min(255, values[i + 2])))
-          if code == 38 { pen.foreground = color } else if code == 48 { pen.background = color } else { pen.underline = color }
+          if (0...255).contains(values[i + 2]) {
+            let color = 0x0100_0000 | UInt32(values[i + 2])
+            if code == 38 { pen.foreground = color } else if code == 48 { pen.background = color } else { pen.underline = color }
+          }
           i += 2
         } else if i + 4 < values.count && values[i + 1] == 2 {
-          let r = UInt32(max(0, min(255, values[i + 2])))
-          let g = UInt32(max(0, min(255, values[i + 3])))
-          let b = UInt32(max(0, min(255, values[i + 4])))
-          let color = 0x0200_0000 | (r << 16) | (g << 8) | b
-          if code == 38 { pen.foreground = color } else if code == 48 { pen.background = color } else { pen.underline = color }
+          if values[(i + 2)...(i + 4)].allSatisfy({ (0...255).contains($0) }) {
+            let color = 0x0200_0000 | (UInt32(values[i + 2]) << 16)
+              | (UInt32(values[i + 3]) << 8) | UInt32(values[i + 4])
+            if code == 38 { pen.foreground = color } else if code == 48 { pen.background = color } else { pen.underline = color }
+          }
           i += 4
         }
       case 59: pen.underline = 0
       default: break
       }
       i += 1
-    }
-    // ISO 8613-6 colon forms retain empty color-space fields, unlike the
-    // semicolon form above. Handle each colon parameter independently so a
-    // malformed extended color cannot reinterpret a following command.
-    guard let raw else { return }
-    for parameter in raw.split(separator: ";", omittingEmptySubsequences: false) where parameter.utf8.contains(0x3a) {
-      let fields = parameter.split(separator: ":", omittingEmptySubsequences: false)
-      guard let command = fields.first.flatMap({ Int($0) }), [38, 48, 58].contains(command),
-            fields.count >= 5, fields[1] == "2" else { continue }
-      let channels = fields.dropFirst(2).compactMap { Int($0) }
-      guard channels.count >= 3 else { continue }
-      let rgb = channels.suffix(3).map { UInt32(max(0, min(255, $0))) }
-      let color = 0x0200_0000 | (rgb[0] << 16) | (rgb[1] << 8) | rgb[2]
-      if command == 38 { pen.foreground = color }
-      else if command == 48 { pen.background = color }
-      else { pen.underline = color }
     }
   }
   private func setMode(_ params: [Int], enabled: Bool, privateMode: Bool) -> Bool {
