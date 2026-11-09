@@ -1,0 +1,47 @@
+{
+  "version": "0.2.2",
+  "source_commit": "a8cf4bd3300e328f9b192c1147af7c163a31a0ac",
+  "release_url": "https://github.com/HelgeSverre/homebrew-tap/releases/tag/helge-terminal-v0.2.2",
+  "download_url": "https://github.com/HelgeSverre/homebrew-tap/releases/download/helge-terminal-v0.2.2/HelgeTerminal-0.2.2-arm64.zip",
+  "anonymous_download_sha256": "5aaa8ac2ade9886af2b94a80d1aac71dfab7308d594e6b02e2f52e68489efaf6",
+  "cask_url": "https://github.com/HelgeSverre/homebrew-tap/blob/main/Casks/helge-terminal.rb",
+  "homebrew_online_audit_passed": true,
+  "homebrew_style_passed": true,
+  "installation": {
+    "cask": "helgesverre/tap/helge-terminal",
+    "version": "0.2.2",
+    "checks": {
+      "installed_to_isolated_appdir": true,
+      "executable_matches_verified_release": true,
+      "codesign": true,
+      "xcrun": true,
+      "spctl": true,
+      "isolated_app_removed": true,
+      "user_installed_app_unchanged": true
+    },
+    "passed": true
+  },
+  "livecheck": [
+    {
+      "cask": "helge-terminal",
+      "version": {
+        "current": "0.2.2",
+        "latest": "0.2.2",
+        "outdated": false,
+        "newer_than_upstream": false
+      }
+    }
+  ],
+  "catalog_browser_verification": {
+    "url": "https://tap.helgesver.re/",
+    "visible": true,
+    "expanded": true,
+    "version": "0.2.2",
+    "command": "brew install --cask helgesverre/tap/helge-terminal",
+    "platforms": "arm64\nx86_64\nmacOS\n✓ yes\n· no\nLinux\n· no\n· no"
+  },
+  "catalog_test_count": 38,
+  "deployment_url": "https://github.com/HelgeSverre/homebrew-tap/actions/runs/42638012194",
+  "deployment_conclusion": "success",
+  "source_repository_visibility": "private"
+}

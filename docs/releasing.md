@@ -19,6 +19,29 @@ The release configuration is `~/.config/terminal/release.json`. It can specify
 `APPLE_NOTARY_PROFILE` overrides the profile. Identities are detected when one
 valid Developer ID certificate exists for each role.
 
+## Homebrew distribution
+
+The Homebrew cask is `helgesverre/tap/helge-terminal`. It installs the published
+app in `/Applications`; `just install` remains the local-build workflow for
+`~/Applications`.
+
+The source repository is private. Publish the verified, notarized ZIP as an
+asset on a `helge-terminal-vVERSION` release in
+[homebrew-tap](https://github.com/HelgeSverre/homebrew-tap/releases), then update
+`Casks/helge-terminal.rb` there with the version and the ZIP's SHA-256. Keep the
+Apple Silicon and macOS requirements aligned with the bundle. The cask's
+livecheck matches only the `helge-terminal-v` tag prefix.
+
+Before publishing a new cask version, verify the anonymous download's checksum,
+code signature, stapled ticket, and Gatekeeper assessment. Run the tap website
+tests and audit the cask:
+
+```sh
+brew audit --cask --online helgesverre/tap/helge-terminal
+```
+
+Pushing the cask updates the catalog at [tap.helgesver.re](https://tap.helgesver.re/).
+
 ## Credential policy
 
 Helge requires notarization credentials and recovery details to be saved in his

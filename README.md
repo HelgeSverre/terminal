@@ -1,5 +1,3 @@
-<img src="assets/AppIcon.png" width="80" alt="Terminal app icon">
-
 # Terminal
 
 [![CI](https://github.com/HelgeSverre/terminal/actions/workflows/ci.yml/badge.svg)](https://github.com/HelgeSverre/terminal/actions/workflows/ci.yml)
@@ -13,7 +11,17 @@ window with bundled Obel Mono. Requires Apple Silicon and macOS 15 or later.
 
 ![Terminal showing colored file listings and source changes](assets/screenshots/overview.png)
 
-## Run
+## Install
+
+```sh
+brew install --cask helgesverre/tap/helge-terminal
+open -a "Helge Terminal"
+```
+
+Homebrew installs the published release to `/Applications/Helge Terminal.app` by default.
+The package is listed on [tap.helgesver.re](https://tap.helgesver.re/).
+
+## Build from source
 
 Install Xcode with its Metal compiler and [just](https://github.com/casey/just),
 then build and open a development instance:
@@ -22,7 +30,7 @@ then build and open a development instance:
 just dev
 ```
 
-For regular use:
+To install your local build:
 
 ```sh
 just install  # Build an optimized app in ~/Applications/Helge Terminal.app

@@ -1,5 +1,17 @@
 # Using Terminal
 
+## Homebrew
+
+```sh
+brew install --cask helgesverre/tap/helge-terminal
+brew upgrade --cask helgesverre/tap/helge-terminal
+brew uninstall --cask helgesverre/tap/helge-terminal
+```
+
+Homebrew installs `Helge Terminal.app` in `/Applications`. Uninstalling removes
+the app and retains preferences. Building from source with `just install` uses
+`~/Applications` instead.
+
 ## Shell and working directory
 
 Terminal starts `$SHELL`, falling back to `/bin/zsh`, with its normal login
