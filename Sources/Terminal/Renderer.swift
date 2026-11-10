@@ -100,21 +100,43 @@ final class TerminalRendering: @unchecked Sendable {
   private final class SurfaceDisplayLink: NSObject, CAMetalDisplayLinkDelegate {
     private weak var rendering: TerminalRendering?
     private let lease: SurfaceLease
-    private let link: CAMetalDisplayLink
+    private var link: CAMetalDisplayLink?
+    private weak var layer: CAMetalLayer?
     private var invalidated = false
+    // The link does not fire until the window server has put the layer on
+    // screen, some 30 ms after a new window is ordered in. The surface's first
+    // frame takes its drawable from the layer directly instead of waiting.
+    private var suppliedFirstDrawable = false
     init(rendering: TerminalRendering, lease: SurfaceLease, layer: CAMetalLayer) {
       self.rendering = rendering
       self.lease = lease
-      link = CAMetalDisplayLink(metalLayer: layer)
+      self.layer = layer
       super.init()
-      link.delegate = self
-      link.add(to: .main, forMode: .common)
-      link.isPaused = true
+    }
+    /// Main thread. The link is made on first need: while one is attached,
+    /// the layer hands out no drawables of its own.
+    private func activeLink() -> CAMetalDisplayLink? {
+      if let link { return link }
+      guard let layer else { return nil }
+      let created = CAMetalDisplayLink(metalLayer: layer)
+      created.delegate = self
+      created.add(to: .main, forMode: .common)
+      created.isPaused = true
+      link = created
+      return created
     }
     func requestFrame() {
       let resume = { [weak self] in
         guard let self, !self.invalidated else { return }
-        self.link.isPaused = false
+        if !self.suppliedFirstDrawable {
+          self.suppliedFirstDrawable = true
+          if let layer = self.layer, layer.drawableSize.width > 0, let drawable = layer.nextDrawable() {
+            let now = CACurrentMediaTime()
+            self.rendering?.received(drawable: drawable, target: now, presentationTarget: now, surface: self.lease)
+            return
+          }
+        }
+        self.activeLink()?.isPaused = false
       }
       if Thread.isMainThread { resume() }
       else { DispatchQueue.main.async(execute: resume) }
@@ -123,8 +145,8 @@ final class TerminalRendering: @unchecked Sendable {
       let stop = { [self] in
         guard !invalidated else { return }
         self.invalidated = true
-        self.link.isPaused = true
-        self.link.invalidate()
+        self.link?.isPaused = true
+        self.link?.invalidate()
       }
       if Thread.isMainThread { stop() }
       else { DispatchQueue.main.async(execute: stop) }
@@ -1046,9 +1068,24 @@ final class RendererMetrics: @unchecked Sendable {
     droppedStaleFrames += 1
     lock.unlock()
   }
+  // `--first-frame-file PATH` asks for the time of the process's first
+  // presented frame, for startup measurement: one line, "frame <ns>", on the
+  // CLOCK_UPTIME_RAW clock.
+  private static var firstFrameFile: String? = {
+    let arguments = CommandLine.arguments.prefix { $0 != "--execute" }
+    guard let index = arguments.firstIndex(of: "--first-frame-file"), index + 1 < arguments.count else { return nil }
+    return arguments[index + 1]
+  }()
   static func recordPresentation(
     requestWidth: Int, requestHeight: Int, drawableWidth: Int, drawableHeight: Int
   ) {
+    lock.lock()
+    let file = firstFrameFile
+    firstFrameFile = nil
+    lock.unlock()
+    if let file {
+      try? "frame \(clock_gettime_nsec_np(CLOCK_UPTIME_RAW))\n".write(toFile: file, atomically: true, encoding: .utf8)
+    }
     guard requestWidth != drawableWidth || requestHeight != drawableHeight else { return }
     lock.lock()
     mismatchedPresents += 1

@@ -336,6 +336,24 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     publishWindowTitle()
   }
 }
+/// Builds the renderer on another thread while AppKit starts: Metal setup
+/// takes about 10 ms and needs nothing from the app.
+final class RenderingSetup: @unchecked Sendable {
+  private var outcome: Result<TerminalRendering, Error>?
+  private let finished = DispatchSemaphore(value: 0)
+  init() {
+    DispatchQueue.global(qos: .userInteractive).async { [self] in
+      outcome = Result { try TerminalRendering() }
+      finished.signal()
+    }
+  }
+  /// Blocks until the renderer is built or has failed.
+  func wait() -> Result<TerminalRendering, Error> {
+    finished.wait()
+    defer { finished.signal() }
+    return outcome!
+  }
+}
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private lazy var tabNavigation = TerminalTabNavigation { [weak self] in
     (NSApp.keyWindow?.windowController as? TerminalWindow)?.window
@@ -348,23 +366,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var preferencesWindow: TerminalSettingsWindow?
   private weak var lastFocusedPane: TerminalCanvasView?
   private var terminationRequested = false
-  override init() {
+  init(rendering setup: RenderingSetup) {
     if let path = selectionSmokeReportPath() {
       let pasteboard = NSPasteboard(name: selectionSmokePasteboardName(reportPath: path))
       clipboardAccess = ClipboardAccess(pasteboard: pasteboard)
     } else {
       clipboardAccess = ClipboardAccess()
     }
-    do {
-      rendering = try TerminalRendering()
+    switch setup.wait() {
+    case .success(let ready):
+      rendering = ready
       renderingError = nil
-    } catch {
+    case .failure(let error):
       rendering = nil
       renderingError = String(describing: error)
     }
     super.init()
   }
   var acceptsAutomation: Bool { !terminationRequested }
+  /// What the first window will run, when that is known before the app
+  /// starts: the command after `--execute`, or the login shell. The smoke
+  /// modes that build their own fixture launch are left to do so.
+  static func firstLaunch() -> LaunchSpec? {
+    let arguments = CommandLine.arguments
+    if paneLifecycleSmokeReportPath() != nil || arguments.contains("--resize-smoke")
+      || arguments.contains("--glyph-smoke") { return nil }
+    guard let index = arguments.firstIndex(of: "--execute"), arguments.count > index + 1 else { return .shell }
+    let argv = Array(arguments.dropFirst(index + 1))
+    let shell = LaunchSpec.shell
+    return LaunchSpec(executable: argv[0], arguments: argv, cwd: shell.cwd, launcher: shell.launcher)
+  }
   /// `--background` opens the launch window behind other apps and leaves
   /// focus where it is, for measurement runs on a desktop in use.
   private let launchesInBackground = CommandLine.arguments.prefix { $0 != "--execute" }.contains("--background")
@@ -598,8 +629,14 @@ if let index = catalogArguments.firstIndex(of: "--font-catalog"),
     exit(report["passed"] as? Bool == true ? 0 : 1)
   } catch { fputs("Font catalog failed: \(error)\n", stderr); exit(1) }
 }
+if let launch = AppDelegate.firstLaunch() {
+  let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096)
+  let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096)
+  EarlyChild.start(launch, grid: columns.flatMap { columns in rows.map { (columns, $0) } })
+}
+let renderingSetup = RenderingSetup()
 let application = NSApplication.shared
-let delegate = AppDelegate()
+let delegate = AppDelegate(rendering: renderingSetup)
 application.delegate = delegate
 application.run()
 

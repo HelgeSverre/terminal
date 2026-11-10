@@ -489,16 +489,22 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     if !admitted { showSelectionNotice(.busy) }
     return admitted
   }
+  private var requestedFirstFrame = false
   private func redraw() {
     let selected = accessibilitySelectedTextRanges()?.map(\.rangeValue) ?? []
     if selected != lastAccessibleSelection {
       lastAccessibleSelection = selected
       accessibilityChanged(selection: true)
     }
+    // The window server reports a new window visible some 25 ms after it is
+    // ordered in. The first frame does not wait for that report, so the
+    // window arrives with its content instead of blank.
+    let awaitsFirstFrame = !requestedFirstFrame && window?.isVisible == true
     guard let value = snapshot, !isHidden, window?.isMiniaturized != true,
-      window?.occlusionState.contains(.visible) == true
+      window?.occlusionState.contains(.visible) == true || awaitsFirstFrame
     else { return }
     if let surface {
+      requestedFirstFrame = true
       rendering?.request(
         surface, latest: RenderRequest(
         snapshot: value, width: Int(bounds.width * scale), height: Int(bounds.height * scale),

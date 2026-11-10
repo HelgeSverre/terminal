@@ -23,11 +23,81 @@ struct HistorySearchPosition: Equatable {
   let capped: Bool
 }
 
-struct LaunchSpec {
+/// The first window's child, started at process launch so that its startup
+/// (a login shell reading its configuration, usually) overlaps the app's own.
+/// The first session adopts it when it asks for the same launch; any other
+/// first launch ends it.
+enum EarlyChild {
+  private static let lock = NSLock()
+  nonisolated(unsafe) private static var pending: (spec: LaunchSpec, process: TerminalProcess)?
+  nonisolated(unsafe) private static var remembersGrid = false
+  private static let gridKey = "LaunchGrid"
+
+  /// Spawns `spec` now. With no explicit grid, the PTY starts at the size the
+  /// first pane settled on last time, so the child usually never sees it
+  /// change.
+  static func start(_ spec: LaunchSpec, grid: (columns: Int, rows: Int)?) {
+    guard spec.isValid else { return }
+    var size = winsize(ws_row: UInt16(grid?.rows ?? 24), ws_col: UInt16(grid?.columns ?? 80),
+                       ws_xpixel: 0, ws_ypixel: 0)
+    // Rows, columns, width and height in pixels, as `noteGrid` saved them.
+    if grid == nil, let saved = UserDefaults.standard.array(forKey: gridKey) as? [Int], saved.count == 4,
+       saved.allSatisfy({ (1...Int(UInt16.max)).contains($0) }) {
+      size = winsize(ws_row: UInt16(saved[0]), ws_col: UInt16(saved[1]),
+                     ws_xpixel: UInt16(saved[2]), ws_ypixel: UInt16(saved[3]))
+    }
+    let process = spec.spawn(columns: Int(size.ws_col), rows: Int(size.ws_row))
+    guard process.error == 0 else { return }
+    // The pixel size too, before the child can have asked for it.
+    if size.ws_xpixel > 0 { _ = ioctl(process.master, TIOCSWINSZ, &size) }
+    lock.lock(); defer { lock.unlock() }
+    pending = (spec, process)
+    remembersGrid = grid == nil
+  }
+  /// The early child, when it was started for `spec`. The first call settles
+  /// it either way.
+  static func adopt(_ spec: LaunchSpec) -> TerminalProcess? {
+    lock.lock()
+    let early = pending
+    pending = nil
+    lock.unlock()
+    guard let early else { return nil }
+    if early.spec == spec { return early.process }
+    // Closing the PTY hangs the unwanted child up.
+    close(early.process.master)
+    close(early.process.status)
+    return nil
+  }
+  /// Records the first size a pane settles on, for the next launch.
+  static func noteGrid(_ size: winsize) {
+    lock.lock()
+    let remember = remembersGrid
+    remembersGrid = false
+    lock.unlock()
+    guard remember else { return }
+    UserDefaults.standard.set([Int(size.ws_row), Int(size.ws_col), Int(size.ws_xpixel), Int(size.ws_ypixel)],
+                              forKey: gridKey)
+  }
+}
+
+struct LaunchSpec: Equatable {
   let executable: String
   let arguments: [String]
   let cwd: String
   let launcher: String
+  /// Whether the arguments are within what a launch accepts.
+  var isValid: Bool {
+    !arguments.isEmpty && arguments.count <= 256
+      && arguments.reduce(0, { $0 + $1.utf8.count }) <= 1_048_576
+  }
+  /// Starts the child on a new PTY of the given size.
+  func spawn(columns: Int, rows: Int) -> TerminalProcess {
+    var argv = arguments.map { strdup($0) } + [nil]
+    defer { for value in argv { free(value) } }
+    return argv.withUnsafeMutableBufferPointer {
+      terminal_spawn_args(launcher, executable, cwd, UInt16(columns), UInt16(rows), $0.baseAddress)
+    }
+  }
   static var shell: LaunchSpec {
     let executable = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
     return LaunchSpec(
@@ -532,18 +602,12 @@ final class Session: @unchecked Sendable {
     }
     core = handle
     let spec = launchSpec ?? .shell
-    guard !spec.arguments.isEmpty, spec.arguments.count <= 256,
-      spec.arguments.reduce(0, { $0 + $1.utf8.count }) <= 1_048_576
-    else {
+    guard spec.isValid else {
       stopAcceptingInput()
       report("Invalid launch arguments")
       return
     }
-    var argv = spec.arguments.map { strdup($0) } + [nil]
-    defer { for value in argv { free(value) } }
-    let child = argv.withUnsafeMutableBufferPointer {
-      terminal_spawn_args(spec.launcher, spec.executable, spec.cwd, 80, 24, $0.baseAddress)
-    }
+    let child = EarlyChild.adopt(spec) ?? spec.spawn(columns: 80, rows: 24)
     guard child.error == 0 else {
       stopAcceptingInput()
       report("Launch failed: \(String(cString:strerror(child.error)))")
@@ -769,6 +833,7 @@ final class Session: @unchecked Sendable {
         if let result = descriptorLifetime?.withLease({ ioctl($0, TIOCSWINSZ, &size) }), result < 0 {
           report("PTY resize failed")
         }
+        EarlyChild.noteGrid(size)
       case .rejected(let reason, _):
         resizePending = false
         precondition(queuedResizeCount > 0)
