@@ -14,7 +14,15 @@ enum SelfTest {
     summary: "Run the tool's own tests, or only those whose names contain an argument.",
     run: run)
 
-  static let cases: [Case] = ProcessTreeTests.cases + NativeSmoke.tests
+  static let cases: [Case] = [
+    ProcessTreeTests.cases, CommandTests.cases, JSONValueTests.cases, Interruption.tests,
+    NativeSmoke.tests, CloseSmoke.tests, SelectionSmoke.tests, StartupGridSmoke.tests, AccessibilitySmoke.tests,
+    AppleScriptSmoke.tests, TerminfoSmoke.tests, EditingInputIsolation.tests, CatStress.tests,
+    TUIStress.tests, TUIStressFixture.tests, TUIStressProvider.tests, Gallery.tests, GlyphPolicy.tests,
+    CompareTerminals.tests, CompareTerminalApps.tests, ProfileTerminal.tests, DiagnoseStream.tests,
+    CompareEmulators.tests, CompareCSIDispatch.tests, CompareSwiftRows.tests,
+    ReleaseSigning.tests, ReleasePublisher.tests,
+  ].flatMap { $0 }
 
   static func run(_ arguments: [String]) throws {
     let selected = cases.filter { test in arguments.isEmpty || arguments.contains { test.name.contains($0) } }

@@ -17,9 +17,32 @@ struct Command {
 }
 
 let commands = [
+  // Smoke runs of the app.
   NativeSmoke.command,
+  CloseSmoke.command,
+  SelectionSmoke.command,
+  StartupGridSmoke.command,
+  AccessibilitySmoke.command,
+  AppleScriptSmoke.command,
+  TerminfoSmoke.command,
+  EditingInputIsolation.command,
+  CatStress.command,
+  TUIStress.command,
+  Gallery.command,
+  // Measurements and diagnoses.
   CompareStartup.command,
   CompareShutdown.command,
+  CompareTerminals.command,
+  CompareTerminalApps.command,
+  ProfileTerminal.command,
+  DiagnoseStream.command,
+  // Comparisons of the emulator between implementations and commits.
+  CompareEmulators.command,
+  CompareCSIDispatch.command,
+  CompareSwiftRows.command,
+  // Releases.
+  ReleaseSigning.command,
+  ReleasePublisher.command,
   SelfTest.command,
 ]
 
