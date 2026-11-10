@@ -648,11 +648,12 @@ release-status:
 
 # ── helpers ───────────────────────────────────────────────────────────
 
-# Build the developer tool (tools/Dev) when its sources are newer.
+# Build the developer tool (tools/Dev) when its sources are newer. Sources are
+# given by absolute path: the tool finds the repository from where it was built.
 [private]
 @_dev:
     mkdir -p target/native
-    if [[ ! -x target/native/dev || -n "$(find tools/Dev -newer target/native/dev -print -quit)" ]]; then xcrun swiftc -O tools/Dev/*.swift -o target/native/dev; fi
+    if [[ ! -x target/native/dev || -n "$(find tools/Dev -newer target/native/dev -print -quit)" ]]; then xcrun swiftc -O "$PWD"/tools/Dev/*.swift -o target/native/dev; fi
 
 [private]
 @_assemble-bundle configuration:

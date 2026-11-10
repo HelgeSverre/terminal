@@ -29,9 +29,11 @@ func printUsage() {
   FileHandle.standardError.write(Data(text.utf8))
 }
 
-// An interrupted run still ends the processes it launched.
+// An interrupted run still ends the processes it launched. The signals get an
+// empty handler rather than being ignored: an ignored signal stays ignored in
+// every process this tool launches, a handled one does not.
 let interruptions = [SIGINT, SIGTERM].map { number -> DispatchSourceSignal in
-  signal(number, SIG_IGN)
+  signal(number) { _ in }
   let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
   source.setEventHandler {
     ProcessTree.cleanupAll()
