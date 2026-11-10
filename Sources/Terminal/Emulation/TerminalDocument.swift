@@ -1105,7 +1105,9 @@ struct TerminalDocument {
       // Without auto-wrap the cursor stays on the right edge, so a run may fill
       // the cells before the edge, or overwrite the edge cell one scalar at a time.
       let room = autoWrap ? right - column + 1 : max(1, right - column)
-      let count = min(bytes.count - consumed, room)
+      // The byte whose wrap appended history is admitted alone, so the caller
+      // enforces history limits before anything else is printed.
+      let count = appended > 0 ? 1 : min(bytes.count - consumed, room)
       let run = UnsafeBufferPointer(rebasing: bytes[consumed..<(consumed + count)])
       if preparePrintedReplacement(in: &screen.rows[row], at: column, count: count,
                                    eraseStyle: attributes.style.erased()) {
@@ -1163,7 +1165,11 @@ struct TerminalDocument {
         let capacity = right - column + (autoWrap ? 1 : 0)
         var segmenter = state.segmenter
         var end = consumed, cells = 0, lastWidth = 0
-        while end < scalars.count, cells < capacity {
+        // A wrap on the primary screen can append history. Its scalar is
+        // admitted alone, so the caller enforces history limits before
+        // anything else is printed.
+        let limit = wraps && retainHistory ? min(scalars.count, consumed + 1) : scalars.count
+        while end < limit, cells < capacity {
           let candidate = scalars[end]
           let width: Int
           if candidate.value &- 0x20 < 0x5f {

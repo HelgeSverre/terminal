@@ -516,7 +516,8 @@ import Foundation
     }
 
     let ordinary = compare(Array("ABCD".unicodeScalars))
-    precondition(ordinary.effect.lastPrinted?.text == "D" && ordinary.effect.repeatAttributes?.link == attributes.link)
+    // A fresh run repeats with the caller's attributes, which the effect reports as nil.
+    precondition(ordinary.effect.lastPrinted?.text == "D" && ordinary.effect.repeatAttributes == nil)
     // Prepend makes the first ASCII scalar a continuation; it must go through
     // the scalar transaction before a later fresh ASCII may be admitted.
     _ = compare(Array("\u{600}ABC".unicodeScalars))
