@@ -28,6 +28,7 @@ let commands = [
   EditingInputIsolation.command,
   CatStress.command,
   TUIStress.command,
+  RenderingProof.command,
   Gallery.command,
   // Measurements and diagnoses.
   CompareStartup.command,

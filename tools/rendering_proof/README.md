@@ -2,10 +2,13 @@
 
 This tool is prepared for an exclusive, root-coordinated GUI slot. Do not run it
 while another GUI test or the user is interacting with the desktop. Preparation
-and self-tests create no windows and send no input:
+and self-tests create no windows and send no input. The runner is the
+`rendering-proof` command of the developer tool, which `just _dev` builds as
+`target/native/dev`:
 
 ```shell
-ruby tools/rendering_proof/run.rb --prepare
+just _dev
+target/native/dev rendering-proof --prepare
 ```
 
 After the final mode/palette build is frozen, use that build's full source SHA and
@@ -14,13 +17,13 @@ possibly changing worktree. Run the two commands sequentially with distinct fres
 output directories:
 
 ```shell
-ruby tools/rendering_proof/run.rb \
+target/native/dev rendering-proof \
   --app "$FINAL_RENDER_APP" \
   --source-sha "$FINAL_RENDER_SOURCE_SHA" \
   --executable-sha256 "$FINAL_RENDER_EXE_SHA" \
   --output /Users/helge/.codex/artifacts/rendering-final-candidate
 
-ruby tools/rendering_proof/run.rb \
+target/native/dev rendering-proof \
   --app "$FINAL_RENDER_APP" \
   --source-sha "$FINAL_RENDER_SOURCE_SHA" \
   --executable-sha256 "$FINAL_RENDER_EXE_SHA" \
@@ -102,8 +105,8 @@ runner. Failed runs keep their artifacts and return nonzero.
   correct markers and decoded **latest final PTY geometry** in one captured frame.
 - Native input is not declared effective merely because events were posted. Each
   drag requires changing PTY geometry within at least one pane and complete capture
-  callbacks during the interval. Ruby uses `CLOCK_UPTIME_RAW`, checked against
-  `ProcessInfo.systemUptime`; ordinary Ruby `CLOCK_MONOTONIC` has a different sleep
+  callbacks during the interval. The fixture uses `CLOCK_UPTIME_RAW`, checked against
+  `ProcessInfo.systemUptime`; `CLOCK_MONOTONIC` has a different sleep
   offset on this Mac. Raw SCK PTS is retained for frame intervals, not compared to
   host uptime. Phase attribution uses callback receipt time and may lag acquisition.
 - The negative control deliberately doubles fixture rectangle width. It must
