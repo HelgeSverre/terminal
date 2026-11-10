@@ -14,7 +14,12 @@ struct Command {
   let run: ([String]) throws -> Void
 }
 
-let commands = [CompareStartup.command, CompareShutdown.command]
+let commands = [
+  NativeSmoke.command,
+  CompareStartup.command,
+  CompareShutdown.command,
+  SelfTest.command,
+]
 
 func printUsage() {
   var text = "usage: dev COMMAND [ARGUMENT...]\n\n"
@@ -22,6 +27,18 @@ func printUsage() {
     text += "  \(command.name) \(command.usage)\n      \(command.summary)\n"
   }
   FileHandle.standardError.write(Data(text.utf8))
+}
+
+// An interrupted run still ends the processes it launched.
+let interruptions = [SIGINT, SIGTERM].map { number -> DispatchSourceSignal in
+  signal(number, SIG_IGN)
+  let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
+  source.setEventHandler {
+    ProcessTree.cleanupAll()
+    exit(130)
+  }
+  source.resume()
+  return source
 }
 
 let arguments = Array(CommandLine.arguments.dropFirst())
