@@ -98,8 +98,32 @@ import Foundation
       inactivePaneDim: restoredPresentationPreferences.inactivePaneDim)
     precondition(!changedFontKeepingPresentation.showPaneTitles && changedFontKeepingPresentation.inactivePaneDim == .ten)
 
-    precondition(PaneColorChoice.palette.count == 16)
-    precondition(Set(PaneColorChoice.palette.map(\.name)).count == 16)
+    precondition(PaneColorChoice.palette.count == 18)
+    precondition(Set(PaneColorChoice.palette.map(\.name)).count == 18)
+    // Square swatches fill complete rows, and the popover content is exactly
+    // the grid plus its padding: no slack beside or below the swatches.
+    let colorPalette = PaneColorPaletteView()
+    colorPalette.layoutSubtreeIfNeeded()
+    let swatches = colorPalette.subviews.flatMap(\.subviews).flatMap(\.subviews).compactMap { $0 as? NSButton }
+    precondition(swatches.count == 18 && swatches.count % PaneColorPaletteView.columns == 0)
+    precondition(swatches.allSatisfy { $0.frame.size == NSSize(width: 24, height: 24) })
+    let paletteWidth: CGFloat = 198 // 6 swatches of 24, 5 gaps of 6, 12 padding each side
+    precondition(colorPalette.frame.width == paletteWidth, "palette width \(colorPalette.frame.width)")
+    let swatchEdges = swatches.map { colorPalette.convert($0.bounds, from: $0) }
+    let swatchLeft: CGFloat = swatchEdges.map(\.minX).min() ?? 0
+    let swatchRight: CGFloat = swatchEdges.map(\.maxX).max() ?? 0
+    precondition(swatchLeft == 12 && swatchRight == paletteWidth - 12)
+    guard let colorHex = colorPalette.subviews.flatMap(\.subviews).flatMap(\.subviews)
+      .first(where: { $0.accessibilityIdentifier() == "no.helgesverre.terminal.pane.color.hex" })
+    else { preconditionFailure("palette lacks its hex field") }
+    let hexEdges = colorPalette.convert(colorHex.bounds, from: colorHex)
+    precondition(hexEdges.maxX == paletteWidth - 12, "hex field does not share the grid edge")
+    let hexMargin: CGFloat = min(hexEdges.minY, colorPalette.frame.height - hexEdges.maxY)
+    precondition(hexMargin == 12, "hex row margin \(hexMargin)")
+    var pickedColors: [String] = []
+    colorPalette.onPick = { pickedColors.append($0.hex) }
+    swatches[1].performClick(nil)
+    precondition(pickedColors == ["#26272B"], "second swatch is the new darker gray")
     precondition(PaneChromeColor(hex: "#f08")?.hex == "#FF0088")
     precondition(PaneChromeColor(hex: " #2c6a65 ")?.hex == "#2C6A65")
     for invalidHex in ["2C6A65", "#12", "#1234", "#00112233", "#GG0011"] {

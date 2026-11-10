@@ -63,6 +63,8 @@ struct PaneColorChoice: Equatable {
   let color: PaneChromeColor
 
   static let palette: [PaneColorChoice] = [
+    .init(name: "Onyx", color: .init(hex: "#18191C")!),
+    .init(name: "Graphite", color: .init(hex: "#26272B")!),
     .init(name: "Charcoal", color: .charcoal),
     .init(name: "Slate", color: .init(hex: "#4A5568")!),
     .init(name: "Steel", color: .init(hex: "#3F5E72")!),
@@ -294,34 +296,45 @@ private final class PaneHeaderView: NSView {
   @objc private func closePane(_ sender: Any?) { onClose?() }
 }
 
-private final class PaneColorPopover: NSObject, NSTextFieldDelegate {
-  private let popover = NSPopover()
-  private let hexInput = NSTextField(string: "")
-  var onChoose: ((PaneChromeColor) -> Void)?
-  var onCommit: (() -> Void)?
+/// The swatch grid and custom-hex row shown in the pane color popover. Its
+/// size is whatever the swatches need, so the popover has no slack around them.
+final class PaneColorPaletteView: NSView, NSTextFieldDelegate {
+  static let columns = 6
+  static let swatchSide: CGFloat = 24
+  static let swatchSpacing: CGFloat = 6
+  static let padding: CGFloat = 12
 
-  override init() {
-    super.init()
-    popover.behavior = .transient
-    popover.animates = false
-    let content = NSView(frame: NSRect(x: 0, y: 0, width: 208, height: 150))
+  private let hexInput = NSTextField(string: "")
+  /// A valid hex was typed; the choice is not final yet.
+  var onPreview: ((PaneChromeColor) -> Void)?
+  /// A swatch was clicked or a valid hex was committed with Return.
+  var onPick: ((PaneChromeColor) -> Void)?
+
+  var hex: String {
+    get { hexInput.stringValue }
+    set { hexInput.stringValue = newValue }
+  }
+
+  init() {
+    super.init(frame: .zero)
     let stack = NSStackView()
     stack.orientation = .vertical
     stack.alignment = .leading
-    stack.spacing = 8
+    stack.spacing = Self.swatchSpacing
     stack.translatesAutoresizingMaskIntoConstraints = false
-    content.addSubview(stack)
+    addSubview(stack)
     NSLayoutConstraint.activate([
-      stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
-      stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
-      stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
-      stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
+      stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.padding),
+      stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.padding),
+      stack.topAnchor.constraint(equalTo: topAnchor, constant: Self.padding),
+      stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.padding),
     ])
-    for choices in stride(from: 0, to: PaneColorChoice.palette.count, by: 4) {
+    let palette = PaneColorChoice.palette
+    for start in stride(from: 0, to: palette.count, by: Self.columns) {
       let row = NSStackView()
       row.orientation = .horizontal
-      row.spacing = 6
-      for choice in PaneColorChoice.palette[choices..<min(choices + 4, PaneColorChoice.palette.count)] {
+      row.spacing = Self.swatchSpacing
+      for choice in palette[start..<min(start + Self.columns, palette.count)] {
         let swatch = NSButton(title: "", target: self, action: #selector(selectSwatch(_:)))
         swatch.identifier = NSUserInterfaceItemIdentifier(choice.color.hex)
         swatch.bezelStyle = .shadowlessSquare
@@ -329,8 +342,11 @@ private final class PaneColorPopover: NSObject, NSTextFieldDelegate {
         swatch.wantsLayer = true
         swatch.layer?.backgroundColor = choice.color.nsColor.cgColor
         swatch.layer?.cornerRadius = 4
-        swatch.widthAnchor.constraint(equalToConstant: 38).isActive = true
-        swatch.heightAnchor.constraint(equalToConstant: 18).isActive = true
+        // The darkest neutrals sit close to the popover's own background.
+        swatch.layer?.borderWidth = 1
+        swatch.layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        swatch.widthAnchor.constraint(equalToConstant: Self.swatchSide).isActive = true
+        swatch.heightAnchor.constraint(equalToConstant: Self.swatchSide).isActive = true
         swatch.setAccessibilityLabel("\(choice.name) pane color")
         swatch.setAccessibilityIdentifier("no.helgesverre.terminal.pane.color.\(choice.name.lowercased())")
         swatch.toolTip = choice.name
@@ -341,11 +357,14 @@ private final class PaneColorPopover: NSObject, NSTextFieldDelegate {
     let customLabel = NSTextField(labelWithString: "Custom hex")
     customLabel.font = .systemFont(ofSize: 11)
     customLabel.textColor = TerminalTheme.color(TerminalTheme.secondary)
+    customLabel.setContentHuggingPriority(.required, for: .horizontal)
     let custom = NSStackView(views: [customLabel, hexInput])
     custom.orientation = .horizontal
     custom.alignment = .centerY
     custom.spacing = 8
-    hexInput.widthAnchor.constraint(equalToConstant: 92).isActive = true
+    // The field takes whatever the swatch grid leaves, so both share one edge.
+    hexInput.setContentHuggingPriority(.defaultLow, for: .horizontal)
+    hexInput.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     hexInput.placeholderString = "#RRGGBB"
     hexInput.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
     hexInput.delegate = self
@@ -354,25 +373,20 @@ private final class PaneColorPopover: NSObject, NSTextFieldDelegate {
     hexInput.setAccessibilityLabel("Custom pane color hex")
     hexInput.setAccessibilityIdentifier("no.helgesverre.terminal.pane.color.hex")
     stack.addArrangedSubview(custom)
-    popover.contentViewController = NSViewController()
-    popover.contentViewController?.view = content
-    popover.contentSize = content.bounds.size
+    stack.setCustomSpacing(8, after: stack.arrangedSubviews[stack.arrangedSubviews.count - 2])
+    let gridWidth = CGFloat(Self.columns) * Self.swatchSide + CGFloat(Self.columns - 1) * Self.swatchSpacing
+    NSLayoutConstraint.activate([
+      stack.widthAnchor.constraint(equalToConstant: gridWidth),
+      custom.widthAnchor.constraint(equalTo: stack.widthAnchor),
+    ])
+    setFrameSize(fittingSize)
   }
 
-  func present(from view: NSView, selected: PaneChromeColor) {
-    hexInput.stringValue = selected.hex
-    popover.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
-  }
-
-  func dismiss() {
-    popover.close()
-  }
+  required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
 
   @objc private func selectSwatch(_ sender: NSButton) {
     guard let value = sender.identifier?.rawValue, let color = PaneChromeColor(hex: value) else { return }
-    onChoose?(color)
-    popover.close()
-    onCommit?()
+    onPick?(color)
   }
 
   @objc private func commitCustomHex(_ sender: Any?) {
@@ -380,13 +394,42 @@ private final class PaneColorPopover: NSObject, NSTextFieldDelegate {
     // emitting its input-rejection beep. A valid custom color applies exactly
     // once and restores the canvas as the first responder.
     guard let color = PaneChromeColor(hex: hexInput.stringValue) else { return }
-    onChoose?(color)
-    popover.close()
-    onCommit?()
+    onPick?(color)
   }
 
   func controlTextDidChange(_ notification: Notification) {
     guard let color = PaneChromeColor(hex: hexInput.stringValue) else { return }
-    onChoose?(color)
+    onPreview?(color)
+  }
+}
+
+private final class PaneColorPopover {
+  private let popover = NSPopover()
+  private let palette = PaneColorPaletteView()
+  var onChoose: ((PaneChromeColor) -> Void)?
+  var onCommit: (() -> Void)?
+
+  init() {
+    popover.behavior = .transient
+    popover.animates = false
+    palette.onPreview = { [weak self] color in self?.onChoose?(color) }
+    palette.onPick = { [weak self] color in
+      guard let self else { return }
+      onChoose?(color)
+      popover.close()
+      onCommit?()
+    }
+    popover.contentViewController = NSViewController()
+    popover.contentViewController?.view = palette
+    popover.contentSize = palette.frame.size
+  }
+
+  func present(from view: NSView, selected: PaneChromeColor) {
+    palette.hex = selected.hex
+    popover.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+  }
+
+  func dismiss() {
+    popover.close()
   }
 }
