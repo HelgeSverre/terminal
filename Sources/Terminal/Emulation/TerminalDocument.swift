@@ -61,6 +61,7 @@ private struct TerminalRowSlot: Equatable {
   private var word: UInt64 { unsafeBitCast(self, to: UInt64.self) }
 
   /// UTF-8 bytes of the scalars held directly in `slots`.
+  @inline(__always)
   static func scalarUTF8Bytes(in slots: UnsafeBufferPointer<TerminalRowSlot>) -> UInt64 {
     let raw = UnsafeRawBufferPointer(slots)
     // The scalar-presence mark is each word's top bit. One simple pass counts
@@ -122,15 +123,17 @@ private struct TerminalRowPayloads: Equatable {
   }
   private(set) var entries: [Entry] = []
   private(set) var utf8Bytes: UInt64 = 0
-  // Most entries held at once since the last reset. Reflow admission charges
-  // the capacity of the dictionary these entries used to live in; that
-  // capacity grew with this count and never shrank.
-  private var peakCount = 0
+  // Reflow admission charges the capacity of the dictionary these entries
+  // used to live in. That capacity grew to hold the most entries the row had
+  // held at once and never shrank, so the same figure is kept here.
+  private(set) var capacity = 0
   var count: Int { entries.count }
-  var capacity: Int { TerminalHistory.dictionaryCapacity(holding: peakCount) }
   var isEmpty: Bool { entries.isEmpty }
 
   static func == (lhs: TerminalRowPayloads, rhs: TerminalRowPayloads) -> Bool { lhs.entries == rhs.entries }
+  private mutating func grewCapacity() {
+    if entries.count > capacity { capacity = TerminalHistory.dictionaryCapacity(holding: entries.count) }
+  }
 
   /// Position of the first entry at or right of `column`.
   @inline(__always) private func position(of column: Int) -> Int {
@@ -157,7 +160,7 @@ private struct TerminalRowPayloads: Equatable {
         } else {
           let entry = Entry(column: column, payload: newValue)
           if position == entries.count { entries.append(entry) } else { entries.insert(entry, at: position) }
-          peakCount = max(peakCount, entries.count)
+          grewCapacity()
         }
         utf8Bytes += newValue.utf8Bytes
       } else if exists {
@@ -168,7 +171,7 @@ private struct TerminalRowPayloads: Equatable {
   mutating func removeValue(forKey column: Int) { self[column] = nil }
   mutating func removeAll(keepingCapacity: Bool = false) {
     entries.removeAll(keepingCapacity: keepingCapacity); utf8Bytes = 0
-    if !keepingCapacity { peakCount = 0 }
+    if !keepingCapacity { capacity = 0 }
   }
   /// Leaves every column in `range` with a payload that is only `link`, or
   /// with none when `link` is nil.
@@ -183,7 +186,7 @@ private struct TerminalRowPayloads: Equatable {
     let payload = TerminalRowPayload(text: nil, link: link)
     entries.replaceSubrange(lower..<upper, with: range.lazy.map { Entry(column: $0, payload: payload) })
     utf8Bytes += UInt64(range.count) * payload.utf8Bytes
-    peakCount = max(peakCount, entries.count)
+    grewCapacity()
   }
   /// Drops every payload at or right of `column`. The modeled capacity
   /// starts over from the survivors, as the rebuilt dictionary's did.
@@ -191,7 +194,7 @@ private struct TerminalRowPayloads: Equatable {
     let lower = position(of: column)
     for position in lower..<entries.count { utf8Bytes -= entries[position].payload.utf8Bytes }
     entries.removeSubrange(lower...)
-    peakCount = entries.count
+    capacity = TerminalHistory.dictionaryCapacity(holding: entries.count)
   }
   /// Gives the columns `source` shifted by `offset` the payloads of `source`.
   /// Columns outside that target keep theirs.
@@ -204,7 +207,7 @@ private struct TerminalRowPayloads: Equatable {
     for position in lower..<upper { utf8Bytes -= entries[position].payload.utf8Bytes }
     for entry in moved { utf8Bytes += entry.payload.utf8Bytes }
     entries.replaceSubrange(lower..<upper, with: moved)
-    peakCount = max(peakCount, entries.count)
+    grewCapacity()
   }
 }
 
