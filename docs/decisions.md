@@ -75,10 +75,19 @@ a quarter to a third of parser throughput once the rest was fast, because every
 access to the emulator's stored properties paid one. Development and test
 builds keep them, so a violation still traps where the tests can see it.
 
-The reader waits up to 10 µs for a PTY refill before delivering a read. That
-adds about 0.01 ms to an idle echo and removes one owner wake-up per kilobyte
-under load. A pause after every read raised a read-and-discard loop from 230 to
-300 MiB/s but did nothing measurable in the app, and was not kept.
+The reader waits up to 10 µs for a PTY refill before delivering a read, but
+only after a read that emptied a full kernel queue. That removes one owner
+wake-up per kilobyte under load and leaves a lone echo or prompt undelayed;
+waiting after every read had added about 0.01 ms to an idle echo. A pause after
+every read raised a read-and-discard loop from 235 to 305 MiB/s but did nothing
+measurable in the app across five interleaved rounds, and was not kept. Neither
+was keeping the parser thread awake between deliveries. The
+[experiments](../reports/unicode-clusters-2026-11-10/README.md) are recorded.
+
+Cluster text and links sit in a per-row array ordered by column rather than a
+dictionary. Printing writes left to right, so it appends; a dictionary paid a
+hash per cluster and per overwritten cell. Reflow admission still charges the
+capacity that dictionary would have had, so budget decisions do not move.
 
 ## Launch
 

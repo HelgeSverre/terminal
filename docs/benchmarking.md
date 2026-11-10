@@ -1,9 +1,11 @@
 # Performance measurements
 
-The [direct text path report](../reports/direct-text-path-2026-11-10/README.md)
-is the current standing: three-app, paired against v0.2.4, headless, SQL stress
-and input latency. It also holds the headless benchmark, the differential
-fuzzer and the PTY-ceiling probes used to get there.
+The [cluster and reader report](../reports/unicode-clusters-2026-11-10/README.md)
+is the current standing: three-app, headless on both screens, input latency and
+the reader experiments. The
+[direct text path report](../reports/direct-text-path-2026-11-10/README.md)
+before it holds the comparison against v0.2.4, the SQL stress, and the headless
+benchmark, differential fuzzer and PTY-ceiling probes both reports use.
 
 The earlier [three-app comparison](../reports/terminal-comparison-2026-11-10/README.md)
 measures the v0.2.4 shared-reader build, Ghostty and Kitty with ten samples per

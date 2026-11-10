@@ -148,12 +148,15 @@ Implemented and locally exercised:
 
 Current automated evidence:
 
-- The direct text path and gathered PTY reads put whole-app throughput at
-  203 / 217 / 190 / 81 MiB/s on short ASCII, long ASCII, truecolor and mixed
-  Unicode, against Ghostty's 263 / 281 / 197 / 185 in the same run. Mixed
-  Unicode remains well short; multi-scalar clusters are the cause. The full
-  SQL motion stress fell from 150 s to 44 s. See the
-  [report](../reports/direct-text-path-2026-11-10/README.md).
+- Whole-app throughput is 226 / 254 / 208 / 139 MiB/s on short ASCII, long
+  ASCII, truecolor and mixed Unicode, against Ghostty's 268 / 297 / 201 / 185
+  in the same run: 84%, 86%, 103% and 75%. ASCII is limited by the PTY reader
+  and mixed Unicode by multi-scalar clusters; neither gap is closed. See the
+  [report](../reports/unicode-clusters-2026-11-10/README.md). The earlier
+  [direct text path report](../reports/direct-text-path-2026-11-10/README.md)
+  has the comparison against v0.2.4 and the SQL motion stress (150 s to 44 s).
+- Session recovery after a crash or hard reset is planned, not built: see the
+  [plan](session-recovery-plan.md).
 
 - The 0.2.3 candidate fixes nested pane allocation on split and window resize.
   The headless macOS suite passes at `12330f0` (run `42630258871`).

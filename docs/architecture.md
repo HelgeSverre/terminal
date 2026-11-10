@@ -17,11 +17,12 @@ owner submissions; terminal state stays on the session queue.
 
 Printable ASCII goes from the feed buffer straight into row cells, and a
 complete `ESC [ … m` is parsed in place; everything else takes the streaming
-parser. Decoded text is printed as runs of fresh one- and two-cell scalars, with
-a whole multi-scalar cluster extended in one step. A row cell is eight bytes: a
-scalar, an index into the row's own style table, and flags. Text of more than
-one scalar and hyperlinks live in a sparse per-row payload dictionary, and a
-cell flag records whether a cell has an entry there.
+parser. Decoded text is printed as runs of fresh clusters: single scalars, and
+whole multi-scalar clusters when all their scalars are in the buffer. A cluster
+that arrives in pieces extends its lead cell instead. A row cell is eight
+bytes: a scalar, an index into the row's own style table, and flags. Text of
+more than one scalar and hyperlinks live beside the row in a sparse array
+ordered by column, and a cell flag records whether a cell has an entry there.
 
 The canvas handles keyboard, IME, paste, mouse input, and selection. It derives
 its accessibility projection from the delivered snapshot and requests rendering
@@ -33,9 +34,10 @@ interfaces.
 ## PTY transport
 
 The kernel returns at most about a kilobyte per PTY read. The read endpoint
-gathers consecutive reads into one slab, waiting up to 10 µs for the child to
-refill the queue, so the owner is woken once per slab rather than once per
-kilobyte. The read runs outside the broker's admission lock; a separate read
+gathers consecutive reads into one slab, so the owner is woken once per slab
+rather than once per kilobyte. It waits up to 10 µs for the child to refill the
+queue, but only after a read that emptied a full queue; a shorter read is
+delivered at once. The read runs outside the broker's admission lock; a separate read
 lock makes close wait for the read in flight. A control submission seals the
 preceding output batch. The broker
 holds byte credit until the parser consumes those bytes, and node credit until
