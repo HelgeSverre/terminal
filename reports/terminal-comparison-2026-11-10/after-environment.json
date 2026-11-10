@@ -1,0 +1,5 @@
+{
+  "captured_at": "2026-11-10T00:03:58Z",
+  "power": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=7340131)\t12%; discharging; 0:30 remaining present: true\n",
+  "note": "Captured after the completed comparison, during the following diagnostic profile; not a per-sample power log."
+}

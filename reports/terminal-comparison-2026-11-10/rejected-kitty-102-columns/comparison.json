@@ -1,0 +1,380 @@
+{
+  "passed": false,
+  "source_sha": "55df7a7091b911456a61be1baf7479d0f23b4b76",
+  "bytes_per_run": 65536,
+  "runs_per_workload": 1,
+  "geometry": [
+    100,
+    30
+  ],
+  "font": "Obel Mono 14",
+  "os": "ProductName:\t\tmacOS\nProductVersion:\t\t15.6\nBuildVersion:\t\t24G84\n",
+  "hardware": "Apple M2 Max\n",
+  "power": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=7340131)\t17%; discharging; 0:37 remaining present: true\n",
+  "load_before": "{ 3.05 2.99 3.97 }\n",
+  "scope": "Sequential visible-app PTY throughput and ordered parser replies; alternate screen excludes history. Same cell grid/configured font; native cell-pixel metrics are recorded, not normalized. Not display FPS, presentation/input latency, peak memory, or a SQL benchmark.",
+  "trials": [
+    {
+      "order": [
+        "terminal",
+        "ghostty",
+        "kitty"
+      ],
+      "apps": {
+        "terminal": {
+          "natural_exit": true,
+          "pid": 7795,
+          "report_pid": 7795,
+          "report": {
+            "schema": 2,
+            "driver_version": "0.3.0",
+            "terminal": "terminal",
+            "terminal_pid": 7795,
+            "columns": 100,
+            "rows": 30,
+            "pixel_width": 1700,
+            "pixel_height": 1230,
+            "output_post_processing": true,
+            "idle_seconds": 3.006437,
+            "cpu_timebase": {
+              "numer": 125,
+              "denom": 3
+            },
+            "resource_usage_available": true,
+            "resource_usage_errno": 0,
+            "idle_cpu_percent_one_core": 0.129954,
+            "idle_physical_bytes": 54659712,
+            "workloads": [
+              {
+                "name": "ascii_short_lines",
+                "source_bytes_per_run": 65536,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 77.930175,
+                    "elapsed_seconds": 0.000802,
+                    "terminal_cpu_seconds": 0.001128
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 1,
+                  "p50": 77.930175,
+                  "p95": 77.930175,
+                  "p99": 77.930175,
+                  "max": 77.930175
+                },
+                "elapsed_seconds": {
+                  "samples": 1,
+                  "p50": 0.000802,
+                  "p95": 0.000802,
+                  "p99": 0.000802,
+                  "max": 0.000802
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 1,
+                  "p50": 0.001128,
+                  "p95": 0.001128,
+                  "p99": 0.001128,
+                  "max": 0.001128
+                },
+                "max_run_end_physical_bytes": 54725248
+              },
+              {
+                "name": "ascii_long_lines",
+                "source_bytes_per_run": 65536,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 96.450617,
+                    "elapsed_seconds": 0.000648,
+                    "terminal_cpu_seconds": 0.00102
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 1,
+                  "p50": 96.450617,
+                  "p95": 96.450617,
+                  "p99": 96.450617,
+                  "max": 96.450617
+                },
+                "elapsed_seconds": {
+                  "samples": 1,
+                  "p50": 0.000648,
+                  "p95": 0.000648,
+                  "p99": 0.000648,
+                  "max": 0.000648
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 1,
+                  "p50": 0.00102,
+                  "p95": 0.00102,
+                  "p99": 0.00102,
+                  "max": 0.00102
+                },
+                "max_run_end_physical_bytes": 54774400
+              },
+              {
+                "name": "ansi_truecolor",
+                "source_bytes_per_run": 65536,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 37.76435,
+                    "elapsed_seconds": 0.001655,
+                    "terminal_cpu_seconds": 0.002069
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 1,
+                  "p50": 37.76435,
+                  "p95": 37.76435,
+                  "p99": 37.76435,
+                  "max": 37.76435
+                },
+                "elapsed_seconds": {
+                  "samples": 1,
+                  "p50": 0.001655,
+                  "p95": 0.001655,
+                  "p99": 0.001655,
+                  "max": 0.001655
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 1,
+                  "p50": 0.002069,
+                  "p95": 0.002069,
+                  "p99": 0.002069,
+                  "max": 0.002069
+                },
+                "max_run_end_physical_bytes": 54774400
+              },
+              {
+                "name": "unicode",
+                "source_bytes_per_run": 65536,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 16.456029,
+                    "elapsed_seconds": 0.003798,
+                    "terminal_cpu_seconds": 0.004074
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 1,
+                  "p50": 16.456029,
+                  "p95": 16.456029,
+                  "p99": 16.456029,
+                  "max": 16.456029
+                },
+                "elapsed_seconds": {
+                  "samples": 1,
+                  "p50": 0.003798,
+                  "p95": 0.003798,
+                  "p99": 0.003798,
+                  "max": 0.003798
+                },
+                "terminal_cpu_seconds": {
+                  "samples": 1,
+                  "p50": 0.004074,
+                  "p95": 0.004074,
+                  "p99": 0.004074,
+                  "max": 0.004074
+                },
+                "max_run_end_physical_bytes": 54790784
+              }
+            ],
+            "dsr_roundtrip_ms": {
+              "samples": 100,
+              "p50": 0.026,
+              "p95": 0.047,
+              "p99": 0.105,
+              "max": 0.215
+            },
+            "note": "Same PTY payloads and ordered DSR drain; alternate screen excludes scrollback. CPU and footprint are terminal parent process only. Footprint is sampled at run ends, not peak. This measures parsing/backpressure, not display FPS or input-to-photon latency."
+          },
+          "cleanup_survivors": []
+        },
+        "ghostty": {
+          "natural_exit": true,
+          "pid": 7876,
+          "report_pid": 7886,
+          "report": {
+            "schema": 2,
+            "driver_version": "0.3.0",
+            "terminal": "ghostty",
+            "terminal_pid": 7886,
+            "columns": 100,
+            "rows": 30,
+            "pixel_width": 1700,
+            "pixel_height": 1082,
+            "output_post_processing": true,
+            "idle_seconds": 3.006386,
+            "cpu_timebase": {
+              "numer": 125,
+              "denom": 3
+            },
+            "resource_usage_available": false,
+            "resource_usage_errno": 1,
+            "idle_cpu_percent_one_core": null,
+            "idle_physical_bytes": null,
+            "workloads": [
+              {
+                "name": "ascii_short_lines",
+                "source_bytes_per_run": 65536,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 154.320987,
+                    "elapsed_seconds": 0.000405,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 1,
+                  "p50": 154.320987,
+                  "p95": 154.320987,
+                  "p99": 154.320987,
+                  "max": 154.320987
+                },
+                "elapsed_seconds": {
+                  "samples": 1,
+                  "p50": 0.000405,
+                  "p95": 0.000405,
+                  "p99": 0.000405,
+                  "max": 0.000405
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              },
+              {
+                "name": "ascii_long_lines",
+                "source_bytes_per_run": 65536,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 245.098037,
+                    "elapsed_seconds": 0.000255,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 1,
+                  "p50": 245.098037,
+                  "p95": 245.098037,
+                  "p99": 245.098037,
+                  "max": 245.098037
+                },
+                "elapsed_seconds": {
+                  "samples": 1,
+                  "p50": 0.000255,
+                  "p95": 0.000255,
+                  "p99": 0.000255,
+                  "max": 0.000255
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              },
+              {
+                "name": "ansi_truecolor",
+                "source_bytes_per_run": 65536,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 85.851648,
+                    "elapsed_seconds": 0.000728,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 1,
+                  "p50": 85.851648,
+                  "p95": 85.851648,
+                  "p99": 85.851648,
+                  "max": 85.851648
+                },
+                "elapsed_seconds": {
+                  "samples": 1,
+                  "p50": 0.000728,
+                  "p95": 0.000728,
+                  "p99": 0.000728,
+                  "max": 0.000728
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              },
+              {
+                "name": "unicode",
+                "source_bytes_per_run": 65536,
+                "run_samples": [
+                  {
+                    "run": 1,
+                    "mib_per_second": 79.617834,
+                    "elapsed_seconds": 0.000785,
+                    "terminal_cpu_seconds": null
+                  }
+                ],
+                "mib_per_second": {
+                  "samples": 1,
+                  "p50": 79.617834,
+                  "p95": 79.617834,
+                  "p99": 79.617834,
+                  "max": 79.617834
+                },
+                "elapsed_seconds": {
+                  "samples": 1,
+                  "p50": 0.000785,
+                  "p95": 0.000785,
+                  "p99": 0.000785,
+                  "max": 0.000785
+                },
+                "terminal_cpu_seconds": null,
+                "max_run_end_physical_bytes": null
+              }
+            ],
+            "dsr_roundtrip_ms": {
+              "samples": 100,
+              "p50": 0.027,
+              "p95": 0.031,
+              "p99": 0.032,
+              "max": 0.037
+            },
+            "note": "Same PTY payloads and ordered DSR drain; alternate screen excludes scrollback. CPU and footprint are terminal parent process only. Footprint is sampled at run ends, not peak. This measures parsing/backpressure, not display FPS or input-to-photon latency."
+          },
+          "cleanup_survivors": []
+        },
+        "kitty": {
+          "natural_exit": false,
+          "pid": 7925,
+          "cleanup_survivors": []
+        }
+      }
+    }
+  ],
+  "stage": "trial_1_kitty",
+  "driver_source_sha256": "cbe52cd535960db64083aa08d6928e9ec6037e5c7d37caa6b1a680051e25577e",
+  "driver_sha256": "fea221df7dc59de890e2d1849958d3386c2c32185ee2f4087fefe37d678d7f9e",
+  "runner_sha256": "ecd1aa5aa72538e2bc24c65ad0a6a896fceaec1b10586b6cfde64634f63d7a9e",
+  "apps": {
+    "terminal": {
+      "executable_sha256": "34798ae9dfbaab0e77a2c6feb042d2409c4a0ba5965e79f4ccabcd77b6a4e4c5",
+      "executable_bytes": 2824800,
+      "bundle_bytes": 8102971,
+      "frozen_executable_sha256": "34798ae9dfbaab0e77a2c6feb042d2409c4a0ba5965e79f4ccabcd77b6a4e4c5"
+    },
+    "ghostty": {
+      "executable_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b",
+      "executable_bytes": 45165232,
+      "bundle_bytes": 67296342,
+      "frozen_executable_sha256": "4b30ac9b049cdf9eb75b6d8c7764856c2b882de97c688dce8a1b80916b55271b"
+    },
+    "kitty": {
+      "executable_sha256": "0b85adb20794ce8f9c2393d21bd2459af49c0f624824a53e2ae536399c3f1f37",
+      "executable_bytes": 457024,
+      "bundle_bytes": 156858638,
+      "frozen_executable_sha256": "0b85adb20794ce8f9c2393d21bd2459af49c0f624824a53e2ae536399c3f1f37"
+    }
+  },
+  "ghostty_version": "Ghostty 1.4.0\n\nVersion\n  - version: 1.4.0\n  - channel: stable\nBuild Config\n  - Zig version   : 0.17.0\n  - build mode    : .fast\n  - app runtime   : .none\n  - font engine   : .coretext\n  - renderer      : renderer.generic.Renderer(renderer.Metal)\n  - libxev        : kqueue\n",
+  "kitty_version": "kitty 0.45.0 created by Kovid Goyal\n",
+  "failure": "RuntimeError: geometry is 102x30; expected 100x30\n",
+  "load_after": "{ 4.35 3.28 4.06 }\n"
+}

@@ -1,0 +1,19 @@
+{
+  "compiler": {
+    "path": "target/swift-release/Terminal",
+    "bytes": 2806648,
+    "sha256": "4d4939ed26aaf0d88f077807ec241e288bb04f2958c19b96550dc560f1521aaf",
+    "signature_offset": 2784768,
+    "signature_bytes": 21880,
+    "normalized_payload_sha256": "82bfaa71553f33bcd504f05105ef6ae03063ee927e7e9467d2db5e0eced762bc"
+  },
+  "packaged": {
+    "path": "dist/Terminal.app/Contents/MacOS/Terminal",
+    "bytes": 2824800,
+    "sha256": "34798ae9dfbaab0e77a2c6feb042d2409c4a0ba5965e79f4ccabcd77b6a4e4c5",
+    "signature_offset": 2784768,
+    "signature_bytes": 40032,
+    "normalized_payload_sha256": "82bfaa71553f33bcd504f05105ef6ae03063ee927e7e9467d2db5e0eced762bc"
+  },
+  "identical_except_signature_and_linkedit_sizes": true
+}

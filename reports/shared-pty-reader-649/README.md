@@ -166,3 +166,6 @@ policy, PTY tools, snapshot delivery, and all five IO groups. `local-test.log`,
 The production build has the exact signed executable hash measured in the app
 and SQL comparisons above. `production-build.json` and `integration.json`
 record that identity; no runtime changes were made after those measurements.
+The build tool hashes its compiler output before bundle signing. The
+[packaging proof](../terminal-comparison-2026-11-10/app-provenance.json) maps
+that artifact to the measured signed executable and verifies payload identity.

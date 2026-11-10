@@ -1,0 +1,10 @@
+{
+  "application_revision": "455c5b785cd24927f8638ffac60defecbd29486e",
+  "comparison_runner_revision": "c504a672f483a245adba42ecab10fe4770727f87",
+  "compiler_output_sha256": "4d4939ed26aaf0d88f077807ec241e288bb04f2958c19b96550dc560f1521aaf",
+  "packaged_executable_sha256": "34798ae9dfbaab0e77a2c6feb042d2409c4a0ba5965e79f4ccabcd77b6a4e4c5",
+  "app_sources_sha256": "0a97a7e65dec9dc5d8602114e3d7fe4965e89376baf050daad9b3e21f9b112f0",
+  "source_graph_sha256": "0eead324c0a6950e375058889a59584d7bd9316622f5485f06e98ff0b9514abf",
+  "packaging_proof": "signature-payload-proof.json",
+  "explanation": "Build provenance hashes compiler output before bundle signing. Comparison, preflight and profile hash the packaged executable. Their payloads match after removing only the signature blob and normalizing its load-command/segment-size bookkeeping."
+}
