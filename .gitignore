@@ -13,3 +13,9 @@
 /reports/pane-lifecycle-smoke.json
 /reports/startup-grid.json
 /reports/applescript-smoke.json
+/reports/atlas-budget-smoke.json
+/reports/glyph-smoke.json
+/reports/native-idle.json
+/reports/resize-smoke.json
+/reports/close-window-smoke.json
+/reports/close-shortcut-smoke.json
