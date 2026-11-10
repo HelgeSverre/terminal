@@ -1218,9 +1218,7 @@ struct TerminalDocument {
             width = 1
           } else {
             let scalarClass = TerminalText.scalarClass(of: candidate)
-            let category = scalarClass.category
-            guard category != .control, category != .cr, category != .lf,
-                  !scalarClass.isDefaultIgnorable else { break }
+            guard !scalarClass.isUnprintedControl, !scalarClass.isDefaultIgnorable else { break }
             width = scalarClass.width
             guard width == 1 || width == 2, cells + width <= capacity else { break }
             var next = segmenter
@@ -1287,11 +1285,11 @@ struct TerminalDocument {
         if extending == nil {
           extending = screen.rows[owner.row].clusterExtension(at: owner.column, scalars: &state.clusterScalars)
         }
-        if let previous = extending, !state.clusterScalars.isEmpty,
-           !state.capped, state.retainedScalars < 64 {
+        if extending != nil, !state.clusterScalars.isEmpty, !state.capped, state.retainedScalars < 64 {
+          let previousWide = extending!.wide, previousFlags = extending!.flags
           state.clusterScalars.append(scalar)
           let nominal = min(2, max(1, TerminalWidth.width(of: state.clusterScalars)))
-          let oldWidth = previous.wide ? 2 : 1
+          let oldWidth = previousWide ? 2 : 1
           let right = owner.column <= horizontal.1 ? horizontal.1 : columns - 1
           let occupied = min(nominal, right + 1 - owner.column)
           // A cluster that outgrows the row edge, or pushes cells aside in
@@ -1301,16 +1299,17 @@ struct TerminalDocument {
           if !relocates && !shifts {
             state.retainedScalars += 1
             let wide = nominal == 2 && occupied == 2
-            let flags = previous.flags | (nominal > occupied ? 1 : 0)
-            if previous.textChanged && wide == previous.wide && flags == previous.flags {
+            let flags = previousFlags | (nominal > occupied ? 1 : 0)
+            if extending!.textChanged && wide == previousWide && flags == previousFlags {
               // The cells already have this shape; only the text grew.
               screen.rows[owner.row].revision &+= 1
             } else {
               extending!.wide = wide
               extending!.flags = flags
               extending!.textChanged = true
-              screen.rows[owner.row].reformCluster(at: owner.column, wide: wide, style: previous.style,
-                                                   link: previous.link, flags: flags, protected: previous.protected)
+              screen.rows[owner.row].reformCluster(at: owner.column, wide: wide, style: extending!.style,
+                                                   link: extending!.link, flags: flags,
+                                                   protected: extending!.protected)
             }
             screen.cursorRow = owner.row
             screen.cursorColumn = min(right, owner.column + occupied)

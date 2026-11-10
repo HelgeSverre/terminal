@@ -47,7 +47,9 @@ enum TerminalText {
     /// `push` for a scalar whose class is already known.
     @inline(__always)
     mutating func push(_ scalar: Unicode.Scalar, class scalarClass: ScalarClass) -> Bool {
-      push(scalar, category: scalarClass.category, isIncbLinker: scalarClass.isIncbLinker)
+      // Ordinary text after ordinary text is a boundary that changes nothing.
+      if scalarClass.isPlainText, previous == .other, !linkerTail { return true }
+      return push(scalar, category: scalarClass.category, isIncbLinker: scalarClass.isIncbLinker)
     }
 
     private mutating func push(_ scalar: Unicode.Scalar, category current: Category, isIncbLinker: Bool) -> Bool {
@@ -395,6 +397,14 @@ extension TerminalText {
     var width: Int { Int(bits >> 4 & 3) }
     var isDefaultIgnorable: Bool { bits & 0x40 != 0 }
     var isIncbLinker: Bool { bits & 0x80 != 0 }
+    /// Category Other with neither flag: letters, ideographs, box drawing.
+    var isPlainText: Bool { bits & 0xcf == Category.other.rawValue }
+    /// CR, LF and Control are never printed.
+    var isUnprintedControl: Bool {
+      let category = bits & 0x0f
+      return category == Category.cr.rawValue || category == Category.lf.rawValue
+        || category == Category.control.rawValue
+    }
   }
 
   // Planes 0-3 hold nearly every scalar a terminal prints. Their classes are
