@@ -150,7 +150,18 @@ private final class TerminalEmulator {
   // never inherit one. Snapshot publication resolves these proofs against its
   // selected rows, so a non-view snapshot never paints a viewport-relative
   // coordinate onto unrelated live output.
-  private var searchHit: (stamp: TerminalSearchStamp, spans: [TerminalSearchResolvedSpan])?
+  private struct SearchHits {
+    let stamp: TerminalSearchStamp
+    /// Document order, oldest first. Anchors are refreshed when navigation
+    /// finds that history eviction moved a match.
+    var matches: [TerminalSearchMatch]
+    var current: Int
+    let capped: Bool
+    /// Row identity to the (match, span) pairs drawn on that row, so
+    /// publication costs the visible rows and not the retained match count.
+    let byRow: [UInt64: [(match: Int, span: Int)]]
+  }
+  private var searchHits: SearchHits?
   private let graphics = KittyGraphicsStore()
   private var cellPixelWidth = 8
   private var cellPixelHeight = 16
@@ -224,7 +235,7 @@ private final class TerminalEmulator {
     // Geometry changes alter column coordinates. Ordinary document edits are
     // instead resolved lazily against each accepted row's revision, retaining
     // hits through unrelated output exactly as the Rust owner does.
-    if geometry { searchHit = nil }
+    if geometry { searchHits = nil }
     if document { documentEpoch &+= 1 }
     if screen { screenEpoch &+= 1 }
     if history { historyEpoch &+= 1 }
@@ -232,7 +243,7 @@ private final class TerminalEmulator {
   }
   private func advanceSearchGeneration() {
     searchGeneration &+= 1
-    searchHit = nil
+    searchHits = nil
   }
   private func finishDecodedText() {
     if utf8.isIdle && decodedScalarCount == 0 { return }
@@ -1583,9 +1594,11 @@ private final class TerminalEmulator {
       }
       rows.append(RowSnapshot(cells: cells, soft_wrapped: row.softWrapped, id: row.id, revision: row.revision))
     }
-    let search = visibleSearchHighlights(in: selected.rows).map {
-      SearchHighlight(row: $0["row"]!, start: $0["start"]!, end: $0["end"]!)
+    let highlights = visibleSearchHighlights(in: selected.rows, offset: selected.offset)
+    func highlight(_ value: [String: Int]) -> SearchHighlight {
+      SearchHighlight(row: value["row"]!, start: value["start"]!, end: value["end"]!)
     }
+    let search = highlights.current.map(highlight)
     let images = visibleImages(offset: selected.offset).map {
       ImagePlacementSnapshot(image: $0.image, generation: $0.generation, width: $0.width, height: $0.height,
                              source: $0.source, row: $0.row, col: $0.column, columns: $0.columns,
@@ -1607,7 +1620,8 @@ private final class TerminalEmulator {
       selectionPresentation: TerminalSelectionPresentation(snapshotID: selectionSnapshotID,
         documentGeneration: selectionDocumentGeneration, screen: selectionScreen, geometryEpoch: geometryEpoch,
         columns: columns, rows: selected.rows.map { .init(id: $0.id, revision: $0.revision, softWrapped: $0.softWrapped) }),
-      selection: selection.snapshot(screen: selectionScreen, rows: selected.rows)), nil)
+      selection: selection.snapshot(screen: selectionScreen, rows: selected.rows),
+      search_matches: highlights.others.map(highlight)), nil)
   }
   func isValid() -> Bool {
     document.hasValidInvariants(primary) && document.hasValidInvariants(alternate) &&
@@ -1684,7 +1698,7 @@ private final class TerminalEmulator {
       })
   }
   func createSearch(_ query: String) -> TerminalSearchToken? {
-    searchHit = nil
+    searchHits = nil
     return try? TerminalSearchToken(TerminalSearchTask(query: query, source: searchSource()))
   }
   private func searchStatus(_ status: TerminalSearchStatus) -> UInt32 {
@@ -1713,9 +1727,17 @@ private final class TerminalEmulator {
   func acceptSearch(_ token: TerminalSearchToken) -> UInt32 {
     let source = searchSource()
     switch token.task.accept(in: source) {
-    case .found(let first, let spans):
-      if !usingAlternate { setViewOffset(history.count - first) }
-      searchHit = (source.stamp, spans)
+    case .found(let matches, let capped):
+      var byRow: [UInt64: [(match: Int, span: Int)]] = [:]
+      for (matchIndex, match) in matches.enumerated() {
+        for (spanIndex, resolved) in match.spans.enumerated() where resolved.span.start < resolved.span.end {
+          byRow[resolved.span.proof.id, default: []].append((matchIndex, spanIndex))
+        }
+      }
+      // The newest match is the first stop; navigation then walks to older output.
+      searchHits = SearchHits(stamp: source.stamp, matches: matches, current: matches.count - 1,
+                              capped: capped, byRow: byRow)
+      revealSearchMatch(anchor: matches[matches.count - 1].anchor)
       return 5
     case .missing: return 2
     case .working: return 0
@@ -1723,6 +1745,58 @@ private final class TerminalEmulator {
     case .changed, .cancelled: return 3
     case .resourceLimit: return 4
     }
+  }
+  /// Centers the match. A find bar docked over the first rows would cover a
+  /// match pinned to the top of the viewport.
+  private func revealSearchMatch(anchor: Int) {
+    guard !usingAlternate else { return }
+    setViewOffset(history.count - anchor + rowCount / 2)
+  }
+  /// Resolves a retained match against the live document, following history
+  /// eviction. Nil means a contributing row changed or left the document.
+  private func liveSearchAnchor(_ match: TerminalSearchMatch, in source: TerminalSearchSource) -> Int? {
+    guard let first = match.spans.first?.span.proof.id else { return nil }
+    let anchor: Int
+    if source.rowIDAt(match.anchor) == first { anchor = match.anchor }
+    else if let found = (0..<source.rowCount).first(where: { source.rowIDAt($0) == first }) { anchor = found }
+    else { return nil }
+    for (offset, resolved) in match.spans.enumerated() {
+      guard source.rowIDAt(anchor + offset) == resolved.span.proof.id,
+            source.proofAt(anchor + offset) == resolved.span.proof
+      else { return nil }
+    }
+    return anchor
+  }
+  /// One-based position counted from the newest match, as a find bar shows it.
+  func searchPosition() -> (position: Int, total: Int, capped: Bool)? {
+    guard let hits = searchHits, hits.stamp == searchSource().stamp else { return nil }
+    return (hits.matches.count - hits.current, hits.matches.count, hits.capped)
+  }
+  /// Moves to the adjacent live match and reveals it, wrapping at either end.
+  /// Stale matches are skipped; nil means no retained match is still valid.
+  func navigateSearch(older: Bool) -> (position: Int, total: Int, capped: Bool)? {
+    guard var hits = searchHits else { return nil }
+    let source = searchSource()
+    guard hits.stamp == source.stamp else { searchHits = nil; return nil }
+    let count = hits.matches.count
+    var index = hits.current
+    for _ in 0..<count {
+      index = (index + (older ? count - 1 : 1)) % count
+      guard let anchor = liveSearchAnchor(hits.matches[index], in: source) else { continue }
+      hits.matches[index].anchor = anchor
+      hits.current = index
+      searchHits = hits
+      revealSearchMatch(anchor: anchor)
+      changed(document: false, screen: false)
+      return (count - index, count, hits.capped)
+    }
+    clearSearch()
+    return nil
+  }
+  func clearSearch() {
+    guard searchHits != nil else { return }
+    searchHits = nil
+    changed(document: false, screen: false)
   }
   private func sanitizedTitle(_ value: String) -> String {
     var result = ""
@@ -1759,30 +1833,46 @@ private final class TerminalEmulator {
     return SnapshotSelection(rows: selected.rows, offset: selected.offset,
                              followingTail: selected.offset == 0)
   }
-  private func visibleSearchHighlights(in rows: [TerminalRow]) -> [[String: Int]] {
-    guard let hit = searchHit else { return [] }
+  /// Highlights for one published row selection: the navigated match and the
+  /// remaining visible matches. `offset` is the selection's scroll offset; it
+  /// locates the rows in document space so each proof is checked exactly.
+  private func visibleSearchHighlights(in rows: [TerminalRow], offset: Int)
+    -> (current: [[String: Int]], others: [[String: Int]]) {
+    guard let hits = searchHits, let firstRow = rows.first else { return ([], []) }
     let source = searchSource()
-    guard source.stamp == hit.stamp,
-          let first = hit.spans.first,
-          let start = (0..<source.rowCount).first(where: { source.rowIDAt($0) == first.span.proof.id })
-    else { return [] }
-    for (offset, resolved) in hit.spans.enumerated() {
-      let index = start + offset
-      guard source.rowIDAt(index) == resolved.span.proof.id,
-            source.proofAt(index) == resolved.span.proof
-      else { return [] }
+    guard source.stamp == hits.stamp else { return ([], []) }
+    let base: Int
+    if usingAlternate { base = 0 }
+    else if offset <= 0 { base = history.count }
+    else {
+      let total = history.count + primary.rows.count
+      base = max(0, max(rowCount, total - min(offset, history.count)) - rowCount)
     }
-    var byRow: [UInt64: [(UInt64, Int, Int)]] = [:]
-    for resolved in hit.spans where resolved.span.start < resolved.span.end {
-      let span = resolved.span
-      byRow[span.proof.id, default: []].append((span.proof.revision, span.start, span.end))
+    guard source.rowIDAt(base) == firstRow.id else { return ([], []) }
+    var proofs: [Int: TerminalSearchProof?] = [:]
+    func proven(_ index: Int, _ proof: TerminalSearchProof) -> Bool {
+      if let known = proofs[index] { return known == proof }
+      let live = source.proofAt(index)
+      proofs[index] = live
+      return live == proof
     }
-    return rows.enumerated().flatMap { index, row in
-      (byRow[row.id] ?? []).compactMap { hit in
-        guard hit.0 == row.revision else { return nil }
-        return ["row": index, "start": hit.1, "end": hit.2]
+    var current: [[String: Int]] = []
+    var others: [[String: Int]] = []
+    for (visible, row) in rows.enumerated() {
+      guard let entries = hits.byRow[row.id] else { continue }
+      for entry in entries {
+        let match = hits.matches[entry.match]
+        let first = base + visible - entry.span
+        // A multi-row match is drawn only while all of its rows are still
+        // adjacent and unchanged.
+        guard first >= 0, match.spans.enumerated().allSatisfy({ proven(first + $0.offset, $0.element.span.proof) })
+        else { continue }
+        let span = match.spans[entry.span].span
+        let highlight = ["row": visible, "start": span.start, "end": span.end]
+        if entry.match == hits.current { current.append(highlight) } else { others.append(highlight) }
       }
     }
+    return (current, others)
   }
   func publishBinary(scroll: Int?, now: UInt64, context: UnsafeMutableRawPointer?, callback: SnapshotCallback?) -> Bool {
     tick(now)
@@ -1791,7 +1881,7 @@ private final class TerminalEmulator {
     let selected = selectSnapshot(scroll: scroll)
     var metadataObject = snapshotMetadata(cursor: screen, offset: selected.offset,
                                           followingTail: selected.followingTail,
-                                          search: visibleSearchHighlights(in: selected.rows))
+                                          search: visibleSearchHighlights(in: selected.rows, offset: selected.offset))
     metadataObject["row_identities"] = selected.rows.map { ["id": $0.id, "revision": $0.revision] }
     #if SNAPSHOT_ABI_DIAGNOSTICS
     SnapshotABIDiagnostics.jsonPublications += 1
@@ -1840,14 +1930,15 @@ private final class TerminalEmulator {
     let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(cell.style.foreground), "background": colorJSON(cell.style.background), "underline_color": colorJSON(cell.style.underline), "underline": Int(cell.style.underlineKind), "bold": cell.style.flags & 1 != 0, "faint": cell.style.flags & 2 != 0, "italic": cell.style.flags & 4 != 0, "inverse": cell.style.flags & 8 != 0, "conceal": cell.style.flags & 16 != 0, "strike": cell.style.flags & 32 != 0, "overline": cell.style.flags & 64 != 0, "blink": cell.style.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
     var data = snapshotMetadata(cursor: screen, offset: offset,
                                 followingTail: selected.followingTail,
-                                search: visibleSearchHighlights(in: source))
+                                search: visibleSearchHighlights(in: source, offset: offset))
     data["rows"] = rows
     return (try? JSONSerialization.data(withJSONObject: data)) ?? Data("{}".utf8)
   }
   private func snapshotMetadata(cursor: TerminalScreen, offset: Int,
-                                followingTail: Bool, search: [[String: Int]]) -> [String: Any] {
+                                followingTail: Bool,
+                                search: (current: [[String: Int]], others: [[String: Int]])) -> [String: Any] {
     let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
-    var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette.snapshotPalette,"default_fg":palette.snapshotDefaultForeground,"default_bg":palette.snapshotDefaultBackground]
+    var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search.current,"search_matches":search.others,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette.snapshotPalette,"default_fg":palette.snapshotDefaultForeground,"default_bg":palette.snapshotDefaultBackground]
     metadata["cwd"] = currentDirectory as Any? ?? NSNull()
     return metadata
   }
@@ -1903,6 +1994,17 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
 @_cdecl("terminal_feed") func swift_terminal_feed(_ pointer: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ count: Int, _ now: UInt64) -> Int { core(pointer)?.feed(bytes, count: count, now: now) ?? 0 }
 @_cdecl("terminal_resize") func swift_terminal_resize(_ pointer: OpaquePointer?, _ cols: UInt32, _ rows: UInt32) -> Bool { core(pointer)?.resize(columns: Int(cols), rows: Int(rows)) ?? false }
 @_cdecl("terminal_resize_pixels") func swift_terminal_resize_pixels(_ pointer: OpaquePointer?, _ cols: UInt32, _ rows: UInt32, _ width: UInt32, _ height: UInt32) -> Bool { core(pointer)?.resize(columns: Int(cols), rows: Int(rows), cellWidth: Int(width), cellHeight: Int(height)) ?? false }
+@_cdecl("terminal_search_position") func swift_terminal_search_position(_ pointer: OpaquePointer?, _ position: UnsafeMutablePointer<UInt32>?, _ total: UnsafeMutablePointer<UInt32>?, _ capped: UnsafeMutablePointer<Bool>?) -> Bool {
+  guard let value = core(pointer)?.searchPosition() else { return false }
+  position?.pointee = UInt32(value.position); total?.pointee = UInt32(value.total); capped?.pointee = value.capped
+  return true
+}
+@_cdecl("terminal_search_navigate") func swift_terminal_search_navigate(_ pointer: OpaquePointer?, _ older: Bool, _ position: UnsafeMutablePointer<UInt32>?, _ total: UnsafeMutablePointer<UInt32>?, _ capped: UnsafeMutablePointer<Bool>?) -> Bool {
+  guard let value = core(pointer)?.navigateSearch(older: older) else { return false }
+  position?.pointee = UInt32(value.position); total?.pointee = UInt32(value.total); capped?.pointee = value.capped
+  return true
+}
+@_cdecl("terminal_search_clear") func swift_terminal_search_clear(_ pointer: OpaquePointer?) { core(pointer)?.clearSearch() }
 @_cdecl("terminal_finish") func swift_terminal_finish(_ pointer: OpaquePointer?) { core(pointer)?.finish() }
 @_cdecl("terminal_validate") func swift_terminal_validate(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.isValid() ?? false }
 @_cdecl("terminal_has_work") func swift_terminal_has_work(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.hasPendingWork ?? false }

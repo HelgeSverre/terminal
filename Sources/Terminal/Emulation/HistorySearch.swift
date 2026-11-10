@@ -114,10 +114,17 @@ enum TerminalSearchStatus: Equatable {
 
 enum TerminalSearchAdmissionError: Error, Equatable { case query }
 
+/// One accepted match. `anchor` is the first physical source row, including
+/// zero-width newline spans that intentionally have no drawable highlight.
+struct TerminalSearchMatch: Equatable {
+  var anchor: Int
+  let spans: [TerminalSearchResolvedSpan]
+}
+
 enum TerminalSearchAcceptance: Equatable {
-  /// `anchor` is the first physical source row, including zero-width newline
-  /// spans that intentionally have no drawable highlight.
-  case found(anchor: Int, spans: [TerminalSearchResolvedSpan])
+  /// Matches in document order, oldest first. `capped` reports that older
+  /// matches beyond the retention bound were discarded.
+  case found(matches: [TerminalSearchMatch], capped: Bool)
   case missing
   case working
   case needsPage
@@ -159,9 +166,10 @@ private struct TerminalSearchPage {
   let hardBreak: Bool
 }
 
-/// A bounded KMP literal task. It returns only the latest hit, matching the
-/// renderer's single-decoration policy while retaining O(query) state.
+/// A bounded KMP literal task. It retains the newest `maxMatches`
+/// non-overlapping hits for navigation; scan state stays O(query).
 struct TerminalSearchTask {
+  static let maxMatches = 10_000
   private static let maxQueryBytes = 4_096
   private static let maxRowBytes = 16 * 1024 * 1024
   private static let cellsPerStep = 64
@@ -175,7 +183,8 @@ struct TerminalSearchTask {
   private var page: TerminalSearchPage?
   private var matched = 0
   private var recent: [TerminalSearchSpan] = []
-  private var latest: [TerminalSearchSpan]?
+  private var matches: [[TerminalSearchSpan]] = []
+  private var dropped = false
   private(set) var status: TerminalSearchStatus = .needsPage
 
   init(query: String, source: TerminalSearchSource) throws {
@@ -201,7 +210,7 @@ struct TerminalSearchTask {
     if source.rowCount == 0 { status = .complete }
   }
 
-  var found: Bool { latest != nil }
+  var found: Bool { !matches.isEmpty }
 
   /// Owner-only. It validates all epochs before lending exactly one immutable
   /// row to the worker. New output is never followed past `stopIndex`.
@@ -259,7 +268,7 @@ struct TerminalSearchTask {
   mutating func step() -> TerminalSearchStatus {
     guard status == .working, var page else { return status }
     let stop = min(page.end, page.column + Self.cellsPerStep)
-    var matchEnd: Int?
+    var matchEnds: [Int] = []
     while page.column < stop {
       let column = page.column
       let cell = page.row.cells[column]
@@ -267,22 +276,22 @@ struct TerminalSearchTask {
       let span = TerminalSearchSpan(
         proof: TerminalSearchProof(page.row, softNextID: page.softNextID), start: column, end: column + cell.columnWidth)
       if cell.kind == .empty {
-        push(Unicode.Scalar(0x20)!, span: span, matchEnd: &matchEnd)
+        push(Unicode.Scalar(0x20)!, span: span, matchEnds: &matchEnds)
       } else if cell.kind == .lead1 || cell.kind == .lead2 {
-        for scalar in cell.text.unicodeScalars.flatMap(Self.lowercase) { push(scalar, span: span, matchEnd: &matchEnd) }
+        for scalar in cell.text.unicodeScalars.flatMap(Self.lowercase) { push(scalar, span: span, matchEnds: &matchEnds) }
       }
     }
     if page.column == page.end {
       if page.hardBreak {
         let point = TerminalSearchSpan(proof: TerminalSearchProof(page.row, softNextID: page.softNextID), start: page.end, end: page.end)
-        push(Unicode.Scalar(0x0a)!, span: point, matchEnd: &matchEnd)
+        push(Unicode.Scalar(0x0a)!, span: point, matchEnds: &matchEnds)
       }
       self.page = nil
       status = next == nil ? .complete : .needsPage
     } else {
       self.page = page
     }
-    if let matchEnd {
+    for matchEnd in matchEnds {
       let start = matchEnd - pattern.count
       var spans: [TerminalSearchSpan] = []
       for span in recent[start..<matchEnd] {
@@ -293,13 +302,18 @@ struct TerminalSearchTask {
           spans.append(span)
         }
       }
-      latest = spans
+      matches.append(spans)
+    }
+    // Trim in halves so retention stays amortized O(1) per match.
+    if matches.count >= 2 * Self.maxMatches {
+      matches.removeFirst(matches.count - Self.maxMatches)
+      dropped = true
     }
     if recent.count > pattern.count { recent.removeFirst(recent.count - pattern.count) }
     return status
   }
 
-  mutating func cancel() { status = .cancelled; page = nil; latest = nil; recent.removeAll() }
+  mutating func cancel() { status = .cancelled; page = nil; matches.removeAll(); recent.removeAll() }
 
   /// Owner-only acceptance. It rechecks epochs and per-row proofs, so a stale
   /// worker result can never navigate/highlight unrelated output.
@@ -313,19 +327,35 @@ struct TerminalSearchTask {
     case .needsPage: return .needsPage
     case .complete: break
     }
-    guard let latest else { return .missing }
-    guard let first = latest.first,
-          let firstIndex = searchIndex(of: first.proof.id, hint: 0, source: source)
-    else { return .changed }
-    var spans: [TerminalSearchResolvedSpan] = []
-    for (offset, span) in latest.enumerated() {
-      let index = firstIndex + offset
-      guard source.rowIDAt(index) == span.proof.id,
-            source.proofAt(index) == span.proof
-      else { return .changed }
-      spans.append(TerminalSearchResolvedSpan(row: index, span: span))
+    guard !matches.isEmpty else { return .missing }
+    let kept = matches.suffix(Self.maxMatches)
+    // One pass over the source resolves every retained first row. A match
+    // whose rows were evicted, relinked or rewritten since its page was lent
+    // is dropped on its own; the remaining matches stay navigable.
+    var anchors = Dictionary(kept.map { ($0[0].proof.id, -1) }, uniquingKeysWith: { first, _ in first })
+    var unresolved = anchors.count
+    var index = 0
+    while unresolved > 0 && index < source.rowCount {
+      if let id = source.rowIDAt(index), anchors[id] == -1 {
+        anchors[id] = index
+        unresolved -= 1
+      }
+      index += 1
     }
-    return .found(anchor: firstIndex, spans: spans)
+    var accepted: [TerminalSearchMatch] = []
+    accepted.reserveCapacity(kept.count)
+    for match in kept {
+      guard let first = anchors[match[0].proof.id], first >= 0 else { continue }
+      var spans: [TerminalSearchResolvedSpan] = []
+      for (offset, span) in match.enumerated() {
+        let row = first + offset
+        guard source.rowIDAt(row) == span.proof.id, source.proofAt(row) == span.proof else { break }
+        spans.append(TerminalSearchResolvedSpan(row: row, span: span))
+      }
+      if spans.count == match.count { accepted.append(TerminalSearchMatch(anchor: first, spans: spans)) }
+    }
+    guard !accepted.isEmpty else { return .changed }
+    return .found(matches: accepted, capped: dropped || matches.count > kept.count)
   }
 
   private static func lowercase(_ scalar: Unicode.Scalar) -> [Unicode.Scalar] {
@@ -336,14 +366,16 @@ struct TerminalSearchTask {
     for index in 0..<source.rowCount where source.rowIDAt(index) == id { return index }
     return nil
   }
-  private mutating func push(_ scalar: Unicode.Scalar, span: TerminalSearchSpan, matchEnd: inout Int?) {
+  private mutating func push(_ scalar: Unicode.Scalar, span: TerminalSearchSpan, matchEnds: inout [Int]) {
     recent.append(span)
     var candidate = matched
     while candidate > 0 && scalar != pattern[candidate] { candidate = failure[candidate - 1] }
     if scalar == pattern[candidate] { candidate += 1 }
     if candidate == pattern.count {
-      matchEnd = recent.count
-      candidate = failure[candidate - 1]
+      matchEnds.append(recent.count)
+      // Restart rather than follow the failure link: matches never overlap,
+      // so each one is a distinct navigation stop.
+      candidate = 0
     }
     matched = candidate
   }

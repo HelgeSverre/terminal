@@ -214,7 +214,7 @@ struct TerminalSnapshot: Decodable {
   enum CodingKeys: String, CodingKey {
     case at_prompt, input_ready, search, images, revision, geometry_epoch, document_epoch, history_epoch, screen_epoch,
       scroll_offset, following_tail, viewport_clamp_revision, cols, rows, cursor, modes, alternate, title, cwd,
-      history_rows, palette, default_fg, default_bg, selectionPresentation, selection
+      history_rows, palette, default_fg, default_bg, selectionPresentation, selection, search_matches
   }
   let revision: UInt64
   let geometry_epoch: UInt64
@@ -237,6 +237,8 @@ struct TerminalSnapshot: Decodable {
   let default_bg: [Int]
   var selectionPresentation: TerminalSelectionPresentation? = nil
   var selection: TerminalSelectionSnapshot = .none
+  /// Visible matches other than the navigated one, which stays in `search`.
+  var search_matches: [SearchHighlight] = []
 
   func selectionHit(row: Int, boundary: Int, affinity: TerminalSelectionAffinity = .before) -> TerminalSelectionHit? {
     selectionPresentation?.hit(row: row, boundary: boundary, affinity: affinity)
@@ -272,6 +274,7 @@ extension TerminalSnapshot {
     default_bg = try values.decode([Int].self, forKey: .default_bg)
     selectionPresentation = try values.decodeIfPresent(TerminalSelectionPresentation.self, forKey: .selectionPresentation)
     selection = try values.decodeIfPresent(TerminalSelectionSnapshot.self, forKey: .selection) ?? .none
+    search_matches = try values.decodeIfPresent([SearchHighlight].self, forKey: .search_matches) ?? []
   }
 }
 struct SearchHighlight: Decodable, Equatable {

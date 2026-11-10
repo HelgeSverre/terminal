@@ -41,6 +41,10 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   private var fontPoints: CGFloat = 14
   private var focused = false
   private var tracking: NSTrackingArea?
+  private weak var findBar: FindBarView?
+  // Invalidates completions of superseded queries and of a closed bar.
+  private var findGeneration = 0
+  private var findPending = false
   var onStatus: ((String) -> Void)?
   var onTitle: ((String) -> Void)?
   var onActivated: (() -> Void)?
@@ -806,21 +810,78 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     fontPoints = 14
     updateGeometry()
   }
+  /// The pane presentation owns the bar's place in the layout; the canvas
+  /// owns what it searches.
+  func attach(findBar: FindBarView) {
+    self.findBar = findBar
+    findBar.onQuery = { [weak self] query in self?.runFind(query) }
+    findBar.onStep = { [weak self] older in self?.stepFind(older: older) }
+    findBar.onClose = { [weak self] in self?.closeFind() }
+  }
   @objc func find(_ sender: Any?) {
-    let alert = NSAlert()
-    alert.messageText = "Find in scrollback"
-    alert.addButton(withTitle: "Find")
-    alert.addButton(withTitle: "Cancel")
-    let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
-    alert.accessoryView = field
-    guard let window else { return }
-    alert.beginSheetModal(for: window) { [weak self] response in
-      guard response == .alertFirstButtonReturn, !field.stringValue.isEmpty else { return }
-      let query = field.stringValue
-      self?.session.find(query) { [weak self] outcome in
-        self?.onStatus?(outcome.message)
+    guard let findBar else { return }
+    let reopening = findBar.isHidden
+    findBar.open()
+    // Closing cleared the decorations; an earlier query is searched again.
+    if reopening { runFind(findBar.query) }
+  }
+  @objc func findNext(_ sender: Any?) { stepFind(older: true) }
+  @objc func findPrevious(_ sender: Any?) { stepFind(older: false) }
+  private func runFind(_ query: String) {
+    findGeneration += 1
+    guard let findBar else { return }
+    guard !query.isEmpty else {
+      findPending = false
+      session.searchClear()
+      findBar.show(.idle)
+      return
+    }
+    let generation = findGeneration
+    findPending = true
+    findBar.show(.searching)
+    session.search(query) { [weak self] outcome, position in
+      guard let self, self.findGeneration == generation, let findBar = self.findBar else { return }
+      self.findPending = false
+      switch outcome {
+      case .found:
+        if let position {
+          findBar.show(.matches(index: position.index, total: position.total, capped: position.capped))
+        } else { findBar.show(.noMatches) }
+      case .missing: findBar.show(.noMatches)
+      // A newer query or a close already owns the label.
+      case .cancelled: break
+      case .changed: findBar.show(.failed("Output changed"))
+      case .invalidQuery: findBar.show(.failed("Query too long"))
+      case .resourceLimit: findBar.show(.failed("Row too large"))
       }
     }
+  }
+  private func stepFind(older: Bool) {
+    guard let findBar else { return }
+    if findBar.isHidden { find(nil); return }
+    let query = findBar.query
+    // Return during a running search waits for it instead of restarting it.
+    guard !query.isEmpty, !findPending else { return }
+    // Without an accepted match set there is nothing to step through; this
+    // also picks up output that arrived after a search found nothing.
+    guard case .matches = findBar.result else { runFind(query); return }
+    let generation = findGeneration
+    session.searchNavigate(older: older) { [weak self] position in
+      guard let self, self.findGeneration == generation, let findBar = self.findBar else { return }
+      if let position {
+        findBar.show(.matches(index: position.index, total: position.total, capped: position.capped))
+      } else {
+        // Every retained match was overwritten or evicted; search afresh.
+        self.runFind(query)
+      }
+    }
+  }
+  private func closeFind() {
+    findGeneration += 1
+    findPending = false
+    session.searchClear()
+    findBar?.dismiss()
+    window?.makeFirstResponder(self)
   }
   override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
   override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {

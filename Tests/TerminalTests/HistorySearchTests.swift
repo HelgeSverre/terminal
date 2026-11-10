@@ -21,11 +21,10 @@ import Foundation
     var task = try TerminalSearchTask(query: "dEf", source: joined.source)
     run(&task, joined)
     precondition(task.accept(in: joined.source) == .found(
-      anchor: 0,
-      spans: [
+      matches: [TerminalSearchMatch(anchor: 0, spans: [
         TerminalSearchResolvedSpan(row: 0, span: TerminalSearchSpan(proof: TerminalSearchProof(joined.rows[0], softNextID: 2), start: 3, end: 4)),
         TerminalSearchResolvedSpan(row: 1, span: TerminalSearchSpan(proof: TerminalSearchProof(joined.rows[1]), start: 0, end: 2)),
-      ]))
+      ])], capped: false))
     var hard = try TerminalSearchTask(query: "GHnext", source: joined.source)
     run(&hard, joined)
     precondition(hard.accept(in: joined.source) == .missing)
@@ -35,9 +34,8 @@ import Foundation
     var bareNewline = try TerminalSearchTask(query: "\n", source: joined.source)
     run(&bareNewline, joined)
     precondition(bareNewline.accept(in: joined.source) == .found(
-      anchor: 1,
-      spans: [TerminalSearchResolvedSpan(row: 1, span: TerminalSearchSpan(
-        proof: TerminalSearchProof(joined.rows[1]), start: 4, end: 4))]))
+      matches: [TerminalSearchMatch(anchor: 1, spans: [TerminalSearchResolvedSpan(row: 1, span: TerminalSearchSpan(
+        proof: TerminalSearchProof(joined.rows[1]), start: 4, end: 4))])], capped: false))
 
     // Unicode 17 mappings are pinned rather than delegated to Foundation,
     // whose macOS 15 tables do not yet include these scalars.
@@ -80,6 +78,48 @@ import Foundation
       rows: [TerminalSearchRow(id: 9, cells: [TerminalSearchCell(String(repeating: "x", count: 16 * 1024 * 1024), .lead1)])])
     var limited = try TerminalSearchTask(query: "x", source: oversized.source)
     precondition(limited.fill(from: oversized.source) == .resourceLimit)
-    print("PASS Swift search: immutable pages, soft/hard rows, cancellation, staleness, limits")
+
+    // Every match is retained in document order, including several on one row
+    // and matches that end inside the same 64-cell step.
+    func columns(_ acceptance: TerminalSearchAcceptance) -> [[Int]] {
+      guard case .found(let matches, _) = acceptance else { return [] }
+      return matches.map { [$0.anchor, $0.spans[0].span.start, $0.spans[0].span.end] }
+    }
+    let several = TerminalSearchDocument(stamp: stamp, rows: [row(30, "ab ab"), row(31, "none"), row(32, "xAB")])
+    var all = try TerminalSearchTask(query: "ab", source: several.source)
+    run(&all, several)
+    precondition(columns(all.accept(in: several.source)) == [[0, 0, 2], [0, 3, 5], [2, 1, 3]])
+
+    // Matches never overlap, so each is a distinct navigation stop.
+    let repeated = TerminalSearchDocument(stamp: stamp, rows: [row(40, "aaaaa")])
+    var disjoint = try TerminalSearchTask(query: "aa", source: repeated.source)
+    run(&disjoint, repeated)
+    precondition(columns(disjoint.accept(in: repeated.source)) == [[0, 0, 2], [0, 2, 4]])
+
+    // A rewritten or evicted row costs only its own matches. Surviving
+    // anchors follow the rows to their new positions.
+    let partlyStale = TerminalSearchDocument(
+      stamp: stamp, rows: [row(31, "none"), row(32, "xAB"), row(33, "ab", revision: 0)])
+    precondition(columns(all.accept(in: partlyStale.source)) == [[1, 1, 3]])
+    let rewritten = TerminalSearchDocument(
+      stamp: stamp, rows: [row(30, "ab ab", revision: 1), row(31, "none"), row(32, "xAB")])
+    precondition(columns(all.accept(in: rewritten.source)) == [[2, 1, 3]])
+
+    // Retention is bounded: the newest matches survive and the cap is reported.
+    let wide = String(repeating: "x", count: 100)
+    let floodRows = (0..<250).map { row(UInt64(1_000 + $0), wide) }
+    let flood = TerminalSearchDocument(stamp: stamp, rows: floodRows)
+    var bounded = try TerminalSearchTask(query: "x", source: flood.source)
+    for _ in 0..<100_000 {
+      let status = bounded.fill(from: flood.source)
+      if status == .working { _ = bounded.step() } else if status != .needsPage { break }
+    }
+    guard case .found(let retained, let capped) = bounded.accept(in: flood.source) else {
+      preconditionFailure("bounded search found nothing")
+    }
+    precondition(capped && retained.count == TerminalSearchTask.maxMatches)
+    precondition(retained.last?.anchor == 249 && retained.last?.spans[0].span.start == 99)
+    precondition(retained.first?.anchor == 150 && retained.first?.spans[0].span.start == 0)
+    print("PASS Swift search: immutable pages, soft/hard rows, all matches, bounds, cancellation, staleness, limits")
   }
 }

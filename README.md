@@ -61,7 +61,9 @@ Nerd Font Mono fills missing icon glyphs.
 | Split right / below | ⌘D / ⇧⌘D |
 | Close pane | ⌘W |
 | Clear screen and scrollback | ⌘K |
-| Search history | ⌘F |
+| Find in scrollback | ⌘F |
+| Next / previous match | Return / ⇧Return, or ⌘G / ⇧⌘G |
+| Close the find bar | Esc |
 | Increase / decrease font size | ⌘+ / ⌘− |
 | Move to the start / end of the shell line | ⌘← / ⌘→ |
 

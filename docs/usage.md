@@ -58,7 +58,9 @@ visible.
 | Copy selection | ⌘C |
 | Paste | ⌘V |
 | Select visible output | ⌘A |
-| Search history | ⌘F |
+| Find in scrollback | ⌘F |
+| Next / previous match | Return / ⇧Return, or ⌘G / ⇧⌘G |
+| Close the find bar | Esc |
 | Increase / decrease font size | ⌘+ / ⌘− |
 | Start / end of shell line | ⌘← / ⌘→ |
 | Previous / next word | ⌥← / ⌥→ |

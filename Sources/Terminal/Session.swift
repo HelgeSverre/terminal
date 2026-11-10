@@ -15,6 +15,14 @@ enum HistorySearchOutcome: Equatable {
   }
 }
 
+/// One-based position counted from the newest match. `capped` reports that
+/// matches older than the retention bound are not included in `total`.
+struct HistorySearchPosition: Equatable {
+  let index: Int
+  let total: Int
+  let capped: Bool
+}
+
 struct LaunchSpec {
   let executable: String
   let arguments: [String]
@@ -166,8 +174,10 @@ final class Session: @unchecked Sendable {
     case link(TerminalPresentedContent, URL, LinkCompletion, Int, Bool)
     case configure(TerminalSessionConfiguration)
     case scroll(Int)
-    case find(String, @MainActor (HistorySearchOutcome) -> Void)
+    case find(String, SearchCompletion)
     case searchAdvance
+    case searchNavigate(Bool, @MainActor (HistorySearchPosition?) -> Void)
+    case searchClear
     case clearDisplay
     case probe(UInt64, @MainActor (Double) -> Void)
     case clipboardDecision(UInt64, Bool, @MainActor (Bool) -> Void)
@@ -256,6 +266,7 @@ final class Session: @unchecked Sendable {
   deinit { if let core { terminal_destroy(core) } }
   private static var now: UInt64 { DispatchTime.now().uptimeNanoseconds / 1_000_000 }
   private var writeBytes: Int { writes.reduce(0) { $0 + $1.remaining } }
+  typealias SearchCompletion = @MainActor (HistorySearchOutcome, HistorySearchPosition?) -> Void
   // This module owns worker scheduling, latest-query replacement, bounded work,
   // retries, lifetime and source validation. Canvas only submits a query and
   // receives an outcome; it never reconstructs history positions or epochs.
@@ -272,7 +283,7 @@ final class Session: @unchecked Sendable {
     }
     private struct Request {
       let query: String
-      let completion: @MainActor (HistorySearchOutcome) -> Void
+      let completion: SearchCompletion
       var retries = 0
     }
     private weak var session: Session?
@@ -282,14 +293,14 @@ final class Session: @unchecked Sendable {
     private var working = false
     private var scheduled = false
     init(session: Session) { self.session = session }
-    func start(_ query: String, completion: @escaping @MainActor (HistorySearchOutcome) -> Void) {
+    func start(_ query: String, completion: @escaping SearchCompletion) {
       cancel()
       request = Request(query: query, completion: completion)
       schedule()
     }
     func cancel() {
       generation &+= 1
-      if let request { DispatchQueue.main.async { request.completion(.cancelled) } }
+      if let request { DispatchQueue.main.async { request.completion(.cancelled, nil) } }
       request = nil
       job = nil
     }
@@ -346,8 +357,16 @@ final class Session: @unchecked Sendable {
       guard let request else { return }
       self.request = nil
       job = nil
-      DispatchQueue.main.async { request.completion(outcome) }
+      let position = outcome == .found ? session?.searchPosition() : nil
+      DispatchQueue.main.async { request.completion(outcome, position) }
     }
+  }
+  private func searchPosition() -> HistorySearchPosition? {
+    var index: UInt32 = 0
+    var total: UInt32 = 0
+    var capped = false
+    guard let core, terminal_search_position(core, &index, &total, &capped) else { return nil }
+    return HistorySearchPosition(index: Int(index), total: Int(total), capped: capped)
   }
   private func report(_ text: String) {
     DispatchQueue.main.async { [weak self] in self?.onStatus?(text) }
@@ -812,6 +831,16 @@ final class Session: @unchecked Sendable {
     case .scroll(let delta): terminal_view_scroll(core, Int64(delta))
     case .find(let query, let completion): historySearch.start(query, completion: completion)
     case .searchAdvance: historySearch.advance()
+    case .searchNavigate(let older, let completion):
+      var index: UInt32 = 0
+      var total: UInt32 = 0
+      var capped = false
+      let moved = terminal_search_navigate(core, older, &index, &total, &capped)
+      let position = moved ? HistorySearchPosition(index: Int(index), total: Int(total), capped: capped) : nil
+      DispatchQueue.main.async { completion(position) }
+    case .searchClear:
+      historySearch.cancel()
+      terminal_search_clear(core)
     case .clearDisplay:
       let action = terminal_clear_display(core)
       if action != 0 { historySearch.cancel() }
@@ -1145,12 +1174,35 @@ final class Session: @unchecked Sendable {
     return true
   }
   func find(_ query: String, completion: @escaping @MainActor (HistorySearchOutcome) -> Void) {
+    search(query) { outcome, _ in completion(outcome) }
+  }
+  /// Replaces any search in flight. A hit selects the newest match and
+  /// reports its position among all retained matches.
+  func search(_ query: String, completion: @escaping SearchCompletion) {
     readBroker.submit { [self] in
       guard !closed else {
-        DispatchQueue.main.async { completion(.cancelled) }
+        DispatchQueue.main.async { completion(.cancelled, nil) }
         return
       }
       enqueue(.find(query, completion))
+    }
+  }
+  /// Moves to the adjacent match of the accepted search, wrapping at the ends.
+  /// Nil means no accepted match is still valid; the caller searches again.
+  func searchNavigate(older: Bool, completion: @escaping @MainActor (HistorySearchPosition?) -> Void) {
+    readBroker.submit { [self] in
+      guard !closed else {
+        DispatchQueue.main.async { completion(nil) }
+        return
+      }
+      enqueue(.searchNavigate(older, completion))
+    }
+  }
+  /// Cancels any search in flight and removes the match decorations.
+  func searchClear() {
+    readBroker.submit { [self] in
+      guard !closed else { return }
+      enqueue(.searchClear)
     }
   }
   // Urgent transport control: no semantic event or stalled write can trap it.
@@ -1258,7 +1310,8 @@ final class Session: @unchecked Sendable {
         guard case .event(let event) = record else { continue }
         switch event {
         case .input(_, _, _, _, let cost), .keyInput(_, let cost), .raw(_, let cost), .shortcut(_, let cost): release(cost)
-        case .find(_, let completion): DispatchQueue.main.async { completion(.cancelled) }
+        case .find(_, let completion): DispatchQueue.main.async { completion(.cancelled, nil) }
+        case .searchNavigate(_, let completion): DispatchQueue.main.async { completion(nil) }
         case .clipboardDecision(_, _, let completion): DispatchQueue.main.async { completion(false) }
         case .selection(_, let completion, let cost, _, let retainsCopyResult):
           finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,

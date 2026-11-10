@@ -592,10 +592,58 @@ import Foundation
     defer { terminal_destroy(history) }
     feed(history, "target\r\nsecond\r\nTARGET\r\nlater\r\nlast")
     precondition(run(history, "target") == 5)
+    // The newest match is selected and centered, clear of a bar docked over
+    // the first rows; the older match is published as a secondary highlight.
     let anchored = snapshot(history)
-    precondition(anchored["scroll_offset"] as? Int == 1)
-    precondition((anchored["search"] as! [[String: Int]]) == [["row": 0, "start": 0, "end": 6]])
+    precondition(anchored["scroll_offset"] as? Int == 2)
+    precondition((anchored["search"] as! [[String: Int]]) == [["row": 1, "start": 0, "end": 6]])
+    precondition((anchored["search_matches"] as! [[String: Int]]).isEmpty)
     precondition((binaryHeader(history, scroll: 0)["search"] as! [[String: Int]]).isEmpty)
+    func position(_ core: OpaquePointer) -> [UInt32]? {
+      var index: UInt32 = 0, total: UInt32 = 0, capped = true
+      guard terminal_search_position(core, &index, &total, &capped), !capped else { return nil }
+      return [index, total]
+    }
+    func navigate(_ core: OpaquePointer, older: Bool) -> [UInt32]? {
+      var index: UInt32 = 0, total: UInt32 = 0, capped = true
+      guard terminal_search_navigate(core, older, &index, &total, &capped), !capped else { return nil }
+      return [index, total]
+    }
+    precondition(position(history) == [1, 2])
+    precondition(navigate(history, older: true) == [2, 2])
+    let older = snapshot(history)
+    precondition(older["scroll_offset"] as? Int == 3)
+    precondition((older["search"] as! [[String: Int]]) == [["row": 0, "start": 0, "end": 6]])
+    let both = binaryHeader(history, scroll: 2)
+    precondition((both["search"] as! [[String: Int]]).isEmpty)
+    precondition((both["search_matches"] as! [[String: Int]]) == [["row": 1, "start": 0, "end": 6]])
+    // Navigation wraps in both directions.
+    precondition(navigate(history, older: true) == [1, 2])
+    precondition(navigate(history, older: false) == [2, 2])
+    precondition(navigate(history, older: false) == [1, 2])
+    terminal_search_clear(history)
+    precondition(position(history) == nil && navigate(history, older: true) == nil)
+    precondition((snapshot(history)["search"] as! [[String: Int]]).isEmpty)
+
+    // Several matches on one row: one navigated, the others secondary.
+    let sameRow = terminal_create(12, 2)!
+    defer { terminal_destroy(sameRow) }
+    feed(sameRow, "ab ab ab")
+    precondition(run(sameRow, "ab") == 5 && position(sameRow) == [1, 3])
+    precondition((snapshot(sameRow)["search"] as! [[String: Int]]) == [["row": 0, "start": 6, "end": 8]])
+    precondition((snapshot(sameRow)["search_matches"] as! [[String: Int]]).count == 2)
+    // A rewritten row drops its matches; navigation then reports none left.
+    feed(sameRow, "\rX")
+    precondition((snapshot(sameRow)["search_matches"] as! [[String: Int]]).isEmpty)
+    precondition(navigate(sameRow, older: true) == nil && position(sameRow) == nil)
+
+    // Navigation skips a match whose row changed and lands on a live one.
+    let skipping = terminal_create(8, 3)!
+    defer { terminal_destroy(skipping) }
+    feed(skipping, "hit\r\nhit\r\nhit")
+    precondition(run(skipping, "hit") == 5 && position(skipping) == [1, 3])
+    feed(skipping, "\u{1b}[2;1HX")
+    precondition(navigate(skipping, older: true) == [3, 3])
 
     let alternate = terminal_create(8, 2)!
     defer { terminal_destroy(alternate) }

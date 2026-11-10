@@ -1252,6 +1252,23 @@ import Foundation
       RunLoop.main.run(until: Date().addingTimeInterval(0.01))
     }
     checks["search_found_and_highlighted"] = searchFound && searchHighlighted
+    // The accepted match set stays navigable and can be cleared.
+    var navigated: HistorySearchPosition?
+    var navigationAnswered = false
+    searchable.searchNavigate(older: true) { navigated = $0; navigationAnswered = true }
+    let navigateDeadline = Date().addingTimeInterval(5)
+    while !navigationAnswered && Date() < navigateDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["search_navigates_accepted_matches"] = (navigated?.total ?? 0) >= 1 && navigated?.capped == false
+    var clearedAnswered = false
+    searchable.searchClear()
+    searchable.searchNavigate(older: true) { clearedAnswered = $0 == nil }
+    let clearDeadline = Date().addingTimeInterval(5)
+    while !clearedAnswered && Date() < clearDeadline {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["search_clear_drops_matches"] = clearedAnswered
     searchable.find("missing-query-one") { checks["search_replacement_cancelled"] = $0 == .cancelled }
     searchable.find("search_needle") { checks["search_latest_query_completed"] = $0 == .found }
     searchable.semanticProbe { delay in checks["search_owner_probe_under_100ms"] = delay < 100 }

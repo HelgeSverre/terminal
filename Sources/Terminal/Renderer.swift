@@ -595,7 +595,10 @@ final class TerminalRendering: @unchecked Sendable {
     var glyphQuads = Array(repeating: [Quad](), count: atlases.count)
     var directGlyphQuads: [(quad: Quad, texture: MTLTexture, heap: MTLHeap?, legacyID: UUID?)] = []
     let snap = request.snapshot
-    let searchRows = Dictionary(snap.search.map { ($0.row, $0) }, uniquingKeysWith: { first, _ in first })
+    // The navigated match takes the accent; every other visible match takes
+    // the quieter selection tone so the current stop stays findable.
+    let currentSearchRows = Dictionary(grouping: snap.search, by: { $0.row })
+    let otherSearchRows = Dictionary(grouping: snap.search_matches, by: { $0.row })
     let palette = CellPalette(snapshot: snap)
     let baseBackground = palette.background
     let whiteUV = SIMD4<Float>(0.5 / Float(atlasSize), 0.5 / Float(atlasSize), 0, 0)
@@ -629,16 +632,20 @@ final class TerminalRendering: @unchecked Sendable {
       var linkSegment = 0
       var selectionSegment = 0
       for (r, row) in snap.rows.enumerated() {
-        let search = searchRows[r]
+        let currentSearch = currentSearchRows[r]
+        let otherSearch = otherSearchRows[r]
         for (c, cell) in row.cells.enumerated() {
           let x = request.inset + c * request.cellWidth
           let y = request.inset + r * request.cellHeight
           let colors = palette.resolve(cell.style)
           var fg = colors.foreground
           var bg = colors.background
-          if let search, search.start <= c && c < search.end {
+          if let currentSearch, currentSearch.contains(where: { $0.start <= c && c < $0.end }) {
             bg = TerminalTheme.linear(TerminalTheme.accent)
             fg = TerminalTheme.linear(TerminalTheme.background)
+          } else if let otherSearch, otherSearch.contains(where: { $0.start <= c && c < $0.end }) {
+            bg = TerminalTheme.linear(TerminalTheme.selection)
+            fg = TerminalTheme.linear(TerminalTheme.text)
           }
           while selectionSegment < snap.selection.segments.count {
             let segment = snap.selection.segments[selectionSegment]

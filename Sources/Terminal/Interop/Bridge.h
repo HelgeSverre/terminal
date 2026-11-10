@@ -43,6 +43,12 @@ uint32_t terminal_search_fill(Terminal *,TerminalSearch *);
 uint32_t terminal_search_step(TerminalSearch *);
 uint32_t terminal_search_accept(Terminal *,TerminalSearch *);
 void terminal_search_destroy(TerminalSearch *);
+/* The accepted match set stays with the terminal. Position is one-based from
+ * the newest match; navigation wraps and returns false once no retained match
+ * is still valid. */
+bool terminal_search_position(Terminal *,uint32_t *,uint32_t *,bool *);
+bool terminal_search_navigate(Terminal *,bool,uint32_t *,uint32_t *,bool *);
+void terminal_search_clear(Terminal *);
 void terminal_finish(Terminal *);
 typedef struct {int master;int status;int pid;int error;} TerminalProcess;
 TerminalProcess terminal_spawn_args(const char *,const char *,const char *,uint16_t,uint16_t,char *const []);

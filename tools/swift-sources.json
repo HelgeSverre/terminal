@@ -24,6 +24,7 @@
     "Sources/Terminal/GlyphResidency.swift",
     "Sources/Terminal/FontCatalog.swift",
     "Sources/Terminal/Preferences.swift",
+    "Sources/Terminal/FindBar.swift",
     "Sources/Terminal/PanePresentation.swift",
     "Sources/Terminal/Transport.swift",
     "Sources/Terminal/Session.swift",
@@ -229,6 +230,7 @@
       "Sources/Terminal/Text/SelectionWordProfile.swift",
       "Sources/Terminal/Preferences.swift",
       "Sources/Terminal/Theme.swift",
+      "Sources/Terminal/FindBar.swift",
       "Sources/Terminal/PanePresentation.swift",
       "Tests/TerminalTests/PreferencesTests.swift"
     ],

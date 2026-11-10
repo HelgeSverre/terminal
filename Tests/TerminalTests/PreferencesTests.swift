@@ -132,6 +132,49 @@ import Foundation
     panePresentation.onClose = { closed += 1 }
     close.performClick(nil)
     precondition(closed == 1)
+    // The find bar docks over the first rows of the canvas. It never takes
+    // height from the grid, so opening it cannot reflow the terminal.
+    let findBar = panePresentation.findBar
+    precondition(findBar.isHidden)
+    precondition(findBar.frame == NSRect(x: 0, y: 20, width: 320, height: FindBarView.height))
+    var findSteps: [Bool] = []
+    var findClosed = 0
+    findBar.onStep = { findSteps.append($0) }
+    findBar.onClose = { findClosed += 1 }
+    findBar.open()
+    precondition(!findBar.isHidden && viewport.frame == NSRect(x: 0, y: 20, width: 320, height: 200))
+    func findSubview<View: NSView>(_ name: String) -> View {
+      guard let view = findBar.subviews.first(where: {
+        $0.accessibilityIdentifier() == "no.helgesverre.terminal.find." + name
+      }) as? View else { preconditionFailure("find bar lacks \(name)") }
+      return view
+    }
+    let findQuery: NSTextField = findSubview("query")
+    let findCount: NSTextField = findSubview("count")
+    let findNext: NSButton = findSubview("next")
+    let findPrevious: NSButton = findSubview("previous")
+    // The placeholder is the bar's only label.
+    precondition(findQuery.placeholderAttributedString?.string == "Find in scrollback")
+    precondition(findCount.isHidden && !findNext.isEnabled && !findPrevious.isEnabled)
+    findBar.show(.matches(index: 3, total: 14, capped: false))
+    findBar.layoutSubtreeIfNeeded()
+    precondition(findCount.stringValue == "3/14" && !findCount.isHidden && findNext.isEnabled)
+    precondition(findQuery.frame.maxX <= findCount.frame.minX && findCount.frame.maxX <= findPrevious.frame.minX)
+    findBar.show(.matches(index: 1, total: 10_000, capped: true))
+    precondition(findCount.stringValue == "1/10000+")
+    findNext.performClick(nil)
+    findPrevious.performClick(nil)
+    // Return walks toward older output, like the down arrow; Esc closes.
+    let findEditor = NSTextView()
+    precondition(findBar.control(findQuery, textView: findEditor, doCommandBy: #selector(NSResponder.insertNewline(_:))))
+    precondition(findSteps == [true, false, true])
+    precondition(findBar.control(findQuery, textView: findEditor, doCommandBy: #selector(NSResponder.cancelOperation(_:))))
+    precondition(findClosed == 1)
+    precondition(!findBar.control(findQuery, textView: findEditor, doCommandBy: #selector(NSResponder.moveLeft(_:))))
+    findBar.show(.noMatches)
+    precondition(findCount.stringValue == "No matches" && !findNext.isEnabled && !findPrevious.isEnabled)
+    findBar.dismiss()
+    precondition(findBar.isHidden && findBar.result == .idle)
     // Middle click on the header closes; other buttons and releases outside do not.
     guard let header = close.superview else { preconditionFailure("close button has no header") }
     let headerWindow = NSWindow(contentRect: panePresentation.frame, styleMask: [.borderless],

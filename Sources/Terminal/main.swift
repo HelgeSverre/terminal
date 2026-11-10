@@ -176,6 +176,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     }
     panes.append(pane)
     let presentation = TerminalPanePresentationView(canvas: pane)
+    pane.attach(findBar: presentation.findBar)
     presentation.onSelect = { [weak self, weak pane] in
       guard let self, let pane else { return }
       self.selectActivePane(pane)
@@ -566,6 +567,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     item(edit, "Paste", #selector(TerminalCanvasView.paste(_:)), "v")
     item(edit, "Select All", #selector(TerminalCanvasView.selectAll(_:)), "a")
     item(edit, "Find", #selector(TerminalCanvasView.find(_:)), "f")
+    item(edit, "Find Next", #selector(TerminalCanvasView.findNext(_:)), "g")
+    item(edit, "Find Previous", #selector(TerminalCanvasView.findPrevious(_:)), "g", [.command, .shift])
     item(edit, "Cancel Paste", #selector(TerminalCanvasView.cancelPaste(_:)), ".")
     let view = submenu("View")
     item(view, "Clear Screen", #selector(TerminalCanvasView.clearScreen(_:)), "k")
