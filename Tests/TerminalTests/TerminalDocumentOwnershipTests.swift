@@ -1065,6 +1065,71 @@ import Foundation
     print("PASS row style tables: churn, compaction, snapshots, cross-row copies and shifts")
   }
 
+  /// Cluster text and links live beside the cells in column order. Drive every
+  /// row edit that moves, replaces or drops them against a plain array of cells.
+  static func rowPayloadsFollowEveryRowEdit() {
+    var seed: UInt64 = 0x2545_f491_4f6c_dd1d
+    func next(_ bound: Int) -> Int {
+      seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+      return Int((seed >> 33) % UInt64(bound))
+    }
+    let width = 24
+    var row = TerminalRow(columns: width)
+    var expected = [TerminalCell](repeating: TerminalCell(), count: width)
+    var retained: [(row: TerminalRow, cells: [TerminalCell])] = []
+    let links: [String?] = [nil, nil, "https://example.test/a", "https://example.test/b"]
+    for step in 0..<6_000 {
+      if step % 750 == 0 { retained.append((row, expected)) }
+      let count = expected.count
+      switch next(9) {
+      case 0, 1:
+        let column = next(count)
+        let cell = TerminalCell(text: ["e\u{301}", "🇳🇴", "x"][next(3)], kind: 1, link: links[next(4)])
+        row.setCell(cell, at: column); expected[column] = cell
+      case 2:
+        let column = next(count)
+        row.erase(at: column); expected[column] = TerminalCell()
+      case 3, 4:
+        let column = next(count - 1), right = column + 1 + next(count - column - 1)
+        let amount = 1 + next(right - column), inserting = next(2) == 0
+        row.shiftCells(column: column, right: right, amount: amount, inserting: inserting)
+        let old = expected
+        if inserting {
+          for destination in (column + amount)...right { expected[destination] = old[destination - amount] }
+        } else {
+          for destination in column...(right - amount) { expected[destination] = old[destination + amount] }
+        }
+      case 5:
+        let column = next(count), length = 1 + next(count - column), link = links[next(4)]
+        let bytes = (0..<length).map { _ in UInt8(0x61 + next(26)) }
+        bytes.withUnsafeBufferPointer {
+          row.writeASCII($0, at: column, style: TerminalStyle(), link: link, protected: false)
+        }
+        for offset in 0..<length {
+          expected[column + offset] = TerminalCell(text: String(UnicodeScalar(bytes[offset])), kind: 1, link: link)
+        }
+      case 6:
+        let kept = 1 + next(count)
+        row.truncate(to: kept); expected.removeSubrange(kept...)
+        row.appendBlanks(width - kept); expected += [TerminalCell](repeating: TerminalCell(), count: width - kept)
+      case 7:
+        let source = retained[next(retained.count)]
+        let lower = next(count), length = 1 + next(count - lower), destination = next(count - length + 1)
+        row.copyCells(from: source.row, range: lower..<(lower + length), to: destination)
+        for offset in 0..<length { expected[destination + offset] = source.cells[lower + offset] }
+      default:
+        let column = next(count)
+        row.clearText(at: column); expected[column].text = ""
+      }
+      precondition(Array(row.cells) == expected)
+      precondition(row.payloadCount == expected.filter { $0.link != nil || $0.text.unicodeScalars.count > 1 }.count)
+      let bytes = expected.reduce(0) { $0 + $1.text.utf8.count + ($1.link?.utf8.count ?? 0) }
+      precondition(row.retainedStorageCost == 32 + UInt64(row.retainedCellCapacity) * 64 + UInt64(bytes))
+    }
+    for snapshot in retained { precondition(Array(snapshot.row.cells) == snapshot.cells) }
+    print("PASS row payloads: cluster text and links through shifts, bulk writes, truncation, copies and snapshots")
+  }
+
   /// History reports the capacity its identity dictionary would have without
   /// keeping one while identities ascend. Hold that model to the real thing,
   /// and check that both lookup modes agree on rows, trims and misses.
@@ -1103,6 +1168,7 @@ import Foundation
   static func main() {
     historyIdentityIndexMatchesDictionary()
     rowStyleTablesSurviveChurnAndCopies()
+    rowPayloadsFollowEveryRowEdit()
     let old = retainedSnapshot()
     populatedSnapshotsRemainImmutable()
     carriageReturnMutatesSelectedScreen()

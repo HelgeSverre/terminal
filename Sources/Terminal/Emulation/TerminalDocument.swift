@@ -107,34 +107,105 @@ private struct TerminalRowPayload: Equatable {
   var utf8Bytes: UInt64 { UInt64(text?.utf8.count ?? 0) + UInt64(link?.utf8.count ?? 0) }
 }
 
-// The sparse payload owner keeps its resource charge with its COW dictionary.
+// The sparse payload owner keeps its resource charge with its entries.
 // Every replacement/removal updates both atomically; scalar-only rows never
 // enter this path. Reflow can therefore reserve an input generation without
 // scanning every cell or retaining an uncharged history generation first.
-private struct TerminalRowPayloads: Equatable, Sequence {
-  private var entries: [Int: TerminalRowPayload] = [:]
+//
+// Entries are kept in column order. Printing writes left to right, so a new
+// payload is nearly always an append, and a bulk overwrite removes one
+// contiguous run; neither hashes anything.
+private struct TerminalRowPayloads: Equatable {
+  struct Entry: Equatable {
+    var column: Int
+    var payload: TerminalRowPayload
+  }
+  private(set) var entries: [Entry] = []
   private(set) var utf8Bytes: UInt64 = 0
+  // Most entries held at once since the last reset. Reflow admission charges
+  // the capacity of the dictionary these entries used to live in; that
+  // capacity grew with this count and never shrank.
+  private var peakCount = 0
   var count: Int { entries.count }
-  var capacity: Int { entries.capacity }
+  var capacity: Int { TerminalHistory.dictionaryCapacity(holding: peakCount) }
   var isEmpty: Bool { entries.isEmpty }
-  var values: Dictionary<Int, TerminalRowPayload>.Values { entries.values }
-  subscript(_ index: Int) -> TerminalRowPayload? {
-    get { entries[index] }
+
+  static func == (lhs: TerminalRowPayloads, rhs: TerminalRowPayloads) -> Bool { lhs.entries == rhs.entries }
+
+  /// Position of the first entry at or right of `column`.
+  @inline(__always) private func position(of column: Int) -> Int {
+    guard let last = entries.last, last.column >= column else { return entries.count }
+    var lower = 0, upper = entries.count - 1
+    while lower < upper {
+      let middle = (lower + upper) / 2
+      if entries[middle].column < column { lower = middle + 1 } else { upper = middle }
+    }
+    return lower
+  }
+  subscript(_ column: Int) -> TerminalRowPayload? {
+    get {
+      let position = position(of: column)
+      return position < entries.count && entries[position].column == column ? entries[position].payload : nil
+    }
     set {
-      // One probe replaces the entry and yields the charge it carried.
-      let old = newValue.map { entries.updateValue($0, forKey: index) } ?? entries.removeValue(forKey: index)
-      utf8Bytes = utf8Bytes - (old?.utf8Bytes ?? 0) + (newValue?.utf8Bytes ?? 0)
+      let position = position(of: column)
+      let exists = position < entries.count && entries[position].column == column
+      if let newValue {
+        if exists {
+          utf8Bytes -= entries[position].payload.utf8Bytes
+          entries[position].payload = newValue
+        } else {
+          let entry = Entry(column: column, payload: newValue)
+          if position == entries.count { entries.append(entry) } else { entries.insert(entry, at: position) }
+          peakCount = max(peakCount, entries.count)
+        }
+        utf8Bytes += newValue.utf8Bytes
+      } else if exists {
+        utf8Bytes -= entries.remove(at: position).payload.utf8Bytes
+      }
     }
   }
-  @discardableResult mutating func removeValue(forKey key: Int) -> TerminalRowPayload? {
-    let old = entries.removeValue(forKey: key)
-    utf8Bytes -= old?.utf8Bytes ?? 0
-    return old
-  }
+  mutating func removeValue(forKey column: Int) { self[column] = nil }
   mutating func removeAll(keepingCapacity: Bool = false) {
     entries.removeAll(keepingCapacity: keepingCapacity); utf8Bytes = 0
+    if !keepingCapacity { peakCount = 0 }
   }
-  func makeIterator() -> Dictionary<Int, TerminalRowPayload>.Iterator { entries.makeIterator() }
+  /// Leaves every column in `range` with a payload that is only `link`, or
+  /// with none when `link` is nil.
+  mutating func replace(in range: Range<Int>, link: String?) {
+    if link == nil && entries.isEmpty { return }
+    let lower = position(of: range.lowerBound), upper = position(of: range.upperBound)
+    for position in lower..<upper { utf8Bytes -= entries[position].payload.utf8Bytes }
+    guard let link else {
+      if lower < upper { entries.removeSubrange(lower..<upper) }
+      return
+    }
+    let payload = TerminalRowPayload(text: nil, link: link)
+    entries.replaceSubrange(lower..<upper, with: range.lazy.map { Entry(column: $0, payload: payload) })
+    utf8Bytes += UInt64(range.count) * payload.utf8Bytes
+    peakCount = max(peakCount, entries.count)
+  }
+  /// Drops every payload at or right of `column`. The modeled capacity
+  /// starts over from the survivors, as the rebuilt dictionary's did.
+  mutating func truncate(to column: Int) {
+    let lower = position(of: column)
+    for position in lower..<entries.count { utf8Bytes -= entries[position].payload.utf8Bytes }
+    entries.removeSubrange(lower...)
+    peakCount = entries.count
+  }
+  /// Gives the columns `source` shifted by `offset` the payloads of `source`.
+  /// Columns outside that target keep theirs.
+  mutating func move(_ source: Range<Int>, by offset: Int) {
+    guard !entries.isEmpty, !source.isEmpty else { return }
+    let moved = entries[position(of: source.lowerBound)..<position(of: source.upperBound)].map {
+      Entry(column: $0.column + offset, payload: $0.payload)
+    }
+    let lower = position(of: source.lowerBound + offset), upper = position(of: source.upperBound + offset)
+    for position in lower..<upper { utf8Bytes -= entries[position].payload.utf8Bytes }
+    for entry in moved { utf8Bytes += entry.payload.utf8Bytes }
+    entries.replaceSubrange(lower..<upper, with: moved)
+    peakCount = max(peakCount, entries.count)
+  }
 }
 
 // Matches the old TerminalCell ABI stride without retaining a String, link,
@@ -188,10 +259,40 @@ private final class TerminalRowStorage {
   }
   /// Prepares `range` for a bulk overwrite: every cell gets `link`, or loses its payload.
   func replacePayloads(in range: Range<Int>, link: String?) {
-    if let link {
-      for index in range { payloads[index] = TerminalRowPayload(text: nil, link: link) }
-    } else if !payloads.isEmpty {
-      for index in range where slots[index].hasPayload { payloads.removeValue(forKey: index) }
+    payloads.replace(in: range, link: link)
+  }
+  /// Writes each scalar as a fresh one- or two-cell cluster starting at
+  /// `column`, and returns the column after the last.
+  func writeSingletons(_ scalars: UnsafeBufferPointer<Unicode.Scalar>, at column: Int, style: UInt16,
+                       flags: UInt8, protected: Bool, linked: Bool) -> Int {
+    slots.withUnsafeMutableBufferPointer { slots in
+      var index = column
+      for scalar in scalars {
+        let width = TerminalText.scalarClass(of: scalar).width
+        slots[index] = TerminalRowSlot(scalar: scalar.value, style: style, hasScalar: true,
+                                       kind: width == 2 ? 2 : 1, flags: flags, protected: protected,
+                                       hasPayload: linked)
+        if width == 2 {
+          slots[index + 1] = TerminalRowSlot(style: style, kind: 3, flags: flags, protected: protected,
+                                            hasPayload: linked)
+        }
+        index += width
+      }
+      return index
+    }
+  }
+  /// Writes a fresh multi-scalar cluster at `column` and returns the column
+  /// after it.
+  func writeCluster(text: String, link: String?, wide: Bool, at column: Int, style: UInt16,
+                    flags: UInt8, protected: Bool) -> Int {
+    payloads[column] = TerminalRowPayload(text: text, link: link)
+    return slots.withUnsafeMutableBufferPointer { slots in
+      slots[column] = TerminalRowSlot(style: style, kind: wide ? 2 : 1, flags: flags, protected: protected,
+                                      hasPayload: true)
+      guard wide else { return column + 1 }
+      slots[column + 1] = TerminalRowSlot(style: style, kind: 3, flags: flags, protected: protected,
+                                          hasPayload: link != nil)
+      return column + 2
     }
   }
   /// Index for `style`, appended when this row has not used it yet. Recently
@@ -515,9 +616,7 @@ struct TerminalRow: Equatable {
     if !isKnownUniquelyReferenced(&storage) { storage = TerminalRowStorage(slots: storage.slots, payloads: storage.payloads, styles: storage.styles, logicalCapacity: storage.logicalCapacity, detachCapacity: storage.detachCapacity) }
     storage.logicalCapacity = next; storage.detachCapacity = Self.blankLogicalCapacity(columns: newCount)
     storage.slots = Array(storage.slots.prefix(newCount))
-    storage.payloads = storage.payloads.reduce(into: TerminalRowPayloads()) { result, entry in
-      if entry.key < newCount { result[entry.key] = entry.value }
-    }
+    storage.payloads.truncate(to: newCount)
   }
   mutating func appendBlanks(_ count: Int) {
     guard count > 0 else { return }
@@ -532,13 +631,16 @@ struct TerminalRow: Equatable {
   mutating func shiftCells(column: Int, right: Int, amount: Int, inserting: Bool) {
     observeSelectionWrite(column..<(right + 1))
     ensureUniqueForCellEdit()
+    // A slot's payload mark travels with the slot.
     if inserting {
+      storage.payloads.move(column..<(right - amount + 1), by: amount)
       for destination in stride(from: right, through: column + amount, by: -1) {
-        storage.setSlot(storage.slots[destination - amount], payload: storage.payload(at: destination - amount), at: destination)
+        storage.slots[destination] = storage.slots[destination - amount]
       }
     } else {
+      storage.payloads.move((column + amount)..<(right + 1), by: -amount)
       for destination in column...(right - amount) {
-        storage.setSlot(storage.slots[destination + amount], payload: storage.payload(at: destination + amount), at: destination)
+        storage.slots[destination] = storage.slots[destination + amount]
       }
     }
   }
@@ -592,11 +694,13 @@ struct TerminalRow: Equatable {
     revision &+= UInt64(count)
   }
 
-  // The caller has admitted fresh width-one/two clusters that fit this row.
-  // Width lookup is repeated here to avoid allocating a per-run widths array.
-  mutating func replaceSingletons<C: Collection>(at column: Int, scalars: C, cellCount: Int,
-                                                style: TerminalStyle, link: String?, protected: Bool)
-  where C.Element == Unicode.Scalar {
+  /// Writes a run of fresh clusters that the caller has admitted and that fits
+  /// this row. Each scalar is a one- or two-cell cluster of its own, except
+  /// where `clusters` (in buffer order) names a longer one held in `texts`.
+  fileprivate mutating func replaceClusters(at column: Int, scalars: UnsafeBufferPointer<Unicode.Scalar>,
+                                            clusters: [TerminalDocument.PrintedCluster],
+                                            texts: borrowing TerminalDocument.ClusterCache, cellCount: Int,
+                                            style: TerminalStyle, link: String?, protected: Bool) {
     guard cellCount > 0, column >= 0, column + cellCount <= storage.slots.count else { return }
     let range = column..<(column + cellCount)
     clearPairHalves(outside: range, eraseStyle: style.erased())
@@ -605,20 +709,18 @@ struct TerminalRow: Equatable {
     storage.replacePayloads(in: range, link: link)
     revision &+= UInt64(scalars.count)
     let styleIndex = storage.intern(style)
-    storage.slots.withUnsafeMutableBufferPointer { slots in
-      var index = column
-      for scalar in scalars {
-        let width = TerminalText.scalarClass(of: scalar).width
-        slots[index] = TerminalRowSlot(scalar: scalar.value, style: styleIndex, hasScalar: true,
-                                       kind: width == 2 ? 2 : 1, flags: protected ? 2 : 0,
-                                       protected: protected, hasPayload: link != nil)
-        if width == 2 {
-          slots[index + 1] = TerminalRowSlot(style: styleIndex, kind: 3, flags: protected ? 2 : 0,
-                                            protected: protected, hasPayload: link != nil)
-        }
-        index += width
-      }
+    let flags: UInt8 = protected ? 2 : 0
+    let linked = link != nil
+    var index = column, position = 0
+    for cluster in clusters {
+      index = storage.writeSingletons(UnsafeBufferPointer(rebasing: scalars[position..<cluster.start]), at: index,
+                                      style: styleIndex, flags: flags, protected: protected, linked: linked)
+      index = storage.writeCluster(text: texts.text(in: cluster.slot), link: link, wide: cluster.wide, at: index,
+                                   style: styleIndex, flags: flags, protected: protected)
+      position = cluster.start + cluster.count
     }
+    _ = storage.writeSingletons(UnsafeBufferPointer(rebasing: scalars[position...]), at: index,
+                                style: styleIndex, flags: flags, protected: protected, linked: linked)
   }
 
   // Preserve the published history-byte contract across this physical storage
@@ -650,11 +752,7 @@ struct TerminalRow: Equatable {
     var bytes = Self.logicalRowCharge + UInt64(storage.logicalCapacity) * Self.logicalCellCharge
     bytes += storage.slots.withUnsafeBufferPointer { TerminalRowSlot.scalarUTF8Bytes(in: $0) }
     if storage.payloads.isEmpty { return bytes }
-    for payload in storage.payloads.values {
-      if let text = payload.text { bytes += UInt64(text.utf8.count) }
-      if let link = payload.link { bytes += UInt64(link.utf8.count) }
-    }
-    return bytes
+    return bytes + storage.payloads.utf8Bytes
   }
   @inline(__always) private static func utf8Length(of scalar: UInt32) -> Int {
     scalar <= 0x7f ? 1 : scalar <= 0x7ff ? 2 : scalar <= 0xffff ? 3 : 4
@@ -934,6 +1032,8 @@ struct TerminalDocument {
     // transactions and lives here only so its buffer is reused.
     var clusterScalars: [Unicode.Scalar] = []
     var clusters = ClusterCache()
+    // Scratch for the multi-scalar clusters of the run being admitted.
+    var runClusters: [PrintedCluster] = []
 
     mutating func reset() {
       segmenter = TerminalText.Segmenter()
@@ -950,36 +1050,86 @@ struct TerminalDocument {
     var protected: Bool
     var wide: Bool
   }
+  /// A multi-scalar cluster inside a run handed to `replaceClusters`:
+  /// `count` scalars from buffer position `start`, whose text is in cluster
+  /// cache slot `slot`.
+  fileprivate struct PrintedCluster {
+    var start: Int
+    var count: Int
+    var slot: Int
+    var wide: Bool
+  }
   /// Multi-scalar clusters printed recently, with what assembling one scalar
   /// at a time would have to derive again: the text, and whether each prefix is
   /// one or two cells wide. Terminal output repeats the same few emoji, flags
   /// and accented letters, so a small direct-mapped table answers nearly all.
-  private struct ClusterCache {
+  fileprivate struct ClusterCache {
     static let maximumScalars = 24
-    struct Entry {
-      let scalars: [Unicode.Scalar]
-      let text: String
-      /// Bit n is set when the first n scalars occupy two cells.
-      let widePrefixes: UInt32
-      @inline(__always) func width(ofFirst count: Int) -> Int {
-        widePrefixes & (1 << UInt32(count)) != 0 ? 2 : 1
-      }
-    }
-    private var entries: [Entry?] = []
+    private static let slotCount = 256
+    // Parallel per-slot columns, so a lookup compares scalars without
+    // retaining anything.
+    private var keys: [Unicode.Scalar] = []
+    private var counts: [UInt8] = []
+    private var texts: [String] = []
+    private var widePrefixes: [UInt32] = []
+    // A run being admitted refers to its clusters by slot until it is
+    // written. Slots it has used carry its number and are not replaced.
+    private var runs: [UInt32] = []
+    private var run: UInt32 = 0
 
-    mutating func entry(for scalars: [Unicode.Scalar]) -> Entry {
+    /// Starts a run: no slot is pinned any more.
+    @inline(__always) mutating func beginRun() { run &+= 1 }
+
+    /// The slot holding the cluster `scalars`, which has between one and
+    /// `maximumScalars` scalars. With `pinning`, the slot stays as it is until
+    /// the next run begins, and the result is nil when that would mean
+    /// replacing a slot this run has pinned.
+    mutating func slot(for scalars: UnsafeBufferPointer<Unicode.Scalar>, pinning: Bool = false) -> Int? {
       var hash: UInt32 = 2_166_136_261
       for scalar in scalars { hash = (hash ^ scalar.value) &* 16_777_619 }
       let slot = Int((hash ^ hash >> 16) & 255)
-      if !entries.isEmpty, let entry = entries[slot], entry.scalars == scalars { return entry }
-      var widePrefixes: UInt32 = 0
-      for count in 1...scalars.count where TerminalWidth.width(of: scalars[..<count]) >= 2 {
-        widePrefixes |= 1 << UInt32(count)
+      let base = slot * Self.maximumScalars
+      if keys.isEmpty {
+        keys = Array(repeating: "\0", count: Self.slotCount * Self.maximumScalars)
+        counts = Array(repeating: 0, count: Self.slotCount)
+        texts = Array(repeating: "", count: Self.slotCount)
+        widePrefixes = Array(repeating: 0, count: Self.slotCount)
+        runs = Array(repeating: 0, count: Self.slotCount)
+      } else if Int(counts[slot]) == scalars.count {
+        let matches = keys.withUnsafeBufferPointer { keys in
+          var index = 0
+          while index < scalars.count, keys[base + index] == scalars[index] { index += 1 }
+          return index == scalars.count
+        }
+        if matches {
+          if pinning { runs[slot] = run }
+          return slot
+        }
       }
-      let entry = Entry(scalars: scalars, text: TerminalText.string(from: scalars), widePrefixes: widePrefixes)
-      if entries.isEmpty { entries = Array(repeating: nil, count: 256) }
-      entries[slot] = entry
-      return entry
+      if pinning && runs[slot] == run { return nil }
+      var wide: UInt32 = 0
+      for count in 1...scalars.count
+      where TerminalWidth.width(of: Array(scalars[..<count])[...]) >= 2 {
+        wide |= 1 << UInt32(count)
+      }
+      for index in 0..<scalars.count { keys[base + index] = scalars[index] }
+      counts[slot] = UInt8(scalars.count)
+      texts[slot] = TerminalText.string(from: Array(scalars))
+      widePrefixes[slot] = wide
+      runs[slot] = pinning ? run : run &- 1
+      return slot
+    }
+    @inline(__always) func text(in slot: Int) -> String { texts[slot] }
+    /// Cells occupied by the first `count` scalars of the cluster in `slot`.
+    @inline(__always) func width(in slot: Int, ofFirst count: Int) -> Int {
+      widePrefixes[slot] & (1 << UInt32(count)) != 0 ? 2 : 1
+    }
+    /// Whether the cluster in `slot` never narrows as its scalars arrive.
+    @inline(__always) func onlyWidens(in slot: Int) -> Bool {
+      // Its wide prefixes are then one unbroken run ending at the full
+      // cluster: adding the lowest wide bit carries out past the last scalar.
+      let wide = widePrefixes[slot] >> 1
+      return wide == 0 || wide &+ (wide & (0 &- wide)) == UInt32(1) << UInt32(counts[slot])
     }
   }
   private(set) var columns: Int; private(set) var rowCount: Int
@@ -1310,6 +1460,10 @@ struct TerminalDocument {
         let capacity = right - column + (autoWrap ? 1 : 0)
         var segmenter = state.segmenter
         var end = consumed, cells = 0, lastWidth = 0
+        // Where the cluster most recently admitted to this run begins.
+        var lead = -1
+        if !state.runClusters.isEmpty { state.runClusters.removeAll(keepingCapacity: true) }
+        state.clusters.beginRun()
         // A wrap on the primary screen can append history. Its scalar is
         // admitted alone, so the caller enforces history limits before
         // anything else is printed.
@@ -1323,13 +1477,52 @@ struct TerminalDocument {
             width = 1
           } else {
             let scalarClass = TerminalText.scalarClass(of: candidate)
-            guard !scalarClass.isUnprintedControl, !scalarClass.isDefaultIgnorable else { break }
+            if scalarClass.isPlainText, segmenter.isAfterPlainText {
+              // Ordinary text after ordinary text: a boundary that leaves
+              // the segmenter as it is.
+              width = scalarClass.width
+              guard width == 1 || width == 2, cells + width <= capacity else { break }
+              lead = end
+              cells += width
+              lastWidth = width
+              end += 1
+              continue
+            }
+            guard !scalarClass.isUnprintedControl else { break }
+            var next = segmenter
+            guard next.push(candidate, class: scalarClass) else {
+              // `candidate` joins the cluster before it. When this run began
+              // that cluster, take the rest of it from the buffer and admit
+              // the whole; otherwise the code below extends its cell.
+              guard lead >= 0 else { break }
+              var clusterEnd = end + 1
+              while clusterEnd < limit {
+                var following = next
+                let admitted = admit(scalars[clusterEnd], to: &following)
+                guard !admitted.skipped, !admitted.startsCluster else { break }
+                next = following
+                clusterEnd += 1
+              }
+              guard clusterEnd - lead <= ClusterCache.maximumScalars,
+                    let slot = state.clusters.slot(for: UnsafeBufferPointer(rebasing: scalars[lead..<clusterEnd]),
+                                                   pinning: true) else { break }
+              let clusterWidth = state.clusters.width(in: slot, ofFirst: clusterEnd - lead)
+              guard state.clusters.onlyWidens(in: slot), cells - lastWidth + clusterWidth <= capacity else { break }
+              state.runClusters.append(PrintedCluster(start: lead - consumed, count: clusterEnd - lead,
+                                                      slot: slot, wide: clusterWidth == 2))
+              cells += clusterWidth - lastWidth
+              lastWidth = clusterWidth
+              segmenter = next
+              end = clusterEnd
+              lead = -1
+              continue
+            }
+            guard !scalarClass.isDefaultIgnorable else { break }
             width = scalarClass.width
             guard width == 1 || width == 2, cells + width <= capacity else { break }
-            var next = segmenter
-            guard next.push(candidate, class: scalarClass) else { break }
             segmenter = next
           }
+          lead = end
           cells += width
           lastWidth = width
           end += 1
@@ -1341,15 +1534,25 @@ struct TerminalDocument {
               style: attributes.style, history: &history, nextRowID: &nextRowID, retainHistory: retainHistory)
           }
           let row = screen.cursorRow, count = end - consumed
-          screen.rows[row].replaceSingletons(
-            at: column, scalars: UnsafeBufferPointer(rebasing: scalars[consumed..<end]), cellCount: cells,
+          screen.rows[row].replaceClusters(
+            at: column, scalars: UnsafeBufferPointer(rebasing: scalars[consumed..<end]),
+            clusters: state.runClusters, texts: state.clusters, cellCount: cells,
             style: attributes.style, link: attributes.link, protected: attributes.protected)
           state.segmenter = segmenter
           state.openCluster = (row, column + cells - lastWidth)
-          state.retainedScalars = 1
           state.capped = false
-          effect.lastPrinted = .scalar(scalars[end - 1])
-          effect.repeatAttributes = nil
+          if let last = state.runClusters.last, last.start + last.count == count {
+            state.retainedScalars = last.count
+            effect.lastPrinted = .cluster(state.clusters.text(in: last.slot))
+            // An extended cluster repeats with its lead cell's attributes,
+            // which here are the caller's, stated outright as extension does.
+            effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link,
+                                                      protected: attributes.protected)
+          } else {
+            state.retainedScalars = 1
+            effect.lastPrinted = .scalar(scalars[end - 1])
+            effect.repeatAttributes = nil
+          }
           screen.cursorColumn = min(right, column + cells)
           screen.pendingWrap = column + cells > right && autoWrap
           consumed = end
@@ -1436,7 +1639,10 @@ struct TerminalDocument {
     let leadCount = state.clusterScalars.count
     guard leadCount > 0, leadCount + added.count <= ClusterCache.maximumScalars else { return false }
     for scalar in added { state.clusterScalars.append(scalar) }
-    let cluster = state.clusters.entry(for: state.clusterScalars)
+    // Without pinning, the cache always answers.
+    guard let cluster = state.clusterScalars.withUnsafeBufferPointer({ state.clusters.slot(for: $0) })
+    else { return false }
+    let text = state.clusters.text(in: cluster)
     let steps = (leadCount + 1)...(leadCount + added.count)
     let right = owner.column <= horizontal.1 ? horizontal.1 : columns - 1
     let room = right + 1 - owner.column
@@ -1444,7 +1650,7 @@ struct TerminalDocument {
 
     var wide = lead.wide
     for count in steps {
-      let nominal = cluster.width(ofFirst: count), oldWidth = wide ? 2 : 1
+      let nominal = state.clusters.width(in: cluster, ofFirst: count), oldWidth = wide ? 2 : 1
       let occupied = min(nominal, room)
       if nominal > oldWidth && nominal > room && autoWrap { return false }
       if occupied > oldWidth && shiftsOnGrowth { return false }
@@ -1454,7 +1660,7 @@ struct TerminalDocument {
     wide = lead.wide
     var flags = lead.flags, occupied = 0, formed = false
     for count in steps {
-      let nominal = cluster.width(ofFirst: count)
+      let nominal = state.clusters.width(in: cluster, ofFirst: count)
       occupied = min(nominal, room)
       let nextWide = nominal == 2 && occupied == 2
       let nextFlags = flags | (nominal > occupied ? 1 : 0)
@@ -1469,12 +1675,12 @@ struct TerminalDocument {
       wide = nextWide
       flags = nextFlags
     }
-    screen.rows[owner.row].setClusterText(cluster.text, link: lead.link, at: owner.column)
+    screen.rows[owner.row].setClusterText(text, link: lead.link, at: owner.column)
     state.retainedScalars += added.count
     screen.cursorRow = owner.row
     screen.cursorColumn = min(right, owner.column + occupied)
     screen.pendingWrap = owner.column + occupied > right && autoWrap
-    effect.lastPrinted = .cluster(cluster.text)
+    effect.lastPrinted = .cluster(text)
     effect.repeatAttributes = PrintAttributes(style: lead.style, link: lead.link, protected: lead.protected)
     return true
   }

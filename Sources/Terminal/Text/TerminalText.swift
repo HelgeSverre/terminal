@@ -44,11 +44,15 @@ enum TerminalText {
       push(scalar, category: current, isIncbLinker: Unicode18GraphemeTables.isIncbLinker(scalar.value))
     }
 
+    /// Whether a plain-text scalar (`ScalarClass.isPlainText`) pushed now would
+    /// start a cluster and leave this state unchanged.
+    @inline(__always) var isAfterPlainText: Bool { previous == .other && !linkerTail }
+
     /// `push` for a scalar whose class is already known.
     @inline(__always)
     mutating func push(_ scalar: Unicode.Scalar, class scalarClass: ScalarClass) -> Bool {
       // Ordinary text after ordinary text is a boundary that changes nothing.
-      if scalarClass.isPlainText, previous == .other, !linkerTail { return true }
+      if scalarClass.isPlainText, isAfterPlainText { return true }
       return push(scalar, category: scalarClass.category, isIncbLinker: scalarClass.isIncbLinker)
     }
 
