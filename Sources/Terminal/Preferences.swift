@@ -4,6 +4,8 @@ enum PaneInactiveDim: Int, CaseIterable {
   case off = 0
   case five = 5
   case ten = 10
+  case twenty = 20
+  case fifty = 50
 
   init(storedValue: Int) {
     self = Self(rawValue: storedValue) ?? .five

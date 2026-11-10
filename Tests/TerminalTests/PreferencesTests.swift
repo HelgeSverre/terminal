@@ -115,6 +115,29 @@ import Foundation
     precondition(panePresentation.minimumSize == NSSize(width: 200, height: 140))
     precondition(viewport.frame == NSRect(x: 0, y: 20, width: 320, height: 200))
     precondition(abs(viewport.alphaValue - 0.95) < 0.001)
+    func headerSubview(_ identifier: String) -> NSView? {
+      panePresentation.subviews.flatMap(\.subviews).first { $0.accessibilityIdentifier() == identifier }
+    }
+    guard let title = headerSubview("no.helgesverre.terminal.pane-title") as? NSTextField,
+      let close = headerSubview("no.helgesverre.terminal.pane.close") as? NSButton
+    else { preconditionFailure("pane header lacks its title or close button") }
+    precondition(headerSubview("no.helgesverre.terminal.pane.choose-color") == nil)
+    // A label draws from the top of its frame, so the frame must hug the text.
+    precondition(title.frame.height == ceil(title.cell!.cellSize.height)
+      && abs(title.frame.midY - TerminalPanePresentationView.headerHeight / 2) <= 0.5,
+      "pane title is not vertically centered: \(title.frame)")
+    precondition(abs(close.frame.midY - TerminalPanePresentationView.headerHeight / 2) <= 0.5)
+    precondition(close.frame.maxX <= 320 && close.frame.maxX >= 312 && title.frame.maxX < close.frame.minX)
+    var closed = 0
+    panePresentation.onClose = { closed += 1 }
+    close.performClick(nil)
+    precondition(closed == 1)
+    for dim in [PaneInactiveDim.twenty, .fifty] {
+      precondition(PaneInactiveDim(storedValue: dim.rawValue) == dim)
+      panePresentation.configure(showHeader: true, active: false, inactiveDim: dim)
+      precondition(abs(viewport.alphaValue - (1 - CGFloat(dim.rawValue) / 100)) < 0.001)
+    }
+    precondition(PaneInactiveDim.allCases.map(\.label) == ["Off", "5%", "10%", "20%", "50%"])
     panePresentation.configure(showHeader: false, active: true, inactiveDim: .ten)
     panePresentation.layoutSubtreeIfNeeded()
     precondition(panePresentation.minimumSize == NSSize(width: 200, height: 120))

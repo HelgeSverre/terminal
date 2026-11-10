@@ -181,6 +181,11 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       self.selectActivePane(pane)
       self.window?.makeFirstResponder(pane)
     }
+    presentation.onClose = { [weak self, weak pane] in
+      guard let self, let pane else { return }
+      self.window?.makeFirstResponder(pane)
+      self.closePane(nil)
+    }
     panePresentations[ObjectIdentifier(pane)] = presentation
     return pane
   }

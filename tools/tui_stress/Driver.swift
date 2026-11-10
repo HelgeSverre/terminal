@@ -474,7 +474,7 @@ private func balancedInspectionStack(_ frames: [CGRect]) throws -> VerticalStack
       precondition(isTerminalCanvas(role: kAXTextAreaRole as String, identifier: paneIdentifier))
       precondition(!isTerminalCanvas(role: kAXGroupRole as String, identifier: paneIdentifier + ".presentation"))
       precondition(!isTerminalCanvas(role: kAXButtonRole as String,
-        identifier: "no.helgesverre.terminal.pane.choose-color"))
+        identifier: "no.helgesverre.terminal.pane.close"))
       precondition(!isTerminalCanvas(role: kAXTextAreaRole as String,
         identifier: terminalPaneIdentifierPrefix + "not-a-uuid"))
       precondition(!isTerminalCanvas(role: kAXTextAreaRole as String,

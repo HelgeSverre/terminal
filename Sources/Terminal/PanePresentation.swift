@@ -98,6 +98,7 @@ final class TerminalPanePresentationView: NSView {
   private let colorPopover = PaneColorPopover()
 
   var onSelect: (() -> Void)?
+  var onClose: (() -> Void)?
 
   init(canvas: NSView) {
     self.canvas = canvas
@@ -112,6 +113,7 @@ final class TerminalPanePresentationView: NSView {
     addSubview(header)
     header.onSelect = { [weak self] in self?.onSelect?() }
     header.onChooseColor = { [weak self] in self?.showColorPopover() }
+    header.onClose = { [weak self] in self?.onClose?() }
     colorPopover.onChoose = { [weak self] color in self?.setColor(color) }
     colorPopover.onCommit = { [weak self] in self?.onSelect?() }
     updateHeader()
@@ -207,10 +209,11 @@ final class TerminalPanePresentationView: NSView {
 
 private final class PaneHeaderView: NSView {
   private let titleField = NSTextField(labelWithString: "Terminal")
-  private let colorButton = NSButton(title: "", target: nil, action: nil)
+  private let closeButton = NSButton(title: "", target: nil, action: nil)
   private var color = PaneChromeColor.charcoal
   var onSelect: (() -> Void)?
   var onChooseColor: (() -> Void)?
+  var onClose: (() -> Void)?
 
   override init(frame frameRect: NSRect) {
     super.init(frame: frameRect)
@@ -220,16 +223,17 @@ private final class PaneHeaderView: NSView {
     titleField.setAccessibilityLabel("Pane title")
     titleField.setAccessibilityIdentifier("no.helgesverre.terminal.pane-title")
     addSubview(titleField)
-    colorButton.bezelStyle = .shadowlessSquare
-    colorButton.isBordered = false
-    colorButton.target = self
-    colorButton.action = #selector(chooseColor(_:))
-    colorButton.setAccessibilityLabel("Choose pane color")
-    colorButton.setAccessibilityIdentifier("no.helgesverre.terminal.pane.choose-color")
-    colorButton.toolTip = "Choose pane color"
-    colorButton.wantsLayer = true
-    colorButton.layer?.cornerRadius = 4
-    addSubview(colorButton)
+    closeButton.bezelStyle = .shadowlessSquare
+    closeButton.isBordered = false
+    closeButton.imagePosition = .imageOnly
+    closeButton.image = NSImage(systemSymbolName: "xmark", accessibilityDescription: "Close pane")?
+      .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold))
+    closeButton.target = self
+    closeButton.action = #selector(closePane(_:))
+    closeButton.setAccessibilityLabel("Close pane")
+    closeButton.setAccessibilityIdentifier("no.helgesverre.terminal.pane.close")
+    closeButton.toolTip = "Close pane"
+    addSubview(closeButton)
   }
 
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
@@ -240,14 +244,19 @@ private final class PaneHeaderView: NSView {
     self.color = color
     titleField.stringValue = title
     titleField.textColor = color.readableForeground
-    colorButton.layer?.backgroundColor = color.readableForeground.withAlphaComponent(0.72).cgColor
+    closeButton.contentTintColor = color.readableForeground.withAlphaComponent(0.72)
     needsDisplay = true
   }
 
   override func layout() {
     super.layout()
-    colorButton.frame = NSRect(x: 6, y: 4, width: 12, height: 12)
-    titleField.frame = NSRect(x: 24, y: 2, width: max(0, bounds.width - 30), height: 16)
+    // Center on the label's own line height; a fixed origin sits the text high.
+    let buttonSide: CGFloat = 16
+    closeButton.frame = NSRect(x: bounds.width - buttonSide - 4, y: (bounds.height - buttonSide) / 2,
+      width: buttonSide, height: buttonSide)
+    let textHeight = ceil(titleField.cell?.cellSize.height ?? 14)
+    titleField.frame = NSRect(x: 8, y: round((bounds.height - textHeight) / 2),
+      width: max(0, closeButton.frame.minX - 12), height: textHeight)
   }
 
   override func draw(_ dirtyRect: NSRect) {
@@ -268,7 +277,7 @@ private final class PaneHeaderView: NSView {
     onChooseColor?()
   }
 
-  @objc private func chooseColor(_ sender: Any?) { onChooseColor?() }
+  @objc private func closePane(_ sender: Any?) { onClose?() }
 }
 
 private final class PaneColorPopover: NSObject, NSTextFieldDelegate {
@@ -280,7 +289,7 @@ private final class PaneColorPopover: NSObject, NSTextFieldDelegate {
   override init() {
     super.init()
     popover.behavior = .transient
-    popover.animates = true
+    popover.animates = false
     let content = NSView(frame: NSRect(x: 0, y: 0, width: 208, height: 150))
     let stack = NSStackView()
     stack.orientation = .vertical
