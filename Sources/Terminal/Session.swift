@@ -23,6 +23,19 @@ struct HistorySearchPosition: Equatable {
   let capped: Bool
 }
 
+/// The children every session has started and not yet reaped, including those
+/// of panes that are already closed. Quitting waits for this to empty, so a
+/// child that ignores the hang-up is still killed by its session first.
+enum LiveChildren {
+  private static let group = DispatchGroup()
+  static func started() { group.enter() }
+  static func ended() { group.leave() }
+  /// Calls `handler` once, off the main thread, when no child remains.
+  static func whenNoneRemain(_ handler: @escaping @Sendable () -> Void) {
+    group.notify(queue: .global(qos: .userInteractive), execute: handler)
+  }
+}
+
 /// The first window's child, started at process launch so that its startup
 /// (a login shell reading its configuration, usually) overlaps the app's own.
 /// The first session adopts it when it asks for the same launch; any other
@@ -268,7 +281,6 @@ final class Session: @unchecked Sendable {
   private var master: Int32 = -1
   private var pid: Int32 = -1
   private var reaped = false
-  private var childEndHandlers: [@Sendable () -> Void] = []
   private var readEnded = false
   private var writeEnded = false
   private var closed = false
@@ -616,6 +628,7 @@ final class Session: @unchecked Sendable {
     }
     master = child.master
     pid = child.pid
+    LiveChildren.started()
     let lifetime = PTYDescriptorLifetime(descriptor: master, sources: 2)
     descriptorLifetime = lifetime
     let w = DispatchSource.makeWriteSource(fileDescriptor: master, queue: queue)
@@ -666,8 +679,7 @@ final class Session: @unchecked Sendable {
     let result = waitpid(pid, &status, WNOHANG)
     if result == pid {
       reaped = true
-      childEndHandlers.forEach { $0() }
-      childEndHandlers = []
+      LiveChildren.ended()
       process?.cancel()
       process = nil
       report("Process exited (status \(status)); draining output")
@@ -1345,13 +1357,6 @@ final class Session: @unchecked Sendable {
         deliveredDirectory = snapshot.cwd
         onSnapshot?(snapshot)
       }
-    }
-  }
-  /// Calls `handler` once the child has been reaped, or at once when there
-  /// is none to wait for. It runs on the session's queue.
-  func whenChildEnds(_ handler: @escaping @Sendable () -> Void) {
-    queue.async { [self] in
-      if reaped || pid <= 0 { handler() } else { childEndHandlers.append(handler) }
     }
   }
   func close() {

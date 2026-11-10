@@ -99,7 +99,7 @@ lint:
 
 # Full local gate: tests plus the GUI smokes.
 [group('check')]
-check: test smoke pane-lifecycle-smoke startup-grid-smoke
+check: test smoke pane-lifecycle-smoke startup-grid-smoke close-smoke
 
 # Validate the bundle plist, terminfo and signature.
 [group('check')]
