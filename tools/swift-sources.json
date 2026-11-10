@@ -25,6 +25,7 @@
     "Sources/Terminal/FontCatalog.swift",
     "Sources/Terminal/Preferences.swift",
     "Sources/Terminal/FindBar.swift",
+    "Sources/Terminal/PaneColorPalette.swift",
     "Sources/Terminal/PanePresentation.swift",
     "Sources/Terminal/Transport.swift",
     "Sources/Terminal/Session.swift",
@@ -231,6 +232,7 @@
       "Sources/Terminal/Preferences.swift",
       "Sources/Terminal/Theme.swift",
       "Sources/Terminal/FindBar.swift",
+      "Sources/Terminal/PaneColorPalette.swift",
       "Sources/Terminal/PanePresentation.swift",
       "Tests/TerminalTests/PreferencesTests.swift"
     ],
@@ -632,6 +634,7 @@
       "Sources/Terminal/Preferences.swift",
       "Sources/Terminal/Theme.swift",
       "Sources/Terminal/Font.swift",
+      "Sources/Terminal/PaneColorPalette.swift",
       "Sources/Terminal/Settings.swift",
       "Tests/TerminalTests/SettingsWindowTests.swift"
     ],

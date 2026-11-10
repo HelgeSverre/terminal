@@ -15,6 +15,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     checkboxWithTitle: "Show pane titles when split", target: nil, action: nil)
   private let inactivePaneDim = SettingsSegmentedControl(
     labels: PaneInactiveDim.allCases.map(\.label), trackingMode: .selectOne, target: nil, action: nil)
+  private let defaultPaneColor = PaneColorPaletteView(padding: 0)
   private let error = NSTextField(wrappingLabelWithString: "")
   private let apply = SettingsActionButton(title: "Apply", primary: true, target: nil, action: nil)
   private let onApply: (TerminalPreferences) -> Void
@@ -31,6 +32,8 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     TerminalTheme.apply(to: window)
     window.backgroundColor = TerminalTheme.color(TerminalTheme.Settings.surface)
     fontSize.onChange = { [weak self] in self?.validate() }
+    defaultPaneColor.onPick = { [weak self] _ in self?.validate() }
+    defaultPaneColor.onPreview = { [weak self] _ in self?.validate() }
     let content = NSView()
     window.contentView = content
     let sidebar = NSStackView()
@@ -173,6 +176,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     case check(String, NSButton, Presentation)
     case segment(String, NSSegmentedControl, Presentation)
     case readOnly(String, NSTextField)
+    case palette(String, String?, PaneColorPaletteView, Presentation)
     case note(String)
   }
   private var navigation: [SettingsNavigationButton] = []
@@ -204,6 +208,8 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
         Presentation(id: "show-pane-titles", accessibilityLabel: "Show pane titles when split")),
       .segment("Inactive dim", inactivePaneDim,
         Presentation(id: "inactive-pane-dim", accessibilityLabel: "Inactive pane dimming")),
+      .palette("Default color", "Header color of panes without their own", defaultPaneColor,
+        Presentation(id: "default-pane-color", accessibilityLabel: "Default pane color")),
     ]),
     Section(id: "keyboard", icon: "keyboard", title: "Keyboard", subtitle: "Key mapping.", fields: [
       .check("Option key sends Escape", option,
@@ -264,6 +270,11 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       input.selectedSegmentBezelColor = TerminalTheme.color(TerminalTheme.Settings.text)
       for index in 0..<input.segmentCount { input.setWidth(48, forSegment: index) }
       input.heightAnchor.constraint(equalToConstant: 32).isActive = true
+    case let .palette(name, hint, input, presentation):
+      title = name; helper = hint; control = input
+      presentation.apply(to: input)
+      input.setAccessibilityElement(true)
+      input.setAccessibilityRole(.group)
     case let .readOnly(name, input):
       title = name; control = input
       input.font = .systemFont(ofSize: 14)
@@ -331,6 +342,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     followTail.state = prefs.followTailOnInput ? .on : .off
     showPaneTitles.state = prefs.showPaneTitles ? .on : .off
     inactivePaneDim.selectedSegment = PaneInactiveDim.allCases.firstIndex(of: prefs.inactivePaneDim) ?? 1
+    defaultPaneColor.selected = prefs.defaultPaneColor
     startingDirectory.stringValue = prefs.startingDirectoryText
     wordCharacters.stringValue = prefs.selectionWordProfile.punctuation
     validate()
@@ -351,7 +363,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       startingDirectory: startingDirectory.stringValue,
       selectionWordCharacters: wordCharacters.stringValue,
       showPaneTitles: showPaneTitles.state == .on,
-      inactivePaneDim: dim)
+      inactivePaneDim: dim, defaultPaneColor: defaultPaneColor.selected ?? .standard)
   }
   private func validate() {
     do {

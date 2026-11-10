@@ -8,7 +8,8 @@ import Foundation
                 showPaneTitles: Bool = true, inactivePaneDim: PaneInactiveDim = .five) throws -> TerminalPreferences {
       try TerminalPreferences.edited(fontSize: size, historyRows: history,
         optionSendsEscape: false, followTailOnInput: true, startingDirectory: path,
-        selectionWordCharacters: words, showPaneTitles: showPaneTitles, inactivePaneDim: inactivePaneDim)
+        selectionWordCharacters: words, showPaneTitles: showPaneTitles, inactivePaneDim: inactivePaneDim,
+        defaultPaneColor: .standard)
     }
     let home = FileManager.default.homeDirectoryForCurrentUser.path
     let blank = try edited("")
@@ -79,12 +80,18 @@ import Foundation
     defer { isolatedDefaults.removePersistentDomain(forName: suite) }
     precondition(TerminalPreferences.load(from: isolatedDefaults).showPaneTitles)
     precondition(TerminalPreferences.load(from: isolatedDefaults).inactivePaneDim == .five)
+    // Panes start in the darkest palette color until the preference says otherwise.
+    func brightness(_ color: PaneChromeColor) -> Int { Int(color.red) + Int(color.green) + Int(color.blue) }
+    let darkest = PaneColorChoice.palette.map(\.color).min { brightness($0) < brightness($1) }
+    precondition(PaneChromeColor.standard == darkest && PaneChromeColor.standard.hex == "#18191C")
+    precondition(TerminalPreferences.load(from: isolatedDefaults).defaultPaneColor == .standard)
     let presentationPreferences = try TerminalPreferences.edited(
       fontSize: "14", historyRows: "120", optionSendsEscape: true, followTailOnInput: false,
       startingDirectory: folder.path, selectionWordCharacters: "-_",
-      showPaneTitles: false, inactivePaneDim: .ten)
+      showPaneTitles: false, inactivePaneDim: .ten, defaultPaneColor: PaneChromeColor(hex: "#2B6A65")!)
     presentationPreferences.save(to: isolatedDefaults)
     let restoredPresentationPreferences = TerminalPreferences.load(from: isolatedDefaults)
+    precondition(restoredPresentationPreferences.defaultPaneColor.hex == "#2B6A65")
     precondition(!restoredPresentationPreferences.showPaneTitles)
     precondition(restoredPresentationPreferences.inactivePaneDim == .ten)
     precondition(restoredPresentationPreferences.optionSendsEscape)
@@ -95,8 +102,12 @@ import Foundation
       startingDirectory: restoredPresentationPreferences.startingDirectory,
       selectionWordCharacters: restoredPresentationPreferences.selectionWordProfile.punctuation,
       showPaneTitles: restoredPresentationPreferences.showPaneTitles,
-      inactivePaneDim: restoredPresentationPreferences.inactivePaneDim)
+      inactivePaneDim: restoredPresentationPreferences.inactivePaneDim,
+      defaultPaneColor: restoredPresentationPreferences.defaultPaneColor)
     precondition(!changedFontKeepingPresentation.showPaneTitles && changedFontKeepingPresentation.inactivePaneDim == .ten)
+    // A stored value that is not a color falls back instead of failing the load.
+    isolatedDefaults.set("teal", forKey: "defaultPaneColor")
+    precondition(TerminalPreferences.load(from: isolatedDefaults).defaultPaneColor == .standard)
 
     precondition(PaneColorChoice.palette.count == 18)
     precondition(Set(PaneColorChoice.palette.map(\.name)).count == 18)
@@ -124,6 +135,14 @@ import Foundation
     colorPalette.onPick = { pickedColors.append($0.hex) }
     swatches[1].performClick(nil)
     precondition(pickedColors == ["#26272B"], "second swatch is the new darker gray")
+    // The palette tracks its choice: a picked swatch or a valid typed hex.
+    precondition(colorPalette.selected?.hex == "#26272B"
+      && (colorHex as? NSTextField)?.stringValue == "#26272B")
+    precondition(swatches[1].accessibilityValue() as? String == "selected"
+      && swatches[0].accessibilityValue() as? String == "")
+    colorPalette.selected = .standard
+    precondition((colorHex as? NSTextField)?.stringValue == "#18191C"
+      && swatches[0].accessibilityValue() as? String == "selected")
     precondition(PaneChromeColor(hex: "#f08")?.hex == "#FF0088")
     precondition(PaneChromeColor(hex: " #2c6a65 ")?.hex == "#2C6A65")
     for invalidHex in ["2C6A65", "#12", "#1234", "#00112233", "#GG0011"] {
@@ -134,7 +153,15 @@ import Foundation
     let viewport = NSView(frame: .zero)
     let panePresentation = TerminalPanePresentationView(canvas: viewport)
     panePresentation.frame = NSRect(x: 0, y: 0, width: 320, height: 220)
-    panePresentation.configure(showHeader: true, active: false, inactiveDim: .five)
+    panePresentation.configure(showHeader: true, active: false, inactiveDim: .five, defaultColor: .standard)
+    // A pane follows the default color until it is given its own.
+    precondition(panePresentation.color == .standard)
+    let teal = PaneChromeColor(hex: "#2B6A65")!
+    panePresentation.configure(showHeader: true, active: false, inactiveDim: .five, defaultColor: teal)
+    precondition(panePresentation.color == teal)
+    panePresentation.choose(.charcoal)
+    panePresentation.configure(showHeader: true, active: false, inactiveDim: .five, defaultColor: .standard)
+    precondition(panePresentation.color == .charcoal, "a pane's own color must survive a default change")
     panePresentation.layoutSubtreeIfNeeded()
     precondition(panePresentation.minimumSize == NSSize(width: 200, height: 140))
     precondition(viewport.frame == NSRect(x: 0, y: 20, width: 320, height: 200))
@@ -228,11 +255,11 @@ import Foundation
     precondition(closed == 2)
     for dim in [PaneInactiveDim.twenty, .fifty] {
       precondition(PaneInactiveDim(storedValue: dim.rawValue) == dim)
-      panePresentation.configure(showHeader: true, active: false, inactiveDim: dim)
+      panePresentation.configure(showHeader: true, active: false, inactiveDim: dim, defaultColor: .standard)
       precondition(abs(viewport.alphaValue - (1 - CGFloat(dim.rawValue) / 100)) < 0.001)
     }
     precondition(PaneInactiveDim.allCases.map(\.label) == ["Off", "5%", "10%", "20%", "50%"])
-    panePresentation.configure(showHeader: false, active: true, inactiveDim: .ten)
+    panePresentation.configure(showHeader: false, active: true, inactiveDim: .ten, defaultColor: .standard)
     panePresentation.layoutSubtreeIfNeeded()
     precondition(panePresentation.minimumSize == NSSize(width: 200, height: 120))
     precondition(viewport.frame == NSRect(x: 0, y: 0, width: 320, height: 220))

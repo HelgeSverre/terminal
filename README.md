@@ -110,6 +110,7 @@ flowchart LR
 | --- | --- |
 | [Window and pane tree](Sources/Terminal/main.swift) | Windows, tabs, splits, focus, and minimum sizes |
 | [Pane presentation](Sources/Terminal/PanePresentation.swift) | Pane headers, colors, and inactive dimming |
+| [Pane color palette](Sources/Terminal/PaneColorPalette.swift) | Swatch grid and hex entry shared by the pane popover and Settings |
 | [Canvas](Sources/Terminal/Canvas.swift) | Native input, selection, geometry, and accessibility |
 | [Session](Sources/Terminal/Session.swift) | Child process, PTY transport, ordering, and snapshot publication |
 | [Emulation](Sources/Terminal/Emulation) | VT parsing, screens, history, reflow, and graphics state |

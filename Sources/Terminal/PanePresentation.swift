@@ -1,89 +1,5 @@
 import AppKit
 
-/// The complete visual policy for a pane lives here: its ephemeral color,
-/// readable foreground, title header geometry, and inactive presentation.
-/// Nothing in this type is persisted, so reopening a session starts with the
-/// neutral charcoal header even when regular preferences are restored.
-struct PaneChromeColor: Equatable, Hashable {
-  let red: UInt8
-  let green: UInt8
-  let blue: UInt8
-
-  static let charcoal = PaneChromeColor(hex: "#36383C")!
-
-  init(red: UInt8, green: UInt8, blue: UInt8) {
-    self.red = red
-    self.green = green
-    self.blue = blue
-  }
-
-  init?(hex: String) {
-    let value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard value.first == "#" else { return nil }
-    let digits = String(value.dropFirst())
-    let expanded: String
-    switch digits.count {
-    case 3:
-      expanded = digits.reduce(into: "") { $0.append($1); $0.append($1) }
-    case 6:
-      expanded = digits
-    default:
-      return nil
-    }
-    guard expanded.unicodeScalars.allSatisfy({ "0123456789abcdefABCDEF".unicodeScalars.contains($0) }),
-      let value = UInt32(expanded, radix: 16)
-    else { return nil }
-    self.init(red: UInt8((value >> 16) & 0xff), green: UInt8((value >> 8) & 0xff), blue: UInt8(value & 0xff))
-  }
-
-  var hex: String { String(format: "#%02X%02X%02X", red, green, blue) }
-  var nsColor: NSColor {
-    NSColor(srgbRed: CGFloat(red) / 255, green: CGFloat(green) / 255, blue: CGFloat(blue) / 255, alpha: 1)
-  }
-
-  private var relativeLuminance: CGFloat {
-    func linear(_ channel: UInt8) -> CGFloat {
-      let value = CGFloat(channel) / 255
-      return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
-    }
-    return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
-  }
-
-  /// Choose the higher-contrast system-independent foreground for every custom
-  /// value rather than assuming a light or dark user-supplied color.
-  var readableForeground: NSColor {
-    let whiteContrast = 1.05 / (relativeLuminance + 0.05)
-    let blackContrast = (relativeLuminance + 0.05) / 0.05
-    return whiteContrast >= blackContrast ? .white : .black
-  }
-}
-
-struct PaneColorChoice: Equatable {
-  let name: String
-  let color: PaneChromeColor
-
-  static let palette: [PaneColorChoice] = [
-    .init(name: "Onyx", color: .init(hex: "#18191C")!),
-    .init(name: "Graphite", color: .init(hex: "#26272B")!),
-    .init(name: "Charcoal", color: .charcoal),
-    .init(name: "Slate", color: .init(hex: "#4A5568")!),
-    .init(name: "Steel", color: .init(hex: "#3F5E72")!),
-    .init(name: "Ocean", color: .init(hex: "#2E6376")!),
-    .init(name: "Teal", color: .init(hex: "#2B6A65")!),
-    .init(name: "Pine", color: .init(hex: "#41684F")!),
-    .init(name: "Moss", color: .init(hex: "#697044")!),
-    .init(name: "Olive", color: .init(hex: "#766B3C")!),
-    .init(name: "Ochre", color: .init(hex: "#826334")!),
-    .init(name: "Amber", color: .init(hex: "#8A5430")!),
-    .init(name: "Rust", color: .init(hex: "#82483A")!),
-    .init(name: "Brick", color: .init(hex: "#7C4145")!),
-    .init(name: "Berry", color: .init(hex: "#713F5D")!),
-    .init(name: "Plum", color: .init(hex: "#5F466E")!),
-    .init(name: "Violet", color: .init(hex: "#554F7A")!),
-    .init(name: "Indigo", color: .init(hex: "#45547C")!),
-  ]
-}
-
 final class TerminalPanePresentationView: NSView {
   static let headerHeight: CGFloat = 20
   static let terminalMinimum = NSSize(width: 200, height: 120)
@@ -99,7 +15,10 @@ final class TerminalPanePresentationView: NSView {
   private var isHovered = false
   private var inactiveDim: PaneInactiveDim = .five
   private var title = "Terminal"
-  private var color = PaneChromeColor.charcoal
+  /// Chosen for this pane from its header; nil follows the preference.
+  private var chosenColor: PaneChromeColor?
+  private var defaultColor = PaneChromeColor.standard
+  var color: PaneChromeColor { chosenColor ?? defaultColor }
   private let colorPopover = PaneColorPopover()
 
   var onSelect: (() -> Void)?
@@ -120,7 +39,7 @@ final class TerminalPanePresentationView: NSView {
     header.onSelect = { [weak self] in self?.onSelect?() }
     header.onChooseColor = { [weak self] in self?.showColorPopover() }
     header.onClose = { [weak self] in self?.onClose?() }
-    colorPopover.onChoose = { [weak self] color in self?.setColor(color) }
+    colorPopover.onChoose = { [weak self] color in self?.choose(color) }
     colorPopover.onCommit = { [weak self] in self?.onSelect?() }
     updateHeader()
   }
@@ -148,9 +67,12 @@ final class TerminalPanePresentationView: NSView {
       height: Self.terminalMinimum.height + (showsHeader ? Self.headerHeight : 0))
   }
 
-  func configure(showHeader: Bool, active: Bool, inactiveDim: PaneInactiveDim) {
+  func configure(showHeader: Bool, active: Bool, inactiveDim: PaneInactiveDim,
+    defaultColor: PaneChromeColor) {
     let changed = showsHeader != showHeader
     let presentationChanged = changed || isActive != active || self.inactiveDim != inactiveDim
+      || self.defaultColor != defaultColor
+    self.defaultColor = defaultColor
     showsHeader = showHeader
     isActive = active
     self.inactiveDim = inactiveDim
@@ -208,9 +130,10 @@ final class TerminalPanePresentationView: NSView {
     updateHeader()
   }
 
-  private func setColor(_ color: PaneChromeColor) {
+  /// Gives this pane its own color; it no longer follows the preference.
+  func choose(_ color: PaneChromeColor) {
     guard self.color != color else { return }
-    self.color = color
+    chosenColor = color
     updateHeader()
   }
 
@@ -232,7 +155,7 @@ final class TerminalPanePresentationView: NSView {
 private final class PaneHeaderView: NSView {
   private let titleField = NSTextField(labelWithString: "Terminal")
   private let closeButton = NSButton(title: "", target: nil, action: nil)
-  private var color = PaneChromeColor.charcoal
+  private var color = PaneChromeColor.standard
   var onSelect: (() -> Void)?
   var onChooseColor: (() -> Void)?
   var onClose: (() -> Void)?
@@ -311,113 +234,6 @@ private final class PaneHeaderView: NSView {
   @objc private func closePane(_ sender: Any?) { onClose?() }
 }
 
-/// The swatch grid and custom-hex row shown in the pane color popover. Its
-/// size is whatever the swatches need, so the popover has no slack around them.
-final class PaneColorPaletteView: NSView, NSTextFieldDelegate {
-  static let columns = 6
-  static let swatchSide: CGFloat = 24
-  static let swatchSpacing: CGFloat = 6
-  static let padding: CGFloat = 12
-
-  private let hexInput = NSTextField(string: "")
-  /// A valid hex was typed; the choice is not final yet.
-  var onPreview: ((PaneChromeColor) -> Void)?
-  /// A swatch was clicked or a valid hex was committed with Return.
-  var onPick: ((PaneChromeColor) -> Void)?
-
-  var hex: String {
-    get { hexInput.stringValue }
-    set { hexInput.stringValue = newValue }
-  }
-
-  init() {
-    super.init(frame: .zero)
-    let stack = NSStackView()
-    stack.orientation = .vertical
-    stack.alignment = .leading
-    stack.spacing = Self.swatchSpacing
-    stack.translatesAutoresizingMaskIntoConstraints = false
-    addSubview(stack)
-    NSLayoutConstraint.activate([
-      stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.padding),
-      stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.padding),
-      stack.topAnchor.constraint(equalTo: topAnchor, constant: Self.padding),
-      stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Self.padding),
-    ])
-    let palette = PaneColorChoice.palette
-    for start in stride(from: 0, to: palette.count, by: Self.columns) {
-      let row = NSStackView()
-      row.orientation = .horizontal
-      row.spacing = Self.swatchSpacing
-      for choice in palette[start..<min(start + Self.columns, palette.count)] {
-        let swatch = NSButton(title: "", target: self, action: #selector(selectSwatch(_:)))
-        swatch.identifier = NSUserInterfaceItemIdentifier(choice.color.hex)
-        swatch.bezelStyle = .shadowlessSquare
-        swatch.isBordered = false
-        swatch.wantsLayer = true
-        swatch.layer?.backgroundColor = choice.color.nsColor.cgColor
-        swatch.layer?.cornerRadius = 4
-        // The darkest neutrals sit close to the popover's own background.
-        swatch.layer?.borderWidth = 1
-        swatch.layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
-        swatch.widthAnchor.constraint(equalToConstant: Self.swatchSide).isActive = true
-        swatch.heightAnchor.constraint(equalToConstant: Self.swatchSide).isActive = true
-        swatch.setAccessibilityLabel("\(choice.name) pane color")
-        swatch.setAccessibilityIdentifier("no.helgesverre.terminal.pane.color.\(choice.name.lowercased())")
-        swatch.toolTip = choice.name
-        row.addArrangedSubview(swatch)
-      }
-      stack.addArrangedSubview(row)
-    }
-    let customLabel = NSTextField(labelWithString: "Custom hex")
-    customLabel.font = .systemFont(ofSize: 11)
-    customLabel.textColor = TerminalTheme.color(TerminalTheme.secondary)
-    customLabel.setContentHuggingPriority(.required, for: .horizontal)
-    let custom = NSStackView(views: [customLabel, hexInput])
-    custom.orientation = .horizontal
-    custom.alignment = .centerY
-    custom.spacing = 8
-    // The field takes whatever the swatch grid leaves, so both share one edge.
-    hexInput.setContentHuggingPriority(.defaultLow, for: .horizontal)
-    hexInput.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-    hexInput.placeholderString = "#RRGGBB"
-    hexInput.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-    hexInput.delegate = self
-    hexInput.target = self
-    hexInput.action = #selector(commitCustomHex(_:))
-    hexInput.setAccessibilityLabel("Custom pane color hex")
-    hexInput.setAccessibilityIdentifier("no.helgesverre.terminal.pane.color.hex")
-    stack.addArrangedSubview(custom)
-    stack.setCustomSpacing(8, after: stack.arrangedSubviews[stack.arrangedSubviews.count - 2])
-    let gridWidth = CGFloat(Self.columns) * Self.swatchSide + CGFloat(Self.columns - 1) * Self.swatchSpacing
-    NSLayoutConstraint.activate([
-      stack.widthAnchor.constraint(equalToConstant: gridWidth),
-      custom.widthAnchor.constraint(equalTo: stack.widthAnchor),
-    ])
-    setFrameSize(fittingSize)
-  }
-
-  required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
-
-  @objc private func selectSwatch(_ sender: NSButton) {
-    guard let value = sender.identifier?.rawValue, let color = PaneChromeColor(hex: value) else { return }
-    onPick?(color)
-  }
-
-  @objc private func commitCustomHex(_ sender: Any?) {
-    // Invalid text stays editable without forwarding Return to the terminal or
-    // emitting its input-rejection beep. A valid custom color applies exactly
-    // once and restores the canvas as the first responder.
-    guard let color = PaneChromeColor(hex: hexInput.stringValue) else { return }
-    onPick?(color)
-  }
-
-  func controlTextDidChange(_ notification: Notification) {
-    guard let color = PaneChromeColor(hex: hexInput.stringValue) else { return }
-    onPreview?(color)
-  }
-}
-
 private final class PaneColorPopover {
   private let popover = NSPopover()
   private let palette = PaneColorPaletteView()
@@ -440,7 +256,7 @@ private final class PaneColorPopover {
   }
 
   func present(from view: NSView, selected: PaneChromeColor) {
-    palette.hex = selected.hex
+    palette.selected = selected
     popover.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
   }
 

@@ -205,7 +205,8 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       let title = paneTitles[ObjectIdentifier(pane)]?.windowTitle ?? "Terminal"
       panePresentation(for: pane)?.setTitle(title)
       panePresentation(for: pane)?.configure(
-        showHeader: showHeader, active: pane === activePane, inactiveDim: preferences.inactivePaneDim)
+        showHeader: showHeader, active: pane === activePane, inactiveDim: preferences.inactivePaneDim,
+        defaultColor: preferences.defaultPaneColor)
     }
     guard let previousMinimum, let root else { return false }
     let currentMinimum = terminalMinimumSize(root)

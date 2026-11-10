@@ -38,12 +38,15 @@ The window title follows the active pane. Background programs can update their
 own pane titles without changing the window title.
 
 Split panes show a thin title header. Right-click it, or click its color button,
-to choose one of 16 muted colors or enter a custom hex value. Click outside the
-palette to dismiss it. Colors belong to the open pane.
+to choose one of 18 muted colors or enter a custom hex value. Click outside the
+palette to dismiss it. A color chosen this way belongs to the open pane and is
+forgotten when it closes.
 
-**Settings → Panes** can hide the headers and set inactive dimming to Off, 5%,
-or 10%. The default is 5%; the focused pane and any hovered pane stay fully
-visible.
+**Settings → Panes** can hide the headers, set inactive dimming to Off, 5%,
+10%, 20% or 50%, and choose the default header color from the same palette.
+Dimming defaults to 5%; the focused pane and any hovered pane stay fully
+visible. The default color is the darkest gray (`#18191C`); panes without
+their own color follow it, including panes that are already open.
 
 ## Keyboard
 

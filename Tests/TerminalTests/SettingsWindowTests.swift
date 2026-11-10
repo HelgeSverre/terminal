@@ -61,8 +61,23 @@ import AppKit
     _ = edit(history, "0")
     select("text")
     precondition(font.stringValue == "18" && apply.isEnabled)
+    // The Panes section offers the pane palette for the default header color.
+    select("panes")
+    content.layoutSubtreeIfNeeded()
+    let palette = find("default-pane-color", as: PaneColorPaletteView.self)
+    let paletteFrame = content.convert(palette.bounds, from: palette)
+    precondition(!palette.isHiddenOrHasHiddenAncestor && content.bounds.contains(paletteFrame),
+      "Default color palette clipped or hidden: \(paletteFrame)")
+    precondition(palette.selected == .standard)
+    let graphite = descendants(palette).first {
+      $0.accessibilityIdentifier() == "no.helgesverre.terminal.pane.color.graphite"
+    } as! NSButton
+    graphite.performClick(nil)
+    precondition(palette.selected?.hex == "#26272B" && apply.isEnabled)
     apply.performClick(nil)
     precondition(applied.count == 1 && applied[0].fontSize == 18 && applied[0].historyRows == 0)
+    precondition(applied[0].defaultPaneColor.hex == "#26272B")
+    precondition(UserDefaults.standard.string(forKey: "defaultPaneColor") == nil)
     precondition(applied[0].startingDirectory == NSHomeDirectory())
     precondition(UserDefaults.standard.integer(forKey: "fontSize") == 14)
     settings.present()
@@ -71,6 +86,7 @@ import AppKit
     find("cancel", as: NSButton.self).performClick(nil)
     settings.present()
     precondition(font.stringValue == "14" && history.stringValue == "50000" && apply.isEnabled)
+    precondition(palette.selected == .standard, "Cancel must discard the unsaved default color")
     settings.close()
     print("PASS Settings window: semantic navigation, raw invalid drafts, hidden validation, nonfinite recovery, bounds, atomic Apply, Cancel and no persistence")
   }
