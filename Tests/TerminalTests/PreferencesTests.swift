@@ -132,6 +132,23 @@ import Foundation
     panePresentation.onClose = { closed += 1 }
     close.performClick(nil)
     precondition(closed == 1)
+    // Middle click on the header closes; other buttons and releases outside do not.
+    guard let header = close.superview else { preconditionFailure("close button has no header") }
+    let headerWindow = NSWindow(contentRect: panePresentation.frame, styleMask: [.borderless],
+      backing: .buffered, defer: true)
+    headerWindow.contentView = panePresentation
+    func otherUp(button: Int, at point: NSPoint) -> NSEvent {
+      let event = NSEvent.mouseEvent(with: .otherMouseUp, location: header.convert(point, to: nil),
+        modifierFlags: [], timestamp: 0, windowNumber: headerWindow.windowNumber, context: nil,
+        eventNumber: 0, clickCount: 1, pressure: 0)!
+      return NSEvent(cgEvent: { let e = event.cgEvent!; e.setIntegerValueField(.mouseEventButtonNumber,
+        value: Int64(button)); return e }())!
+    }
+    header.otherMouseUp(with: otherUp(button: 2, at: NSPoint(x: 40, y: 10)))
+    precondition(closed == 2, "middle click on the pane header did not close the pane")
+    header.otherMouseUp(with: otherUp(button: 3, at: NSPoint(x: 40, y: 10)))
+    header.otherMouseUp(with: otherUp(button: 2, at: NSPoint(x: 40, y: 80)))
+    precondition(closed == 2)
     for dim in [PaneInactiveDim.twenty, .fifty] {
       precondition(PaneInactiveDim(storedValue: dim.rawValue) == dim)
       panePresentation.configure(showHeader: true, active: false, inactiveDim: dim)

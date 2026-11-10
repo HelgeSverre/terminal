@@ -277,6 +277,15 @@ private final class PaneHeaderView: NSView {
     onChooseColor?()
   }
 
+  /// Middle (scroll-wheel) click closes the pane, like a browser tab. It
+  /// closes on release, and only if the pointer is still over the header.
+  override func otherMouseUp(with event: NSEvent) {
+    guard event.buttonNumber == 2, bounds.contains(convert(event.locationInWindow, from: nil)) else {
+      return super.otherMouseUp(with: event)
+    }
+    onClose?()
+  }
+
   @objc private func closePane(_ sender: Any?) { onClose?() }
 }
 
