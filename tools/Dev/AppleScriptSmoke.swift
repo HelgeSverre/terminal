@@ -93,9 +93,6 @@ enum AppleScriptSmoke {
   /// then echoes like `cat`. The digest proves that every byte of a large
   /// committed text arrived, without the screen having to show the text.
   static func receiptShell() throws -> Never {
-    // The tool ignores these so that it can end in order; the pane's program must not.
-    signal(SIGINT, SIG_DFL)
-    signal(SIGTERM, SIG_DFL)
     guard let record = ProcessInfo.processInfo.environment["TERMINAL_AUTOMATION_CHILD_PIDS"] else {
       throw Failure("TERMINAL_AUTOMATION_CHILD_PIDS is not set")
     }

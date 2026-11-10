@@ -42,7 +42,7 @@ enum TUIStressProvider {
       throw failure
     }
     let server = try Server(environment: ProcessInfo.processInfo.environment)
-    FixtureSignals.install()
+    Interruption.takeOver()
     try server.serve()
   }
 
@@ -271,7 +271,7 @@ enum TUIStressProvider {
     }
 
     private var isStopping: Bool {
-      if FixtureSignals.stopRequested { return true }
+      if Interruption.stopRequested { return true }
       lock.lock()
       defer { lock.unlock() }
       return closing
@@ -296,7 +296,7 @@ enum TUIStressProvider {
           self.workers.leave()
         }
       }
-      let status = FixtureSignals.stopRequested ? "stopped" : "complete"
+      let status = Interruption.stopRequested ? "stopped" : "complete"
       lock.lock(); closing = true; lock.unlock()
       close(listener)
       workers.wait()

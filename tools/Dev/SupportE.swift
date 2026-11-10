@@ -125,32 +125,6 @@ func claimPaneNumber(counter path: String, below limit: Int? = nil) throws -> In
   return pane
 }
 
-private nonisolated(unsafe) var stopSignalled: sig_atomic_t = 0
-private nonisolated(unsafe) var resizeSignalled: sig_atomic_t = 0
-
-/// Signals a fixture acts on in its own loop instead of dying from them.
-///
-/// The handlers only set a flag. A fixture has a child to reap and a receipt
-/// to write before it ends, and neither is safe inside a handler.
-enum FixtureSignals {
-  static func install(resize: Bool = false) {
-    // main.swift ends the tool on SIGINT and SIGTERM, which would skip the receipt.
-    interruptions.forEach { $0.cancel() }
-    stopSignalled = 0
-    resizeSignalled = 0
-    for number in [SIGTERM, SIGHUP, SIGINT] { signal(number) { _ in stopSignalled = 1 } }
-    if resize { signal(SIGWINCH) { _ in resizeSignalled = 1 } }
-  }
-  static var stopRequested: Bool { stopSignalled != 0 }
-
-  /// Whether the terminal was resized since the last call.
-  static func takeResize() -> Bool {
-    guard resizeSignalled != 0 else { return false }
-    resizeSignalled = 0
-    return true
-  }
-}
-
 /// How a child process ended, from `waitpid`.
 struct ChildStatus: Equatable {
   let raw: Int32
@@ -207,8 +181,8 @@ func spawnChild(_ command: [String], environment: [String: String?] = [:], direc
   var attributes: posix_spawnattr_t?
   posix_spawnattr_init(&attributes)
   defer { posix_spawnattr_destroy(&attributes) }
-  // The tool ignores SIGINT and SIGTERM, and an ignored signal stays ignored
-  // across exec; the child has to be stoppable.
+  // A fixture is started by the app, and a signal its starter ignored stays
+  // ignored across exec; the child has to be stoppable.
   var defaults = sigset_t()
   sigemptyset(&defaults)
   for number in [SIGINT, SIGTERM, SIGHUP, SIGWINCH, SIGPIPE] { sigaddset(&defaults, number) }

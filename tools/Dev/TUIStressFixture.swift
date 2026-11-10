@@ -79,7 +79,7 @@ final class TUIStressFixture {
     guard descriptor >= 0 else { throw Failure(SystemFailure("open \(path)").message) }
     eventFile = descriptor
     events = EventLog(pane: pane) { try? writeAll(descriptor, $0) }
-    FixtureSignals.install(resize: true)
+    Interruption.takeOver(resize: true)
     try writeMetadata()
   }
 
@@ -94,7 +94,7 @@ final class TUIStressFixture {
   }
 
   private var pane: Int { events.pane }
-  private var isStopping: Bool { stopping || FixtureSignals.stopRequested }
+  private var isStopping: Bool { stopping || Interruption.stopRequested }
 
   /// Relays the workload until it is told to stop, then reaps the child and
   /// writes the final receipt, whatever went wrong on the way.
@@ -214,7 +214,7 @@ final class TUIStressFixture {
       var innerClosed = false
       while !isStopping, status == nil, !innerClosed {
         if !finalEmitted, FileManager.default.fileExists(atPath: directory + "/final-output") { try emitFinalMarker() }
-        if FixtureSignals.takeResize() { resizePending = true }
+        if Interruption.takeResize() { resizePending = true }
         if resizePending { try applyResize() }
         let ready = readable([STDIN_FILENO, terminal.master], milliseconds: 80)
         if ready.contains(STDIN_FILENO) { try forwardInput() }

@@ -274,12 +274,7 @@ enum CompareEmulators {
     posix_spawn_file_actions_addopen(&actions, 1, output, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
     posix_spawn_file_actions_addopen(&actions, 2, errors, O_WRONLY | O_CREAT | O_TRUNC, 0o644)
     posix_spawnattr_setpgroup(&attributes, 0)
-    // The tool ignores interruption signals so that it can end in order, and
-    // an ignored signal stays ignored in a spawned program unless it is reset.
-    var defaults = sigset_t()
-    sigfillset(&defaults)
-    posix_spawnattr_setsigdefault(&attributes, &defaults)
-    posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGDEF))
+    posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP))
     var arguments: [UnsafeMutablePointer<CChar>?] = command.map { strdup($0) } + [nil]
     defer { arguments.forEach { free($0) } }
     var pid: pid_t = 0

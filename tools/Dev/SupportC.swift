@@ -442,60 +442,6 @@ func writeExecutable(_ path: String, _ script: String, mode: Int = 0o755) throws
   try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: path)
 }
 
-/// Lets a runner end in order when it is interrupted.
-///
-/// The tool's default is to end launched processes and exit at once, which
-/// leaves no report. A runner that promises a report for an interrupted run
-/// calls `observe()` and then `check()` wherever it waits; the interruption
-/// surfaces there as an ordinary failure and takes the runner's failure path.
-enum Interruption {
-  nonisolated(unsafe) private static var sources: [DispatchSourceSignal] = []
-  private static let lock = NSLock()
-  nonisolated(unsafe) private static var count = 0
-
-  /// Whether an interruption has arrived since `observe()`.
-  static var requested: Bool {
-    lock.lock(); defer { lock.unlock() }
-    return count > 0
-  }
-
-  /// Replaces exit-on-signal with a request that `check()` reports. A second
-  /// signal ends everything at once, so a runner that has stopped checking can still be stopped.
-  static func observe() {
-    guard sources.isEmpty else { return }
-    interruptions.forEach { $0.cancel() }
-    sources = [SIGINT, SIGTERM].map { number in
-      let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
-      source.setEventHandler {
-        lock.lock(); count += 1; let repeated = count > 1; lock.unlock()
-        if repeated {
-          ProcessTree.cleanupAll()
-          exit(130)
-        }
-      }
-      source.resume()
-      return source
-    }
-  }
-
-  static func check() throws {
-    if requested { throw Failure("interrupted") }
-  }
-}
-
-extension ProcessTree {
-  /// Waits like `wait(seconds:)`, and fails early when the run is interrupted.
-  func waitInterruptibly(seconds: Double) throws -> Exit? {
-    let deadline = Clock.now + UInt64(seconds * 1_000_000_000)
-    while true {
-      let now = Clock.now
-      if let exit = wait(seconds: now < deadline ? min(0.2, Double(deadline - now) / 1_000_000_000) : 0) { return exit }
-      try Interruption.check()
-      if Clock.now >= deadline { return nil }
-    }
-  }
-}
-
 enum JSONValueTests {
   static let cases = [
     SelfTest.Case(name: "ordered json: text is kept through parsing and writing") {
