@@ -1022,7 +1022,51 @@ import Foundation
     precondition(composed == decomposed, "row equality must retain String canonical semantics")
   }
 
+  /// Cells hold an index into their row's style table. Churn far more styles
+  /// through a row than it has cells, so the table compacts many times, and
+  /// move styled and linked cells between rows with unrelated tables.
+  static func rowStyleTablesSurviveChurnAndCopies() {
+    func style(_ step: Int) -> TerminalStyle {
+      TerminalStyle(foreground: 0x0200_0000 | UInt32(step), background: UInt32(step % 3), flags: UInt16(step % 5))
+    }
+    var row = TerminalRow(columns: 4)
+    var expected = [TerminalCell](repeating: TerminalCell(), count: 4)
+    var retained: [(row: TerminalRow, cells: [TerminalCell])] = []
+    for step in 0..<3_000 {
+      let column = (step * 7) % 4
+      let cell: TerminalCell
+      switch step % 6 {
+      case 0: cell = .erased(style(step))
+      case 1: cell = TerminalCell(text: "e\u{301}", kind: 1, style: style(step), link: "https://example.test/\(step)")
+      default: cell = TerminalCell(text: "x", kind: 1, style: style(step), link: step % 4 == 0 ? "l" : nil)
+      }
+      if step % 500 == 0 { retained.append((row, expected)) }
+      row.setCell(cell, at: column)
+      expected[column] = cell
+      precondition(Array(row.cells) == expected)
+      precondition(row.payloadCount == expected.filter { $0.link != nil || $0.text.unicodeScalars.count > 1 }.count)
+    }
+    // Snapshots taken along the way kept their own cells and styles.
+    for snapshot in retained { precondition(Array(snapshot.row.cells) == snapshot.cells) }
+
+    var target = TerminalRow(columns: 6)
+    for column in 0..<6 { target.setCell(TerminalCell(text: "t", kind: 1, style: style(9_000 + column)), at: column) }
+    target.copyCells(from: row, range: 1..<4, to: 2)
+    for column in 0..<6 {
+      let want = (2..<5).contains(column) ? expected[column - 1]
+        : TerminalCell(text: "t", kind: 1, style: style(9_000 + column))
+      precondition(target.cell(column) == want)
+    }
+    target.copyCell(from: row, at: 0, to: 5)
+    precondition(target.cell(5) == expected[0])
+    target.shiftCells(column: 0, right: 5, amount: 2, inserting: true)
+    precondition(target.cell(4) == expected[1] && target.cell(5) == expected[2])
+    precondition(Array(row.cells) == expected)
+    print("PASS row style tables: churn, compaction, snapshots, cross-row copies and shifts")
+  }
+
   static func main() {
+    rowStyleTablesSurviveChurnAndCopies()
     let old = retainedSnapshot()
     populatedSnapshotsRemainImmutable()
     carriageReturnMutatesSelectedScreen()
