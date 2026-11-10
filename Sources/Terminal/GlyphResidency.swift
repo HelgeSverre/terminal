@@ -81,6 +81,9 @@ final class GlyphResidency: @unchecked Sendable {
     let release: @Sendable () -> Void
   }
   private var uploadQueue: [QueuedUpload] = []
+  // Recipes in uploadQueue, kept as a set so per-cell `isInFlight` checks
+  // stay O(1) on a first frame where every visible glyph misses.
+  private var awaitingUpload: Set<GlyphRasterRecipe> = []
   private var preparedPins: Set<UUID> = []
   private var submittedPins: Set<UUID> = []
   private var preparedDirect: Set<UUID> = []
@@ -133,6 +136,7 @@ final class GlyphResidency: @unchecked Sendable {
       case .waitingForCapacity: uploadQueue.append(upload)
       }
     }
+    awaitingUpload = Set(uploadQueue.map(\.result.recipe))
   }
 
   func setOnReady(_ callback: @escaping @Sendable () -> Void) { onReady = callback }
@@ -152,20 +156,38 @@ final class GlyphResidency: @unchecked Sendable {
       return entry.lease
     }
     guard !failed.contains(recipe), !suppressedForDemand.contains(recipe) else { return nil }
-    if pending.insert(recipe).inserted {
-      reservations += recipe.width * recipe.height * 4
-      let accepted = worker.request(recipe) { [weak self] result, release in
-        guard let self else { release(); return }
-        // Raster completion crosses the actor boundary before touching cache
-        // state or Metal. Stale/cancelled results become harmless misses.
-        self.owner.async { [weak self] in self?.accept(recipe, result: result, release: release) }
-      }
-      if !accepted {
-        pending.remove(recipe)
-        reservations -= recipe.width * recipe.height * 4
-      }
-    }
+    requestRaster(recipe)
     return nil
+  }
+
+  /// True while a miss is expected to resolve without further demand: the
+  /// worker is rasterizing it, or its result waits for the next frame's
+  /// upload. Failed, suppressed and worker-rejected misses are not in flight.
+  func isInFlight(_ recipe: GlyphRasterRecipe) -> Bool {
+    pending.contains(recipe) || awaitingUpload.contains(recipe)
+  }
+
+  /// Rasterizes likely glyphs before any frame asks for them, so the first
+  /// shell prompt finds them resident. Adds nothing to frame demand.
+  func prewarm(_ recipes: [GlyphRasterRecipe]) {
+    for recipe in recipes where entries[recipe] == nil && !failed.contains(recipe) {
+      requestRaster(recipe)
+    }
+  }
+
+  private func requestRaster(_ recipe: GlyphRasterRecipe) {
+    guard pending.insert(recipe).inserted else { return }
+    reservations += recipe.width * recipe.height * 4
+    let accepted = worker.request(recipe) { [weak self] result, release in
+      guard let self else { release(); return }
+      // Raster completion crosses the actor boundary before touching cache
+      // state or Metal. Stale/cancelled results become harmless misses.
+      self.owner.async { [weak self] in self?.accept(recipe, result: result, release: release) }
+    }
+    if !accepted {
+      pending.remove(recipe)
+      reservations -= recipe.width * recipe.height * 4
+    }
   }
 
   // Called after a renderer has resolved every glyph for one complete scene.
@@ -213,6 +235,7 @@ final class GlyphResidency: @unchecked Sendable {
       return
     }
     uploadQueue.append(QueuedUpload(result: result, release: release))
+    awaitingUpload.insert(recipe)
     onReady()
   }
 

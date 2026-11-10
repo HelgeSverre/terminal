@@ -552,19 +552,48 @@ final class TerminalRendering: @unchecked Sendable {
     return Glyph(uv: SIMD4(0, 0, 1, 1), width: width, atlasPage: nil, texture: texture, kind: kind,
                  heap: allocation.heap, legacyID: allocation.id)
   }
-  private func glyph(_ key: GlyphKey, cells: Int, request: RenderRequest) -> Glyph? {
+  private enum GlyphLookup {
+    case resident(Glyph)
+    // The worker is rasterizing this glyph; a redraw follows its upload.
+    case inFlight
+    // Failed, suppressed under pressure, or rejected by the bounded worker.
+    case unavailable
+  }
+  private func glyph(_ key: GlyphKey, cells: Int, request: RenderRequest) -> GlyphLookup {
     let recipe = GlyphRasterRecipe(text: key.text, width: request.cellWidth * cells,
       height: request.cellHeight, pointSize: key.pointSize, bold: key.bold, italic: key.italic,
       fontIdentity: key.fontIdentity, backingScale: 1)
     if let resident = glyphResidency.resolve(recipe) {
-      return Glyph(uv: resident.uv, width: resident.width, atlasPage: nil, texture: resident.texture, kind: resident.kind,
-                   heap: nil, legacyID: nil)
+      return .resident(Glyph(uv: resident.uv, width: resident.width, atlasPage: nil,
+        texture: resident.texture, kind: resident.kind, heap: nil, legacyID: nil))
     }
     // Raster misses never synchronously call CoreText/CoreGraphics on the
-    // render owner. The caller draws the exact-span outline until the bounded
-    // worker result reaches residency, including oversize/pressure cases.
-    return nil
+    // render owner. An in-flight miss stays blank for the few frames until
+    // its upload; any other miss draws the exact-span outline.
+    return glyphResidency.isInFlight(recipe) ? .inFlight : .unavailable
   }
+  /// Queues printable ASCII in the regular and bold faces for these cell
+  /// metrics, so a new pane's first prompt does not wait on the worker.
+  func prewarm(cellWidth: Int, cellHeight: Int, fontSize: CGFloat) {
+    executor.async { [weak self] in
+      guard let self else { return }
+      let key = PrewarmKey(cellWidth: cellWidth, cellHeight: cellHeight, fontSize: fontSize)
+      guard prewarmed.insert(key).inserted else { return }
+      let pointSize = Int(fontSize.rounded())
+      var recipes: [GlyphRasterRecipe] = []
+      for bold in [false, true] {
+        let identity = CTFontCopyPostScriptName(TerminalFont.core(size: fontSize, bold: bold)) as String
+        for scalar in 0x20...0x7E {
+          recipes.append(GlyphRasterRecipe(
+            text: String(Unicode.Scalar(UInt8(scalar))), width: cellWidth, height: cellHeight,
+            pointSize: pointSize, bold: bold, italic: false, fontIdentity: identity, backingScale: 1))
+        }
+      }
+      glyphResidency.prewarm(recipes)
+    }
+  }
+  private struct PrewarmKey: Hashable { let cellWidth: Int; let cellHeight: Int; let fontSize: CGFloat }
+  private var prewarmed: Set<PrewarmKey> = []
   private func draw(
     _ request: RenderRequest, drawable: CAMetalDrawable, surface: SurfaceLease, generation: UInt64
   ) -> Bool {
@@ -696,12 +725,15 @@ final class TerminalRendering: @unchecked Sendable {
                 fontIdentity: CTFontCopyPostScriptName(
                   cell.style.bold ? (cell.style.italic ? boldItalicFont : boldFont)
                     : (cell.style.italic ? italicFont : font)) as String)
-              if let glyph = glyph(key, cells: cells, request: request) {
+              switch glyph(key, cells: cells, request: request) {
+              case .resident(let glyph):
                 appendGlyph(
                   Quad(
                     rect: SIMD4(Float(x), Float(y), Float(glyph.width), Float(request.cellHeight)),
                     uv: glyph.uv, color: glyph.kind == .color ? SIMD4(1, 1, 1, 1) : fg), glyph)
-              } else {
+              case .inFlight:
+                RendererMetrics.recordInFlightGlyph()
+              case .unavailable:
                 // Budget exhaustion must not turn terminal text into a blank
                 // cell. This outline uses the already-bound solid texel and
                 // allocates nothing, while preserving the cell span.
@@ -762,20 +794,26 @@ final class TerminalRendering: @unchecked Sendable {
         width: request.cellWidth * cells, height: request.cellHeight,
         pointSize: Int(request.fontSize.rounded()),
         fontIdentity: CTFontCopyPostScriptName(font) as String)
-      if let g = glyph(key, cells: cells, request: request) {
+      let lookup = glyph(key, cells: cells, request: request)
+      switch lookup {
+      case .resident, .inFlight:
         let x = request.inset + snap.cursor.col * request.cellWidth
         let y = request.inset + snap.cursor.row * request.cellHeight
         rect(
           x, y, cells * request.cellWidth, request.cellHeight,
           TerminalTheme.linear(TerminalTheme.raised))
-        appendGlyph(
-          Quad(
-            rect: SIMD4(Float(x), Float(y), Float(g.width), Float(request.cellHeight)), uv: g.uv,
-            color: SIMD4(1, 1, 1, 1)), g)
+        if case .resident(let g) = lookup {
+          appendGlyph(
+            Quad(
+              rect: SIMD4(Float(x), Float(y), Float(g.width), Float(request.cellHeight)), uv: g.uv,
+              color: SIMD4(1, 1, 1, 1)), g)
+        } else {
+          RendererMetrics.recordInFlightGlyph()
+        }
         rect(
           x, y + request.cellHeight - 2, cells * request.cellWidth, 1,
           TerminalTheme.linear(TerminalTheme.accent))
-      } else {
+      case .unavailable:
         let x = request.inset + snap.cursor.col * request.cellWidth
         let y = request.inset + snap.cursor.row * request.cellHeight
         let span = cells * request.cellWidth
@@ -937,6 +975,7 @@ final class RendererMetrics: @unchecked Sendable {
   private static var visibleGlyphDrops: UInt64 = 0
   private static var exactGlyphFallbacks: UInt64 = 0
   private static var substituteGlyphFallbacks: UInt64 = 0
+  private static var inFlightGlyphs: UInt64 = 0
   private static var oversizedGlyphFallbacks: UInt64 = 0
   private static var peakGlyphFallbackBytes: UInt64 = 0
   private static var peakGlyphFallbackCount: UInt64 = 0
@@ -1041,6 +1080,14 @@ final class RendererMetrics: @unchecked Sendable {
     currentGlyphSubstitutes += 1
     lock.unlock()
   }
+  // An in-flight cell is not yet showing its glyph either, so it also counts
+  // toward the frame's substitutes: readiness checks keep their meaning.
+  static func recordInFlightGlyph() {
+    lock.lock()
+    inFlightGlyphs += 1
+    currentGlyphSubstitutes += 1
+    lock.unlock()
+  }
   static func recordOversizedGlyphFallback() {
     lock.lock()
     oversizedGlyphFallbacks += 1
@@ -1081,6 +1128,7 @@ final class RendererMetrics: @unchecked Sendable {
       "visible_glyph_drops": visibleGlyphDrops,
       "exact_glyph_fallbacks": exactGlyphFallbacks,
       "substitute_glyph_fallbacks": substituteGlyphFallbacks,
+      "in_flight_glyphs": inFlightGlyphs,
       "oversized_glyph_fallbacks": oversizedGlyphFallbacks,
       "peak_glyph_fallback_bytes": peakGlyphFallbackBytes,
       "peak_glyph_fallback_count": peakGlyphFallbackCount,

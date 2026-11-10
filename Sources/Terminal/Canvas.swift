@@ -436,6 +436,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       1, min(4096, Int((bounds.width * scale - CGFloat(2 * insetPixels)) / CGFloat(cellWidth))))
     let rows = max(
       1, min(4096, Int((bounds.height * scale - CGFloat(2 * insetPixels)) / CGFloat(cellHeight))))
+    rendering?.prewarm(cellWidth: cellWidth, cellHeight: cellHeight, fontSize: fontPoints * scale)
     session.resize(cols: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
     positionSelectionNotice()
     inputContext?.invalidateCharacterCoordinates()

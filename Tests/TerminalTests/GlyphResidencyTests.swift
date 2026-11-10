@@ -80,6 +80,37 @@ final class RendererMetrics {
       callbackResidency.beginFrame()
       precondition(callbackResidency.testingHasResident(delayedB), "delayed B recovers")
     }
+    // Prewarm queues raster work without frame demand. Until upload the miss
+    // reports in flight, so the renderer leaves the cell blank, not outlined.
+    let prewarmOwner = DispatchQueue(label: "glyph-residency-prewarm-test")
+    let prewarmGate = DispatchSemaphore(value: 0)
+    let prewarmWorker = GlyphRasterWorker(rasterizer: { recipe in
+      precondition(prewarmGate.wait(timeout: .now() + 5) == .success, "prewarm raster never released")
+      return GlyphRasterResult(recipe: recipe,
+        pixels: [UInt8](repeating: 255, count: recipe.width * recipe.height * 4),
+        kind: .mask, resolvedFonts: ["fixture"], glyphIDs: [1])
+    })
+    let prewarmReady = DispatchSemaphore(value: 0)
+    let prewarmResidency = GlyphResidency(device: device, owner: prewarmOwner,
+      worker: prewarmWorker, budget: budget) { prewarmReady.signal() }
+    let warm = GlyphRasterRecipe(text: "a", width: 8, height: 16, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
+    let cold = GlyphRasterRecipe(text: "b", width: 8, height: 16, pointSize: 12,
+      bold: false, italic: false, fontIdentity: "Menlo-Regular", backingScale: 1)
+    prewarmOwner.sync {
+      precondition(!prewarmResidency.isInFlight(warm), "nothing in flight before prewarm")
+      prewarmResidency.prewarm([warm])
+      precondition(prewarmResidency.isInFlight(warm), "prewarm queues raster work")
+      precondition(!prewarmResidency.isInFlight(cold), "unrequested glyph is not in flight")
+    }
+    prewarmGate.signal()
+    precondition(prewarmReady.wait(timeout: .now() + 5) == .success, "prewarm callback")
+    prewarmOwner.sync {
+      precondition(prewarmResidency.isInFlight(warm), "awaiting upload is still in flight")
+      prewarmResidency.beginFrame()
+      precondition(!prewarmResidency.isInFlight(warm), "installed glyph leaves flight")
+      precondition(prewarmResidency.resolve(warm) != nil, "prewarmed glyph resident on first demand")
+    }
     checkpoint("before_mask_texture_readback")
     let maskDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
       width: 3, height: 1, mipmapped: false)
