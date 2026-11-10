@@ -393,17 +393,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     super.init()
   }
   var acceptsAutomation: Bool { !terminationRequested }
-  /// What the first window will run, when that is known before the app
-  /// starts: the command after `--execute`, or the login shell. The smoke
-  /// modes that build their own fixture launch are left to do so.
+  /// The login shell the first window will run, when it is safe to start it
+  /// before the app: its startup then overlaps the app's own. A command given
+  /// with `--execute` is not started early. Until the first pane has measured
+  /// its font the PTY has no pixel size, and a program that reads the window
+  /// size once as it starts, as the benchmark driver does, would see none; a
+  /// shell asks again whenever the size changes. The smoke modes that build
+  /// their own fixture launch are left to do so.
   static func firstLaunch() -> LaunchSpec? {
     let arguments = CommandLine.arguments
     if paneLifecycleSmokeReportPath() != nil || arguments.contains("--resize-smoke")
-      || arguments.contains("--glyph-smoke") { return nil }
-    guard let index = arguments.firstIndex(of: "--execute"), arguments.count > index + 1 else { return .shell }
-    let argv = Array(arguments.dropFirst(index + 1))
-    let shell = LaunchSpec.shell
-    return LaunchSpec(executable: argv[0], arguments: argv, cwd: shell.cwd, launcher: shell.launcher)
+      || arguments.contains("--glyph-smoke") || arguments.contains("--execute") { return nil }
+    return .shell
   }
   /// `--background` opens the launch window behind other apps and leaves
   /// focus where it is, for measurement runs on a desktop in use.
