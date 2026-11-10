@@ -38,6 +38,21 @@ final class OwnedProcess {
   }
   var pid: pid_t { process.processIdentifier }
   var isRunning: Bool { process.isRunning }
+  var hasWindow: Bool {
+    ScreenWindow.all().contains { $0.pid == pid && $0.width >= 100 && $0.height >= 100 }
+  }
+
+  /// When the process first has a window on screen, or nil if `deadline`
+  /// passes or it exits first. The window appeared between two looks about a
+  /// millisecond apart; the earlier one is reported.
+  func waitForWindow(until deadline: UInt64) -> UInt64? {
+    while Clock.now < deadline, process.isRunning {
+      let now = Clock.now
+      if hasWindow { return now }
+      usleep(500)
+    }
+    return nil
+  }
 
   /// Asks the process to quit, and kills it if it has not within two seconds.
   func stop() {
@@ -128,4 +143,22 @@ enum Host {
 
 extension Array where Element == Double {
   var median: Double? { isEmpty ? nil : sorted()[count / 2] }
+}
+
+/// Prints one row per terminal: the median of each column's values with their range.
+enum Table {
+  static func print(rows: [String], skipped: [String: String],
+                    columns: [(title: String, values: (String) -> [Double])]) {
+    func cell(_ text: String, _ width: Int) -> String { text.padding(toLength: width, withPad: " ", startingAt: 0) }
+    Swift.print(cell("terminal", 16) + columns.map { cell($0.title, 22) }.joined())
+    for name in rows {
+      let cells = columns.map { column -> String in
+        let values = column.values(name)
+        guard let median = values.median, let low = values.min(), let high = values.max() else { return "-" }
+        return String(format: "%.0f (%.0f-%.0f)", median, low, high)
+      }
+      Swift.print(cell(name, 16) + cells.map { cell($0, 22) }.joined())
+    }
+    for (name, reason) in skipped.sorted(by: { $0.key < $1.key }) { Swift.print("\(name): skipped (\(reason))") }
+  }
 }

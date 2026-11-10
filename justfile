@@ -582,6 +582,11 @@ gallery-panes: build
 @benchmark-startup output="reports/startup-comparison" rounds="10": release-build _dev
     target/native/dev compare-startup dist/Terminal.app "$1" "$2"
 
+# Compare quit time with Ghostty, Kitty, iTerm2 and Apple Terminal.
+[group('bench')]
+@benchmark-shutdown output="reports/shutdown-comparison" rounds="5": release-build _dev
+    target/native/dev compare-shutdown dist/Terminal.app "$1" "$2"
+
 [group('bench')]
 @benchmark-apps rust_app swift_app output="reports/app-comparison":
     ruby tools/compare_terminal_apps.rb "$3" "$1" "$2"

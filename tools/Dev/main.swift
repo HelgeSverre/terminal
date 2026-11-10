@@ -14,7 +14,7 @@ struct Command {
   let run: ([String]) throws -> Void
 }
 
-let commands = [CompareStartup.command]
+let commands = [CompareStartup.command, CompareShutdown.command]
 
 func printUsage() {
   var text = "usage: dev COMMAND [ARGUMENT...]\n\n"
