@@ -248,6 +248,13 @@ did not meet the replacement target used for that report. Later measurements
 and the current criterion are recorded in the
 [performance research findings](swift-performance-research/synthesis.md).
 
+`just benchmark-startup` and `just benchmark-shutdown` compare launch and quit
+times with Ghostty, Kitty, iTerm2 and Apple Terminal, launching a disposable
+instance of each per sample; the
+[report](../reports/startup-shutdown-2026-11-10/README.md) describes what each
+column measures. They are commands of the Swift developer tool in `tools/Dev`,
+where new runners go.
+
 The app's `--background` launch flag opens the launch window behind other
 apps and does not take focus. `BENCH_BACKGROUND=1 just diagnose-stream
 APP OUTPUT BYTES` uses it, for diagnostic runs on a desktop in use. A window

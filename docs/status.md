@@ -155,6 +155,10 @@ Current automated evidence:
   [report](../reports/unicode-clusters-2026-11-10/README.md). The earlier
   [direct text path report](../reports/direct-text-path-2026-11-10/README.md)
   has the comparison against v0.2.4 and the SQL motion stress (150 s to 44 s).
+- A warm launch shows its window in about 133 ms and has the child command
+  running after 26 ms; a quit removes the process and its Dock icon in about
+  46 ms, down from 3 s. Ghostty: 186 ms, 150 ms and 12 ms. See the
+  [startup and shutdown report](../reports/startup-shutdown-2026-11-10/README.md).
 - Session recovery after a crash or hard reset is planned, not built: see the
   [plan](session-recovery-plan.md).
 
