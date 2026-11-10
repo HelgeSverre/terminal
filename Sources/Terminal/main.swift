@@ -363,6 +363,17 @@ final class RenderingSetup: @unchecked Sendable {
     return outcome!
   }
 }
+/// Answers AppKit's terminate-later request, once. It is created and used on
+/// the main thread; the queue that learns the last child has ended only hands
+/// it back to the main run loop.
+private final class TerminationReply: @unchecked Sendable {
+  private var sent = false
+  func send() {
+    guard !sent else { return }
+    sent = true
+    NSApp.reply(toApplicationShouldTerminate: true)
+  }
+}
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private lazy var tabNavigation = TerminalTabNavigation { [weak self] in
     (NSApp.keyWindow?.windowController as? TerminalWindow)?.window
@@ -569,20 +580,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // is what brings the app here. A child that ignores the hang-up is killed
     // by its session after two seconds; the timer is the limit for anything
     // that outlasts even that.
-    var replied = false
-    let reply = {
-      guard !replied else { return }
-      replied = true
-      NSApp.reply(toApplicationShouldTerminate: true)
-    }
+    let reply = TerminationReply()
     // AppKit's terminate-later loop runs in modalPanel mode, so a default-mode
     // dispatch callback can remain blocked by the very termination it resolves.
     let modes: [RunLoop.Mode] = [.modalPanel, .default]
     LiveChildren.whenNoneRemain {
-      RunLoop.main.perform(inModes: modes, block: reply)
+      RunLoop.main.perform(inModes: modes) { reply.send() }
       CFRunLoopWakeUp(CFRunLoopGetMain())
     }
-    let limit = Timer(timeInterval: 3, repeats: false) { _ in reply() }
+    let limit = Timer(timeInterval: 3, repeats: false) { _ in reply.send() }
     modes.forEach { RunLoop.main.add(limit, forMode: $0) }
     return .terminateLater
   }
