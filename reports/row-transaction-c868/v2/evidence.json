@@ -1,0 +1,1007 @@
+{
+  "baseline_revision": "c504a672f483a245adba42ecab10fe4770727f87",
+  "runtime_baseline": "455c5b7",
+  "baseline_binary_reused": true,
+  "v1_preserved": true,
+  "decision": "HOLD: long ASCII regression persists in both candidate orders",
+  "prediction": "Moving per-cell ASCII payload policy outside slot loop recovers long ASCII while retaining Unicode gains",
+  "verdict": "Unicode gains retained; predicted long ASCII recovery not established",
+  "scope": "Headless terminal_feed throughput, not real-app throughput or FPS",
+  "order": [
+    "baseline",
+    "candidate",
+    "candidate",
+    "baseline"
+  ],
+  "bytes_per_sample": 2097152,
+  "warmups_per_cell": 1,
+  "measured_samples_per_cell_per_order": 5,
+  "flags": [
+    "-swift-version",
+    "5",
+    "-O",
+    "-whole-module-optimization",
+    "-target",
+    "arm64-apple-macosx15.0"
+  ],
+  "correctness": {
+    "passed": true,
+    "row_records": 270,
+    "parser_records": 337
+  },
+  "deep_tests": "Both binaries passed existing ownership, semantic/boundary, decoder, full Unicode18 category+corpus, selection, reflow/reservation suites and new no-op sharing/64 mixed held-snapshot cases",
+  "binary_sizes": {
+    "baseline": 2031816,
+    "candidate": 2031656
+  },
+  "comparison": [
+    {
+      "workload": "ascii_short_lines",
+      "chunk": 1,
+      "baseline_mib_s": 5.924164772669226,
+      "candidate_mib_s": 6.1441985899359155,
+      "speed_ratio": 1.0371417449902478
+    },
+    {
+      "workload": "ascii_short_lines",
+      "chunk": 1023,
+      "baseline_mib_s": 87.57414026715017,
+      "candidate_mib_s": 98.57882117326197,
+      "speed_ratio": 1.1256613067800765
+    },
+    {
+      "workload": "ascii_short_lines",
+      "chunk": 4096,
+      "baseline_mib_s": 92.51852637231343,
+      "candidate_mib_s": 99.7006910479223,
+      "speed_ratio": 1.0776294754923612
+    },
+    {
+      "workload": "ascii_short_lines",
+      "chunk": 65536,
+      "baseline_mib_s": 91.85073630765,
+      "candidate_mib_s": 100.09874240444486,
+      "speed_ratio": 1.0897979311692019
+    },
+    {
+      "workload": "ascii_long_lines",
+      "chunk": 1,
+      "baseline_mib_s": 5.937046533024125,
+      "candidate_mib_s": 6.141294302554386,
+      "speed_ratio": 1.034402251758371
+    },
+    {
+      "workload": "ascii_long_lines",
+      "chunk": 1023,
+      "baseline_mib_s": 187.38946656636958,
+      "candidate_mib_s": 170.22905724041422,
+      "speed_ratio": 0.9084238317105326
+    },
+    {
+      "workload": "ascii_long_lines",
+      "chunk": 4096,
+      "baseline_mib_s": 189.69520627883543,
+      "candidate_mib_s": 176.53288357462142,
+      "speed_ratio": 0.9306133087787862
+    },
+    {
+      "workload": "ascii_long_lines",
+      "chunk": 65536,
+      "baseline_mib_s": 188.79724356024403,
+      "candidate_mib_s": 178.35909366291477,
+      "speed_ratio": 0.94471238191569
+    },
+    {
+      "workload": "ansi_truecolor",
+      "chunk": 1,
+      "baseline_mib_s": 12.089507680399246,
+      "candidate_mib_s": 12.553282801139524,
+      "speed_ratio": 1.0383617871794892
+    },
+    {
+      "workload": "ansi_truecolor",
+      "chunk": 1023,
+      "baseline_mib_s": 48.03460874346123,
+      "candidate_mib_s": 55.16490071407378,
+      "speed_ratio": 1.1484407213285186
+    },
+    {
+      "workload": "ansi_truecolor",
+      "chunk": 4096,
+      "baseline_mib_s": 47.6707147286944,
+      "candidate_mib_s": 55.461162967067395,
+      "speed_ratio": 1.1634220985087036
+    },
+    {
+      "workload": "ansi_truecolor",
+      "chunk": 65536,
+      "baseline_mib_s": 44.88080606017446,
+      "candidate_mib_s": 55.29402862367273,
+      "speed_ratio": 1.2320195085074148
+    },
+    {
+      "workload": "unicode",
+      "chunk": 1,
+      "baseline_mib_s": 8.214022517202602,
+      "candidate_mib_s": 8.193160594101888,
+      "speed_ratio": 0.9974602062440147
+    },
+    {
+      "workload": "unicode",
+      "chunk": 1023,
+      "baseline_mib_s": 19.948648886239752,
+      "candidate_mib_s": 28.78552958336372,
+      "speed_ratio": 1.4429814143061839
+    },
+    {
+      "workload": "unicode",
+      "chunk": 4096,
+      "baseline_mib_s": 20.016622203410154,
+      "candidate_mib_s": 28.809553317022853,
+      "speed_ratio": 1.4392814643878666
+    },
+    {
+      "workload": "unicode",
+      "chunk": 65536,
+      "baseline_mib_s": 20.02300142288454,
+      "candidate_mib_s": 28.982199285355478,
+      "speed_ratio": 1.4474452991963211
+    }
+  ],
+  "per_order": {
+    "bench-1-baseline.out": [
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1,
+        "median_mib_s": 5.9376678532314076,
+        "seconds": [
+          0.336426542,
+          0.336572666,
+          0.340340084,
+          0.336832583,
+          0.349795042
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1023,
+        "median_mib_s": 91.60480021977824,
+        "seconds": [
+          0.021832917,
+          0.021996875,
+          0.021828583,
+          0.021795917,
+          0.022013834
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 4096,
+        "median_mib_s": 93.17692406388173,
+        "seconds": [
+          0.021464542,
+          0.021391625,
+          0.021632709,
+          0.02136525,
+          0.021466875
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 65536,
+        "median_mib_s": 83.0402427963835,
+        "seconds": [
+          0.023835375,
+          0.024445375,
+          0.021834458,
+          0.024084708,
+          0.025021125
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1,
+        "median_mib_s": 5.9473186513860234,
+        "seconds": [
+          0.347151333,
+          0.335647208,
+          0.335556042,
+          0.336286,
+          0.337544833
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1023,
+        "median_mib_s": 188.47773413575842,
+        "seconds": [
+          0.010430875,
+          0.010913208,
+          0.010611333,
+          0.010583334,
+          0.010622959
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 4096,
+        "median_mib_s": 190.06438431018506,
+        "seconds": [
+          0.0107305,
+          0.01052275,
+          0.010529416,
+          0.010433666,
+          0.010500083
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 65536,
+        "median_mib_s": 190.09222229118345,
+        "seconds": [
+          0.010484791,
+          0.010460375,
+          0.010521209,
+          0.010618333,
+          0.010671041
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1,
+        "median_mib_s": 12.089927930609713,
+        "seconds": [
+          0.166600625,
+          0.165438459,
+          0.164990583,
+          0.165387291,
+          0.165426958
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1023,
+        "median_mib_s": 47.75169044565554,
+        "seconds": [
+          0.041304375,
+          0.046279917,
+          0.046096292,
+          0.041241666,
+          0.041883334
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 4096,
+        "median_mib_s": 47.98574900031889,
+        "seconds": [
+          0.041341875,
+          0.041679041,
+          0.042229917,
+          0.044069584,
+          0.041325916
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 65536,
+        "median_mib_s": 44.019735191799604,
+        "seconds": [
+          0.043690792,
+          0.045434167,
+          0.0465115,
+          0.048210834,
+          0.043068167
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1,
+        "median_mib_s": 8.231466059829819,
+        "seconds": [
+          0.253937125,
+          0.24270425,
+          0.24406525,
+          0.24244525,
+          0.242970084
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1023,
+        "median_mib_s": 19.959880639913774,
+        "seconds": [
+          0.100431417,
+          0.1001545,
+          0.100418166,
+          0.100201,
+          0.099832875
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 4096,
+        "median_mib_s": 20.050292750815654,
+        "seconds": [
+          0.099749167,
+          0.099306667,
+          0.0994075,
+          0.100223833,
+          0.100756125
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 65536,
+        "median_mib_s": 20.101015846042863,
+        "seconds": [
+          0.099497459,
+          0.099388167,
+          0.099417708,
+          0.099870375,
+          0.107715291
+        ]
+      }
+    ],
+    "bench-2-candidate.out": [
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1,
+        "median_mib_s": 6.111260857372986,
+        "seconds": [
+          0.348692667,
+          0.333410125,
+          0.325477958,
+          0.327264708,
+          0.325542666
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1023,
+        "median_mib_s": 97.6711534352776,
+        "seconds": [
+          0.020692042,
+          0.020424042,
+          0.0206755,
+          0.020331417,
+          0.020476875
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 4096,
+        "median_mib_s": 99.42128362123334,
+        "seconds": [
+          0.020064292,
+          0.020344084,
+          0.020116417,
+          0.020227208,
+          0.020055791
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 65536,
+        "median_mib_s": 99.80724725374121,
+        "seconds": [
+          0.020295875,
+          0.020034584,
+          0.019986958,
+          0.02016625,
+          0.020038625
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1,
+        "median_mib_s": 6.169071098627694,
+        "seconds": [
+          0.323330084,
+          0.324197917,
+          0.322969209,
+          0.335012125,
+          0.326796291
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1023,
+        "median_mib_s": 157.71886785295965,
+        "seconds": [
+          0.012667833,
+          0.012132292,
+          0.012788875,
+          0.012680791,
+          0.012904166
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 4096,
+        "median_mib_s": 155.61628913506522,
+        "seconds": [
+          0.013756,
+          0.013024375,
+          0.012852125,
+          0.011268833,
+          0.011338209
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 65536,
+        "median_mib_s": 177.07015820687425,
+        "seconds": [
+          0.011310875,
+          0.011229917,
+          0.011294958,
+          0.01119675,
+          0.011317542
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1,
+        "median_mib_s": 12.547927200063366,
+        "seconds": [
+          0.165427583,
+          0.159388875,
+          0.159241167,
+          0.158971917,
+          0.159446
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1023,
+        "median_mib_s": 54.95574866944577,
+        "seconds": [
+          0.036392917,
+          0.036588208,
+          0.036326833,
+          0.036576375,
+          0.036373292
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 4096,
+        "median_mib_s": 55.186115173422365,
+        "seconds": [
+          0.036241,
+          0.036095875,
+          0.036499583,
+          0.0365385,
+          0.03616025
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 65536,
+        "median_mib_s": 55.21671359121029,
+        "seconds": [
+          0.036135,
+          0.036159583,
+          0.03639725,
+          0.036220917,
+          0.036358792
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1,
+        "median_mib_s": 8.262552214217541,
+        "seconds": [
+          0.242055959,
+          0.2413375,
+          0.241854125,
+          0.242101125,
+          0.242341583
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1023,
+        "median_mib_s": 28.681099770460857,
+        "seconds": [
+          0.078146,
+          0.071924333,
+          0.069732333,
+          0.06956375,
+          0.069394958
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 4096,
+        "median_mib_s": 27.258850287661282,
+        "seconds": [
+          0.076047333,
+          0.077717458,
+          0.072323458,
+          0.073370666,
+          0.069534208
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 65536,
+        "median_mib_s": 28.89933278665429,
+        "seconds": [
+          0.069881041,
+          0.073565917,
+          0.069002333,
+          0.06920575,
+          0.069131917
+        ]
+      }
+    ],
+    "bench-3-candidate.out": [
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1,
+        "median_mib_s": 6.151055315954523,
+        "seconds": [
+          0.325226458,
+          0.324578,
+          0.325147458,
+          0.324590833,
+          0.329341584
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1023,
+        "median_mib_s": 98.94316333661084,
+        "seconds": [
+          0.02024525,
+          0.020115208,
+          0.020192166,
+          0.020242208,
+          0.020213625
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 4096,
+        "median_mib_s": 100.23953238659101,
+        "seconds": [
+          0.019952208,
+          0.020026334,
+          0.019903917,
+          0.020077334,
+          0.0198385
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 65536,
+        "median_mib_s": 100.32144999005814,
+        "seconds": [
+          0.019973584,
+          0.019804959,
+          0.019935916,
+          0.019956,
+          0.019817417
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1,
+        "median_mib_s": 6.038868421737964,
+        "seconds": [
+          0.335271917,
+          0.34921125,
+          0.331187875,
+          0.324532208,
+          0.324045167
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1023,
+        "median_mib_s": 177.95573351128905,
+        "seconds": [
+          0.01123875,
+          0.011223875,
+          0.011365459,
+          0.011231417,
+          0.011240917
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 4096,
+        "median_mib_s": 179.73085304756128,
+        "seconds": [
+          0.01108175,
+          0.011320459,
+          0.011030875,
+          0.011541667,
+          0.01112775
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 65536,
+        "median_mib_s": 179.62794561763945,
+        "seconds": [
+          0.011168833,
+          0.011045041,
+          0.011134125,
+          0.011284167,
+          0.011104958
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1,
+        "median_mib_s": 12.557759177880678,
+        "seconds": [
+          0.158776916,
+          0.159264083,
+          0.159452875,
+          0.159181084,
+          0.159377667
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1023,
+        "median_mib_s": 55.40863340756059,
+        "seconds": [
+          0.03609125,
+          0.036155417,
+          0.036183041,
+          0.035995875,
+          0.036095458
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 4096,
+        "median_mib_s": 55.65075544787505,
+        "seconds": [
+          0.035869458,
+          0.0357255,
+          0.035938416,
+          0.036026666,
+          0.0359935
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 65536,
+        "median_mib_s": 55.382164766426136,
+        "seconds": [
+          0.036112709,
+          0.035909709,
+          0.036180959,
+          0.036110166,
+          0.036393375
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1,
+        "median_mib_s": 8.029139062436387,
+        "seconds": [
+          0.248745084,
+          0.2458705,
+          0.250705375,
+          0.251042125,
+          0.249092709
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1023,
+        "median_mib_s": 28.840971761357512,
+        "seconds": [
+          0.069218625,
+          0.069167,
+          0.069683917,
+          0.069345791,
+          0.069378667
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 4096,
+        "median_mib_s": 28.93115650489931,
+        "seconds": [
+          0.069061042,
+          0.069308625,
+          0.06876225,
+          0.069169125,
+          0.069129625
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 65536,
+        "median_mib_s": 28.99634599646291,
+        "seconds": [
+          0.068860625,
+          0.068974208,
+          0.069013167,
+          0.068935167,
+          0.069002584
+        ]
+      }
+    ],
+    "bench-4-baseline.out": [
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1,
+        "median_mib_s": 5.919557657028779,
+        "seconds": [
+          0.337863083,
+          0.337337583,
+          0.336965333,
+          0.346605041,
+          0.340431083
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1023,
+        "median_mib_s": 82.14578593350349,
+        "seconds": [
+          0.02395175,
+          0.02366175,
+          0.024346958,
+          0.025409666,
+          0.025806875
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 4096,
+        "median_mib_s": 87.20930359315848,
+        "seconds": [
+          0.021896708,
+          0.022933333,
+          0.024050416,
+          0.023230625,
+          0.021601875
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 65536,
+        "median_mib_s": 93.00721531374961,
+        "seconds": [
+          0.021503708,
+          0.02167125,
+          0.021461042,
+          0.021477292,
+          0.021714458
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1,
+        "median_mib_s": 5.934972001457997,
+        "seconds": [
+          0.33827575,
+          0.336523083,
+          0.336750083,
+          0.33756275,
+          0.336985583
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1023,
+        "median_mib_s": 185.93768187029508,
+        "seconds": [
+          0.010916542,
+          0.010633667,
+          0.010756292,
+          0.01071225,
+          0.010894667
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 4096,
+        "median_mib_s": 188.28994693612714,
+        "seconds": [
+          0.010557042,
+          0.010666875,
+          0.010621916,
+          0.010858167,
+          0.010446625
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 65536,
+        "median_mib_s": 188.57325288295502,
+        "seconds": [
+          0.010605958,
+          0.010637292,
+          0.01086375,
+          0.010580792,
+          0.010517
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1,
+        "median_mib_s": 12.069180567149262,
+        "seconds": [
+          0.165711333,
+          0.165155417,
+          0.165131458,
+          0.167705,
+          0.174438083
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1023,
+        "median_mib_s": 48.04588381904719,
+        "seconds": [
+          0.041646417,
+          0.041569417,
+          0.0414895,
+          0.041626875,
+          0.046213625
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 4096,
+        "median_mib_s": 42.00136504436394,
+        "seconds": [
+          0.048230666,
+          0.049368959,
+          0.0476175,
+          0.041280834,
+          0.041613667
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 65536,
+        "median_mib_s": 47.55422667911002,
+        "seconds": [
+          0.04205725,
+          0.041483667,
+          0.041392417,
+          0.0454925,
+          0.045875958
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1,
+        "median_mib_s": 8.209794433356274,
+        "seconds": [
+          0.243976,
+          0.2433045,
+          0.244341208,
+          0.243611459,
+          0.243360666
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1023,
+        "median_mib_s": 19.937429766042335,
+        "seconds": [
+          0.099963666,
+          0.101523333,
+          0.100019709,
+          0.104106916,
+          0.100313833
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 4096,
+        "median_mib_s": 19.99544283862265,
+        "seconds": [
+          0.099705625,
+          0.099811125,
+          0.100062334,
+          0.100022791,
+          0.10036175
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 65536,
+        "median_mib_s": 19.99379352661347,
+        "seconds": [
+          0.099899875,
+          0.100340459,
+          0.10023025,
+          0.100031042,
+          0.099587458
+        ]
+      }
+    ]
+  },
+  "disassembly": {
+    "v1": "ASCIIInputScalars-specialized printRowRun closure: scalar store at0x1000138e0–3918, link test391c, nil-link payload-count loads39c8/39cc and branch39d0, loop back-edge13a40->138c8. Policy not hoisted.",
+    "v2": "Corresponding slot loop0x100010f38–0f94 has no payload/link policy checks; back-edge0f94->0f38."
+  },
+  "hashes": {
+    "change.patch": "48fd59657ba1300f9483d4a2c23c7b7717e919b100498403eff121d4bb10d486",
+    "correction.patch": "9cbaca93641fe07a0d4890438e337b13b04a2239acfc435817d052bb06833823",
+    "Probe.swift": "28ba1e13c8c7a8f92c5e79088dc9b2a18ab02836f7ac399d7201f74c0d128bef",
+    "RowProbe.swift": "6902a817a0d344dbc73d7b586a5198f9ff427f6f655ad552bc7b32660757c00a",
+    "RowTransactionTests.swift": "1dd2ab2794a145f6e43d7f3013ee5e4777b76fd30646b1cef2a9a15a1343bf73",
+    "build.sh": "9377e903597951f1c384a68d177409d11aac9ebfb548df3d70dc48bcad568faf",
+    "run.rb": "3b776a8d9ac51386151301a04e6eba758f07c2702df22415aa123d6551171bea",
+    "run-bench.rb": "8befa50a7f2464ed30d504b5bbff88d188915b1ce48f1caf640ad1b039c5ac34",
+    "baseline/probe": "ae7258c2c75cb4457e952071413cf9895f35d26ffebe9572761e8acc15b54226",
+    "candidate/probe": "f5d004cbd93663aaee4871447ce38add143df1a75c39ed16721dcd112d0646b5",
+    "v1-disassembly.txt": "80d263ea69d1b03403f93baec78e2a6ee5aa6fecef7c2af099585490b97bf45c",
+    "v2-disassembly.txt": "b7ee3ef7a3097e023155bf22c959ce128f2a4b7aa895fc71dfd1ea269b7fc303"
+  },
+  "source_inputs": {
+    "baseline": {
+      "Sources/Terminal/Emulation/TerminalDocument.swift": "461d2ee88039e5de375c0d899783b0e818db89be5ff0abe46a55db1c08b51480",
+      "Sources/Terminal/Emulation/DocumentReflow.swift": "fc6223d765aa98d0e591bb0c0e4cae4ba5ef5a3c1e96ec82ca3080cfead689b7",
+      "Sources/Terminal/Text/TerminalWidth.swift": "f7d99a4b611254ec1c2e995cc7f5ad3865e17695d0ca735800f5713146f5828f",
+      "Sources/Terminal/Text/TerminalWidthTables.swift": "13ab185b44b914c8e4edae3fc6fcf3d332f4014b2121ad72e8e2a74a214b498d",
+      "Sources/Terminal/Text/TerminalText.swift": "153ede47e6b0cfdad0a2ea5c5cff6512c237cd1852e966ffef584f5ccb894641",
+      "Sources/Terminal/Text/Unicode18GraphemeTables.swift": "ee56570a04c0bcad3d9d6ea288fba2bd841c82fc320be48efebf6130445c81f4",
+      "Sources/Terminal/Emulation/TerminalInputEncoder.swift": "e199019a7380032322e527309a35a372a639fcac74ddf7a2f9149ab7044ad5a6",
+      "Sources/Terminal/Emulation/ClipboardProtocol.swift": "b2a4dd6d70b5731d9755a5f4b93cc2d719c9b909a13a149b9e58f000d190536b",
+      "Sources/Terminal/Emulation/KittyGraphics.swift": "436301e6d99efa815b3f5daa85732df9db5bcace5b572fab03f2284bbd111944",
+      "Sources/Terminal/Emulation/TerminalPalette.swift": "6bff4b1f3e751518c72848cb9f4ad0c8fdc2ba8a21d9e77ef1d7f2fb0e8f415e",
+      "Sources/Terminal/Text/UnicodeLowercase.swift": "bf382eebf90afdb116c4ef308d45b5b7c62b4ddbc5957ca78a7aec08d83d5ee4",
+      "Sources/Terminal/Emulation/HistorySearch.swift": "ffd778ea834cb8a201e6e53d5567d30d7abb5edf34e029a89a68f2e98d7ee362",
+      "Sources/Terminal/Emulation/TerminalSnapshot.swift": "1aaac81b232517c9474944771240d6b3a9a95f8c58ba10d71b2b4a0a982f489f",
+      "Sources/Terminal/Text/SelectionWordProfile.swift": "921206f9ae3dc2c166bef39e9eebc6a4beb847426209d74f5f7264fd00cc2215",
+      "Sources/Terminal/Emulation/TerminalSelection.swift": "35ec910bc7073fd7c573f040a9a5e128cc32355692ee580629676e6e7d51e97a",
+      "Sources/Terminal/Emulation/PresentedContent.swift": "9190f31549700be2dbc04c49165d9ab9190d180de33067ed2129e2756d8e70c6",
+      "Sources/Terminal/Emulation/TerminalEmulator.swift": "0ae8e338252cd7a69bd5e9739c4add39903224db8d92b375a863c6b9ed901d3b",
+      "Tests/TerminalTests/TerminalSnapshotTestSupport.swift": "c797cc6ef8ac1b3c5d3bb29c2810722531e27d23574d2a45eb03b5f8a190a5c8",
+      "Tests/TerminalTests/EmulatorTests.swift": "b1415a9160775d7ac6e74cd234e9f4e2e0b903c95a4fbbd914c33e2ca8a96e47",
+      "Tests/TerminalTests/TerminalDocumentOwnershipTests.swift": "62dc8b4e15245684ad067575df71d7f21c1fff9a84f05ade53788793717b63c6",
+      "Tests/TerminalTests/TerminalReflowSemanticTests.swift": "901301e874fbe6bb08c97e8ffb3a585f2fd60e56efe7073b27ba8fc737371426",
+      "Tests/TerminalTests/TerminalSemanticRegressionTests.swift": "c90c5966e7643f919103312f25f734869808f05aa7c2e6690ff41bb615b10c4a",
+      "Tests/TerminalTests/Unicode18CorpusTests.swift": "10977751dce9c573f08f8641f0487fe3e88444dca51f1e687e0a6fea06816840",
+      "Tests/TerminalTests/TerminalTextTests.swift": "4e71ec05a12ad6db46f6dfac7c8be4a239c5cf078b54d04a59c93d1f395a769f",
+      "Tests/TerminalTests/TerminalBoundaryRegressionTests.swift": "74b94f2911d658d1f163e419dde1ef74975577c31d72d3101cbf16167be5cc03",
+      "Tests/TerminalTests/TerminalSelectionTests.swift": "b12edaec25ccc3bdbc5f988b075918bdf856b2a5c37588c2f4d512e4f6d0aff2",
+      "Sources/Terminal/Interop/Bridge.h": "e5baa6ffe077d4fa1ceb6f202e91eebd47119172cd1b0102f512ff4a68d86539"
+    },
+    "candidate": {
+      "Sources/Terminal/Emulation/TerminalDocument.swift": "b784a9efbf69de1cfb465773a55fb641ed40c52fe8affaba87f56468ea44327e",
+      "Sources/Terminal/Emulation/DocumentReflow.swift": "fc6223d765aa98d0e591bb0c0e4cae4ba5ef5a3c1e96ec82ca3080cfead689b7",
+      "Sources/Terminal/Text/TerminalWidth.swift": "f7d99a4b611254ec1c2e995cc7f5ad3865e17695d0ca735800f5713146f5828f",
+      "Sources/Terminal/Text/TerminalWidthTables.swift": "13ab185b44b914c8e4edae3fc6fcf3d332f4014b2121ad72e8e2a74a214b498d",
+      "Sources/Terminal/Text/TerminalText.swift": "153ede47e6b0cfdad0a2ea5c5cff6512c237cd1852e966ffef584f5ccb894641",
+      "Sources/Terminal/Text/Unicode18GraphemeTables.swift": "ee56570a04c0bcad3d9d6ea288fba2bd841c82fc320be48efebf6130445c81f4",
+      "Sources/Terminal/Emulation/TerminalInputEncoder.swift": "e199019a7380032322e527309a35a372a639fcac74ddf7a2f9149ab7044ad5a6",
+      "Sources/Terminal/Emulation/ClipboardProtocol.swift": "b2a4dd6d70b5731d9755a5f4b93cc2d719c9b909a13a149b9e58f000d190536b",
+      "Sources/Terminal/Emulation/KittyGraphics.swift": "436301e6d99efa815b3f5daa85732df9db5bcace5b572fab03f2284bbd111944",
+      "Sources/Terminal/Emulation/TerminalPalette.swift": "6bff4b1f3e751518c72848cb9f4ad0c8fdc2ba8a21d9e77ef1d7f2fb0e8f415e",
+      "Sources/Terminal/Text/UnicodeLowercase.swift": "bf382eebf90afdb116c4ef308d45b5b7c62b4ddbc5957ca78a7aec08d83d5ee4",
+      "Sources/Terminal/Emulation/HistorySearch.swift": "ffd778ea834cb8a201e6e53d5567d30d7abb5edf34e029a89a68f2e98d7ee362",
+      "Sources/Terminal/Emulation/TerminalSnapshot.swift": "1aaac81b232517c9474944771240d6b3a9a95f8c58ba10d71b2b4a0a982f489f",
+      "Sources/Terminal/Text/SelectionWordProfile.swift": "921206f9ae3dc2c166bef39e9eebc6a4beb847426209d74f5f7264fd00cc2215",
+      "Sources/Terminal/Emulation/TerminalSelection.swift": "35ec910bc7073fd7c573f040a9a5e128cc32355692ee580629676e6e7d51e97a",
+      "Sources/Terminal/Emulation/PresentedContent.swift": "9190f31549700be2dbc04c49165d9ab9190d180de33067ed2129e2756d8e70c6",
+      "Sources/Terminal/Emulation/TerminalEmulator.swift": "0ae8e338252cd7a69bd5e9739c4add39903224db8d92b375a863c6b9ed901d3b",
+      "Tests/TerminalTests/TerminalSnapshotTestSupport.swift": "c797cc6ef8ac1b3c5d3bb29c2810722531e27d23574d2a45eb03b5f8a190a5c8",
+      "Tests/TerminalTests/EmulatorTests.swift": "b1415a9160775d7ac6e74cd234e9f4e2e0b903c95a4fbbd914c33e2ca8a96e47",
+      "Tests/TerminalTests/TerminalDocumentOwnershipTests.swift": "62dc8b4e15245684ad067575df71d7f21c1fff9a84f05ade53788793717b63c6",
+      "Tests/TerminalTests/TerminalReflowSemanticTests.swift": "901301e874fbe6bb08c97e8ffb3a585f2fd60e56efe7073b27ba8fc737371426",
+      "Tests/TerminalTests/TerminalSemanticRegressionTests.swift": "c90c5966e7643f919103312f25f734869808f05aa7c2e6690ff41bb615b10c4a",
+      "Tests/TerminalTests/Unicode18CorpusTests.swift": "10977751dce9c573f08f8641f0487fe3e88444dca51f1e687e0a6fea06816840",
+      "Tests/TerminalTests/TerminalTextTests.swift": "4e71ec05a12ad6db46f6dfac7c8be4a239c5cf078b54d04a59c93d1f395a769f",
+      "Tests/TerminalTests/TerminalBoundaryRegressionTests.swift": "74b94f2911d658d1f163e419dde1ef74975577c31d72d3101cbf16167be5cc03",
+      "Tests/TerminalTests/TerminalSelectionTests.swift": "b12edaec25ccc3bdbc5f988b075918bdf856b2a5c37588c2f4d512e4f6d0aff2",
+      "Sources/Terminal/Interop/Bridge.h": "e5baa6ffe077d4fa1ceb6f202e91eebd47119172cd1b0102f512ff4a68d86539"
+    }
+  }
+}

@@ -1,0 +1,936 @@
+{
+  "baseline_revision": "c504a672f483a245adba42ecab10fe4770727f87",
+  "runtime_baseline": "455c5b7",
+  "decision": "HOLD: long ASCII regressed in both candidate orders; no follow-up variants attempted",
+  "scope": "Headless terminal_feed; no real-app throughput or FPS claim",
+  "order": [
+    "baseline",
+    "candidate",
+    "candidate",
+    "baseline"
+  ],
+  "bytes_per_sample": 2097152,
+  "warmups_per_cell": 1,
+  "measured_samples_per_cell_per_order": 5,
+  "flags": [
+    "-swift-version",
+    "5",
+    "-O",
+    "-whole-module-optimization",
+    "-target",
+    "arm64-apple-macosx15.0"
+  ],
+  "correctness": {
+    "passed": true,
+    "row_records": 270,
+    "parser_records": 337
+  },
+  "deep_tests": "Both binaries passed row-sharing +64 mixed retained-write cases, ownership +2400 Unicode differential, semantic and boundary suites, decoder, Unicode18 category +853 corpus cases, selection, reservation/reflow suites",
+  "binary_sizes": {
+    "baseline": 2031816,
+    "candidate": 2031832
+  },
+  "comparison": [
+    {
+      "workload": "ascii_short_lines",
+      "chunk": 1,
+      "baseline_mib_s": 5.915394333126171,
+      "candidate_mib_s": 5.823939046653939,
+      "speed_ratio": 0.9845394438101812
+    },
+    {
+      "workload": "ascii_short_lines",
+      "chunk": 1023,
+      "baseline_mib_s": 90.86761397365802,
+      "candidate_mib_s": 92.53324279880857,
+      "speed_ratio": 1.018330280198987
+    },
+    {
+      "workload": "ascii_short_lines",
+      "chunk": 4096,
+      "baseline_mib_s": 92.45428568952117,
+      "candidate_mib_s": 97.08119089302704,
+      "speed_ratio": 1.0500453296350576
+    },
+    {
+      "workload": "ascii_short_lines",
+      "chunk": 65536,
+      "baseline_mib_s": 92.7899322923463,
+      "candidate_mib_s": 97.4842958892091,
+      "speed_ratio": 1.050591303182253
+    },
+    {
+      "workload": "ascii_long_lines",
+      "chunk": 1,
+      "baseline_mib_s": 5.754020298739356,
+      "candidate_mib_s": 5.94012686842774,
+      "speed_ratio": 1.0323437457683557
+    },
+    {
+      "workload": "ascii_long_lines",
+      "chunk": 1023,
+      "baseline_mib_s": 186.3534921689371,
+      "candidate_mib_s": 172.43175722229336,
+      "speed_ratio": 0.9252939411834413
+    },
+    {
+      "workload": "ascii_long_lines",
+      "chunk": 4096,
+      "baseline_mib_s": 187.44507859197253,
+      "candidate_mib_s": 174.1698834755583,
+      "speed_ratio": 0.9291782146742221
+    },
+    {
+      "workload": "ascii_long_lines",
+      "chunk": 65536,
+      "baseline_mib_s": 187.80296726810255,
+      "candidate_mib_s": 176.27131610466304,
+      "speed_ratio": 0.9385970768663243
+    },
+    {
+      "workload": "ansi_truecolor",
+      "chunk": 1,
+      "baseline_mib_s": 12.081821100868536,
+      "candidate_mib_s": 12.22861239232661,
+      "speed_ratio": 1.012149765356774
+    },
+    {
+      "workload": "ansi_truecolor",
+      "chunk": 1023,
+      "baseline_mib_s": 48.13914581586759,
+      "candidate_mib_s": 54.090876052447875,
+      "speed_ratio": 1.1236359751655267
+    },
+    {
+      "workload": "ansi_truecolor",
+      "chunk": 4096,
+      "baseline_mib_s": 48.24806802070527,
+      "candidate_mib_s": 54.34702638818508,
+      "speed_ratio": 1.1264083437467898
+    },
+    {
+      "workload": "ansi_truecolor",
+      "chunk": 65536,
+      "baseline_mib_s": 48.27638228860225,
+      "candidate_mib_s": 54.40378807047881,
+      "speed_ratio": 1.1269234663286523
+    },
+    {
+      "workload": "unicode",
+      "chunk": 1,
+      "baseline_mib_s": 7.973759696430675,
+      "candidate_mib_s": 8.154166055579873,
+      "speed_ratio": 1.022625005771111
+    },
+    {
+      "workload": "unicode",
+      "chunk": 1023,
+      "baseline_mib_s": 19.726605619200544,
+      "candidate_mib_s": 28.325485663112083,
+      "speed_ratio": 1.4359026692124857
+    },
+    {
+      "workload": "unicode",
+      "chunk": 4096,
+      "baseline_mib_s": 19.87959594701358,
+      "candidate_mib_s": 26.910249273002798,
+      "speed_ratio": 1.3536617818957934
+    },
+    {
+      "workload": "unicode",
+      "chunk": 65536,
+      "baseline_mib_s": 19.896208147325137,
+      "candidate_mib_s": 28.348730662905584,
+      "speed_ratio": 1.4248308246974595
+    }
+  ],
+  "per_order": {
+    "bench-1-baseline.out": [
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1,
+        "median_mib_s": 5.924531844086133,
+        "seconds": [
+          0.3460505,
+          0.337115084,
+          0.340068292,
+          0.337579416,
+          0.336944958
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1023,
+        "median_mib_s": 90.93957633524876,
+        "seconds": [
+          0.021897417,
+          0.021914417,
+          0.022150375,
+          0.021992625,
+          0.022011292
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 4096,
+        "median_mib_s": 92.61957233097715,
+        "seconds": [
+          0.021477083,
+          0.021689583,
+          0.021502541,
+          0.02170975,
+          0.021593708
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 65536,
+        "median_mib_s": 92.26634988553205,
+        "seconds": [
+          0.021484125,
+          0.021681875,
+          0.021779,
+          0.021408541,
+          0.021676375
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1,
+        "median_mib_s": 5.721812611644007,
+        "seconds": [
+          0.336980292,
+          0.336908,
+          0.349539584,
+          0.355775542,
+          0.354031792
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1023,
+        "median_mib_s": 186.31298252151333,
+        "seconds": [
+          0.010734625,
+          0.010679625,
+          0.010847625,
+          0.010594042,
+          0.01074025
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 4096,
+        "median_mib_s": 187.18850078577054,
+        "seconds": [
+          0.010693959,
+          0.010849292,
+          0.010655167,
+          0.010684417,
+          0.010493291
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 65536,
+        "median_mib_s": 184.4869533132704,
+        "seconds": [
+          0.010840875,
+          0.011462208,
+          0.010658584,
+          0.01129475,
+          0.010783875
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1,
+        "median_mib_s": 12.071517706653067,
+        "seconds": [
+          0.165987542,
+          0.16567925,
+          0.165439042,
+          0.169294625,
+          0.1655005
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1023,
+        "median_mib_s": 48.09238547249266,
+        "seconds": [
+          0.041452,
+          0.041586625,
+          0.041776958,
+          0.041890833,
+          0.041387
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 4096,
+        "median_mib_s": 48.228895107844146,
+        "seconds": [
+          0.041495084,
+          0.041468916,
+          0.04149475,
+          0.041435958,
+          0.041143875
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 65536,
+        "median_mib_s": 48.199545733741324,
+        "seconds": [
+          0.041384584,
+          0.041494167,
+          0.041714917,
+          0.041197875,
+          0.041783542
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1,
+        "median_mib_s": 8.20620553262377,
+        "seconds": [
+          0.243049167,
+          0.243328,
+          0.243718,
+          0.254396959,
+          0.250504208
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1023,
+        "median_mib_s": 19.84749679648997,
+        "seconds": [
+          0.101377625,
+          0.100208458,
+          0.100768375,
+          0.110791959,
+          0.100225541
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 4096,
+        "median_mib_s": 20.016446913935773,
+        "seconds": [
+          0.09951825,
+          0.099981125,
+          0.099917833,
+          0.100177833,
+          0.0996485
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 65536,
+        "median_mib_s": 20.004901200794194,
+        "seconds": [
+          0.099329417,
+          0.09965075,
+          0.0999755,
+          0.100127334,
+          0.1001865
+        ]
+      }
+    ],
+    "bench-2-candidate.out": [
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1,
+        "median_mib_s": 5.894237492232058,
+        "seconds": [
+          0.339314458,
+          0.339168542,
+          0.33827675,
+          0.345911333,
+          0.342432333
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1023,
+        "median_mib_s": 81.9297168381995,
+        "seconds": [
+          0.022224875,
+          0.023677958,
+          0.024767791,
+          0.024411167,
+          0.025272542
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 4096,
+        "median_mib_s": 96.36560958090018,
+        "seconds": [
+          0.020754292,
+          0.020939,
+          0.020617584,
+          0.020722875,
+          0.02078025
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 65536,
+        "median_mib_s": 96.82494543672261,
+        "seconds": [
+          0.020534958,
+          0.020731125,
+          0.020852375,
+          0.020655834,
+          0.020628584
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1,
+        "median_mib_s": 5.936547226839026,
+        "seconds": [
+          0.336490125,
+          0.338420333,
+          0.340063375,
+          0.336896166,
+          0.336158292
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1023,
+        "median_mib_s": 173.62743389851667,
+        "seconds": [
+          0.011516834,
+          0.011748041,
+          0.011570291,
+          0.011474416,
+          0.011518917
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 4096,
+        "median_mib_s": 170.77231780728346,
+        "seconds": [
+          0.011571375,
+          0.012122167,
+          0.011791333,
+          0.011448708,
+          0.0117115
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 65536,
+        "median_mib_s": 175.67682351005632,
+        "seconds": [
+          0.011488042,
+          0.011384541,
+          0.011672917,
+          0.01135025,
+          0.011342041
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1,
+        "median_mib_s": 12.317442036812214,
+        "seconds": [
+          0.162131,
+          0.162371375,
+          0.162369542,
+          0.172140084,
+          0.1636455
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1023,
+        "median_mib_s": 53.80948847462638,
+        "seconds": [
+          0.038682917,
+          0.040729458,
+          0.036957042,
+          0.037168166,
+          0.03695925
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 4096,
+        "median_mib_s": 52.13928530387505,
+        "seconds": [
+          0.038358792,
+          0.0414915,
+          0.04121175,
+          0.036837583,
+          0.03699475
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 65536,
+        "median_mib_s": 50.057252983099424,
+        "seconds": [
+          0.036765583,
+          0.03995425,
+          0.04084675,
+          0.039466583,
+          0.040530875
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1,
+        "median_mib_s": 8.153485283723452,
+        "seconds": [
+          0.251067167,
+          0.244811042,
+          0.245482709,
+          0.244349459,
+          0.245293875
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1023,
+        "median_mib_s": 28.231590797207186,
+        "seconds": [
+          0.07015425,
+          0.071514458,
+          0.070982458,
+          0.070842625,
+          0.07059425
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 4096,
+        "median_mib_s": 28.2890100887521,
+        "seconds": [
+          0.070351958,
+          0.070698833,
+          0.070206667,
+          0.070959167,
+          0.070929667
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 65536,
+        "median_mib_s": 28.499704180195536,
+        "seconds": [
+          0.07026625,
+          0.069520125,
+          0.070176167,
+          0.069946292,
+          0.070277334
+        ]
+      }
+    ],
+    "bench-3-candidate.out": [
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1,
+        "median_mib_s": 5.770160103449507,
+        "seconds": [
+          0.346610833,
+          0.344388042,
+          0.356309292,
+          0.348249709,
+          0.337273292
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1023,
+        "median_mib_s": 96.40567817875792,
+        "seconds": [
+          0.020877625,
+          0.020745666,
+          0.020567625,
+          0.021002833,
+          0.020625459
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 4096,
+        "median_mib_s": 97.46766814695688,
+        "seconds": [
+          0.020312417,
+          0.020464208,
+          0.020536083,
+          0.020519625,
+          0.020585042
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 65536,
+        "median_mib_s": 98.49669420470076,
+        "seconds": [
+          0.020492917,
+          0.02030525,
+          0.020300625,
+          0.020497292,
+          0.020201875
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1,
+        "median_mib_s": 5.943951509243587,
+        "seconds": [
+          0.336910875,
+          0.335696625,
+          0.336275458,
+          0.3364765,
+          0.341712375
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1023,
+        "median_mib_s": 170.78811113216548,
+        "seconds": [
+          0.012972542,
+          0.013570042,
+          0.011710417,
+          0.011627292,
+          0.011258375
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 4096,
+        "median_mib_s": 176.73048080322587,
+        "seconds": [
+          0.011316667,
+          0.011318292,
+          0.011517375,
+          0.011285667,
+          0.011261417
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 65536,
+        "median_mib_s": 176.522506619594,
+        "seconds": [
+          0.01133,
+          0.011440458,
+          0.011338334,
+          0.011142083,
+          0.011309333
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1,
+        "median_mib_s": 12.041694390911921,
+        "seconds": [
+          0.182856209,
+          0.166089583,
+          0.163456208,
+          0.172583708,
+          0.162792916
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1023,
+        "median_mib_s": 54.17986262370753,
+        "seconds": [
+          0.036914084,
+          0.036990375,
+          0.036787833,
+          0.036691083,
+          0.037083459
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 4096,
+        "median_mib_s": 54.51472855767411,
+        "seconds": [
+          0.036513125,
+          0.03670725,
+          0.036687333,
+          0.0367635,
+          0.036545375
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 65536,
+        "median_mib_s": 54.46307913825793,
+        "seconds": [
+          0.036722125,
+          0.036758709,
+          0.03673375,
+          0.03669475,
+          0.03657625
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1,
+        "median_mib_s": 8.15484694112731,
+        "seconds": [
+          0.249469666,
+          0.244356458,
+          0.244693584,
+          0.245476583,
+          0.245252917
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1023,
+        "median_mib_s": 28.331922639685235,
+        "seconds": [
+          0.070381167,
+          0.070587125,
+          0.070621334,
+          0.07059175,
+          0.071593167
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 4096,
+        "median_mib_s": 24.606097592753486,
+        "seconds": [
+          0.193145,
+          0.082096416,
+          0.077683083,
+          0.081280666,
+          0.081196375
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 65536,
+        "median_mib_s": 27.137978083314625,
+        "seconds": [
+          0.075914042,
+          0.070822458,
+          0.073697458,
+          0.081743458,
+          0.071561209
+        ]
+      }
+    ],
+    "bench-4-baseline.out": [
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1,
+        "median_mib_s": 5.906284964653276,
+        "seconds": [
+          0.338622334,
+          0.337201125,
+          0.339753291,
+          0.339073334,
+          0.33678175
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 1023,
+        "median_mib_s": 90.42289522174677,
+        "seconds": [
+          0.02190425,
+          0.022118292,
+          0.022008792,
+          0.022141875,
+          0.022137458
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 4096,
+        "median_mib_s": 92.28958793022002,
+        "seconds": [
+          0.02187175,
+          0.021670917,
+          0.021798208,
+          0.021582375,
+          0.0215205
+        ]
+      },
+      {
+        "workload": "ascii_short_lines",
+        "chunk": 65536,
+        "median_mib_s": 92.88177311304872,
+        "seconds": [
+          0.021501708,
+          0.021622042,
+          0.021427333,
+          0.021575375,
+          0.02153275
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1,
+        "median_mib_s": 5.786592628062691,
+        "seconds": [
+          0.356223833,
+          0.364356459,
+          0.345626542,
+          0.337257791,
+          0.336103041
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 1023,
+        "median_mib_s": 186.39401943605,
+        "seconds": [
+          0.0108315,
+          0.010684625,
+          0.010729958,
+          0.010729292,
+          0.010940083
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 4096,
+        "median_mib_s": 188.52214942020484,
+        "seconds": [
+          0.010594125,
+          0.010604709,
+          0.010608833,
+          0.010826333,
+          0.010709416
+        ]
+      },
+      {
+        "workload": "ascii_long_lines",
+        "chunk": 65536,
+        "median_mib_s": 188.55917222523394,
+        "seconds": [
+          0.010562292,
+          0.01060675,
+          0.010547375,
+          0.010640334,
+          0.010632917
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1,
+        "median_mib_s": 12.0881558502241,
+        "seconds": [
+          0.165575417,
+          0.165249208,
+          0.165446334,
+          0.166043916,
+          0.165451209
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 1023,
+        "median_mib_s": 48.185997178131636,
+        "seconds": [
+          0.041488208,
+          0.041371292,
+          0.041505834,
+          0.041729417,
+          0.041599125
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 4096,
+        "median_mib_s": 48.49763422478047,
+        "seconds": [
+          0.041239125,
+          0.041072375,
+          0.04153275,
+          0.041185958,
+          0.041564083
+        ]
+      },
+      {
+        "workload": "ansi_truecolor",
+        "chunk": 65536,
+        "median_mib_s": 48.302032609909766,
+        "seconds": [
+          0.041259,
+          0.041042166,
+          0.041688459,
+          0.041406125,
+          0.041450125
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1,
+        "median_mib_s": 7.8486928983064495,
+        "seconds": [
+          0.254984667,
+          0.2548195,
+          0.2601215,
+          0.251141208,
+          0.244045875
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 1023,
+        "median_mib_s": 19.72114303745045,
+        "seconds": [
+          0.101633125,
+          0.101394209,
+          0.100945708,
+          0.101414,
+          0.101579666
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 4096,
+        "median_mib_s": 19.76376548983885,
+        "seconds": [
+          0.1010335,
+          0.101195291,
+          0.101243917,
+          0.101086875,
+          0.101339791
+        ]
+      },
+      {
+        "workload": "unicode",
+        "chunk": 65536,
+        "median_mib_s": 19.786536316658896,
+        "seconds": [
+          0.100856833,
+          0.101220792,
+          0.101078833,
+          0.101321916,
+          0.100968083
+        ]
+      }
+    ]
+  },
+  "hashes": {
+    "change.patch": "934054dbd9fb4305f9650bba2cbd61ed6b5831f21036c5579d0edaa01dfd30a4",
+    "Probe.swift": "28ba1e13c8c7a8f92c5e79088dc9b2a18ab02836f7ac399d7201f74c0d128bef",
+    "RowProbe.swift": "6902a817a0d344dbc73d7b586a5198f9ff427f6f655ad552bc7b32660757c00a",
+    "RowTransactionTests.swift": "1dd2ab2794a145f6e43d7f3013ee5e4777b76fd30646b1cef2a9a15a1343bf73",
+    "build.sh": "85cd231707ed3c0adafcadba2ed4099657c8efd58faa25c4acf345be1a5e04c8",
+    "run.rb": "d2e05eb3f656ab3dec7542968885bcf948fff7cddc4f7a22a9de40f6aabf973d",
+    "run-bench.rb": "f63c68dbf2a2e5d89e42ae5119924a932a3fada2b666ba605c2f0ea4ea332c12",
+    "baseline/probe": "ae7258c2c75cb4457e952071413cf9895f35d26ffebe9572761e8acc15b54226",
+    "candidate/probe": "3cc636ea62e105c4fd8b4aae67a55a0c64738a409c901056c31d408f1a9c2c7e"
+  }
+}

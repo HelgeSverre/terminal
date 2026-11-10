@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "passed": true,
+  "contract": {
+    "columns": 100,
+    "rows": 30,
+    "font": "Obel Mono",
+    "font_size": 14,
+    "bytes_per_workload": 1073741824,
+    "runs_per_workload": 1,
+    "workload": "ascii_long_lines",
+    "idle_seconds": 3,
+    "sample_seconds": 5,
+    "sample_interval_ms": 1
+  },
+  "provenance": {
+    "runner_sha256": "8ab02e432f4ba756f75090ab223a45f3e86c51b0958177801dec832b675c95cb",
+    "app_bundle": "/private/tmp/terminal-row-app-gate-c868/Baseline.app",
+    "app_executable_sha256": "34798ae9dfbaab0e77a2c6feb042d2409c4a0ba5965e79f4ccabcd77b6a4e4c5",
+    "driver_source": "/Users/helge/code/terminal/Benchmarks/TerminalBench/terminal-bench.c",
+    "driver_source_sha256": "cbe52cd535960db64083aa08d6928e9ec6037e5c7d37caa6b1a680051e25577e",
+    "driver_sha256": "fea221df7dc59de890e2d1849958d3386c2c32185ee2f4087fefe37d678d7f9e",
+    "driver_build_command": [
+      "xcrun",
+      "clang",
+      "-Wall",
+      "-Wextra",
+      "-Werror",
+      "-O2",
+      "/Users/helge/code/terminal/Benchmarks/TerminalBench/terminal-bench.c",
+      "-o",
+      "/private/tmp/terminal-row-app-gate-c868/profile-long-baseline/terminal-bench"
+    ],
+    "app_command": [
+      "/private/tmp/terminal-row-app-gate-c868/Baseline.app/Contents/MacOS/Terminal",
+      "--columns",
+      "100",
+      "--rows",
+      "30",
+      "--font-size",
+      "14",
+      "--exit-after-command",
+      "--execute",
+      "/private/tmp/terminal-row-app-gate-c868/profile-long-baseline/terminal-bench",
+      "--output",
+      "/private/tmp/terminal-row-app-gate-c868/profile-long-baseline/driver.json",
+      "--terminal",
+      "profiled-app",
+      "--bytes",
+      "1073741824",
+      "--runs",
+      "1",
+      "--columns",
+      "100",
+      "--rows",
+      "30",
+      "--idle-seconds",
+      "3",
+      "--workload",
+      "ascii_long_lines"
+    ],
+    "sample_command": [
+      "/usr/bin/sample",
+      "14633",
+      "5",
+      "1",
+      "-file",
+      "/private/tmp/terminal-row-app-gate-c868/profile-long-baseline/sample.txt"
+    ],
+    "sample_sha256": "9e5b08f4ea8090e859716f93934f36a2ddc386cde4ce687e047c13a739ca0353",
+    "sample_bytes": 435605
+  },
+  "lifecycle": {
+    "app": {
+      "pid": 14633,
+      "natural_exit": true,
+      "exitstatus": 0,
+      "termsig": null,
+      "success": true,
+      "forced_cleanup": false,
+      "cleanup_survivors": [],
+      "final_status": {
+        "exitstatus": 0,
+        "termsig": null,
+        "success": true
+      }
+    },
+    "sample": {
+      "pid": 14676,
+      "natural_exit": true,
+      "exitstatus": 0,
+      "termsig": null,
+      "success": true,
+      "forced_cleanup": false,
+      "cleanup_survivors": [],
+      "final_status": {
+        "exitstatus": 0,
+        "termsig": null,
+        "success": true
+      }
+    }
+  },
+  "interpretation": "The benchmark driver wall and CPU fields are diagnostic-only here: the concurrent sampler perturbs them and they are not comparison timing. This one-off controller raises selected ASCII extent to1GiB to keep both apps busy throughout sampling.",
+  "driver_report_sha256": "1456477f0c38e923fc5f6bf42361f304f9b5ec419665c11694ebe353a74966e7",
+  "driver_report_summary": {
+    "idle_cpu_percent_one_core": 1.245695,
+    "workload_terminal_cpu_seconds": {
+      "ascii_long_lines": {
+        "samples": 1,
+        "p50": 13.189396,
+        "p95": 13.189396,
+        "p99": 13.189396,
+        "max": 13.189396
+      }
+    }
+  }
+}
