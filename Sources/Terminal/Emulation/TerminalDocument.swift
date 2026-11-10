@@ -99,8 +99,9 @@ private struct TerminalRowPayloads: Equatable, Sequence {
   subscript(_ index: Int) -> TerminalRowPayload? {
     get { entries[index] }
     set {
-      utf8Bytes = utf8Bytes - (entries[index]?.utf8Bytes ?? 0) + (newValue?.utf8Bytes ?? 0)
-      entries[index] = newValue
+      // One probe replaces the entry and yields the charge it carried.
+      let old = newValue.map { entries.updateValue($0, forKey: index) } ?? entries.removeValue(forKey: index)
+      utf8Bytes = utf8Bytes - (old?.utf8Bytes ?? 0) + (newValue?.utf8Bytes ?? 0)
     }
   }
   @discardableResult mutating func removeValue(forKey key: Int) -> TerminalRowPayload? {
@@ -406,7 +407,7 @@ struct TerminalRow: Equatable {
   }
   /// Reads the cell a cluster is about to grow from: its attributes, and its
   /// text as scalars in `scalars`.
-  fileprivate func clusterExtension(at index: Int, scalars: inout [Unicode.Scalar]) -> TerminalDocument.ClusterExtension {
+  fileprivate func clusterLead(at index: Int, scalars: inout [Unicode.Scalar]) -> TerminalDocument.ClusterLead {
     let slot = storage.slots[index]
     let payload = storage.payload(at: index)
     scalars.removeAll(keepingCapacity: true)
@@ -415,8 +416,8 @@ struct TerminalRow: Equatable {
     } else if slot.hasScalar, let scalar = Unicode.Scalar(slot.scalar) {
       scalars.append(scalar)
     }
-    return TerminalDocument.ClusterExtension(style: storage.style(slot.style), link: payload?.link, flags: slot.flags,
-                                             protected: slot.protected, wide: slot.kind == 2)
+    return TerminalDocument.ClusterLead(style: storage.style(slot.style), link: payload?.link, flags: slot.flags,
+                                        protected: slot.protected, wide: slot.kind == 2)
   }
   mutating func setClusterText(_ text: String, link: String?, at index: Int) {
     ensureUniqueForCellEdit()
@@ -850,10 +851,10 @@ struct TerminalDocument {
     var openCluster: (row: Int, column: Int)?
     var retainedScalars = 0
     var capped = false
-    // Scratch for the cluster a print transaction is extending. It is loaded
-    // and stored within one transaction and carries nothing between them; it
-    // lives here only so its buffer is reused.
+    // Scratch for the cluster being extended; it carries nothing between
+    // transactions and lives here only so its buffer is reused.
     var clusterScalars: [Unicode.Scalar] = []
+    var clusters = ClusterCache()
 
     mutating func reset() {
       segmenter = TerminalText.Segmenter()
@@ -862,15 +863,45 @@ struct TerminalDocument {
       capped = false
     }
   }
-  /// The cell attributes of a cluster being extended, read once per print
-  /// transaction. `textChanged` records that the cluster's text must be stored.
-  fileprivate struct ClusterExtension {
+  /// The attributes of a cluster's lead cell, as an extension needs them.
+  fileprivate struct ClusterLead {
     var style: TerminalStyle
     var link: String?
     var flags: UInt8
     var protected: Bool
     var wide: Bool
-    var textChanged = false
+  }
+  /// Multi-scalar clusters printed recently, with what assembling one scalar
+  /// at a time would have to derive again: the text, and whether each prefix is
+  /// one or two cells wide. Terminal output repeats the same few emoji, flags
+  /// and accented letters, so a small direct-mapped table answers nearly all.
+  private struct ClusterCache {
+    static let maximumScalars = 24
+    struct Entry {
+      let scalars: [Unicode.Scalar]
+      let text: String
+      /// Bit n is set when the first n scalars occupy two cells.
+      let widePrefixes: UInt32
+      @inline(__always) func width(ofFirst count: Int) -> Int {
+        widePrefixes & (1 << UInt32(count)) != 0 ? 2 : 1
+      }
+    }
+    private var entries: [Entry?] = []
+
+    mutating func entry(for scalars: [Unicode.Scalar]) -> Entry {
+      var hash: UInt32 = 2_166_136_261
+      for scalar in scalars { hash = (hash ^ scalar.value) &* 16_777_619 }
+      let slot = Int((hash ^ hash >> 16) & 255)
+      if !entries.isEmpty, let entry = entries[slot], entry.scalars == scalars { return entry }
+      var widePrefixes: UInt32 = 0
+      for count in 1...scalars.count where TerminalWidth.width(of: scalars[..<count]) >= 2 {
+        widePrefixes |= 1 << UInt32(count)
+      }
+      let entry = Entry(scalars: scalars, text: TerminalText.string(from: scalars), widePrefixes: widePrefixes)
+      if entries.isEmpty { entries = Array(repeating: nil, count: 256) }
+      entries[slot] = entry
+      return entry
+    }
   }
   private(set) var columns: Int; private(set) var rowCount: Int
   private var blankCellCapacity: Int
@@ -1184,11 +1215,6 @@ struct TerminalDocument {
     var effect = PrintEffect(appendedHistoryCount: 0, lastPrinted: nil, repeatAttributes: nil)
     var consumed = 0, mutations = 0
     let horizontal = leftRightMargins ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
-    // A cluster usually gains several scalars in a row (skin tone, joiner,
-    // second emoji). Each one re-forms the lead cell at once, but the text is
-    // stored a single time: before anything else touches the row, and before
-    // this transaction returns.
-    var extending: ClusterExtension?
     while consumed < scalars.count {
       // Most text is a run of fresh one- or two-cell clusters of one scalar:
       // ASCII, CJK, precomposed letters, box drawing, the first scalar of an
@@ -1230,7 +1256,6 @@ struct TerminalDocument {
           end += 1
         }
         if end > consumed {
-          storeExtendedCluster(&extending, in: &screen, state: state, effect: &effect)
           if wraps {
             effect.appendedHistoryCount += wrapCursor(
               in: &screen, columns: columns, blankCellCapacity: blankCellCapacity, horizontal: horizontal,
@@ -1259,88 +1284,120 @@ struct TerminalDocument {
 
       let scalar = scalars[consumed]
       consumed += 1
-      let category: TerminalText.Category
-      let startsCluster: Bool, ignorable: Bool
-      if scalar.value < 0x80 {
-        category = Self.category(for: scalar)
-        switch category { case .control, .cr, .lf: continue; default: break }
-        startsCluster = state.segmenter.push(scalar, category: category)
-        ignorable = false
-      } else {
-        let scalarClass = TerminalText.scalarClass(of: scalar)
-        category = scalarClass.category
-        switch category { case .control, .cr, .lf: continue; default: break }
-        startsCluster = state.segmenter.push(scalar, class: scalarClass)
-        ignorable = scalarClass.isDefaultIgnorable
+      let admitted = admit(scalar, to: &state.segmenter)
+      if admitted.skipped { continue }
+      if admitted.ignorable,
+         admitted.startsCluster || !hasExtendablePrintOwner(state.openCluster, in: screen) {
+        state.reset()
+        continue
       }
-      if ignorable {
-        if startsCluster || !hasExtendablePrintOwner(state.openCluster, in: screen) {
-          storeExtendedCluster(&extending, in: &screen, state: state, effect: &effect)
-          state.reset()
+      if !admitted.startsCluster, let owner = state.openCluster, owner.row == screen.cursorRow,
+         screen.rows[owner.row].count > owner.column {
+        // This scalar joins the cluster in the owner cell. Take the rest of
+        // that cluster from the buffer too, and extend it in one step.
+        var segmenter = state.segmenter
+        var end = consumed
+        while end < scalars.count {
+          var next = segmenter
+          let following = admit(scalars[end], to: &next)
+          guard !following.skipped, !following.startsCluster else { break }
+          segmenter = next
+          end += 1
+        }
+        if extendCluster(at: owner, with: UnsafeBufferPointer(rebasing: scalars[(consumed - 1)..<end]),
+                         in: &screen, columns: columns, horizontal: horizontal, autoWrap: autoWrap,
+                         insertMode: insertMode, state: &state, effect: &effect) {
+          state.segmenter = segmenter
+          mutations += end - consumed + 1
+          consumed = end
           continue
         }
       }
-      if !startsCluster, let owner = state.openCluster, owner.row == screen.cursorRow,
-         screen.rows[owner.row].count > owner.column {
-        if extending == nil {
-          extending = screen.rows[owner.row].clusterExtension(at: owner.column, scalars: &state.clusterScalars)
-        }
-        if extending != nil, !state.clusterScalars.isEmpty, !state.capped, state.retainedScalars < 64 {
-          let previousWide = extending!.wide, previousFlags = extending!.flags
-          state.clusterScalars.append(scalar)
-          let nominal = min(2, max(1, TerminalWidth.width(of: state.clusterScalars)))
-          let oldWidth = previousWide ? 2 : 1
-          let right = owner.column <= horizontal.1 ? horizontal.1 : columns - 1
-          let occupied = min(nominal, right + 1 - owner.column)
-          // A cluster that outgrows the row edge, or pushes cells aside in
-          // insert mode, is relocated by the scalar transaction.
-          let relocates = nominal > oldWidth && owner.column + nominal > right + 1 && autoWrap
-          let shifts = occupied > oldWidth && insertMode && (horizontal.0...horizontal.1).contains(owner.column)
-          if !relocates && !shifts {
-            state.retainedScalars += 1
-            let wide = nominal == 2 && occupied == 2
-            let flags = previousFlags | (nominal > occupied ? 1 : 0)
-            if extending!.textChanged && wide == previousWide && flags == previousFlags {
-              // The cells already have this shape; only the text grew.
-              screen.rows[owner.row].revision &+= 1
-            } else {
-              extending!.wide = wide
-              extending!.flags = flags
-              extending!.textChanged = true
-              screen.rows[owner.row].reformCluster(at: owner.column, wide: wide, style: extending!.style,
-                                                   link: extending!.link, flags: flags,
-                                                   protected: extending!.protected)
-            }
-            screen.cursorRow = owner.row
-            screen.cursorColumn = min(right, owner.column + occupied)
-            screen.pendingWrap = owner.column + occupied > right && autoWrap
-            mutations += 1
-            continue
-          }
-          state.clusterScalars.removeLast()
-        }
-      }
-      storeExtendedCluster(&extending, in: &screen, state: state, effect: &effect)
-      Self.print(scalar, category: category, startsCluster: startsCluster, in: &screen, columns: columns, blankCellCapacity: blankCellCapacity,
+      Self.print(scalar, category: admitted.category, startsCluster: admitted.startsCluster, in: &screen, columns: columns, blankCellCapacity: blankCellCapacity,
                  leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
                  attributes: attributes, history: &history, nextRowID: &nextRowID,
                  retainHistory: retainHistory, state: &state, effect: &effect)
       mutations += 1
       if effect.appendedHistoryCount > 0 { break }
     }
-    storeExtendedCluster(&extending, in: &screen, state: state, effect: &effect)
     return PrintBatchEffect(effect: effect, consumedScalarCount: consumed, mutationCount: mutations)
   }
 
-  private static func storeExtendedCluster(_ extending: inout ClusterExtension?, in screen: inout TerminalScreen,
-                                           state: borrowing PrintState, effect: inout PrintEffect) {
-    guard let cluster = extending else { return }
-    extending = nil
-    guard cluster.textChanged, let owner = state.openCluster else { return }
-    let text = TerminalText.string(from: state.clusterScalars)
-    screen.rows[owner.row].setClusterText(text, link: cluster.link, at: owner.column)
-    effect.lastPrinted = .cluster(text)
-    effect.repeatAttributes = PrintAttributes(style: cluster.style, link: cluster.link, protected: cluster.protected)
+  /// Classifies one decoded scalar and advances `segmenter` past it. CR, LF
+  /// and other controls are skipped: they are never printed and do not take
+  /// part in segmentation.
+  @inline(__always)
+  private static func admit(_ scalar: Unicode.Scalar, to segmenter: inout TerminalText.Segmenter)
+    -> (category: TerminalText.Category, skipped: Bool, startsCluster: Bool, ignorable: Bool) {
+    if scalar.value < 0x80 {
+      let category = category(for: scalar)
+      switch category {
+      case .control, .cr, .lf: return (category, true, false, false)
+      default: return (category, false, segmenter.push(scalar, category: category), false)
+      }
+    }
+    let scalarClass = TerminalText.scalarClass(of: scalar)
+    let category = scalarClass.category
+    if scalarClass.isUnprintedControl { return (category, true, false, false) }
+    return (category, false, segmenter.push(scalar, class: scalarClass), scalarClass.isDefaultIgnorable)
+  }
+
+  /// Appends `added` to the cluster whose lead is at `owner`: the same result
+  /// as extending it one scalar at a time, with the width of each step and the
+  /// final text taken from the cluster cache. Returns false, leaving the screen
+  /// untouched, when a step needs the scalar transaction: the cluster is capped
+  /// or too long, outgrows the row edge, or shifts cells in insert mode.
+  private static func extendCluster(at owner: (row: Int, column: Int),
+                                    with added: UnsafeBufferPointer<Unicode.Scalar>,
+                                    in screen: inout TerminalScreen, columns: Int,
+                                    horizontal: (Int, Int), autoWrap: Bool, insertMode: Bool,
+                                    state: inout PrintState, effect: inout PrintEffect) -> Bool {
+    guard !state.capped, state.retainedScalars + added.count <= 64 else { return false }
+    let lead = screen.rows[owner.row].clusterLead(at: owner.column, scalars: &state.clusterScalars)
+    let leadCount = state.clusterScalars.count
+    guard leadCount > 0, leadCount + added.count <= ClusterCache.maximumScalars else { return false }
+    for scalar in added { state.clusterScalars.append(scalar) }
+    let cluster = state.clusters.entry(for: state.clusterScalars)
+    let steps = (leadCount + 1)...(leadCount + added.count)
+    let right = owner.column <= horizontal.1 ? horizontal.1 : columns - 1
+    let room = right + 1 - owner.column
+    let shiftsOnGrowth = insertMode && (horizontal.0...horizontal.1).contains(owner.column)
+
+    var wide = lead.wide
+    for count in steps {
+      let nominal = cluster.width(ofFirst: count), oldWidth = wide ? 2 : 1
+      let occupied = min(nominal, room)
+      if nominal > oldWidth && nominal > room && autoWrap { return false }
+      if occupied > oldWidth && shiftsOnGrowth { return false }
+      wide = nominal == 2 && occupied == 2
+    }
+
+    wide = lead.wide
+    var flags = lead.flags, occupied = 0, formed = false
+    for count in steps {
+      let nominal = cluster.width(ofFirst: count)
+      occupied = min(nominal, room)
+      let nextWide = nominal == 2 && occupied == 2
+      let nextFlags = flags | (nominal > occupied ? 1 : 0)
+      if formed && nextWide == wide && nextFlags == flags {
+        // The cells already have this shape; only the text grew.
+        screen.rows[owner.row].revision &+= 1
+      } else {
+        screen.rows[owner.row].reformCluster(at: owner.column, wide: nextWide, style: lead.style,
+                                             link: lead.link, flags: nextFlags, protected: lead.protected)
+        formed = true
+      }
+      wide = nextWide
+      flags = nextFlags
+    }
+    screen.rows[owner.row].setClusterText(cluster.text, link: lead.link, at: owner.column)
+    state.retainedScalars += added.count
+    screen.cursorRow = owner.row
+    screen.cursorColumn = min(right, owner.column + occupied)
+    screen.pendingWrap = owner.column + occupied > right && autoWrap
+    effect.lastPrinted = .cluster(cluster.text)
+    effect.repeatAttributes = PrintAttributes(style: lead.style, link: lead.link, protected: lead.protected)
+    return true
   }
 
   private static func hasExtendablePrintOwner(_ owner: (row: Int, column: Int)?,
