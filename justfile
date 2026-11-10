@@ -18,6 +18,12 @@ default:
 [group('build')]
 @release-build: icons (_assemble-bundle "release")
 
+# Remove build outputs (target/, dist/) and stray compiler module files.
+[group('build')]
+clean:
+    rm -rf target dist
+    rm -f Terminal-*.abi.json Terminal-*.swiftdoc Terminal-*.swiftmodule Terminal-*.swiftsourceinfo
+
 # Regenerate app icons from assets/AppIcon.png.
 [group('build')]
 @icons:
