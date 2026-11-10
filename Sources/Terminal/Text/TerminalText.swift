@@ -9,7 +9,7 @@ import Foundation
 enum TerminalText {
   static let unicode18Parity = true
 
-  enum Category: Equatable {
+  enum Category: UInt8, Equatable {
     case other, cr, lf, control, l, v, t, lv, lvt, extend, zwj, spacingMark
     case prepend, regionalIndicator, extendedPictographic, incbConsonant, incbLinker
   }
@@ -41,10 +41,19 @@ enum TerminalText {
     @inline(__always) var printableASCIIStartsCluster: Bool { previous != .prepend }
 
     mutating func push(_ scalar: Unicode.Scalar, category current: Category) -> Bool {
+      push(scalar, category: current, isIncbLinker: Unicode18GraphemeTables.isIncbLinker(scalar.value))
+    }
+
+    /// `push` for a scalar whose class is already known.
+    @inline(__always)
+    mutating func push(_ scalar: Unicode.Scalar, class scalarClass: ScalarClass) -> Bool {
+      push(scalar, category: scalarClass.category, isIncbLinker: scalarClass.isIncbLinker)
+    }
+
+    private mutating func push(_ scalar: Unicode.Scalar, category current: Category, isIncbLinker: Bool) -> Bool {
       // Ordinary text after ordinary text: a boundary that leaves every flag
       // clear, which is the state this segmenter is already in.
-      if current == .other, previous == .other, !linkerTail,
-         !Unicode18GraphemeTables.isIncbLinker(scalar.value) { return true }
+      if current == .other, previous == .other, !linkerTail, !isIncbLinker { return true }
       let boundary: Bool
       switch (previous, current) {
       case (nil, _): boundary = true
@@ -72,7 +81,7 @@ enum TerminalText {
       let afterExtendedPictographic = extendedPictographicTail
       zwjAfterExtendedPictographic = current == .zwj && afterExtendedPictographic
       extendedPictographicTail = current == .extendedPictographic || (current == .extend && afterExtendedPictographic)
-      if Unicode18GraphemeTables.isIncbLinker(scalar.value) {
+      if isIncbLinker {
         linkerTail = true
       } else if !((current == .extend || current == .zwj) && scalar.value != 0x200c) {
         linkerTail = false
@@ -363,5 +372,40 @@ enum TerminalText {
       return true
     default: return false
     }
+  }
+}
+
+extension TerminalText {
+  /// What printing needs to know about one scalar, packed into a byte: its
+  /// grapheme category, its cell width as a singleton, and two flags.
+  struct ScalarClass {
+    fileprivate let bits: UInt8
+    fileprivate init(bits: UInt8) { self.bits = bits }
+    fileprivate init(computing scalar: Unicode.Scalar) {
+      let category = TerminalText.category(of: scalar)
+      let width = TerminalWidth.width(of: scalar)
+      // `category(of:)` never yields the last case, so sixteen values remain.
+      precondition(category.rawValue < 16 && (0...3).contains(width))
+      bits = category.rawValue | UInt8(width) << 4
+        | (TerminalText.isDefaultIgnorable(scalar) ? 0x40 : 0)
+        | (Unicode18GraphemeTables.isIncbLinker(scalar.value) ? 0x80 : 0)
+    }
+    var category: Category { Category(rawValue: bits & 0x0f).unsafelyUnwrapped }
+    /// `TerminalWidth.width(of:)` for the scalar on its own: 0...3.
+    var width: Int { Int(bits >> 4 & 3) }
+    var isDefaultIgnorable: Bool { bits & 0x40 != 0 }
+    var isIncbLinker: Bool { bits & 0x80 != 0 }
+  }
+
+  // Planes 0-3 hold nearly every scalar a terminal prints. Their classes are
+  // derived once (about 2 ms) from the pinned tables, so the result is the
+  // same by construction; anything above is computed on demand.
+  private static let tabulatedScalars = 0x4_0000
+  private static let scalarClasses: [UInt8] = (0..<UInt32(tabulatedScalars)).map {
+    Unicode.Scalar($0).map { ScalarClass(computing: $0).bits } ?? 0
+  }
+  @inline(__always) static func scalarClass(of scalar: Unicode.Scalar) -> ScalarClass {
+    let value = Int(scalar.value)
+    return value < tabulatedScalars ? ScalarClass(bits: scalarClasses[value]) : ScalarClass(computing: scalar)
   }
 }

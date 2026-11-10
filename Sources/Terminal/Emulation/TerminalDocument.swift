@@ -389,6 +389,20 @@ struct TerminalRow: Equatable {
     storage.slots[index] = TerminalRowSlot(style: storage.intern(style), kind: wide ? 2 : 1, flags: flags,
                                            protected: protected, hasPayload: storage.slots[index].hasPayload)
   }
+  /// Reads the cell a cluster is about to grow from: its attributes, and its
+  /// text as scalars in `scalars`.
+  fileprivate func clusterExtension(at index: Int, scalars: inout [Unicode.Scalar]) -> TerminalDocument.ClusterExtension {
+    let slot = storage.slots[index]
+    let payload = storage.payload(at: index)
+    scalars.removeAll(keepingCapacity: true)
+    if let text = payload?.text {
+      for scalar in text.unicodeScalars { scalars.append(scalar) }
+    } else if slot.hasScalar, let scalar = Unicode.Scalar(slot.scalar) {
+      scalars.append(scalar)
+    }
+    return TerminalDocument.ClusterExtension(style: storage.style(slot.style), link: payload?.link, flags: slot.flags,
+                                             protected: slot.protected, wide: slot.kind == 2)
+  }
   mutating func setClusterText(_ text: String, link: String?, at index: Int) {
     ensureUniqueForCellEdit()
     storage.payloads[index] = TerminalRowPayload(text: text, link: link)
@@ -542,7 +556,7 @@ struct TerminalRow: Equatable {
     storage.slots.withUnsafeMutableBufferPointer { slots in
       var index = column
       for scalar in scalars {
-        let width = TerminalWidth.width(of: scalar)
+        let width = TerminalText.scalarClass(of: scalar).width
         slots[index] = TerminalRowSlot(scalar: scalar.value, style: styleIndex, hasScalar: true,
                                        kind: width == 2 ? 2 : 1, flags: protected ? 2 : 0,
                                        protected: protected, hasPayload: link != nil)
@@ -821,7 +835,7 @@ struct TerminalDocument {
   }
   /// The cell attributes of a cluster being extended, read once per print
   /// transaction. `textChanged` records that the cluster's text must be stored.
-  private struct ClusterExtension {
+  fileprivate struct ClusterExtension {
     var style: TerminalStyle
     var link: String?
     var flags: UInt8
@@ -1177,13 +1191,14 @@ struct TerminalDocument {
             segmenter.pushPrintableASCII()
             width = 1
           } else {
-            let category = TerminalText.category(of: candidate)
+            let scalarClass = TerminalText.scalarClass(of: candidate)
+            let category = scalarClass.category
             guard category != .control, category != .cr, category != .lf,
-                  !TerminalText.isDefaultIgnorable(candidate) else { break }
-            width = TerminalWidth.width(of: candidate)
+                  !scalarClass.isDefaultIgnorable else { break }
+            width = scalarClass.width
             guard width == 1 || width == 2, cells + width <= capacity else { break }
             var next = segmenter
-            guard next.push(candidate, category: category) else { break }
+            guard next.push(candidate, class: scalarClass) else { break }
             segmenter = next
           }
           cells += width
@@ -1224,10 +1239,21 @@ struct TerminalDocument {
 
       let scalar = scalars[consumed]
       consumed += 1
-      let category = category(for: scalar)
-      switch category { case .control, .cr, .lf: continue; default: break }
-      let startsCluster = state.segmenter.push(scalar, category: category)
-      if TerminalText.isDefaultIgnorable(scalar) {
+      let category: TerminalText.Category
+      let startsCluster: Bool, ignorable: Bool
+      if scalar.value < 0x80 {
+        category = Self.category(for: scalar)
+        switch category { case .control, .cr, .lf: continue; default: break }
+        startsCluster = state.segmenter.push(scalar, category: category)
+        ignorable = false
+      } else {
+        let scalarClass = TerminalText.scalarClass(of: scalar)
+        category = scalarClass.category
+        switch category { case .control, .cr, .lf: continue; default: break }
+        startsCluster = state.segmenter.push(scalar, class: scalarClass)
+        ignorable = scalarClass.isDefaultIgnorable
+      }
+      if ignorable {
         if startsCluster || !hasExtendablePrintOwner(state.openCluster, in: screen) {
           storeExtendedCluster(&extending, in: &screen, state: state, effect: &effect)
           state.reset()
@@ -1237,11 +1263,7 @@ struct TerminalDocument {
       if !startsCluster, let owner = state.openCluster, owner.row == screen.cursorRow,
          screen.rows[owner.row].count > owner.column {
         if extending == nil {
-          let cell = screen.rows[owner.row].cell(owner.column)
-          state.clusterScalars.removeAll(keepingCapacity: true)
-          for scalar in cell.text.unicodeScalars { state.clusterScalars.append(scalar) }
-          extending = ClusterExtension(style: cell.style, link: cell.link, flags: cell.flags,
-                                       protected: cell.protected, wide: cell.kind == 2)
+          extending = screen.rows[owner.row].clusterExtension(at: owner.column, scalars: &state.clusterScalars)
         }
         if var cluster = extending, !state.clusterScalars.isEmpty,
            !state.capped, state.retainedScalars < 64 {
