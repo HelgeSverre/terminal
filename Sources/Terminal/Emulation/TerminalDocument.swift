@@ -141,6 +141,9 @@ private final class TerminalRowStorage {
     self.init(slots: Array(repeating: TerminalRowSlot(style: plain ? 0 : 1), count: columns),
               styles: plain ? [] : [style], logicalCapacity: logicalCapacity, detachCapacity: logicalCapacity)
   }
+  @inline(__always) func compactStylesIfNeeded() {
+    if styles.count >= 64 { compactStyles() }
+  }
   @inline(__always) func style(_ index: UInt16) -> TerminalStyle {
     index == 0 ? TerminalStyle() : styles[Int(index) - 1]
   }
@@ -182,8 +185,8 @@ private final class TerminalRowStorage {
   }
   /// Drops styles no cell uses once overwritten entries dominate the table.
   /// Runs only at the start of an edit, never between `intern` and its use.
-  func compactStylesIfNeeded() {
-    guard styles.count >= max(64, 2 * slots.count) else { return }
+  private func compactStyles() {
+    guard styles.count >= 2 * slots.count else { return }
     var remap = [UInt16](repeating: 0, count: styles.count + 1)
     var kept: [TerminalStyle] = []
     for index in slots.indices {
@@ -380,14 +383,26 @@ struct TerminalRow: Equatable {
     storage.setSlot(slot, payload: link.map { TerminalRowPayload(text: nil, link: $0) }, at: index)
   }
 
-  /// Re-forms the lead cell of a multi-scalar cluster after it gained a scalar.
-  /// The cluster's text follows in one `setClusterText` once the print
-  /// transaction has seen its last scalar; until then the cell's text is stale.
-  mutating func setClusterLead(at index: Int, wide: Bool, style: TerminalStyle, flags: UInt8, protected: Bool) {
+  /// Re-forms the cells of a multi-scalar cluster after it gained a scalar:
+  /// its lead, and its continuation when it is two cells wide. The cluster's
+  /// text follows in one `setClusterText` once the print transaction has seen
+  /// its last scalar; until then the lead's text is stale.
+  mutating func reformCluster(at index: Int, wide: Bool, style: TerminalStyle, link: String?,
+                              flags: UInt8, protected: Bool) {
+    let width = wide ? 2 : 1
+    guard index >= 0, index + width <= storage.slots.count else { return }
+    clearPairHalves(outside: index..<(index + width), eraseStyle: style.erased())
     observeSelectionWrite(index..<(index + 1))
     ensureUniqueForCellEdit()
-    storage.slots[index] = TerminalRowSlot(style: storage.intern(style), kind: wide ? 2 : 1, flags: flags,
+    let styleIndex = storage.intern(style)
+    storage.slots[index] = TerminalRowSlot(style: styleIndex, kind: wide ? 2 : 1, flags: flags,
                                            protected: protected, hasPayload: storage.slots[index].hasPayload)
+    if wide {
+      observeSelectionWrite((index + 1)..<(index + 2))
+      storage.setSlot(TerminalRowSlot(style: styleIndex, kind: 3, flags: flags & ~UInt8(1), protected: protected),
+                      payload: link.map { TerminalRowPayload(text: nil, link: $0) }, at: index + 1)
+    }
+    revision &+= 1
   }
   /// Reads the cell a cluster is about to grow from: its attributes, and its
   /// text as scalars in `scalars`.
@@ -526,12 +541,24 @@ struct TerminalRow: Equatable {
 
   /// Writes printable ASCII bytes as fresh width-one cells. The caller has
   /// bounded the run to this row and repaired wide pairs at its two edges.
+  /// A print is about to own `range`: erase the half of a wide pair that it
+  /// would leave behind just outside either edge. Cells inside the range are
+  /// the caller's to write.
+  private mutating func clearPairHalves(outside range: Range<Int>, eraseStyle: TerminalStyle) {
+    let lower = range.lowerBound, upper = range.upperBound
+    let clearsLeft = lower > 0 && storage.slots[lower].kind == 3 && storage.slots[lower - 1].kind == 2
+    let clearsRight = upper < storage.slots.count && storage.slots[upper - 1].kind == 2
+      && storage.slots[upper].kind == 3
+    if clearsLeft { erase(at: lower - 1, style: eraseStyle) }
+    if clearsRight { erase(at: upper, style: eraseStyle) }
+  }
   mutating func writeASCII(_ bytes: UnsafeBufferPointer<UInt8>, at column: Int, style: TerminalStyle,
                            link: String?, protected: Bool) {
     let count = bytes.count
-    precondition(count > 0 && column >= 0 && column + count <= storage.slots.count)
-    ensureUniqueForCellEdit()
+    guard count > 0, column >= 0, column + count <= storage.slots.count else { return }
     let range = column..<(column + count)
+    clearPairHalves(outside: range, eraseStyle: style.erased())
+    ensureUniqueForCellEdit()
     observeSelectionWrite(range)
     storage.replacePayloads(in: range, link: link)
     let slot = TerminalRowSlot(scalar: 0, style: storage.intern(style), hasScalar: true, kind: 1,
@@ -548,10 +575,12 @@ struct TerminalRow: Equatable {
                                                 style: TerminalStyle, link: String?, protected: Bool)
   where C.Element == Unicode.Scalar {
     guard cellCount > 0, column >= 0, column + cellCount <= storage.slots.count else { return }
-    ensureUniqueForCellEdit()
     let range = column..<(column + cellCount)
+    clearPairHalves(outside: range, eraseStyle: style.erased())
+    ensureUniqueForCellEdit()
     observeSelectionWrite(range)
     storage.replacePayloads(in: range, link: link)
+    revision &+= UInt64(scalars.count)
     let styleIndex = storage.intern(style)
     storage.slots.withUnsafeMutableBufferPointer { slots in
       var index = column
@@ -1122,12 +1151,9 @@ struct TerminalDocument {
       // The byte whose wrap appended history is admitted alone, so the caller
       // enforces history limits before anything else is printed.
       let count = appended > 0 ? 1 : min(bytes.count - consumed, room)
-      let run = UnsafeBufferPointer(rebasing: bytes[consumed..<(consumed + count)])
-      if preparePrintedReplacement(in: &screen.rows[row], at: column, count: count,
-                                   eraseStyle: attributes.style.erased()) {
-        screen.rows[row].writeASCII(run, at: column, style: attributes.style,
-                                    link: attributes.link, protected: attributes.protected)
-      }
+      screen.rows[row].writeASCII(UnsafeBufferPointer(rebasing: bytes[consumed..<(consumed + count)]),
+                                  at: column, style: attributes.style, link: attributes.link,
+                                  protected: attributes.protected)
       state.openCluster = (row, column + count - 1)
       state.retainedScalars = 1
       state.capped = false
@@ -1213,13 +1239,9 @@ struct TerminalDocument {
               style: attributes.style, history: &history, nextRowID: &nextRowID, retainHistory: retainHistory)
           }
           let row = screen.cursorRow, count = end - consumed
-          if preparePrintedReplacement(in: &screen.rows[row], at: column, count: cells,
-                                       eraseStyle: attributes.style.erased()) {
-            screen.rows[row].replaceSingletons(
-              at: column, scalars: UnsafeBufferPointer(rebasing: scalars[consumed..<end]), cellCount: cells,
-              style: attributes.style, link: attributes.link, protected: attributes.protected)
-            screen.rows[row].revision &+= UInt64(count)
-          }
+          screen.rows[row].replaceSingletons(
+            at: column, scalars: UnsafeBufferPointer(rebasing: scalars[consumed..<end]), cellCount: cells,
+            style: attributes.style, link: attributes.link, protected: attributes.protected)
           state.segmenter = segmenter
           state.openCluster = (row, column + cells - lastWidth)
           state.retainedScalars = 1
@@ -1265,11 +1287,11 @@ struct TerminalDocument {
         if extending == nil {
           extending = screen.rows[owner.row].clusterExtension(at: owner.column, scalars: &state.clusterScalars)
         }
-        if var cluster = extending, !state.clusterScalars.isEmpty,
+        if let previous = extending, !state.clusterScalars.isEmpty,
            !state.capped, state.retainedScalars < 64 {
           state.clusterScalars.append(scalar)
           let nominal = min(2, max(1, TerminalWidth.width(of: state.clusterScalars)))
-          let oldWidth = cluster.wide ? 2 : 1
+          let oldWidth = previous.wide ? 2 : 1
           let right = owner.column <= horizontal.1 ? horizontal.1 : columns - 1
           let occupied = min(nominal, right + 1 - owner.column)
           // A cluster that outgrows the row edge, or pushes cells aside in
@@ -1278,22 +1300,17 @@ struct TerminalDocument {
           let shifts = occupied > oldWidth && insertMode && (horizontal.0...horizontal.1).contains(owner.column)
           if !relocates && !shifts {
             state.retainedScalars += 1
-            cluster.wide = nominal == 2 && occupied == 2
-            if nominal > occupied { cluster.flags |= 1 }
-            cluster.textChanged = true
-            extending = cluster
-            let width = cluster.wide ? 2 : 1
-            if preparePrintedReplacement(in: &screen.rows[owner.row], at: owner.column, count: width,
-                                         eraseStyle: cluster.style.erased()) {
-              screen.rows[owner.row].setClusterLead(at: owner.column, wide: cluster.wide, style: cluster.style,
-                                                    flags: cluster.flags, protected: cluster.protected)
-              if cluster.wide {
-                screen.rows[owner.row].setCell(
-                  TerminalCell(text: "", kind: 3, style: cluster.style, link: cluster.link,
-                               flags: cluster.flags & ~UInt8(1), protected: cluster.protected),
-                  at: owner.column + 1)
-              }
+            let wide = nominal == 2 && occupied == 2
+            let flags = previous.flags | (nominal > occupied ? 1 : 0)
+            if previous.textChanged && wide == previous.wide && flags == previous.flags {
+              // The cells already have this shape; only the text grew.
               screen.rows[owner.row].revision &+= 1
+            } else {
+              extending!.wide = wide
+              extending!.flags = flags
+              extending!.textChanged = true
+              screen.rows[owner.row].reformCluster(at: owner.column, wide: wide, style: previous.style,
+                                                   link: previous.link, flags: flags, protected: previous.protected)
             }
             screen.cursorRow = owner.row
             screen.cursorColumn = min(right, owner.column + occupied)
