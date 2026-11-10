@@ -17,6 +17,8 @@ enum NativeSmoke {
     let flag: String
     let seconds: Double
     var extra: [String] = []
+    /// The app's own output is dropped, and the report printed on success.
+    var printsReport = false
   }
 
   private static let glyphGrid = ["--columns", "100", "--rows", "36", "--font-size", "14"]
@@ -30,6 +32,7 @@ enum NativeSmoke {
     Mode(name: "atlas-budget", report: "atlas-budget-smoke", flag: "--glyph-smoke", seconds: 30,
          extra: ["--atlas-pressure-smoke", "--atlas-fallback-budget-smoke"] + glyphGrid),
     Mode(name: "idle", report: "native-idle", flag: "--self-test", seconds: 90, extra: ["--idle-test"]),
+    Mode(name: "resize", report: "resize-smoke", flag: "--resize-smoke", seconds: 90, printsReport: true),
   ]
 
   static func run(_ arguments: [String]) throws {
@@ -53,7 +56,8 @@ enum NativeSmoke {
     try FileManager.default.createDirectory(atPath: reportDirectory, withIntermediateDirectories: true)
     try? FileManager.default.removeItem(atPath: report)
 
-    let app = try ProcessTree([executable, mode.flag, report] + mode.extra)
+    let app = try ProcessTree([executable, mode.flag, report] + mode.extra,
+                              output: mode.printsReport ? .discarded : .inherited)
     var failure: Failure?
     do {
       guard let exit = app.wait(seconds: mode.seconds) else { throw Failure("\(mode.name) smoke timed out") }
@@ -68,6 +72,7 @@ enum NativeSmoke {
       guard result["passed"] as? Bool == true else {
         throw Failure("native smoke failed: \(describe(result["checks"] ?? result["failures"] ?? "no detail"))")
       }
+      if mode.printsReport { print(try JSONValue(sortingKeysOf: result).pretty) }
     } catch let caught as Failure {
       failure = caught
     }

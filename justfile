@@ -87,15 +87,14 @@ reinstall: install
 
 # Format hand-written Swift; generated tables are skipped.
 [group('check')]
-fmt:
-    ruby -e 'files=Dir.glob("{Sources,Tests,tools}/**/*.swift").reject { |f| File.foreach(f).first.to_s.start_with?("// Generated") }; exec("xcrun", "swift-format", "format", "--in-place", *files)'
+fmt: _dev
+    target/native/dev sources format
 
-# Verify the source graph and Swift/Ruby syntax.
+# Verify the source graph and Swift syntax.
 [group('check')]
-lint:
+lint: _dev
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    ruby -e 'Dir.glob("{Sources,Tests,tools}/**/*.swift").sort.each { |f| abort("Swift syntax failed: #{f}") unless system("xcrun", "swiftc", "-frontend", "-parse", f) }'
-    ruby -e 'Dir.glob("tools/**/*.rb").sort.each { |f| abort("Ruby syntax failed: #{f}") unless system("ruby", "-c", f, out: File::NULL) }'
+    target/native/dev sources check
 
 # Full local gate: tests plus the GUI smokes.
 [group('check')]
@@ -172,24 +171,11 @@ swift-build-test:
 
 # Tooling tests; no app launch or GPU.
 [group('test')]
-workflow-tests:
+workflow-tests: _dev
     mkdir -p target/native
-    ruby tools/release_signing_test.rb
-    ruby tools/release_publisher_test.rb
-    ruby tools/tui_stress/run.rb --self-test
-    ruby tools/tui_stress/fixture.rb --self-test
-    ruby tools/tui_stress/FixtureTests.rb
-    ruby tools/tui_stress/provider.rb --self-test
+    target/native/dev self-test
     xcrun swiftc -parse-as-library -O tools/tui_stress/Driver.swift -o target/native/tui-stress-driver-tests
     target/native/tui-stress-driver-tests --self-test
-    ruby tools/glyph_policy_test.rb
-    ruby tools/native_smoke_test.rb
-    ruby tools/compare_terminals_test.rb
-    ruby tools/compare_terminal_apps_test.rb
-    ruby tools/profile_terminal_test.rb
-    ruby tools/session_stream_diagnostic_test.rb
-    ruby tools/close_smoke_test.rb
-    ruby tools/applescript_smoke_test.rb
     xcrun clang -Wall -Wextra -Werror -O2 Benchmarks/TerminalBench/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
     target/native/terminal-bench-clock-test
     xcrun swiftc -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/DistributionTests.swift -o target/native/distribution-tests
@@ -417,53 +403,35 @@ pane-lifecycle-smoke: build (_native-smoke "pane-lifecycle")
 
 # Mouse selection gestures and private-pasteboard copy.
 [group('smoke')]
-selection-smoke: build
-    ruby tools/selection_smoke.rb
+selection-smoke: build _dev
+    target/native/dev selection-smoke
 
 # Requested startup grid before the first layout.
 [group('smoke')]
-startup-grid-smoke: build
-    ruby tools/startup_grid_smoke.rb dist/Terminal.app reports/startup-grid.json
+startup-grid-smoke: build _dev
+    target/native/dev startup-grid-smoke dist/Terminal.app reports/startup-grid.json
 
 [group('smoke')]
-resize-smoke: build
-    #!/usr/bin/env ruby
-    require 'json'
-    require File.join(Dir.pwd, 'tools/native_smoke')
-    report_path = File.join(Dir.pwd, 'reports', 'resize-smoke.json')
-    File.delete(report_path) if File.exist?(report_path)
-    app = File.join(Dir.pwd, 'dist/Terminal.app/Contents/MacOS/Terminal')
-    process = NativeSmokeProcess.new([app, '--resize-smoke', report_path, out: File::NULL, err: File::NULL])
-    begin
-      status = process.wait(90)
-      raise 'Resize smoke timed out' unless status
-      raise "Resize smoke exited with #{status}" unless status.success?
-      raise "Resize smoke left children: #{process.live_pids.join(', ')}" unless process.live_pids.empty?
-      report = JSON.parse(File.read(report_path))
-      abort "Resize smoke failed: #{report}" unless report.fetch('passed')
-      puts JSON.pretty_generate(report)
-    ensure
-      remaining = process.cleanup
-      raise "Resize smoke processes survived cleanup: #{remaining.join(', ')}" unless remaining.empty?
-    end
+resize-smoke: build _dev
+    target/native/dev native-smoke resize
 
 # Closing the last window must exit the app and its children.
 [group('smoke')]
-close-smoke: build
-    ruby tools/close_smoke.rb
+close-smoke: build _dev
+    target/native/dev close-smoke
 
 [group('smoke')]
-accessibility-smoke: build
-    ruby tools/accessibility_smoke.rb
+accessibility-smoke: build _dev
+    target/native/dev accessibility-smoke
 
 [group('smoke')]
-automation-smoke: build
-    ruby tools/applescript_smoke.rb
+automation-smoke: build _dev
+    target/native/dev applescript-smoke
 
 # Only request Automation consent.
 [group('smoke')]
-automation-consent: build
-    TERMINAL_AUTOMATION_REQUEST_CONSENT=1 TERMINAL_AUTOMATION_PREFLIGHT_ONLY=1 ruby tools/applescript_smoke.rb
+automation-consent: build _dev
+    TERMINAL_AUTOMATION_REQUEST_CONSENT=1 TERMINAL_AUTOMATION_PREFLIGHT_ONLY=1 target/native/dev applescript-smoke
 
 # Every Nerd Font glyph through PTY, grid, rasterizer and Metal.
 [group('smoke')]
@@ -482,23 +450,23 @@ idle: build (_native-smoke "idle")
 
 # Self-test the TUI stress helpers; no GUI.
 [group('smoke')]
-tui-stress-prepare:
-    ruby tools/tui_stress/run.rb --prepare
+tui-stress-prepare: _dev
+    target/native/dev tui-stress --prepare
 
 # Stress a copy of the installed app with Files or Codex.
 [group('smoke')]
-tui-stress workload="files":
-    ruby tools/tui_stress/run.rb --installed --workload "$1"
+tui-stress workload="files": _dev
+    target/native/dev tui-stress --installed --workload "$1"
 
 # Capture the README overview screenshot.
 [group('smoke')]
-gallery-overview: build
-    ruby tools/gallery/run.rb overview
+gallery-overview: build _dev
+    target/native/dev gallery overview
 
 # Capture the README panes screenshot.
 [group('smoke')]
-gallery-panes: build
-    ruby tools/gallery/run.rb panes
+gallery-panes: build _dev
+    target/native/dev gallery panes
 
 # ── bench ─────────────────────────────────────────────────────────────
 
@@ -574,8 +542,8 @@ gallery-panes: build
 
 # Compare the optimized app, Ghostty and Kitty in both orders.
 [group('bench')]
-@benchmark-terminals output="reports/terminal-comparison": release-build
-    ruby tools/compare_terminals.rb "$1"
+@benchmark-terminals output="reports/terminal-comparison": release-build _dev
+    target/native/dev compare-terminals "$1"
 
 # Compare warm startup time with Ghostty, Kitty, iTerm2 and Apple Terminal.
 [group('bench')]
@@ -588,25 +556,25 @@ gallery-panes: build
     target/native/dev compare-shutdown dist/Terminal.app "$1" "$2"
 
 [group('bench')]
-@benchmark-apps rust_app swift_app output="reports/app-comparison":
-    ruby tools/compare_terminal_apps.rb "$3" "$1" "$2"
+@benchmark-apps rust_app swift_app output="reports/app-comparison": _dev
+    target/native/dev compare-terminal-apps "$3" "$1" "$2"
 
 [group('bench')]
-@stress-cat app file output:
-    ruby tools/cat_stress.rb "$1" "$2" "$3"
+@stress-cat app file output: _dev
+    target/native/dev cat-stress "$1" "$2" "$3"
 
 [group('bench')]
-@stress-cat-motion app file output:
-    ruby tools/cat_stress.rb "$1" "$2" "$3" motion
+@stress-cat-motion app file output: _dev
+    target/native/dev cat-stress "$1" "$2" "$3" motion
 
 [group('bench')]
-@profile-app app output workload="all":
-    ruby tools/profile_terminal.rb "$1" "$2" "$3"
+@profile-app app output workload="all": _dev
+    target/native/dev profile-terminal "$1" "$2" "$3"
 
 # Short-ASCII PTY flow with owner counters; not an acceptance test.
 [group('bench')]
-@diagnose-stream app output bytes:
-    ruby tools/session_stream_diagnostic.rb "$1" "$2" "$3"
+@diagnose-stream app output bytes: _dev
+    target/native/dev diagnose-stream "$1" "$2" "$3"
 
 # ── diagnose ──────────────────────────────────────────────────────────
 
@@ -616,18 +584,18 @@ gallery-panes: build
     target/native/terminfo-probe "$1" "$2"
 
 [group('diagnose')]
-@compare-swift-rows baseline candidate output:
-    ruby tools/compare_swift_rows.rb "$1" "$2" "$3"
+@compare-swift-rows baseline candidate output: _dev
+    target/native/dev compare-swift-rows "$1" "$2" "$3"
 
 # Run the CSI corpus against two frozen Swift refs.
 [group('diagnose')]
-compare-csi baseline candidate output:
-    ruby tools/compare_csi_dispatch.rb "$1" "$2" "$3"
+compare-csi baseline candidate output: _dev
+    target/native/dev compare-csi-dispatch "$1" "$2" "$3"
 
 # Keyboard isolation in copied smoke fixtures.
 [group('diagnose')]
-editing-input-isolation app output:
-    ruby tools/editing_input_isolation_test.rb "$1" "$2"
+editing-input-isolation app output: _dev
+    target/native/dev editing-input-isolation "$1" "$2"
 
 # ── release ───────────────────────────────────────────────────────────
 
@@ -681,8 +649,8 @@ release-status:
     codesign --force --sign - "$APP_BUNDLE"
 
 [private]
-@_native-smoke mode:
-    ruby tools/native_smoke.rb "$1"
+@_native-smoke mode: _dev
+    target/native/dev native-smoke "$1"
 
 [private]
 @_distribution operation:
@@ -745,8 +713,8 @@ _glyph-residency-tests:
     target/native/glyph-residency-tests
 
 [private]
-_terminfo-test: _terminfo-probe
-    ruby tools/terminfo_smoke.rb
+_terminfo-test: _terminfo-probe _dev
+    target/native/dev terminfo-smoke
 
 [private]
 _terminfo-probe:

@@ -43,6 +43,8 @@ let commands = [
   // Releases.
   ReleaseSigning.command,
   ReleasePublisher.command,
+  // The tool and the sources themselves.
+  Sources.command,
   SelfTest.command,
 ]
 
