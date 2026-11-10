@@ -1065,7 +1065,43 @@ import Foundation
     print("PASS row style tables: churn, compaction, snapshots, cross-row copies and shifts")
   }
 
+  /// History reports the capacity its identity dictionary would have without
+  /// keeping one while identities ascend. Hold that model to the real thing,
+  /// and check that both lookup modes agree on rows, trims and misses.
+  static func historyIdentityIndexMatchesDictionary() {
+    var dictionary: [UInt64: Int] = [:]
+    var model = 0
+    for key in 1...20_000 {
+      if dictionary.count == model { model = TerminalHistory.dictionaryCapacity(holding: dictionary.count + 1) }
+      dictionary[UInt64(key)] = key
+      precondition(dictionary.capacity == model)
+    }
+    for count in 0...3_000 {
+      precondition([UInt64: Int](minimumCapacity: count).capacity == TerminalHistory.dictionaryCapacity(holding: count))
+    }
+
+    func row(_ id: UInt64) -> TerminalRow { var row = TerminalRow(columns: 2); row.id = id; return row }
+    // `ascending` never builds the dictionary; `mixed` is forced to by its
+    // first two rows, which then trim away, leaving the same retained rows.
+    var ascending = TerminalHistory(), mixed = TerminalHistory()
+    mixed.append(row(9)); mixed.append(row(8))
+    for id in 10...600 { ascending.append(row(UInt64(id))); mixed.append(row(UInt64(id))) }
+    _ = mixed.trim(rows: 591, bytes: .max)
+    precondition(ascending.count == 591 && mixed.count == 591)
+    for limit in [591, 400, 300, 17, 1] {
+      _ = ascending.trim(rows: limit, bytes: .max); _ = mixed.trim(rows: limit, bytes: .max)
+      for id in 0...620 {
+        let found = ascending.index(ofRowID: UInt64(id))
+        precondition(found == mixed.index(ofRowID: UInt64(id)))
+        precondition(found.map { ascending[$0].id == UInt64(id) } ?? true)
+        precondition((found != nil) == (id > 600 - limit && id <= 600))
+      }
+    }
+    print("PASS history identity index: dictionary capacity model and ascending lookups")
+  }
+
   static func main() {
+    historyIdentityIndexMatchesDictionary()
     rowStyleTablesSurviveChurnAndCopies()
     let old = retainedSnapshot()
     populatedSnapshotsRemainImmutable()

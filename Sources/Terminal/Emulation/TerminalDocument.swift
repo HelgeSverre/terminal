@@ -60,6 +60,28 @@ private struct TerminalRowSlot: Equatable {
   // the compiler fill and widen with vector instructions.
   private var word: UInt64 { unsafeBitCast(self, to: UInt64.self) }
 
+  /// UTF-8 bytes of the scalars held directly in `slots`.
+  static func scalarUTF8Bytes(in slots: UnsafeBufferPointer<TerminalRowSlot>) -> UInt64 {
+    let raw = UnsafeRawBufferPointer(slots)
+    // The scalar-presence mark is each word's top bit. One simple pass counts
+    // the scalars and learns whether any is beyond ASCII; rows of plain ASCII,
+    // the usual case, need nothing more.
+    var present: UInt64 = 0, union: UInt64 = 0
+    for index in 0..<slots.count {
+      let word = raw.loadUnaligned(fromByteOffset: index &* 8, as: UInt64.self)
+      present &+= word >> 63
+      union |= word
+    }
+    if UInt32(truncatingIfNeeded: union) < 0x80 { return present }
+    var total: UInt64 = 0
+    for index in 0..<slots.count {
+      let word = raw.loadUnaligned(fromByteOffset: index &* 8, as: UInt64.self)
+      let scalar = UInt32(truncatingIfNeeded: word)
+      let length: UInt64 = 1 + (scalar > 0x7f ? 1 : 0) + (scalar > 0x7ff ? 1 : 0) + (scalar > 0xffff ? 1 : 0)
+      total &+= (word >> 63) &* length
+    }
+    return total
+  }
   /// Sets every slot in `slots` to this value.
   func fill(_ slots: UnsafeMutableBufferPointer<TerminalRowSlot>) {
     let word = word
@@ -626,7 +648,8 @@ struct TerminalRow: Equatable {
   }
   var retainedStorageCost: UInt64 {
     var bytes = Self.logicalRowCharge + UInt64(storage.logicalCapacity) * Self.logicalCellCharge
-    for slot in storage.slots where slot.hasScalar { bytes += UInt64(Self.utf8Length(of: slot.scalar)) }
+    bytes += storage.slots.withUnsafeBufferPointer { TerminalRowSlot.scalarUTF8Bytes(in: $0) }
+    if storage.payloads.isEmpty { return bytes }
     for payload in storage.payloads.values {
       if let text = payload.text { bytes += UInt64(text.utf8.count) }
       if let link = payload.link { bytes += UInt64(link.utf8.count) }
@@ -685,9 +708,52 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
   private static let maximumRetiredRowBytes: UInt64 = 256 * 1024
   private var entries: [RetainedRow?] = []
   // Entries retain their absolute slot while the history's front is trimmed.
-  // The map makes a pinned viewport's row lookup independent of scrollback
-  // length; row identity zero is the unassigned placeholder and never anchors.
-  private var absoluteIndexByRowID: [UInt64: Int] = [:]
+  // A pinned viewport or selection looks a row up by identity; identity zero
+  // is the unassigned placeholder and never anchors.
+  //
+  // Rows normally scroll into history in ascending identity order. While they
+  // do, a binary search over `entries` answers a lookup and appending a row
+  // costs nothing here. The dictionary exists only once a row has arrived out
+  // of order or unassigned, and is then authoritative until history empties.
+  private var absoluteIndexByRowID: [UInt64: Int]?
+  // The dictionary's key count and capacity had it been maintained throughout.
+  // Reflow admission charges that capacity, so the ascending case reports the
+  // same figure (Dictionary keeps three keys per four power-of-two buckets).
+  private var modelIndexCount = 0
+  private var modelIndexCapacity = 0
+  private var rowIndexCapacity: Int { absoluteIndexByRowID?.capacity ?? modelIndexCapacity }
+  static func dictionaryCapacity(holding count: Int) -> Int {
+    guard count > 0 else { return 0 }
+    var buckets = 2
+    while buckets * 3 / 4 < count { buckets *= 2 }
+    return buckets * 3 / 4
+  }
+  /// Records the row just appended at `absoluteIndex`.
+  private mutating func indexAppended(_ id: UInt64, at absoluteIndex: Int) {
+    if absoluteIndexByRowID == nil {
+      if id != 0, absoluteIndex == head || entries[absoluteIndex - 1]!.row.id < id {
+        if modelIndexCount == modelIndexCapacity {
+          modelIndexCapacity = Self.dictionaryCapacity(holding: modelIndexCount + 1)
+        }
+        modelIndexCount += 1
+        return
+      }
+      var map = [UInt64: Int](minimumCapacity: modelIndexCapacity)
+      for index in head..<absoluteIndex { map[entries[index]!.row.id] = index }
+      absoluteIndexByRowID = map
+    }
+    if id != 0 { absoluteIndexByRowID![id] = absoluteIndex }
+  }
+  /// Records that the row at `absoluteIndex` is leaving the front.
+  private mutating func indexRemoved(_ id: UInt64, at absoluteIndex: Int) {
+    guard absoluteIndexByRowID != nil else { modelIndexCount -= 1; return }
+    if id != 0, absoluteIndexByRowID![id] == absoluteIndex { absoluteIndexByRowID!.removeValue(forKey: id) }
+  }
+  private mutating func indexCleared() {
+    absoluteIndexByRowID = nil
+    modelIndexCount = 0
+    modelIndexCapacity = 0
+  }
   private var head = 0
   // One genuinely evicted row of at most 256 KiB charged storage may supply
   // the next document replacement. Large text/link payloads are not cached.
@@ -698,10 +764,10 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
   private(set) var allocationBytes: UInt64 = 0
   var reflowAllocationBytes: UInt64 {
     allocationBytes + UInt64(entries.capacity * MemoryLayout<RetainedRow?>.stride)
-      + UInt64(absoluteIndexByRowID.capacity) * 32 + (retiredRow?.reflowAllocationBytes ?? 0) + 128
+      + UInt64(rowIndexCapacity) * 32 + (retiredRow?.reflowAllocationBytes ?? 0) + 128
   }
   var hasEmptyReflowStorage: Bool {
-    isEmpty && (entries.capacity > 0 || absoluteIndexByRowID.capacity > 0 || retiredRow != nil)
+    isEmpty && (entries.capacity > 0 || rowIndexCapacity > 0 || retiredRow != nil)
   }
   var count: Int { entries.count - head }
   var startIndex: Int { 0 }
@@ -712,7 +778,11 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
   var rows: [TerminalRow] { Array(self) }
   mutating func reserveReflowRows(_ count: Int) {
     entries.reserveCapacity(count)
-    absoluteIndexByRowID.reserveCapacity(count)
+    if absoluteIndexByRowID != nil {
+      absoluteIndexByRowID!.reserveCapacity(count)
+    } else {
+      modelIndexCapacity = Swift.max(modelIndexCapacity, Self.dictionaryCapacity(holding: count))
+    }
   }
   mutating func append(_ row: TerminalRow) {
     appendRetained(RetainedRow(row))
@@ -720,7 +790,7 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
   mutating func appendRetained(_ entry: RetainedRow) {
     let absoluteIndex = entries.count
     entries.append(entry)
-    if entry.row.id != 0 { absoluteIndexByRowID[entry.row.id] = absoluteIndex }
+    indexAppended(entry.row.id, at: absoluteIndex)
     byteCount &+= entry.chargedBytes
     allocationBytes &+= entry.allocationBytes
   }
@@ -731,17 +801,27 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
   mutating func takeOldestForReflow() -> RetainedRow? {
     guard head < entries.count else { return nil }
     let entry = entries[head]!
-    if entry.row.id != 0, absoluteIndexByRowID[entry.row.id] == head {
-      absoluteIndexByRowID.removeValue(forKey: entry.row.id)
-    }
+    indexRemoved(entry.row.id, at: head)
     entries[head] = nil; head += 1
     byteCount -= entry.chargedBytes; allocationBytes -= entry.allocationBytes
     return entry
   }
-  mutating func removeAll() { entries.removeAll(); absoluteIndexByRowID.removeAll(); retiredRow = nil; head = 0; byteCount = 0; allocationBytes = 0 }
+  mutating func removeAll() { entries.removeAll(); indexCleared(); retiredRow = nil; head = 0; byteCount = 0; allocationBytes = 0 }
   mutating func replace(_ values: [TerminalRow]) { removeAll(); append(contentsOf: values) }
   func index(ofRowID rowID: UInt64) -> Int? {
-    guard rowID != 0, let absoluteIndex = absoluteIndexByRowID[rowID],
+    guard rowID != 0 else { return nil }
+    guard let map = absoluteIndexByRowID else {
+      // Retained identities ascend with their slots.
+      var lower = head, upper = entries.count
+      while lower < upper {
+        let middle = lower + (upper - lower) / 2
+        let id = entries[middle]!.row.id
+        if id == rowID { return middle - head }
+        if id < rowID { lower = middle + 1 } else { upper = middle }
+      }
+      return nil
+    }
+    guard let absoluteIndex = map[rowID],
           absoluteIndex >= head, absoluteIndex < entries.count, entries[absoluteIndex] != nil else { return nil }
     return absoluteIndex - head
   }
@@ -760,20 +840,19 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
       retiredRow = last.chargedBytes <= Self.maximumRetiredRowBytes ? last.row : nil
       for index in head..<(head + remove) {
         allocationBytes -= entries[index]!.allocationBytes
-        if let entry = entries[index], entry.row.id != 0,
-           absoluteIndexByRowID[entry.row.id] == index {
-          absoluteIndexByRowID.removeValue(forKey: entry.row.id)
-        }
+        indexRemoved(entries[index]!.row.id, at: index)
         entries[index] = nil
       }
       head += remove; byteCount = total
-      if head == entries.count { entries.removeAll(); absoluteIndexByRowID.removeAll(); head = 0 }
+      if head == entries.count { entries.removeAll(); indexCleared(); head = 0 }
       else if head >= count && head >= 256 {
         entries.removeFirst(head); head = 0
-        absoluteIndexByRowID.removeAll(keepingCapacity: true)
-        for (index, entry) in entries.enumerated() {
-          guard let entry, entry.row.id != 0 else { continue }
-          absoluteIndexByRowID[entry.row.id] = index
+        if absoluteIndexByRowID != nil {
+          absoluteIndexByRowID!.removeAll(keepingCapacity: true)
+          for (index, entry) in entries.enumerated() {
+            guard let entry, entry.row.id != 0 else { continue }
+            absoluteIndexByRowID![entry.row.id] = index
+          }
         }
       }
     }
