@@ -34,7 +34,8 @@ begin
   raise 'Driver compilation failed' unless status.success?
   result['driver_sha256'] = Digest::SHA256.file(driver).hexdigest
   process = NativeSmokeProcess.new([
-    executable, '--columns', '100', '--rows', '30', '--font-size', '14',
+    executable, *(ENV['BENCH_BACKGROUND'] == '1' ? ['--background'] : []),
+    '--columns', '100', '--rows', '30', '--font-size', '14',
     '--session-statistics-file', statistics, '--exit-after-command', '--execute', driver,
     '--output', report, '--terminal', 'session-diagnostic', '--bytes', bytes.to_s,
     '--runs', '10', '--columns', '100', '--rows', '30', '--workload', 'ascii_short_lines'

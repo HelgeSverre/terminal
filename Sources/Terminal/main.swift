@@ -364,6 +364,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     super.init()
   }
   var acceptsAutomation: Bool { !terminationRequested }
+  /// `--background` opens the launch window behind other apps and leaves
+  /// focus where it is, for measurement runs on a desktop in use.
+  private let launchesInBackground = CommandLine.arguments.prefix { $0 != "--execute" }.contains("--background")
   func applicationDidFinishLaunching(_ notification: Notification) {
     if let renderingError { NSLog("Metal initialization failed: %@", renderingError) }
     NSApp.setActivationPolicy(.regular)
@@ -405,12 +408,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         executable: argv[0], arguments: argv, cwd: shell.cwd, launcher: shell.launcher)
       let window = TerminalWindow(launch: launch)
       windows.append(window)
-      window.showWindow(nil)
-      window.window?.makeKeyAndOrderFront(nil)
+      // A measurement run can ask to stay behind whatever the user is doing.
+      if launchesInBackground {
+        window.window?.orderBack(nil)
+      } else {
+        window.showWindow(nil)
+        window.window?.makeKeyAndOrderFront(nil)
+      }
     } else {
       newWindow(nil)
     }
-    NSApp.activate(ignoringOtherApps: true)
+    if !launchesInBackground { NSApp.activate(ignoringOtherApps: true) }
     if let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096),
       let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096),
       let window = windows.first, let pane = window.panes.first

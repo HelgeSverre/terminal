@@ -246,6 +246,12 @@ did not meet the replacement target used for that report. Later measurements
 and the current criterion are recorded in the
 [performance research findings](swift-performance-research/synthesis.md).
 
+The app's `--background` launch flag opens the launch window behind other
+apps and does not take focus. `BENCH_BACKGROUND=1 just session-stream-diagnostic
+APP OUTPUT BYTES` uses it, for diagnostic runs on a desktop in use. A window
+behind others may present fewer frames, so never mix background runs with
+comparison figures.
+
 For the next diagnostic stack capture, use:
 
 ```shell
