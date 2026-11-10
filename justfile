@@ -577,6 +577,11 @@ gallery-panes: build
 @benchmark-terminals output="reports/terminal-comparison": release-build
     ruby tools/compare_terminals.rb "$1"
 
+# Compare warm startup time with Ghostty, Kitty, iTerm2 and Apple Terminal.
+[group('bench')]
+@benchmark-startup output="reports/startup-comparison" rounds="10": release-build _dev
+    target/native/dev compare-startup dist/Terminal.app "$1" "$2"
+
 [group('bench')]
 @benchmark-apps rust_app swift_app output="reports/app-comparison":
     ruby tools/compare_terminal_apps.rb "$3" "$1" "$2"
@@ -637,6 +642,12 @@ release-status:
     just _distribution status
 
 # ── helpers ───────────────────────────────────────────────────────────
+
+# Build the developer tool (tools/Dev) when its sources are newer.
+[private]
+@_dev:
+    mkdir -p target/native
+    if [[ ! -x target/native/dev || -n "$(find tools/Dev -newer target/native/dev -print -quit)" ]]; then xcrun swiftc -O tools/Dev/*.swift -o target/native/dev; fi
 
 [private]
 @_assemble-bundle configuration:
