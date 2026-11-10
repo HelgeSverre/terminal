@@ -344,8 +344,9 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     publishWindowTitle()
   }
 }
-/// Builds the renderer on another thread while AppKit starts: Metal setup
-/// takes about 10 ms and needs nothing from the app.
+/// Builds the renderer on another thread while AppKit finishes launching:
+/// Metal setup takes about 10 ms. It must be created after the application
+/// object, never before it.
 final class RenderingSetup: @unchecked Sendable {
   private var outcome: Result<TerminalRendering, Error>?
   private let finished = DispatchSemaphore(value: 0)
@@ -368,8 +369,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       ?? self?.intendedPane()?.window
   }
   var windows: [TerminalWindow] = []
-  let rendering: TerminalRendering?
-  let renderingError: String?
+  // The renderer is collected at first use, when the app has finished
+  // launching, so that building it overlaps AppKit's own launch work.
+  private let renderingSetup: RenderingSetup
+  private lazy var renderingOutcome = renderingSetup.wait()
+  var rendering: TerminalRendering? { try? renderingOutcome.get() }
+  var renderingError: String? {
+    if case .failure(let error) = renderingOutcome { return String(describing: error) }
+    return nil
+  }
   let clipboardAccess: ClipboardAccess
   private var preferencesWindow: TerminalSettingsWindow?
   private weak var lastFocusedPane: TerminalCanvasView?
@@ -381,14 +389,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     } else {
       clipboardAccess = ClipboardAccess()
     }
-    switch setup.wait() {
-    case .success(let ready):
-      rendering = ready
-      renderingError = nil
-    case .failure(let error):
-      rendering = nil
-      renderingError = String(describing: error)
-    }
+    renderingSetup = setup
     super.init()
   }
   var acceptsAutomation: Bool { !terminationRequested }
@@ -656,9 +657,11 @@ if let launch = AppDelegate.firstLaunch() {
   let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096)
   EarlyChild.start(launch, grid: columns.flatMap { columns in rows.map { (columns, $0) } })
 }
-let renderingSetup = RenderingSetup()
 let application = NSApplication.shared
-let delegate = AppDelegate(rendering: renderingSetup)
+// Started only now: touching Metal before the application object exists
+// leaves the first window unable to become key when the app is launched
+// without coming to the front, and its first click is then spent on focus.
+let delegate = AppDelegate(rendering: RenderingSetup())
 application.delegate = delegate
 application.run()
 
