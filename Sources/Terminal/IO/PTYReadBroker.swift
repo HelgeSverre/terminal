@@ -11,6 +11,9 @@ final class PTYReadBroker: @unchecked Sendable {
     var sealed = false
   }
   private let lock = NSLock()
+  // Held for a whole read, and by stopReading, so that close waits for the
+  // read in flight and keeps its bytes. The owner never takes it.
+  private let readLock = NSLock()
   private let owner: DispatchQueue
   private let deliver: (Data) -> Void
   private let ended: (Int32) -> Void
@@ -49,19 +52,26 @@ final class PTYReadBroker: @unchecked Sendable {
     lock.unlock()
   }
   enum ReadResult { case bytes(Int), wouldBlock, interrupted, creditExhausted, ended }
-  /// Nonblocking syscall only. A callback must neither wait nor reenter.
+  /// One reader at a time; the callback must not reenter. It runs without the
+  /// admission lock, so the owner's consumption and submissions never wait
+  /// behind a read. Meanwhile credit can only grow, and a submission can only
+  /// seal the open batch; in that case the bytes start a new batch even at the
+  /// node limit, which may then be exceeded by that one node.
   func readOnce(_ read: (UnsafeMutableRawBufferPointer) -> (Int, Int32)) -> ReadResult {
-    lock.lock(); defer { lock.unlock() }
-    guard !stopped else { return .ended }
+    readLock.lock(); defer { readLock.unlock() }
+    lock.lock()
+    guard !stopped else { lock.unlock(); return .ended }
     let existingRoom = tail.map { $0.sealed ? 0 : slabSize - $0.data.count } ?? 0
     let room = existingRoom > 0 ? existingRoom : (nodes < nodeLimit ? slabSize : 0)
     let amount = min(room, byteLimit - bytes)
-    guard amount > 0 else { return .creditExhausted }
+    guard amount > 0 else { lock.unlock(); return .creditExhausted }
     if diagnostics { statistics.readCalls += 1 }
+    lock.unlock()
     let (count, error) = slab.withUnsafeMutableBytes {
       read(UnsafeMutableRawBufferPointer(rebasing: $0[..<amount]))
     }
     precondition(count <= amount)
+    lock.lock(); defer { lock.unlock() }
     if count > 0 {
       let batch: Batch
       if let existing = tail, !existing.sealed && existing.data.count < slabSize {
@@ -100,6 +110,7 @@ final class PTYReadBroker: @unchecked Sendable {
     if completedNode { precondition(nodes > 0); nodes -= 1 }
   }
   func stopReading() {
+    readLock.lock(); defer { readLock.unlock() }
     lock.lock(); stopped = true; tail?.sealed = true; tail = nil; lock.unlock()
   }
   var credit: (bytes: Int, nodes: Int) {

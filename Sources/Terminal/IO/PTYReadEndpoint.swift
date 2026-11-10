@@ -57,7 +57,7 @@ final class PTYReadEndpoint: @unchecked Sendable {
     lock.unlock()
     if stop { cancelSource(); return }
     let credit = broker.credit
-    if blocked || credit.bytes == 0 || credit.nodes == 0 {
+    if blocked || credit.bytes <= 0 || credit.nodes <= 0 {
       pauseSource(); return
     }
     if suspended && broker.mayResumeReading {
@@ -87,6 +87,37 @@ final class PTYReadEndpoint: @unchecked Sendable {
     if suspended { source.resume(); suspended = false; broker.noteReadInterest(suspended: false) }
     source.cancel()
   }
+  // The kernel hands over at most about a kilobyte of PTY output per read, and
+  // a child that keeps writing refills that queue within a few microseconds.
+  // Delivering each kilobyte on its own wakes the terminal owner once per
+  // read, which costs more than the read. Waiting this long for the refill
+  // lets one delivery carry a whole slab instead.
+  private static let refillWaitNanoseconds: UInt64 = 10_000
+
+  /// Fills `buffer` from consecutive nonblocking reads. Returns as soon as the
+  /// buffer is full, the descriptor ends or fails, or it has stayed empty for
+  /// the refill wait. The result is that of a single read: bytes gathered, or
+  /// the first read's outcome when nothing was.
+  private static func gather(_ fd: Int32, into buffer: UnsafeMutableRawBufferPointer) -> (Int, Int32) {
+    var total = 0
+    var emptySince: UInt64 = 0
+    while total < buffer.count {
+      let count = Darwin.read(fd, buffer.baseAddress! + total, buffer.count - total)
+      if count > 0 {
+        total += count
+        emptySince = 0
+        continue
+      }
+      let error = count < 0 ? errno : 0
+      if total == 0 { return (count, error) }
+      // Bytes are in hand: EOF and hard errors surface on the next read.
+      guard count < 0, error == EAGAIN || error == EWOULDBLOCK || error == EINTR else { break }
+      let now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+      if emptySince == 0 { emptySince = now } else if now - emptySince >= refillWaitNanoseconds { break }
+    }
+    return (total, 0)
+  }
+
   private func readAvailable() {
     let started = broker.beginReadTurn()
     defer { broker.endReadTurn(started) }
@@ -96,10 +127,7 @@ final class PTYReadEndpoint: @unchecked Sendable {
       if stop { cancelSource(); return }
       if blocked { pauseSource(); return }
       let result = broker.readOnce { buffer in
-        lifetime.withLease { fd in
-          let count = Darwin.read(fd, buffer.baseAddress!, buffer.count)
-          return (count, count < 0 ? errno : 0)
-        } ?? (-1, EBADF)
+        lifetime.withLease { fd in Self.gather(fd, into: buffer) } ?? (-1, EBADF)
       }
       switch result {
       case .bytes(let count): total += count
