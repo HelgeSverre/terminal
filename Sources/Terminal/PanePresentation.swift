@@ -255,6 +255,9 @@ private final class PaneHeaderView: NSView {
     bounds.fill()
   }
 
+  /// A click on an unfocused window's pane header focuses that pane.
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
   override func mouseDown(with event: NSEvent) {
     onSelect?()
     super.mouseDown(with: event)

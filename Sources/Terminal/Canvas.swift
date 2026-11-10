@@ -17,6 +17,10 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   private var accessibilityValueChanged = false
   private var accessibilitySelectionChanged = false
   private var dragging = false
+  /// Event number of a click that AppKit admitted through `acceptsFirstMouse`
+  /// while the window was not key, and whether that click is still pressed.
+  private var activatingClick: Int?
+  private var activatingPress = false
   private var originatingKey: NSEvent?
   private struct DeliveredKey {
     let key: UInt32
@@ -69,6 +73,13 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   }
 
   override var acceptsFirstResponder: Bool { true }
+  /// Accept the click that activates an unfocused window so it focuses the
+  /// pane under the pointer instead of restoring the previously focused pane.
+  /// AppKit asks only for clicks in non-key windows; that click only focuses.
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+    if let event, event.type == .leftMouseDown { activatingClick = event.eventNumber }
+    return true
+  }
   override var wantsUpdateLayer: Bool { true }
   override var isOpaque: Bool { true }
   override func updateLayer() { redraw() }
@@ -683,6 +694,10 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     localLinkPress = false
     dragging = false
     window?.makeFirstResponder(self)
+    activatingPress = activatingClick == event.eventNumber
+    activatingClick = nil
+    // Neither select nor report the activating click to the terminal program.
+    if activatingPress { return }
     if event.clickCount == 1, event.modifierFlags.contains(.command),
       let occurrence = linkOccurrence(locationInWindow: event.locationInWindow) {
       // Resolve against the displayed generation at the user gesture; a
@@ -703,12 +718,13 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     dragging = requestSelection(.begin(hit, granularity: granularity))
   }
   override func mouseDragged(with event: NSEvent) {
-    if localLinkPress { return }
+    if localLinkPress || activatingPress { return }
     if dragging {
       if let hit = selectionHit(event) { requestSelection(.extend(hit)) }
     } else { _ = reportMouse(event, button: 32, release: false) }
   }
   override func mouseUp(with event: NSEvent) {
+    if activatingPress { activatingPress = false; return }
     if localLinkPress { localLinkPress = false; return }
     if dragging {
       dragging = false

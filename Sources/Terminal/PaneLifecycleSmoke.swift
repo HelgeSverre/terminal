@@ -22,6 +22,7 @@ import QuartzCore
   private var presentationPreferencesBeforeToggle: TerminalPreferences?
   private var titlesOffMinimum = NSSize.zero
   private var finished = false
+  private var focusThief: NSWindow?
 
   init(window: TerminalWindow, path: String) {
     controller = window
@@ -38,7 +39,7 @@ import QuartzCore
   /// defers a layout transaction; it also avoids forcing a renderer display.
   private enum Step: String {
     case initial, titleSetup, waitForInactiveTitle, waitForActiveTitle, waitForBackgroundTitle
-    case waitForBackgroundExit, nest, position, closeRight, verifyPromotion, resplit, verifyResplit
+    case waitForBackgroundExit, deactivateWindow, clickInactivePane, verifyInactiveClick, nest, position, closeRight, verifyPromotion, resplit, verifyResplit
     case headersOff, headersOn, verifyHeadersOn
     case prepareNarrowLeaf, positionNarrowLeaf, splitNarrowLeaf, verifyNarrowLeaf
     case resizeNarrowSmaller, verifyNarrowSmaller, resizeNarrowLarger, verifyNarrowLarger
@@ -132,6 +133,51 @@ import QuartzCore
       guard window.title == "background-left" else {
         return finish(error: "background session exit overwrote active title",
           extra: ["window_title": window.title])
+      }
+      schedule(.deactivateWindow)
+
+    case .deactivateWindow:
+      guard let window = controller.window, let top else {
+        return finish(error: "missing panes before inactive-window click")
+      }
+      // Focus the left pane, then move key status to another window: the
+      // terminal window keeps `top` as its first responder while unfocused.
+      window.makeFirstResponder(top)
+      let thief = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 160, height: 80),
+        styleMask: [.titled], backing: .buffered, defer: false)
+      thief.isReleasedWhenClosed = false
+      thief.makeKeyAndOrderFront(nil)
+      focusThief = thief
+      waitFor(.clickInactivePane) { !window.isKeyWindow }
+
+    case .clickInactivePane:
+      guard let window = controller.window, let top, let right else {
+        return finish(error: "missing panes for inactive-window click")
+      }
+      guard !window.isKeyWindow, window.firstResponder === top else {
+        return finish(error: "inactive-window click fixture did not deactivate the window",
+          extra: ["key": window.isKeyWindow, "top_focused": window.firstResponder === top])
+      }
+      // The first click on a non-key window goes through NSWindow.sendEvent,
+      // which consults acceptsFirstMouse before delivering mouseDown.
+      let point = right.convert(NSPoint(x: right.bounds.midX, y: right.bounds.midY), to: nil)
+      for (type, number) in [(NSEvent.EventType.leftMouseDown, 9_001), (.leftMouseUp, 9_002)] {
+        guard let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+          timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+          context: nil, eventNumber: number, clickCount: 1, pressure: type == .leftMouseDown ? 1 : 0)
+        else { return finish(error: "could not synthesize inactive-window click") }
+        window.sendEvent(event)
+      }
+      waitFor(.verifyInactiveClick) { window.firstResponder === right }
+
+    case .verifyInactiveClick:
+      guard let window = controller.window, let right else {
+        return finish(error: "missing panes after inactive-window click")
+      }
+      focusThief?.close()
+      focusThief = nil
+      guard window.firstResponder === right else {
+        return finish(error: "first click on an unfocused window did not focus the clicked pane")
       }
       schedule(.nest)
 
