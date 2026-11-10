@@ -56,25 +56,6 @@ private final class BorrowedSnapshotCells {
   }
 }
 
-// Borrowed printable input, valid only during the synchronous feed call.
-private struct ASCIIInputScalars: RandomAccessCollection {
-  typealias Element = Unicode.Scalar
-  typealias Index = Int
-
-  let bytes: UnsafePointer<UInt8>
-  let startIndex = 0
-  let endIndex: Int
-
-  init(_ bytes: UnsafePointer<UInt8>, count: Int) {
-    self.bytes = bytes
-    endIndex = count
-  }
-
-  @inline(__always) subscript(position: Int) -> Unicode.Scalar {
-    Unicode.Scalar(bytes[position])
-  }
-}
-
 private final class TerminalEmulator {
   private enum DisplayClearAction: UInt32 {
     case ignoredAlternate = 0, cleared = 1, redrawPrompt = 2
@@ -118,14 +99,26 @@ private final class TerminalEmulator {
   private var autoWrap = true
   private var insertMode = false
   private var newlineMode = false
-  private var protectedOutput = false
   private var syncDeadline: UInt64?
   private var clock: UInt64 = 0
   private var parser = VTParserState.ground
   private var utf8 = TerminalText.UTF8Decoder()
   private var sequence = ""
-  private var pen = TerminalStyle()
-  private var currentLink: String?
+  // Style, link and protection of the next printed cell. They live in one
+  // value so a print transaction borrows them instead of assembling a copy.
+  private var attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
+  private var pen: TerminalStyle {
+    get { attributes.style }
+    set { captureRepeatAttributes(); attributes.style = newValue }
+  }
+  private var currentLink: String? {
+    get { attributes.link }
+    set { captureRepeatAttributes(); attributes.link = newValue }
+  }
+  private var protectedOutput: Bool {
+    get { attributes.protected }
+    set { captureRepeatAttributes(); attributes.protected = newValue }
+  }
   private var replies = Data()
   private var nextClipboardRequestID: UInt64 = 1
   private var clipboardRequests: [(UInt64, Data)] = []
@@ -161,16 +154,31 @@ private final class TerminalEmulator {
   private let graphics = KittyGraphicsStore()
   private var cellPixelWidth = 8
   private var cellPixelHeight = 16
-  private var lastPrinted = ""
-  private var lastPrintedStyle = TerminalStyle()
-  private var lastPrintedLink: String?
-  private var lastPrintedFlags: UInt8 = 0
+  private var lastPrinted: TerminalDocument.PrintedText?
+  // REP prints with the attributes of the last printed cluster. Those are
+  // nearly always the current `attributes`, so they are copied only when the
+  // current ones are about to change (or when a cluster kept its own).
+  private var lastPrintedAttributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
+  private var repeatUsesCurrentAttributes = false
+  private func captureRepeatAttributes() {
+    guard repeatUsesCurrentAttributes else { return }
+    lastPrintedAttributes = attributes
+    repeatUsesCurrentAttributes = false
+  }
+  private func forgetLastPrinted() {
+    lastPrinted = nil
+    lastPrintedAttributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
+    repeatUsesCurrentAttributes = false
+    repeatRemaining = 0
+  }
   private var repeatRemaining = 0
   private var charsetSpecial = [false, false]
   private var charsetSlot = 0
   private var decodedScalars: [Unicode.Scalar] = []
   private var decodedScalarStart = 0
-  private static let minimumASCIIInputRun = 16
+  // A shorter ASCII run that follows undrained decoded text joins that text,
+  // so mixed-script output reaches the document as one transaction.
+  private static let minimumDirectASCIIRun = 16
   // CSI input itself is capped at 16 KiB, so this reusable numeric scratch is
   // bounded by the parser's existing sequence limit.
   private var csiParameterScratch: [Int] = []
@@ -222,6 +230,7 @@ private final class TerminalEmulator {
     searchHit = nil
   }
   private func finishDecodedText() {
+    if utf8.isIdle && decodedScalars.isEmpty { return }
     // Escape/control input interrupts an incomplete UTF-8 sequence. Emit its
     // maximal invalid prefix now so that the control byte is still parsed.
     flushDecodedScalars()
@@ -243,11 +252,13 @@ private final class TerminalEmulator {
     if decodedScalars.count - decodedScalarStart == 1024 { flushDecodedScalars() }
   }
   private func flushDecodedScalars() {
+    if decodedScalars.isEmpty { return }
     while decodedScalarStart < decodedScalars.count {
-      let batch = document.print(decodedScalars[decodedScalarStart...], usingAlternate: usingAlternate,
-                                 leftRightMargins: leftRightMargins, autoWrap: autoWrap,
-                                 insertMode: insertMode,
-                                 attributes: TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput))
+      let batch = decodedScalars.withUnsafeBufferPointer { scalars in
+        document.print(UnsafeBufferPointer(rebasing: scalars[decodedScalarStart...]),
+                       usingAlternate: usingAlternate, leftRightMargins: leftRightMargins,
+                       autoWrap: autoWrap, insertMode: insertMode, attributes: attributes)
+      }
       guard batch.consumedScalarCount > 0 else { return }
       decodedScalarStart += batch.consumedScalarCount
       apply(batch.effect, mutations: batch.mutationCount)
@@ -255,56 +266,95 @@ private final class TerminalEmulator {
     decodedScalars.removeAll(keepingCapacity: true)
     decodedScalarStart = 0
   }
-  // Eligible ASCII borrows the feed buffer only during the document transaction.
-  // Prior decoded text is drained first; row storage retains scalar values, never
-  // this input view. History effects are applied at every document yield.
-  private func appendASCIIInput(_ bytes: UnsafePointer<UInt8>, offset: Int, limit: Int) -> Int? {
-    guard case .ground = parser, utf8.isIdle, !charsetSpecial[charsetSlot] else { return nil }
-    var count = 0
-    while offset + count < limit {
-      let byte = bytes[offset + count]
-      guard (0x20...0x7e).contains(byte) else { break }
-      count += 1
+  /// Decodes consecutive well-formed multi-byte scalars that lie wholly inside
+  /// the buffer, and returns the bytes consumed. It stops — possibly at once —
+  /// before anything the streaming decoder must judge: ASCII and controls, a
+  /// malformed sequence, or a scalar cut off by the end of the buffer.
+  private func decodeUTF8Run(_ bytes: UnsafePointer<UInt8>, offset: Int, limit: Int) -> Int {
+    @inline(__always) func continuation(_ byte: UInt8) -> Bool { byte & 0xc0 == 0x80 }
+    var index = offset
+    while index < limit {
+      let lead = bytes[index]
+      let value: UInt32
+      let length: Int
+      if lead < 0xc2 {
+        break
+      } else if lead < 0xe0 {
+        guard index + 1 < limit, continuation(bytes[index + 1]) else { break }
+        value = UInt32(lead & 0x1f) << 6 | UInt32(bytes[index + 1] & 0x3f)
+        length = 2
+      } else if lead < 0xf0 {
+        guard index + 2 < limit else { break }
+        let second = bytes[index + 1], third = bytes[index + 2]
+        // E0 excludes overlong forms; ED excludes surrogates.
+        guard continuation(second), continuation(third),
+              lead != 0xe0 || second >= 0xa0, lead != 0xed || second <= 0x9f else { break }
+        value = UInt32(lead & 0x0f) << 12 | UInt32(second & 0x3f) << 6 | UInt32(third & 0x3f)
+        length = 3
+      } else if lead <= 0xf4 {
+        guard index + 3 < limit else { break }
+        let second = bytes[index + 1], third = bytes[index + 2], fourth = bytes[index + 3]
+        // F0 excludes overlong forms; F4 excludes values above U+10FFFF.
+        guard continuation(second), continuation(third), continuation(fourth),
+              lead != 0xf0 || second >= 0x90, lead != 0xf4 || second <= 0x8f else { break }
+        value = UInt32(lead & 0x07) << 18 | UInt32(second & 0x3f) << 12
+          | UInt32(third & 0x3f) << 6 | UInt32(fourth & 0x3f)
+        length = 4
+      } else {
+        break
+      }
+      // The guards above admit exactly the well-formed encodings of a scalar.
+      appendDecoded(Unicode.Scalar(value).unsafelyUnwrapped)
+      index += length
     }
-    guard count > 0 else { return nil }
-    if count < Self.minimumASCIIInputRun {
-      // Consume the known short range at once so ANSI/Unicode-adjacent text
-      // cannot pay a triangular sequence of run scans.
-      for index in 0..<count { emitDecoded(utf8.push(bytes[offset + index])) }
+    return index - offset
+  }
+  /// Prints the run of printable ASCII that starts at `offset` and returns its
+  /// length. The document borrows the feed buffer only for the transaction and
+  /// stores scalar values; history effects are applied at every document yield.
+  /// The caller has established ground state, an idle UTF-8 decoder and the
+  /// ASCII character set.
+  private func printASCIIRun(_ bytes: UnsafePointer<UInt8>, offset: Int, limit: Int) -> Int {
+    var end = offset + 1
+    while end < limit, bytes[end] &- 0x20 < 0x5f { end += 1 }
+    let count = end - offset
+    if count < Self.minimumDirectASCIIRun, decodedScalarStart < decodedScalars.count {
+      for index in offset..<end { appendDecoded(Unicode.Scalar(bytes[index])) }
       return count
     }
-
-    drainASCIIInput(bytes, offset: offset, count: count)
-    return count
-  }
-  // Keep the generic borrowed writer outside the mixed-text scanner's hot loop.
-  @inline(never)
-  private func drainASCIIInput(_ bytes: UnsafePointer<UInt8>, offset: Int, count: Int) {
     flushDecodedScalars()
-    var admitted = 0
-    while admitted < count {
-      let amount = min(1024, count - admitted)
-      let scalars = ASCIIInputScalars(bytes.advanced(by: offset + admitted), count: amount)
-      var consumed = 0
-      while consumed < amount {
-        let batch = document.print(scalars[consumed...], usingAlternate: usingAlternate,
-          leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
-          attributes: TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput))
-        precondition(batch.consumedScalarCount > 0)
-        consumed += batch.consumedScalarCount
-        apply(batch.effect, mutations: batch.mutationCount)
+    var consumed = 0
+    while consumed < count {
+      let result = document.printASCII(
+        UnsafeBufferPointer(start: bytes + offset + consumed, count: count - consumed),
+        usingAlternate: usingAlternate, leftRightMargins: leftRightMargins, autoWrap: autoWrap,
+        insertMode: insertMode, attributes: attributes)
+      guard result.consumedCount > 0 else {
+        // The scalar transaction owns this byte (insert mode, an open Prepend cluster).
+        put(Unicode.Scalar(bytes[offset + consumed]))
+        consumed += 1
+        continue
       }
-      admitted += amount
+      consumed += result.consumedCount
+      lastPrinted = .scalar(Unicode.Scalar(bytes[offset + consumed - 1]))
+      repeatUsesCurrentAttributes = true
+      applyAppendedHistory(result.appendedHistoryCount)
+      let mutations = UInt64(result.consumedCount)
+      revision &+= mutations; documentEpoch &+= mutations; screenEpoch &+= mutations
     }
+    return count
   }
   private func apply(_ effect: TerminalDocument.PrintEffect, mutations: Int = 1) {
     guard mutations > 0 else { return }
     applyAppendedHistory(effect.appendedHistoryCount)
     if let printed = effect.lastPrinted {
       lastPrinted = printed
-      let attributes = effect.repeatAttributes ?? TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)
-      lastPrintedStyle = attributes.style; lastPrintedLink = attributes.link
-      lastPrintedFlags = attributes.protected ? 2 : 0
+      if let kept = effect.repeatAttributes {
+        lastPrintedAttributes = kept
+        repeatUsesCurrentAttributes = false
+      } else {
+        repeatUsesCurrentAttributes = true
+      }
     }
     revision &+= UInt64(mutations); documentEpoch &+= UInt64(mutations); screenEpoch &+= UInt64(mutations)
   }
@@ -330,18 +380,23 @@ private final class TerminalEmulator {
     }
   }
   private func repeatLastPrinted() {
-    let savedPen = pen, savedLink = currentLink, savedProtected = protectedOutput
-    pen = lastPrintedStyle; currentLink = lastPrintedLink; protectedOutput = lastPrintedFlags & 2 != 0
+    let saved = attributes
+    if !repeatUsesCurrentAttributes { attributes = lastPrintedAttributes }
     resetClusterBoundary()
-    for scalar in lastPrinted.unicodeScalars { put(scalar) }
+    switch lastPrinted {
+    case .scalar(let scalar): put(scalar)
+    case .cluster(let text): for scalar in text.unicodeScalars { put(scalar) }
+    case nil: break
+    }
     resetClusterBoundary()
-    pen = savedPen; currentLink = savedLink; protectedOutput = savedProtected
+    captureRepeatAttributes()
+    attributes = saved
   }
   func feed(_ bytes: UnsafePointer<UInt8>?, count: Int, now: UInt64) -> Int {
     tick(now)
     // REP is intentionally resumable. It keeps the owner responsive and lets
     // an admitted input event observe modes established *after* the repeat.
-    if repeatRemaining > 0, lastPrinted.isEmpty {
+    if repeatRemaining > 0, lastPrinted == nil {
       // REP after RIS (or before any printable scalar) is a no-op. Clear it
       // and continue processing this same ABI turn's suffix.
       repeatRemaining = 0
@@ -360,15 +415,21 @@ private final class TerminalEmulator {
       // another byte. The owner drains replies before replaying this suffix.
       if replies.count >= 32_768 { flushDecodedScalars(); return offset }
       let byte = bytes[offset]
-      switch parser {
-      case .ground:
-        if (0x20...0x7e).contains(byte),
-           let admitted = appendASCIIInput(bytes, offset: offset, limit: limit) {
-          offset += admitted
+      // Ground state is decided before the general switch: matching the other
+      // states copies their payloads, which ordinary text never needs.
+      if case .ground = parser {
+        if byte &- 0x20 < 0x5f, utf8.isIdle, !charsetSpecial[charsetSlot] {
+          offset += printASCIIRun(bytes, offset: offset, limit: limit)
           continue
         }
         switch byte {
-        case 0x1b: finishDecodedText(); parser = .escape
+        case 0x1b:
+          finishDecodedText()
+          if let length = applyCompleteSGR(bytes, offset: offset, limit: limit) {
+            offset += length
+            continue
+          }
+          parser = .escape
         case 0x00...0x07: finishDecodedText(); if byte == 0x07 { /* bell belongs to host */ }
         case 0x08: finishDecodedText(); backspace()
         case 0x09: finishDecodedText(); tab()
@@ -377,8 +438,20 @@ private final class TerminalEmulator {
         case 0x0e: finishDecodedText(); charsetSlot = 1
         case 0x0f: finishDecodedText(); charsetSlot = 0
         default:
+          if byte >= 0xc2, utf8.isIdle {
+            let decoded = decodeUTF8Run(bytes, offset: offset, limit: limit)
+            if decoded > 0 {
+              offset += decoded
+              continue
+            }
+          }
           emitDecoded(utf8.push(byte))
         }
+        offset += 1
+        continue
+      }
+      switch parser {
+      case .ground: preconditionFailure("Ground state is handled above")
       case .escape:
         handleEscapedByte(byte)
       case .charset(let slot):
@@ -468,6 +541,46 @@ private final class TerminalEmulator {
     flushDecodedScalars()
     return limit
   }
+  /// Applies `ESC [ digits-and-semicolons m` when the whole sequence is in the
+  /// buffer, and returns its length. Anything else — other finals, private
+  /// markers, colons, a split or oversized sequence — returns nil with nothing
+  /// consumed, so the streaming parser handles it exactly as before.
+  private func applyCompleteSGR(_ bytes: UnsafePointer<UInt8>, offset: Int, limit: Int) -> Int? {
+    let maximumValues = 32
+    guard offset + 2 < limit, bytes[offset + 1] == 0x5b else { return nil }
+    return withUnsafeTemporaryAllocation(of: Int.self, capacity: maximumValues) { values -> Int? in
+      var count = 0
+      // Nine digits cannot overflow; a longer field goes to the streaming
+      // parser, which owns the exact UInt32 overflow rule.
+      var value = 0, digits = 0
+      var index = offset + 2
+      let end = min(limit, offset + 96)
+      while index < end {
+        let byte = bytes[index]
+        let digit = Int(byte &- 0x30)
+        if digit < 10 {
+          guard digits < 9 else { return nil }
+          value = value * 10 + digit
+          digits += 1
+        } else if byte == 0x3b || byte == 0x6d {
+          guard count < maximumValues else { return nil }
+          values[count] = value
+          count += 1
+          value = 0
+          digits = 0
+          if byte == 0x6d {
+            applySGR(UnsafeBufferPointer(rebasing: values[..<count]))
+            changed()
+            return index + 1 - offset
+          }
+        } else {
+          return nil
+        }
+        index += 1
+      }
+      return nil
+    }
+  }
   private func handleEscapedByte(_ byte: UInt8) {
     parser = .ground
     switch byte {
@@ -495,7 +608,7 @@ private final class TerminalEmulator {
     guard let effect = document.print(
       scalar, usingAlternate: usingAlternate,
       leftRightMargins: leftRightMargins, autoWrap: autoWrap, insertMode: insertMode,
-      attributes: TerminalDocument.PrintAttributes(style: pen, link: currentLink, protected: protectedOutput)) else { return }
+      attributes: attributes) else { return }
     apply(effect)
   }
 
@@ -546,8 +659,7 @@ private final class TerminalEmulator {
     currentLink = nil
     palette.reset()
     charsetSpecial = [false, false]; charsetSlot = 0
-    lastPrinted = ""; lastPrintedStyle = TerminalStyle(); lastPrintedLink = nil
-    lastPrintedFlags = 0; repeatRemaining = 0
+    forgetLastPrinted()
     tabs = (0..<columns).map { $0 > 0 && $0.isMultiple(of: 8) }
     tabsCleared = false
     resetClusterBoundary()
@@ -689,7 +801,7 @@ private final class TerminalEmulator {
     case 0x53: resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: true)
     case 0x54: resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: false, allowHistory: false)
     case 0x62:
-      repeatRemaining = lastPrinted.isEmpty ? 0 : min(1_000_000, max(0, params.first ?? 1))
+      repeatRemaining = lastPrinted == nil ? 0 : min(1_000_000, max(0, params.first ?? 1))
       clearsPending = false
     case 0x73:
       if leftRightMargins { setHorizontalMargins(params); changedActiveScreen = true }
@@ -873,52 +985,57 @@ private final class TerminalEmulator {
       }
       return
     }
-    let values = p.isEmpty ? [0] : p
+    (p.isEmpty ? [0] : p).withUnsafeBufferPointer { applySGR($0) }
+  }
+  /// Applies ordinary (semicolon-separated) SGR values in order.
+  private func applySGR(_ values: UnsafeBufferPointer<Int>) {
+    var style = pen
+    defer { pen = style }
     var i = 0
     while i < values.count {
       let code = values[i]
       switch code {
-      case 0: pen = TerminalStyle()
-      case 1: pen.flags |= 1
-      case 2: pen.flags |= 2
-      case 3: pen.flags |= 4
-      case 4: pen.underlineKind = 1
-      case 5, 6: pen.flags |= 128
-      case 7: pen.flags |= 8
-      case 8: pen.flags |= 16
-      case 9: pen.flags |= 32
-      case 53: pen.flags |= 64
-      case 21: pen.underlineKind = 2
-      case 22: pen.flags &= ~UInt16(3)
-      case 23: pen.flags &= ~UInt16(4)
-      case 24: pen.underlineKind = 0
-      case 27: pen.flags &= ~UInt16(8)
-      case 28: pen.flags &= ~UInt16(16)
-      case 25: pen.flags &= ~UInt16(128)
-      case 29: pen.flags &= ~UInt16(32)
-      case 55: pen.flags &= ~UInt16(64)
-      case 30...37: pen.foreground = 0x0100_0000 | UInt32(code - 30)
-      case 39: pen.foreground = 0
-      case 40...47: pen.background = 0x0100_0000 | UInt32(code - 40)
-      case 49: pen.background = 0
-      case 90...97: pen.foreground = 0x0100_0000 | UInt32(code - 90 + 8)
-      case 100...107: pen.background = 0x0100_0000 | UInt32(code - 100 + 8)
+      case 0: style = TerminalStyle()
+      case 1: style.flags |= 1
+      case 2: style.flags |= 2
+      case 3: style.flags |= 4
+      case 4: style.underlineKind = 1
+      case 5, 6: style.flags |= 128
+      case 7: style.flags |= 8
+      case 8: style.flags |= 16
+      case 9: style.flags |= 32
+      case 53: style.flags |= 64
+      case 21: style.underlineKind = 2
+      case 22: style.flags &= ~UInt16(3)
+      case 23: style.flags &= ~UInt16(4)
+      case 24: style.underlineKind = 0
+      case 27: style.flags &= ~UInt16(8)
+      case 28: style.flags &= ~UInt16(16)
+      case 25: style.flags &= ~UInt16(128)
+      case 29: style.flags &= ~UInt16(32)
+      case 55: style.flags &= ~UInt16(64)
+      case 30...37: style.foreground = 0x0100_0000 | UInt32(code - 30)
+      case 39: style.foreground = 0
+      case 40...47: style.background = 0x0100_0000 | UInt32(code - 40)
+      case 49: style.background = 0
+      case 90...97: style.foreground = 0x0100_0000 | UInt32(code - 90 + 8)
+      case 100...107: style.background = 0x0100_0000 | UInt32(code - 100 + 8)
       case 38, 48, 58:
         if i + 2 < values.count && values[i + 1] == 5 {
           if (0...255).contains(values[i + 2]) {
             let color = 0x0100_0000 | UInt32(values[i + 2])
-            if code == 38 { pen.foreground = color } else if code == 48 { pen.background = color } else { pen.underline = color }
+            if code == 38 { style.foreground = color } else if code == 48 { style.background = color } else { style.underline = color }
           }
           i += 2
         } else if i + 4 < values.count && values[i + 1] == 2 {
           if values[(i + 2)...(i + 4)].allSatisfy({ (0...255).contains($0) }) {
             let color = 0x0200_0000 | (UInt32(values[i + 2]) << 16)
               | (UInt32(values[i + 3]) << 8) | UInt32(values[i + 4])
-            if code == 38 { pen.foreground = color } else if code == 48 { pen.background = color } else { pen.underline = color }
+            if code == 38 { style.foreground = color } else if code == 48 { style.background = color } else { style.underline = color }
           }
           i += 4
         }
-      case 59: pen.underline = 0
+      case 59: style.underline = 0
       default: break
       }
       i += 1
@@ -979,8 +1096,7 @@ private final class TerminalEmulator {
     newlineMode = false; protectedOutput = false
     pen = TerminalStyle(); currentLink = nil; applicationCursor = false; applicationKeypad = false
     bracketedPaste = false; focusReporting = false; reverseVideo = false; mouseMode = 0; sgrMouse = false; syncDeadline = nil
-    lastPrinted = ""; lastPrintedStyle = TerminalStyle(); lastPrintedLink = nil
-    lastPrintedFlags = 0; repeatRemaining = 0
+    forgetLastPrinted()
     var s = screen
     s.topMargin = 0; s.bottomMargin = rowCount - 1; s.cursorRow = 0; s.cursorColumn = 0
     s.pendingWrap = false; s.cursorVisible = true; s.cursorShape = 0

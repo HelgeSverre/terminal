@@ -256,7 +256,10 @@ if configuration == .release {
     let toolchain = try Toolchain.current()
     let cFlags = ["-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=15.0", "-isysroot", toolchain.sdkPath]
     let releaseFlags = [
-      "-swift-version", "5", "-O", "-whole-module-optimization", "-target", "arm64-apple-macosx15.0",
+      // Release skips dynamic exclusivity checks: on the parser's hot path they
+      // cost a quarter of throughput. Development and test builds keep them.
+      "-swift-version", "5", "-O", "-whole-module-optimization", "-enforce-exclusivity=unchecked",
+      "-target", "arm64-apple-macosx15.0",
       "-sdk", toolchain.sdkPath, "-module-name", "Terminal", "-import-objc-header", bridge,
       "-framework", "AppKit", "-framework", "QuartzCore", "-framework", "Metal", "-framework", "CoreText", "-framework", "ImageIO",
     ]

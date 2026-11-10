@@ -516,7 +516,7 @@ import Foundation
     }
 
     let ordinary = compare(Array("ABCD".unicodeScalars))
-    precondition(ordinary.effect.lastPrinted == "D" && ordinary.effect.repeatAttributes?.link == attributes.link)
+    precondition(ordinary.effect.lastPrinted?.text == "D" && ordinary.effect.repeatAttributes?.link == attributes.link)
     // Prepend makes the first ASCII scalar a continuation; it must go through
     // the scalar transaction before a later fresh ASCII may be admitted.
     _ = compare(Array("\u{600}ABC".unicodeScalars))
@@ -743,7 +743,7 @@ import Foundation
     print("EFG", into: &heldResult)
     withExtendedLifetime(result) {
       precondition(identity(heldResult.primary.rows[0]) == resultStorage)
-      precondition(result.effect.appendedHistoryCount == 1 && result.effect.lastPrinted == "D")
+      precondition(result.effect.appendedHistoryCount == 1 && result.effect.lastPrinted?.text == "D")
     }
 
     var shared = TerminalDocument(columns: 3, rows: 1)

@@ -27,7 +27,24 @@ enum TerminalText {
       push(scalar, category: TerminalText.category(of: scalar))
     }
 
+    /// Equivalent to `push` for a scalar in U+0020...U+007E. Such a scalar is
+    /// GCB Other and never an InCB linker, so it joins only a preceding Prepend
+    /// and leaves a state that does not depend on anything before it.
+    @inline(__always)
+    @discardableResult mutating func pushPrintableASCII() -> Bool {
+      let boundary = printableASCIIStartsCluster
+      self = Segmenter()
+      previous = .other
+      return boundary
+    }
+    /// Whether a scalar in U+0020...U+007E pushed now would start a cluster.
+    @inline(__always) var printableASCIIStartsCluster: Bool { previous != .prepend }
+
     mutating func push(_ scalar: Unicode.Scalar, category current: Category) -> Bool {
+      // Ordinary text after ordinary text: a boundary that leaves every flag
+      // clear, which is the state this segmenter is already in.
+      if current == .other, previous == .other, !linkerTail,
+         !Unicode18GraphemeTables.isIncbLinker(scalar.value) { return true }
       let boundary: Bool
       switch (previous, current) {
       case (nil, _): boundary = true
@@ -205,6 +222,33 @@ enum TerminalText {
 
   }
 
+  /// Builds a String from scalars with one UTF-8 encoding pass, instead of
+  /// growing it one scalar at a time.
+  static func string(from scalars: [Unicode.Scalar]) -> String {
+    String(unsafeUninitializedCapacity: scalars.count * 4) { buffer in
+      var count = 0
+      for scalar in scalars {
+        let value = scalar.value
+        if value < 0x80 {
+          buffer[count] = UInt8(value); count += 1
+        } else if value < 0x800 {
+          buffer[count] = UInt8(0xc0 | value >> 6)
+          buffer[count + 1] = UInt8(0x80 | value & 0x3f); count += 2
+        } else if value < 0x1_0000 {
+          buffer[count] = UInt8(0xe0 | value >> 12)
+          buffer[count + 1] = UInt8(0x80 | value >> 6 & 0x3f)
+          buffer[count + 2] = UInt8(0x80 | value & 0x3f); count += 3
+        } else {
+          buffer[count] = UInt8(0xf0 | value >> 18)
+          buffer[count + 1] = UInt8(0x80 | value >> 12 & 0x3f)
+          buffer[count + 2] = UInt8(0x80 | value >> 6 & 0x3f)
+          buffer[count + 3] = UInt8(0x80 | value & 0x3f); count += 4
+        }
+      }
+      return count
+    }
+  }
+
   static func clusters(in text: String) -> [String] {
     var segmenter = Segmenter()
     var output: [String] = []
@@ -258,6 +302,10 @@ enum TerminalText {
     case .SpacingMark: return .spacingMark
     case .ZWJ: return .zwj
     }
+    // The generated table is complete for Unicode 18. The ranges below still
+    // reclassify 49 scalars it reports as Other (all in U+09A9...U+0C29, to
+    // InCB consonant); nothing outside that span can change here.
+    guard (0x09a9...0x0c29).contains(value) else { return .other }
     switch value {
     case 0x000d: return .cr
     case 0x000a: return .lf

@@ -103,7 +103,7 @@ final class DocumentReflowTransaction {
     // At most 8192 active rows, each O(1). No retained generation or private
     // builder allocation exists until its complete input reservation succeeds.
     var sourceBytes = State.sum(source.history.reflowAllocationBytes,
-      UInt64(source.primary.rows.capacity + source.alternate.rows.capacity) * UInt64(MemoryLayout<TerminalRow>.stride))
+      UInt64(source.primary.rows.capacity + source.alternate.rows.capacity) * UInt64(TerminalRow.admissionStride))
     var alternateResources: UInt64 = 0
     var promptBytes: UInt64 = 0
     var largestPromptDictionary: UInt64 = 0

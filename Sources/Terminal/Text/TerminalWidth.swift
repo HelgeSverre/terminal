@@ -25,6 +25,20 @@ enum TerminalWidth {
     return total
   }
 
+  /// String-mode width of a cluster held as scalars while it is being assembled.
+  static func width(of scalars: [Unicode.Scalar]) -> Int {
+    var total = 0
+    var next = WidthInfo.default
+    var index = scalars.count
+    while index > 0 {
+      index -= 1
+      let result = widthInString(scalars[index].value, next: next)
+      total += result.add
+      next = result.info
+    }
+    return total
+  }
+
   /// Exact string-mode width of a singleton, before cluster extensions arrive.
   static func width(of scalar: Unicode.Scalar) -> Int {
     widthInString(scalar.value, next: .default).add
