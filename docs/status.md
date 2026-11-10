@@ -231,7 +231,7 @@ Current automated evidence:
   or a fixed startup delay. A private-ZDOTDIR real Zsh fixture uses a nonblocking
   FIFO handshake to hold A, then release B and verify exact executed output.
   Editing smoke also waits for the visible prompt before recording its cursor.
-- `reports/native-smoke.json`: actual macOS 15.6 text input, PTY, Unicode/SGR,
+- `just smoke` (writes the untracked `reports/native-smoke.json`): actual macOS 15.6 text input, PTY, Unicode/SGR,
   marked-text callback commit, guarded preedit cancellation on resize/focus,
   resize, split and Metal submission checks. Session tests exercise native
   scroll/focus/release/typing event ordering through the typed view snapshot ABI.

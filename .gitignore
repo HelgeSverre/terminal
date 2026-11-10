@@ -3,3 +3,13 @@
 /runtime/
 .DS_Store
 /reports/font-glyphs.txt
+# Rewritten by every test or smoke run. To keep one as evidence, copy it into
+# a dated directory under reports/.
+/reports/font-glyphs.txt.json
+/reports/session-tests.json
+/reports/clipboard-access-tests.json
+/reports/native-smoke.json
+/reports/editing-smoke.json
+/reports/pane-lifecycle-smoke.json
+/reports/startup-grid.json
+/reports/applescript-smoke.json

@@ -85,9 +85,10 @@ alone and tell Helge.
 - **Measure a frozen bundle.** Copy `dist/Terminal.app` before measuring and
   record the commit and the executable's hash. A bundle another session can
   rebuild is not a measurement target.
-- Test runs rewrite tracked files under `reports/` (`session-tests.json`,
-  `font-glyphs.txt.json`, `native-smoke.json`). Restore them before
-  committing; do not commit them by accident.
+- Test and smoke runs write their results to ignored files under `reports/`
+  (`session-tests.json`, `native-smoke.json` and the others listed in
+  `.gitignore`). To keep a result as evidence, copy it into a dated
+  directory under `reports/` and commit that.
 - Worktrees cost disk. Remove yours when the branch is merged or abandoned;
   `just clean` removes a checkout's build outputs.
 
