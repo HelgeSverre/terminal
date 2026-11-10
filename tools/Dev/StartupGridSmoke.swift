@@ -95,7 +95,7 @@ enum StartupGridSmoke {
         [executable] + size + ["--font-size", String(grid.fontSize), "--exit-after-command",
           "--execute", driver, "--output", output, "--terminal", "grid-smoke", "--bytes", "1", "--runs", "1",
           "--idle-seconds", "1", "--workload", "ascii_short_lines"] + size,
-        log: files + ".log")
+        output: .log(files + ".log"))
       app = launched
       entry["observed"] = try observe(launched, grid, output: output)
       entry["natural_exit"] = true

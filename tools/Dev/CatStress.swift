@@ -80,7 +80,7 @@ enum CatStress {
                    "--cat-smoke", report, String(initial.bytes)]
     if motion { command.append("--cat-motion-stress") }
     command += ["--execute", "/bin/cat", "--", source]
-    let app = try ProcessTree(command, log: output + "/app-launch.log")
+    let app = try ProcessTree(command, output: .log(output + "/app-launch.log"))
     process = app
     result["pid"] = Int(app.pid)
     guard let exit = app.wait(seconds: 630) else { throw Failure("Cat stress timed out") }

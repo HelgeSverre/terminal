@@ -482,7 +482,7 @@ enum TUIStress {
     }
 
     private func launch(_ command: [String], environment: [String: String?] = [:], log: String) throws -> ProcessTree {
-      let process = try ProcessTree(command, environment: environment, log: output + "/" + log)
+      let process = try ProcessTree(command, environment: environment, output: .log(output + "/" + log))
       processes.append(process)
       return process
     }
@@ -527,15 +527,14 @@ enum TUIStress {
     /// Starts the loopback provider and points Codex at the port it reports.
     private func startProvider() throws {
       let portFile = output + "/provider.json"
-      // The shell only redirects: `exec` keeps the PID, and output and errors go to files of their own.
       let provider = try ProcessTree(
-        ["/bin/sh", "-c", "exec \"$0\" tui-stress provider > \"$1\" 2> \"$2\"", Tool.executable,
-         output + "/provider.stdout", output + "/provider.stderr"],
+        [Tool.executable, "tui-stress", "provider"],
         environment: [
           "PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "TERMINAL_TUI_STRESS_PROVIDER_PORT_FILE": portFile,
           "TERMINAL_TUI_STRESS_PROVIDER_SLOW_MS": "150", "TERMINAL_TUI_STRESS_PROVIDER_MAX_REQUESTS": "8",
           "TERMINAL_TUI_STRESS_PROVIDER_LIFETIME_SECONDS": "90",
-        ])
+        ],
+        output: .logs(output: output + "/provider.stdout", errors: output + "/provider.stderr"))
       processes.append(provider)
       let info = try waitUntil(10, "loopback Codex provider did not become ready") { () -> [String: Any]? in
         guard provider.wait(seconds: 0.01) == nil else { throw Failure("loopback Codex provider exited before readiness") }

@@ -187,7 +187,7 @@ enum CompareTerminals {
       var record: [String: Any] = ["natural_exit": false]
       defer { trial.apps[name] = record }
       let process: ProcessTree
-      do { process = try ProcessTree(command, log: output + "/\(index)-\(name).log") } catch {
+      do { process = try ProcessTree(command, output: .log(output + "/\(index)-\(name).log")) } catch {
         record["cleanup_survivors"] = [Int]()
         throw error
       }

@@ -138,7 +138,7 @@ enum CompareTerminalApps {
         "--history-limit", "10000", "--exit-after-command", "--execute", driver,
         "--output", report, "--terminal", label, "--bytes", String(bytes),
         "--runs", String(runs), "--columns", "100", "--rows", "30",
-      ], log: output + "/\(label)-launch.log")
+      ], output: .log(output + "/\(label)-launch.log"))
       var failure: Error?
       do { reports[label] = try judge(process, label: label, report: report, record: &record) } catch { failure = error }
       // Whatever happened, nothing this run launched may outlive it.

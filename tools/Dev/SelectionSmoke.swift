@@ -59,10 +59,10 @@ enum SelectionSmoke {
     let path = reportDirectory + "/selection-smoke.json"
     try FileManager.default.createDirectory(atPath: reportDirectory, withIntermediateDirectories: true)
     try? FileManager.default.removeItem(atPath: path)
-    let process = try ProcessTree.discardingOutput([
+    let process = try ProcessTree([
       app, "--selection-smoke", path, "--columns", "48", "--rows", "14", "--font-size", "14",
       "--working-directory", "/tmp", "--execute", "/bin/sh", "-c", fixture,
-    ])
+    ], output: .discarded)
     var report: [String: Any] = [:]
     var failure: Failure?
     do {

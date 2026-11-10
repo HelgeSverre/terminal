@@ -23,9 +23,21 @@ final class ProcessTree {
   private var owned: [pid_t: String] = [:]
   private(set) var exit: Exit?
 
+  /// Where a launched process writes its output and its errors.
+  enum Output {
+    /// Where this tool writes its own.
+    case inherited
+    case discarded
+    /// Both into one file. The file must be new: a run never writes into a
+    /// log an earlier run left. With `replacing`, an existing file is emptied instead.
+    case log(String, replacing: Bool = false)
+    /// Each into a new file of its own.
+    case logs(output: String, errors: String)
+  }
+
   /// Launches `command`. `environment` adds to the inherited one; a nil value
-  /// removes a variable. With `log`, a new file receives the output.
-  init(_ command: [String], environment: [String: String?] = [:], log: String? = nil) throws {
+  /// removes a variable.
+  init(_ command: [String], environment: [String: String?] = [:], output: Output = .inherited) throws {
     guard let executable = command.first else { throw Failure("empty command") }
     process.executableURL = URL(fileURLWithPath: executable)
     process.arguments = Array(command.dropFirst())
@@ -33,14 +45,35 @@ final class ProcessTree {
     for key in Self.colourControls { inherited[key] = nil }
     for (key, value) in environment { inherited[key] = value }
     process.environment = inherited
-    if let log {
-      guard FileManager.default.createFile(atPath: log, contents: nil),
-            let output = FileHandle(forWritingAtPath: log) else { throw Failure("cannot create log \(log)") }
-      process.standardOutput = output
-      process.standardError = output
+    var logs: [FileHandle] = []
+    // The launched process holds the logs; this one has no use for them.
+    defer { logs.forEach { try? $0.close() } }
+    switch output {
+    case .inherited: break
+    case .discarded:
+      process.standardOutput = FileHandle.nullDevice
+      process.standardError = FileHandle.nullDevice
+    case .log(let path, let replacing):
+      logs = [try Self.createLog(path, replacing: replacing)]
+      process.standardOutput = logs[0]
+      process.standardError = logs[0]
+    case .logs(let outputPath, let errorPath):
+      logs = [try Self.createLog(outputPath, replacing: false)]
+      logs.append(try Self.createLog(errorPath, replacing: false))
+      process.standardOutput = logs[0]
+      process.standardError = logs[1]
     }
     do { try process.run() } catch { throw Failure("cannot launch \(executable): \(error.localizedDescription)") }
     Self.register(self)
+  }
+
+  private static func createLog(_ path: String, replacing: Bool) throws -> FileHandle {
+    let descriptor = open(path, O_WRONLY | O_CREAT | O_CLOEXEC | (replacing ? O_TRUNC : O_EXCL), 0o644)
+    guard descriptor >= 0 else {
+      throw Failure(errno == EEXIST ? "log \(path) exists; a run needs a new one"
+                                    : "cannot create log \(path): \(String(cString: strerror(errno)))")
+    }
+    return FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
   }
 
   var pid: pid_t { process.processIdentifier }

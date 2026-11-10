@@ -41,8 +41,8 @@ enum CloseSmoke {
     guard FileManager.default.isExecutableFile(atPath: app) else { throw Failure("missing executable: \(app)") }
     let path = "\(reportDirectory)/close-\(mode.name)-smoke.json"
     try? FileManager.default.removeItem(atPath: path)
-    let process = try ProcessTree.discardingOutput(
-      [app, "--close-smoke", path] + mode.flags + ["--execute", "/bin/sh", "-c", child])
+    let process = try ProcessTree(
+      [app, "--close-smoke", path] + mode.flags + ["--execute", "/bin/sh", "-c", child], output: .discarded)
     var report: [String: Any] = [:]
     var failure: Failure?
     do {

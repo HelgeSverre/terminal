@@ -8,14 +8,6 @@ extension Failure {
   }
 }
 
-extension ProcessTree {
-  /// Launches `command` with its output discarded. The shell replaces itself
-  /// with the command, so the tree's PID is the command's.
-  static func discardingOutput(_ command: [String]) throws -> ProcessTree {
-    try ProcessTree(["/bin/sh", "-c", #"exec "$0" "$@" >/dev/null 2>&1"#] + command)
-  }
-}
-
 /// `path` as an absolute path, read against `base` when it is relative.
 func absolutePath(_ path: String, relativeTo base: String) -> String {
   let expanded = (path as NSString).expandingTildeInPath

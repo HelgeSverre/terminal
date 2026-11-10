@@ -59,7 +59,7 @@ enum AccessibilitySmoke {
         "command": launch,
         "controlled_child_pid_file": (childFile as NSString).lastPathComponent,
       ]) { $1 }
-      let app = try ProcessTree.discardingOutput(launch)
+      let app = try ProcessTree(launch, output: .discarded)
       provenance["owned_app_pid"] = Int(app.pid)
       var failure: Failure?
       do {

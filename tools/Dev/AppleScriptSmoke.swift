@@ -322,7 +322,8 @@ enum AppleScriptSmoke {
         [executable, "--working-directory", "/tmp", "--execute", "/bin/sh", "-c", "exec \"$TERMINAL_AUTOMATION_RECEIPT_SHELL\""],
         environment: ["SHELL": fixtureShell, "TERMINAL_AUTOMATION_CHILD_PIDS": childPIDsPath,
                       "TERMINAL_AUTOMATION_RECEIPT_SHELL": receiptShell],
-        log: log)
+        // The fixture directory is new, but the log was never required to be.
+        output: .log(log, replacing: true))
       process = tree
       fixturePID = tree.pid
       childPIDs = try waitUntil("fixture PTY child") {

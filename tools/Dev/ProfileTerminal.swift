@@ -150,7 +150,7 @@ enum ProfileTerminal {
       ]
       if let workload { appArguments += ["--workload", workload] }
       provenance["app_command"] = appArguments
-      let app = try ProcessTree(appArguments, log: output + "/app-launch.log")
+      let app = try ProcessTree(appArguments, output: .log(output + "/app-launch.log"))
       appProcess = Owned(app)
       lifecycle["app"] = ["pid": Int(app.pid), "natural_exit": false]
 
@@ -191,7 +191,7 @@ enum ProfileTerminal {
       let arguments = ["/usr/bin/sample", String(app.pid), String(sampleSeconds),
                        String(sampleIntervalMilliseconds), "-file", rawSample]
       provenance["sample_command"] = arguments
-      let sampler = try ProcessTree(arguments, log: output + "/sample-launch.log")
+      let sampler = try ProcessTree(arguments, output: .log(output + "/sample-launch.log"))
       sampleProcess = Owned(sampler)
       lifecycle["sample"] = ["pid": Int(sampler.pid), "natural_exit": false]
       guard let exit = sampler.wait(seconds: Double(sampleSeconds + 20)) else { throw Failure("sample timed out") }

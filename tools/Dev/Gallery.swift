@@ -137,7 +137,7 @@ enum Gallery {
     }
 
     private func launch(_ command: [String], environment: [String: String?] = [:], log: String) throws -> ProcessTree {
-      let process = try ProcessTree(command, environment: environment, log: log)
+      let process = try ProcessTree(command, environment: environment, output: .log(log))
       processes.append(process)
       return process
     }

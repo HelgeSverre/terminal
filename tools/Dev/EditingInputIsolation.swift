@@ -100,7 +100,7 @@ enum EditingInputIsolation {
   private static func smoke(_ name: String, executable: String, output: OutputDirectory,
                             record: inout [String: Any]) throws {
     let path = output.file(name + ".json")
-    let app = try ProcessTree([executable, "--editing-smoke", path], log: output.file(name + "-app.log"))
+    let app = try ProcessTree([executable, "--editing-smoke", path], output: .log(output.file(name + "-app.log")))
     var failure: Failure?
     var report: [String: Any] = [:]
     do {

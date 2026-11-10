@@ -166,7 +166,7 @@ enum CompareCSIDispatch {
 
   /// Runs a step with a time limit. It must succeed and leave no process behind.
   static func run(_ command: [String], log: String, seconds: Double) throws {
-    let process = try ProcessTree([try executablePath(command[0])] + command.dropFirst(), log: log)
+    let process = try ProcessTree([try executablePath(command[0])] + command.dropFirst(), output: .log(log))
     var failure: Failure?
     do {
       guard let exit = try process.waitInterruptibly(seconds: seconds) else {
