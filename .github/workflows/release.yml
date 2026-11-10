@@ -26,11 +26,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # The release commands are part of the developer tool. It is compiled
+      # from absolute paths because it locates the repository from them.
+      - name: Build release tool
+        run: |
+          mkdir -p target/native
+          xcrun swiftc -O "$PWD"/tools/Dev/*.swift -o target/native/dev
+
       - name: Validate version and source
         id: metadata
         run: |
           mkdir -p dist/release
-          ruby tools/release_publisher.rb validate --output dist/release/release-metadata.json
+          target/native/dev release-publisher validate --output dist/release/release-metadata.json
 
       - name: Install test tools
         run: brew install just fish neovim tmux fzf
@@ -44,7 +51,13 @@ jobs:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: target
-          key: macos-arm64-swift-${{ hashFiles('Sources/**', 'Tests/**', 'Resources/**', 'Benchmarks/**', 'assets/**', 'tools/SwiftIncrementalBuild.swift', 'tools/swift-sources.json', 'justfile') }}
+          key: macos-arm64-swift-${{ hashFiles('Sources/**', 'Tests/**', 'Resources/**', 'Benchmarks/**', 'assets/**', 'tools/SwiftIncrementalBuild.swift', 'tools/swift-sources.json', 'tools/Dev/**', 'justfile') }}
+
+      # A restored cache replaces target/, including the tool built above.
+      - name: Rebuild release tool after cache restore
+        run: |
+          mkdir -p target/native
+          xcrun swiftc -O "$PWD"/tools/Dev/*.swift -o target/native/dev
 
       - name: Run tests
         env:
@@ -63,7 +76,7 @@ jobs:
           APPLE_APPLICATION_SIGNING_IDENTITY: ${{ secrets.APPLE_APPLICATION_SIGNING_IDENTITY }}
           APPLE_INSTALLER_SIGNING_IDENTITY: ${{ secrets.APPLE_INSTALLER_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: ruby tools/release_signing.rb setup >> "$GITHUB_ENV"
+        run: target/native/dev release-signing setup >> "$GITHUB_ENV"
 
       - name: Build, sign, notarize, and validate app and installer
         env:
@@ -72,7 +85,7 @@ jobs:
         run: just release
 
       - name: Record artifact checksums
-        run: ruby tools/release_publisher.rb manifest --metadata dist/release/release-metadata.json
+        run: target/native/dev release-publisher manifest --metadata dist/release/release-metadata.json
 
       - name: Upload signed release artifacts
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -89,13 +102,14 @@ jobs:
 
       - name: Remove release credentials
         if: always()
-        run: ruby tools/release_signing.rb cleanup
+        run: target/native/dev release-signing cleanup
 
   publish:
     name: Publish release and update Homebrew
     needs: build
     if: github.event_name == 'push' && needs.build.outputs.publish == 'true'
-    runs-on: ubuntu-latest
+    # macOS, because the developer tool that publishes is built with Xcode's Swift.
+    runs-on: macos-15
     timeout-minutes: 15
     permissions:
       contents: write
@@ -111,8 +125,15 @@ jobs:
           name: signed-release
           path: dist/release
 
+      # The release commands are part of the developer tool. It is compiled
+      # from absolute paths because it locates the repository from them.
+      - name: Build release tool
+        run: |
+          mkdir -p target/native
+          xcrun swiftc -O "$PWD"/tools/Dev/*.swift -o target/native/dev
+
       - name: Publish verified assets and update cask
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        run: ruby tools/release_publisher.rb publish --metadata dist/release/release-metadata.json
+        run: target/native/dev release-publisher publish --metadata dist/release/release-metadata.json

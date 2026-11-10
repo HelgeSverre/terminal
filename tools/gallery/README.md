@@ -1,6 +1,6 @@
 # README gallery capture
 
-`ruby tools/gallery/run.rb overview` and `ruby tools/gallery/run.rb panes`
+`just gallery-overview` and `just gallery-panes` (`dev gallery overview|panes`)
 capture untouched PNGs from a copied `dist/Terminal.app` by default. Use
 `--app PATH --files PATH --source-sha SHA` to record a different frozen candidate
 or Files executable. The runner resolves `files` from `PATH` before its usual

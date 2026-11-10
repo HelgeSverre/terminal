@@ -6,7 +6,7 @@
 # remote hosts as well as in the app bundle.
 #
 # Source terminology: ncurses terminfo(5), xterm ctlseqs. Representative output
-# capabilities below are exercised by tools/terminfo_smoke.rb.
+# capabilities below are exercised by `dev terminfo-smoke` (tools/Dev/TerminfoSmoke.swift).
 helge-terminal|Helge Terminal native macOS terminal,
 	am,
 	bce,

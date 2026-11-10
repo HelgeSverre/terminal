@@ -35,11 +35,11 @@ app=/path/to/Terminal.app
 source_sha=$(git rev-parse HEAD)
 app_sha=$(shasum -a 256 "$app/Contents/MacOS/Terminal" | awk '{print $1}')
 
-ruby tools/tui_stress/run.rb --workload files --app "$app" \
+target/native/dev tui-stress --workload files --app "$app" \
   --source-sha "$source_sha" --executable-sha256 "$app_sha" \
   --output /tmp/terminal-tui-files-stress
 
-ruby tools/tui_stress/run.rb --workload codex --app "$app" \
+target/native/dev tui-stress --workload codex --app "$app" \
   --source-sha "$source_sha" --executable-sha256 "$app_sha" \
   --output /tmp/terminal-tui-codex-stress
 ```

@@ -1,8 +1,8 @@
 # Frozen Swift–Rust core comparison
 
 tools/EmulatorComparison.c is one identical C ABI client, linked once to the
-frozen Swift core and once to the frozen Rust core. tools/compare_emulators.rb
-orchestrates the resulting two executables. It never builds an executable, opens
+frozen Swift core and once to the frozen Rust core. `dev compare-emulators`
+(tools/Dev/CompareEmulators.swift) orchestrates the resulting two executables. It never builds an executable, opens
 the application bundle, starts a PTY, or launches a GUI.
 
 This is a headless terminal-core comparison, not a product-performance claim.
@@ -93,7 +93,7 @@ Both values explicitly include the allocated 32 MiB replay corpus and runtime
 allocations; neither is application-wide peak memory or GPU memory.
 
 ~~~sh
-ruby tools/compare_emulators.rb \
+target/native/dev compare-emulators \
   --swift-bin target/emulator-comparison/swift/emulator-comparison \
   --rust-bin target/emulator-comparison/rust/emulator-comparison \
   --swift-root /absolute/frozen/swift-worktree \
