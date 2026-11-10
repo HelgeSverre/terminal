@@ -1611,6 +1611,7 @@ struct TerminalDocument {
   @inline(__always)
   private static func admit(_ scalar: Unicode.Scalar, to segmenter: inout TerminalText.Segmenter)
     -> (category: TerminalText.Category, skipped: Bool, startsCluster: Bool, ignorable: Bool) {
+    if scalar.value &- 0x20 < 0x5f { return (.other, false, segmenter.pushPrintableASCII(), false) }
     if scalar.value < 0x80 {
       let category = category(for: scalar)
       switch category {

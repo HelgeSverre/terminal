@@ -279,9 +279,12 @@ private final class TerminalEmulator {
   }
   /// Decodes consecutive well-formed multi-byte scalars that lie wholly inside
   /// the buffer, and returns the bytes consumed. It stops — possibly at once —
-  /// before anything the streaming decoder must judge: ASCII and controls, a
-  /// malformed sequence, or a scalar cut off by the end of the buffer.
-  private func decodeUTF8Run(_ bytes: UnsafePointer<UInt8>, offset: Int, limit: Int) -> Int {
+  /// before anything the streaming decoder must judge: controls, a malformed
+  /// sequence, or a scalar cut off by the end of the buffer. With
+  /// `joiningASCII`, a run of printable ASCII too short to print directly is
+  /// taken along, as `printASCIIRun` would add it to pending text; the run
+  /// then stops before a longer one.
+  private func decodeUTF8Run(_ bytes: UnsafePointer<UInt8>, offset: Int, limit: Int, joiningASCII: Bool) -> Int {
     @inline(__always) func continuation(_ byte: UInt8) -> Bool { byte & 0xc0 == 0x80 }
     /// The scalar encoded at `index` and its length, or nil where the run ends.
     @inline(__always) func scalar(at index: Int) -> (value: UInt32, length: Int)? {
@@ -311,6 +314,8 @@ private final class TerminalEmulator {
     }
     var index = offset
     var ended = false
+    // Bytes left of a short ASCII run that has begun to join pending text.
+    var asciiRemaining = 0
     while !ended {
       if decodedScalarCount == decodedScalars.count { growDecodedScalars() }
       // Each pass stops where pending text reaches the flush threshold, so
@@ -322,7 +327,32 @@ private final class TerminalEmulator {
         let stop = pending < Self.decodedFlushCount
           ? min(buffer.count, start + Self.decodedFlushCount - pending) : buffer.count
         while end < stop {
-          guard index < limit, let next = scalar(at: index) else { ended = true; break }
+          guard index < limit else { ended = true; break }
+          if joiningASCII, bytes[index] &- 0x20 < 0x5f {
+            if asciiRemaining == 0 {
+              // Like `printASCIIRun`: only a short run joins, and only text
+              // that is still pending.
+              var runEnd = index + 1
+              while runEnd < limit, runEnd - index < Self.minimumDirectASCIIRun, bytes[runEnd] &- 0x20 < 0x5f {
+                runEnd += 1
+              }
+              guard runEnd - index < Self.minimumDirectASCIIRun, end > decodedScalarStart else {
+                ended = true
+                break
+              }
+              asciiRemaining = runEnd - index
+            }
+            // A run that crosses the flush threshold continues after the flush.
+            let taken = min(asciiRemaining, stop - end)
+            for _ in 0..<taken {
+              buffer[end] = Unicode.Scalar(bytes[index])
+              end += 1
+              index += 1
+            }
+            asciiRemaining -= taken
+            continue
+          }
+          guard let next = scalar(at: index) else { ended = true; break }
           // The guards above admit exactly the well-formed encodings of a scalar.
           buffer[end] = Unicode.Scalar(next.value).unsafelyUnwrapped
           end += 1
@@ -464,7 +494,8 @@ private final class TerminalEmulator {
         case 0x0f: finishDecodedText(); charsetSlot = 0
         default:
           if byte >= 0xc2, utf8.isIdle {
-            let decoded = decodeUTF8Run(bytes, offset: offset, limit: limit)
+            let decoded = decodeUTF8Run(bytes, offset: offset, limit: limit,
+                                        joiningASCII: !charsetSpecial[charsetSlot])
             if decoded > 0 {
               offset += decoded
               continue
