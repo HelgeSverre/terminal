@@ -552,14 +552,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     guard !terminationRequested else { return .terminateLater }
     terminationRequested = true
+    let sessions = windows.flatMap { $0.panes.map(\.session) }
     windows.forEach { $0.close() }
-    // AppKit's terminate-later loop runs in modalPanel mode, so a default-mode
-    // dispatch callback can remain blocked by the very termination it resolves.
-    let reply = Timer(timeInterval: 3, repeats: false) { _ in
+    // Closing hangs every child up. The app leaves as soon as the last one
+    // has been reaped, which for a shell at its prompt is a few milliseconds.
+    // A child that ignores the hang-up is killed by its session after two
+    // seconds; the timer is the limit for anything that outlasts even that.
+    var replied = false
+    let reply = {
+      guard !replied else { return }
+      replied = true
       NSApp.reply(toApplicationShouldTerminate: true)
     }
-    RunLoop.main.add(reply, forMode: .modalPanel)
-    RunLoop.main.add(reply, forMode: .default)
+    // AppKit's terminate-later loop runs in modalPanel mode, so a default-mode
+    // dispatch callback can remain blocked by the very termination it resolves.
+    let modes: [RunLoop.Mode] = [.modalPanel, .default]
+    let children = DispatchGroup()
+    for session in sessions {
+      children.enter()
+      session.whenChildEnds { children.leave() }
+    }
+    children.notify(queue: .global(qos: .userInteractive)) {
+      RunLoop.main.perform(inModes: modes, block: reply)
+      CFRunLoopWakeUp(CFRunLoopGetMain())
+    }
+    let limit = Timer(timeInterval: 3, repeats: false) { _ in reply() }
+    modes.forEach { RunLoop.main.add(limit, forMode: $0) }
     return .terminateLater
   }
   private func menu() {
