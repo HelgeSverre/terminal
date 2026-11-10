@@ -128,6 +128,21 @@ final class TerminalPanePresentationView: NSView {
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   override var isFlipped: Bool { true }
 
+  /// The pane whose canvas or chrome holds `responder`. Focus in a pane is
+  /// not always its canvas: the find bar's query field belongs to it too.
+  static func enclosing(_ responder: NSResponder?) -> TerminalPanePresentationView? {
+    var view = responder as? NSView
+    // The window shares one field editor; its delegate is the control it edits.
+    if let editor = view as? NSTextView, editor.isFieldEditor, let control = editor.delegate as? NSView {
+      view = control
+    }
+    while let current = view {
+      if let presentation = current as? TerminalPanePresentationView { return presentation }
+      view = current.superview
+    }
+    return nil
+  }
+
   var minimumSize: NSSize {
     NSSize(width: Self.terminalMinimum.width,
       height: Self.terminalMinimum.height + (showsHeader ? Self.headerHeight : 0))

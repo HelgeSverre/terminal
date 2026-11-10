@@ -219,10 +219,17 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   func applyPanePresentationPreferences(_ preferences: TerminalPreferences) {
     if updatePanePresentation(preferences) { reconcileLayout() }
   }
+  /// The pane that pane commands act on: the one holding keyboard focus,
+  /// whether in its canvas or in its find bar. Casting the first responder
+  /// to a canvas misses the latter, and Close Pane then closed the window.
+  private var focusedPane: TerminalCanvasView? {
+    guard let presentation = TerminalPanePresentationView.enclosing(window?.firstResponder) else { return nil }
+    return panes.first { $0 === presentation.canvas }
+  }
   @objc func splitVertical(_ sender: Any?) { split(vertical: true) }
   @objc func splitHorizontal(_ sender: Any?) { split(vertical: false) }
   private func split(vertical: Bool) {
-    guard let current = window?.firstResponder as? TerminalCanvasView,
+    guard let current = focusedPane,
       let currentPresentation = panePresentation(for: current), let parent = currentPresentation.superview
     else { return }
     let frame = currentPresentation.frame
@@ -288,7 +295,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     split.arrangedSubviews.forEach(reconcileSplit)
   }
   @objc func closePane(_ sender: Any?) {
-    guard panes.count > 1, let pane = window?.firstResponder as? TerminalCanvasView,
+    guard panes.count > 1, let pane = focusedPane,
       let presentation = panePresentation(for: pane), let split = presentation.superview as? NSSplitView
     else {
       window?.performClose(sender)

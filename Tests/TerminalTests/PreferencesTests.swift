@@ -204,6 +204,16 @@ import Foundation
     let headerWindow = NSWindow(contentRect: panePresentation.frame, styleMask: [.borderless],
       backing: .buffered, defer: true)
     headerWindow.contentView = panePresentation
+    // Pane commands resolve their pane from keyboard focus, which may sit in
+    // the find bar's query field instead of the canvas.
+    precondition(TerminalPanePresentationView.enclosing(viewport) === panePresentation)
+    precondition(TerminalPanePresentationView.enclosing(nil) == nil)
+    precondition(TerminalPanePresentationView.enclosing(NSView()) == nil)
+    findBar.open()
+    precondition(headerWindow.firstResponder is NSTextView, "find query did not take focus")
+    precondition(TerminalPanePresentationView.enclosing(headerWindow.firstResponder) === panePresentation,
+      "focus in the find query does not resolve to its pane")
+    findBar.dismiss()
     func otherUp(button: Int, at point: NSPoint) -> NSEvent {
       let event = NSEvent.mouseEvent(with: .otherMouseUp, location: header.convert(point, to: nil),
         modifierFlags: [], timestamp: 0, windowNumber: headerWindow.windowNumber, context: nil,
