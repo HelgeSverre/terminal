@@ -93,25 +93,33 @@ final class PTYReadEndpoint: @unchecked Sendable {
   // read, which costs more than the read. Waiting this long for the refill
   // lets one delivery carry a whole slab instead.
   private static let refillWaitNanoseconds: UInt64 = 10_000
+  // A read this large emptied a full kernel queue, so a writer is probably
+  // blocked behind it. A shorter read is all the child had to say (a prompt,
+  // a keystroke echo), and is delivered at once.
+  private static let fullQueueByteCount = 1_024
 
   /// Fills `buffer` from consecutive nonblocking reads. Returns as soon as the
-  /// buffer is full, the descriptor ends or fails, or it has stayed empty for
-  /// the refill wait. The result is that of a single read: bytes gathered, or
-  /// the first read's outcome when nothing was.
+  /// buffer is full, the descriptor ends or fails, the last read left the
+  /// kernel queue less than full, or the descriptor has stayed empty for the
+  /// refill wait. The result is that of a single read: bytes gathered, or the
+  /// first read's outcome when nothing was.
   private static func gather(_ fd: Int32, into buffer: UnsafeMutableRawBufferPointer) -> (Int, Int32) {
     var total = 0
     var emptySince: UInt64 = 0
+    var lastCount = 0
     while total < buffer.count {
       let count = Darwin.read(fd, buffer.baseAddress! + total, buffer.count - total)
       if count > 0 {
         total += count
+        lastCount = count
         emptySince = 0
         continue
       }
       let error = count < 0 ? errno : 0
       if total == 0 { return (count, error) }
       // Bytes are in hand: EOF and hard errors surface on the next read.
-      guard count < 0, error == EAGAIN || error == EWOULDBLOCK || error == EINTR else { break }
+      guard count < 0, error == EAGAIN || error == EWOULDBLOCK || error == EINTR,
+            lastCount >= fullQueueByteCount else { break }
       let now = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
       if emptySince == 0 { emptySince = now } else if now - emptySince >= refillWaitNanoseconds { break }
     }
