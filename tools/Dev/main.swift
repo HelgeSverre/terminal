@@ -5,7 +5,9 @@ import Foundation
 // usage: dev COMMAND [ARGUMENT...]
 //
 // Each command lives in its own file and registers itself in `commands`.
-// Shared pieces (owned processes, the window list, reports) are in Support.swift.
+// Shared pieces are in files named for what they hold: Support.swift (failures,
+// options, the window list), ProcessTree.swift, Commands.swift, Files.swift,
+// Interruption.swift and the JSON files.
 
 struct Command {
   let name: String

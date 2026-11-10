@@ -23,13 +23,10 @@ enum Gallery {
     let options = try Options(arguments, flags: [], values: ["--app", "--files", "--source-sha"], command: command)
     let scenario = options.positionals.first ?? "overview"
     guard scenarios.contains(scenario) else { throw Failure.usage(command) }
-    let app = options.values["--app"].map(absolutePath) ?? Repository.path("dist/Terminal.app")
+    let app = options.values["--app"].map { absolutePath($0) } ?? Repository.path("dist/Terminal.app")
     let screenshots = Repository.path("assets/screenshots")
     try createDirectory(screenshots)
-    var isDirectory: ObjCBool = false
-    guard FileManager.default.fileExists(atPath: app, isDirectory: &isDirectory), isDirectory.boolValue else {
-      throw Failure("gallery app is missing")
-    }
+    guard isDirectory(app) else { throw Failure("gallery app is missing") }
     let source = app + "/Contents/MacOS/Terminal"
     guard FileManager.default.isExecutableFile(atPath: source) else { throw Failure("gallery executable is missing") }
     let files = try resolveExecutable(
@@ -87,7 +84,7 @@ enum Gallery {
       }
       try "import Foundation\n\nprint(\"Hello, Terminal\")\nprint(\"Ready for focused work\")\n"
         .write(toFile: source, atomically: false, encoding: .utf8)
-    } catch { throw asFailure(error) }
+    } catch { throw Failure(wrapping: error) }
   }
 
   /// One capture run and the receipt it writes beside the image.
@@ -118,7 +115,7 @@ enum Gallery {
         try capture(in: directory)
         report["passed"] = true
       } catch {
-        failure = asFailure(error)
+        failure = Failure(wrapping: error)
         report["passed"] = false
         report["error"] = "Failure: \(failure?.message ?? "")"
       }
@@ -250,8 +247,8 @@ enum Gallery {
           try FileManager.default.createDirectory(atPath: directory + "/" + name, withIntermediateDirectories: true)
         }
         let second = directory + "/second/files", fallback = directory + "/fallback/files"
-        try writeExecutable(second, script: "true")
-        try writeExecutable(fallback, script: "true")
+        try writeScript("true", to: second)
+        try writeScript("true", to: fallback)
         // A directory and a file without the execute bit are passed over.
         try FileManager.default.createDirectory(atPath: directory + "/first/files", withIntermediateDirectories: true)
         let search = "\(directory)/first:\(directory)/second"
@@ -290,9 +287,9 @@ enum Gallery {
     SelfTest.Case(name: "gallery: the workspace has one staged file with an unstaged change") {
       try withTemporaryDirectory("dev-gallery-workspace-") { directory in
         try writeWorkspace(directory + "/workspace")
-        let diff = try capture(["/usr/bin/git", "-C", directory + "/workspace", "diff", "--", "src/main.swift"])
+        let diff = try runCommand(["/usr/bin/git", "-C", directory + "/workspace", "diff", "--", "src/main.swift"])
         try expect(diff.succeeded && diff.output.contains("+print(\"Ready for focused work\")"), "the diff shows the added line")
-        let status = try capture(["/usr/bin/git", "-C", directory + "/workspace", "status", "--porcelain"])
+        let status = try runCommand(["/usr/bin/git", "-C", directory + "/workspace", "status", "--porcelain"])
         try expect(status.output.contains("AM src/main.swift"), "the source is staged and changed: \(status.output)")
       }
     },

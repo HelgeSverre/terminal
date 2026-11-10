@@ -187,11 +187,11 @@ enum CompareCSIDispatch {
 
   @discardableResult
   private static func git(_ arguments: String...) throws -> Data {
-    let finished = try runCaptured(["git", "-C", Repository.root] + arguments)
+    let finished = try runCommand(["git", "-C", Repository.root] + arguments)
     guard finished.succeeded else {
-      throw Failure("git \(arguments[0]) failed: \(finished.text.trimmingCharacters(in: .whitespacesAndNewlines))")
+      throw Failure("git \(arguments[0]) failed: \(finished.output.trimmingCharacters(in: .whitespacesAndNewlines))")
     }
-    return finished.output
+    return finished.data
   }
 
   static let tests = [

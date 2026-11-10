@@ -74,15 +74,15 @@ enum AccessibilitySmoke {
       if let failure { throw failure }
     }
     let result = try readJSONObject(reportPath)
-    guard truthy(result["passed"]) else {
-      let detail = [result["error"], result["assertions"]].first(where: truthy) ?? nil
+    guard ReportValue.isTruthy(result["passed"]) else {
+      let detail = [result["error"], result["assertions"]].first(where: ReportValue.isTruthy) ?? nil
       throw Failure("accessibility probe failed: \(detail ?? "no detail")")
     }
   }
 
   static func buildProbe(_ path: String) throws {
-    guard try runHelper("/usr/bin/xcrun", "swiftc", "-framework", "AppKit", "-framework", "ApplicationServices",
-                        probeSource, "-o", path) else { throw Failure("accessibility probe build failed") }
+    guard try runInherited(["/usr/bin/xcrun", "swiftc", "-framework", "AppKit", "-framework", "ApplicationServices",
+                            probeSource, "-o", path]) else { throw Failure("accessibility probe build failed") }
   }
 
   /// Copies the bundle, gives the copy a bundle identifier of its own, and
@@ -92,9 +92,11 @@ enum AccessibilitySmoke {
     try FileManager.default.copyItem(atPath: bundle, toPath: fixture)
     let suffix = (0..<6).map { _ in String(format: "%02x", UInt8.random(in: .min ... .max)) }.joined()
     let identifier = "no.helgesverre.terminal.accessibility-fixture." + suffix
-    guard try runHelper("/usr/libexec/PlistBuddy", "-c", "Set :CFBundleIdentifier \(identifier)",
-                        fixture + "/Contents/Info.plist") else { throw Failure("cannot set the fixture's bundle identifier") }
-    guard try runHelper("/usr/bin/codesign", "--force", "--sign", "-", fixture) else {
+    guard try runInherited(["/usr/libexec/PlistBuddy", "-c", "Set :CFBundleIdentifier \(identifier)",
+                            fixture + "/Contents/Info.plist"]) else {
+      throw Failure("cannot set the fixture's bundle identifier")
+    }
+    guard try runInherited(["/usr/bin/codesign", "--force", "--sign", "-", fixture]) else {
       throw Failure("cannot sign the fixture bundle")
     }
     return (fixture, identifier)
@@ -126,12 +128,12 @@ enum AccessibilitySmoke {
     while true {
       try query(probe, pid: app.pid, report: report)
       let result = try FileManager.default.fileExists(atPath: report) ? readJSONObject(report) : [:]
-      if truthy(result["passed"]) { return }
+      if ReportValue.isTruthy(result["passed"]) { return }
       // Without the accessibility permission no retry can succeed.
       if (result["error"] as? String)?.contains("AXIsProcessTrustedWithOptions") == true { return }
       // A report with a pane means the accessibility server has answered. Its
       // evidence is kept; a real style or link failure is not retried away.
-      if truthy(result["pane"]) { return }
+      if ReportValue.isTruthy(result["pane"]) { return }
       if app.wait(seconds: 0) != nil { throw Failure("accessibility fixture exited before its pane became readable") }
       if Clock.now >= deadline {
         throw Failure("accessibility pane was not readable: \(result["error"] as? String ?? "")")

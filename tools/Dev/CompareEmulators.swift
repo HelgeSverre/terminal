@@ -66,9 +66,8 @@ enum CompareEmulators {
       }
       let missing = Self.required.filter { paths[$0] == nil }
       guard missing.isEmpty else {
-        var failure = Failure(Failure.usage(CompareEmulators.command).message + "\nmissing: " + missing.map { "--" + $0 }.joined(separator: ", "))
-        failure.isUsage = true
-        throw failure
+        throw Failure.usage(Failure.usage(CompareEmulators.command).message + "\nmissing: "
+          + missing.map { "--" + $0 }.joined(separator: ", "))
       }
     }
   }
@@ -297,8 +296,8 @@ enum CompareEmulators {
   }
 
   private static func residentKilobytes(_ pid: pid_t) -> Int? {
-    (try? runCaptured(["/bin/ps", "-o", "rss=", "-p", String(pid)])).flatMap {
-      Int($0.text.trimmingCharacters(in: .whitespacesAndNewlines))
+    (try? runCommand(["/bin/ps", "-o", "rss=", "-p", String(pid)])).flatMap {
+      Int($0.output.trimmingCharacters(in: .whitespacesAndNewlines))
     }
   }
 
@@ -518,14 +517,14 @@ enum CompareEmulators {
 
   /// The trimmed output of a command that must succeed.
   private static func commandOutput(_ command: [String]) throws -> String {
-    let finished = try runCaptured(command)
-    guard finished.succeeded else { throw Failure("\(command.joined(separator: " ")) failed: \(finished.text)") }
-    return finished.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    let finished = try runCommand(command)
+    guard finished.succeeded else { throw Failure("\(command.joined(separator: " ")) failed: \(finished.output)") }
+    return finished.output.trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
   /// The trimmed output of a command, whatever its status; null when it cannot be run.
   private static func commandOptional(_ command: [String]) -> JSONValue {
-    .optional((try? runCaptured(command))?.text.trimmingCharacters(in: .whitespacesAndNewlines))
+    .optional((try? runCommand(command))?.output.trimmingCharacters(in: .whitespacesAndNewlines))
   }
 
   static let tests = [
@@ -579,7 +578,7 @@ enum CompareEmulators {
     },
     SelfTest.Case(name: "compare emulators: the watchdog ends and reaps a hanging harness") {
       try withTemporaryDirectory("dev-emulator-watchdog-") { directory in
-        try writeExecutable(directory + "/hang", "#!/bin/sh\nsleep 30\n")
+        try writeScript("sleep 30", to: directory + "/hang")
         var child: pid_t?
         do {
           _ = try runHarness(executable: directory + "/hang", workload: "ascii", bytes: 1, snapshot: directory + "/snapshot.json",
@@ -662,13 +661,11 @@ enum CompareEmulators {
           _ = try commandOutput(git + step)
         }
         // Arguments arrive as --workload W --bytes N --snapshot PATH.
-        try writeExecutable(harness, """
-          #!/bin/sh
+        try writeScript("""
           printf '{"input_ready":true,"revision":%s,"rows":[{"id":%s,"cells":"\(cell)"}]}' "$$" "$$" > "$6"
           printf '{"protocol":1,"workload":"%s","payload_bytes":1048576,"payload_fnv1a64":"0123456789abcdef",' "$2"
           printf '"reply_bytes":7,"reply_fnv1a64":"fedcba9876543210","elapsed_ns":976563}\\n'
-
-          """)
+          """, to: harness)
         let provenance: JSONValue = [
           "implementation": .string(implementation), "source_root": .string(root),
           "source_commit": .string(try commandOutput(["git", "-C", root, "rev-parse", "HEAD"])), "source_tree_clean": true,

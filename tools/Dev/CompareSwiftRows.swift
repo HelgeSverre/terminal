@@ -139,9 +139,9 @@ enum CompareSwiftRows {
   /// Runs a command, keeps its standard error in `log`, and returns its standard output.
   @discardableResult
   private static func capture(_ command: [String], log: String) throws -> Data {
-    let finished = try runCaptured(command, errors: .file(log))
+    let finished = try runCommand(command, errors: .file(log))
     guard finished.succeeded else { throw Failure("Command failed (\(finished.exitStatus)): \(command[0]); see \(log)") }
-    return finished.output
+    return finished.data
   }
 
   private static func text(_ command: [String], log: String) throws -> String {

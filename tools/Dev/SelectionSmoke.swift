@@ -102,7 +102,7 @@ enum SelectionSmoke {
     }
     report = try readJSONObject(path)
     guard let reported = report["checks"] as? [String: Any] else { throw Failure("selection report has no checks") }
-    let missing = checks.filter { !truthy(reported[$0]) }
+    let missing = checks.filter { !ReportValue.isTruthy(reported[$0]) }
     guard missing.isEmpty else { throw Failure("selection checks failed: \(missing.joined(separator: ", "))") }
     // The app's own count guards against this list and the app's drifting apart.
     let counts = report["counts"] as? [String: Any]
@@ -112,7 +112,7 @@ enum SelectionSmoke {
     guard report["expected_known_text"] as? [String] == expectedText else {
       throw Failure("selection smoke omitted its fixed expected text")
     }
-    guard truthy(report["passed"]) else { throw Failure("selection smoke did not mark report passed") }
+    guard ReportValue.isTruthy(report["passed"]) else { throw Failure("selection smoke did not mark report passed") }
   }
 
   static let tests = [

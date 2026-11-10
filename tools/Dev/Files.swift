@@ -8,40 +8,87 @@ enum Repository {
   static func path(_ relative: String) -> String { root + "/" + relative }
 }
 
+/// The running tool, for commands that launch it again as a fixture.
+enum Tool {
+  static let executable = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
+    .standardizedFileURL.path
+
+  /// Writes an executable that runs one of this tool's subcommands. The app
+  /// starts `SHELL` as a single path with `-l`, so a subcommand needs a file
+  /// of its own. `exec` keeps the PID, so signals reach the subcommand.
+  static func writeLauncher(at path: String, subcommand: [String]) throws {
+    let words = ([executable] + subcommand).map { "'" + $0.replacingOccurrences(of: "'", with: "'\\''") + "'" }
+    try writeScript("exec " + words.joined(separator: " ") + " \"$@\"", to: path, mode: 0o700)
+  }
+}
+
+/// `path` as an absolute path, with `~` expanded and `.` and `..` removed.
+/// A relative path is read against `base`, or the current directory without
+/// one. Symbolic links are not resolved.
+func absolutePath(_ path: String, relativeTo base: String? = nil) -> String {
+  let expanded = (path as NSString).expandingTildeInPath
+  guard let base else { return URL(fileURLWithPath: expanded).standardizedFileURL.path }
+  return URL(fileURLWithPath: expanded, relativeTo: URL(fileURLWithPath: base, isDirectory: true))
+    .standardizedFileURL.path
+}
+
+/// The path with every symbolic link resolved, as reports record a bundle.
+/// Fails when nothing exists there.
+func realPath(_ path: String) throws -> String {
+  guard let resolved = realpath(path, nil) else {
+    throw Failure("cannot resolve \(path): \(String(cString: strerror(errno)))")
+  }
+  defer { free(resolved) }
+  return String(cString: resolved)
+}
+
+func isDirectory(_ path: String) -> Bool {
+  var directory: ObjCBool = false
+  return FileManager.default.fileExists(atPath: path, isDirectory: &directory) && directory.boolValue
+}
+
+/// Where a program named without a directory is found on PATH. Reports record
+/// commands as they are written, such as `xcrun swiftc`, and launch the file this finds.
+func executablePath(_ name: String) throws -> String {
+  if name.contains("/") { return name }
+  let directories = (ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin").split(separator: ":")
+  for directory in directories where FileManager.default.isExecutableFile(atPath: "\(directory)/\(name)") {
+    return "\(directory)/\(name)"
+  }
+  throw Failure("\(name) is not on PATH")
+}
+
+/// The SHA-256 of some bytes, as lowercase hex.
+func sha256(of data: Data) -> String {
+  SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+}
+
 /// The SHA-256 of a file, as lowercase hex.
 func sha256(ofFile path: String) throws -> String {
   guard let data = FileManager.default.contents(atPath: path) else { throw Failure("cannot read \(path)") }
-  return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+  return sha256(of: data)
 }
 
-/// Reads a JSON object from a file.
-func readJSONObject(_ path: String) throws -> [String: Any] {
-  guard let data = FileManager.default.contents(atPath: path) else { throw Failure("cannot read \(path)") }
-  guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-    throw Failure("\(path) is not a JSON object")
+func fileBytes(_ path: String) throws -> Int {
+  guard let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? NSNumber else {
+    throw Failure("cannot read \(path)")
   }
-  return object
+  return size.intValue
 }
 
-/// Writes a JSON value, pretty-printed with sorted keys and a final newline.
-func writeJSON(_ object: Any, to path: String) throws {
-  let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
-  try (data + Data("\n".utf8)).write(to: URL(fileURLWithPath: path), options: .atomic)
-}
-
-/// Runs a command to completion and returns its output and whether it succeeded.
-func capture(_ command: [String], environment: [String: String]? = nil) throws -> (output: String, succeeded: Bool) {
-  let process = Process()
-  let pipe = Pipe()
-  process.executableURL = URL(fileURLWithPath: command[0])
-  process.arguments = Array(command.dropFirst())
-  process.standardOutput = pipe
-  process.standardError = pipe
-  if let environment { process.environment = environment }
-  do { try process.run() } catch { throw Failure("cannot run \(command[0]): \(error.localizedDescription)") }
-  let data = pipe.fileHandleForReading.readDataToEndOfFile()
-  process.waitUntilExit()
-  return (String(decoding: data, as: UTF8.self), process.terminationStatus == 0)
+/// The combined size of the regular files in a bundle. Symbolic links are
+/// neither followed nor counted. Without `includingHidden`, names starting
+/// with a dot and everything below them are left out.
+func bundleBytes(_ bundle: String, includingHidden: Bool) -> Int {
+  guard let walker = FileManager.default.enumerator(atPath: bundle) else { return 0 }
+  var total = 0
+  for case let relative as String in walker {
+    if !includingHidden, relative.split(separator: "/").contains(where: { $0.hasPrefix(".") }) { continue }
+    guard let attributes = try? FileManager.default.attributesOfItem(atPath: bundle + "/" + relative),
+          attributes[.type] as? FileAttributeType == .typeRegular else { continue }
+    total += (attributes[.size] as? NSNumber)?.intValue ?? 0
+  }
+  return total
 }
 
 /// A directory that exists for the length of `body` and is removed afterwards.
@@ -50,4 +97,34 @@ func withTemporaryDirectory<Result>(_ prefix: String, _ body: (String) throws ->
   try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
   defer { try? FileManager.default.removeItem(atPath: path) }
   return try body(path)
+}
+
+/// Writes an executable script: the interpreter line, `body` and a final
+/// newline. Its directory is created when missing.
+func writeScript(_ body: String, to path: String, interpreter: String = "/bin/sh", mode: Int = 0o755) throws {
+  do {
+    try FileManager.default.createDirectory(
+      atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+    try ("#!" + interpreter + "\n" + body + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: path)
+  } catch { throw Failure("cannot write \(path): \(error.localizedDescription)") }
+}
+
+/// Takes the next pane number from a counter file shared by every fixture of
+/// one run. The file is locked, because panes start at the same time.
+func claimPaneNumber(counter path: String, below limit: Int? = nil) throws -> Int {
+  let descriptor = open(path, O_RDWR | O_CREAT, 0o600)
+  guard descriptor >= 0 else { throw Failure(SystemFailure("open \(path)").message) }
+  defer { close(descriptor) }
+  guard flock(descriptor, LOCK_EX) == 0 else { throw Failure(SystemFailure("flock \(path)").message) }
+  var buffer = [UInt8](repeating: 0, count: 32)
+  let count = max(read(descriptor, &buffer, buffer.count), 0)
+  let text = String(decoding: buffer[..<count], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+  let pane = Int(text) ?? 0
+  if let limit, !(0..<limit).contains(pane) { throw Failure("too many workload panes") }
+  let next = Array(String(pane + 1).utf8)
+  guard ftruncate(descriptor, 0) == 0, pwrite(descriptor, next, next.count, 0) == next.count else {
+    throw Failure(SystemFailure("write \(path)").message)
+  }
+  return pane
 }

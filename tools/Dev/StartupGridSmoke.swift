@@ -66,15 +66,14 @@ enum StartupGridSmoke {
   /// executable under test, and returns the copy's executable.
   private static func freeze(_ app: String, into directory: String, expecting hash: String) throws -> String {
     let frozen = directory + "/Terminal.app"
-    guard try runHelper("/usr/bin/ditto", app, frozen) else { throw Failure("bundle copy failed") }
+    guard try runInherited(["/usr/bin/ditto", app, frozen]) else { throw Failure("bundle copy failed") }
     let executable = frozen + "/Contents/MacOS/Terminal"
     guard try sha256(ofFile: executable) == hash else { throw Failure("app executable changed while freezing") }
     return executable
   }
 
   static func buildDriver(_ path: String) throws {
-    let source = Repository.path("Benchmarks/TerminalBench/terminal-bench.c")
-    guard try runHelper("/usr/bin/xcrun", "clang", "-O2", source, "-o", path) else {
+    guard try runInherited(["/usr/bin/xcrun", "clang", "-O2", BenchDriver.source, "-o", path]) else {
       throw Failure("driver build failed")
     }
   }

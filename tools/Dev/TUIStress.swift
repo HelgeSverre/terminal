@@ -95,7 +95,7 @@ enum TUIStress {
   /// Runs tests and prints a PASS line for each. The first failure ends the run under `message`.
   private static func pass(_ cases: [SelfTest.Case], otherwise message: String) throws {
     for test in cases {
-      do { try test.run() } catch { throw Failure("\(message): \(test.name): \(asFailure(error).message)") }
+      do { try test.run() } catch { throw Failure("\(message): \(test.name): \(Failure(wrapping: error).message)") }
       print("PASS \(test.name)")
     }
   }
@@ -391,10 +391,7 @@ enum TUIStress {
         throw Failure("Invalid source SHA")
       }
       guard !FileManager.default.fileExists(atPath: plan.output) else { throw Failure("Use a fresh --output directory") }
-      var isDirectory: ObjCBool = false
-      guard FileManager.default.fileExists(atPath: plan.app, isDirectory: &isDirectory), isDirectory.boolValue else {
-        throw Failure("App must be a Terminal.app bundle")
-      }
+      guard isDirectory(plan.app) else { throw Failure("App must be a Terminal.app bundle") }
       guard !plan.output.hasPrefix(plan.app + "/") else { throw Failure("Output cannot be inside the input app") }
       let input = plan.app + "/Contents/MacOS/Terminal"
       guard FileManager.default.isExecutableFile(atPath: input) else { throw Failure("Missing app executable") }
@@ -415,7 +412,7 @@ enum TUIStress {
         guard try manifest == bundleManifest(plan.app), try manifest == bundleManifest(frozen) else {
           throw Failure("Bundle changed while being copied")
         }
-      } catch { throw asFailure(error) }
+      } catch { throw Failure(wrapping: error) }
       guard try sha256(ofFile: executable) == plan.executableSHA else { throw Failure("Frozen executable provenance mismatch") }
 
       environment = [
@@ -473,7 +470,7 @@ enum TUIStress {
         try exercise()
         report["passed"] = true
       } catch {
-        failure = asFailure(error)
+        failure = Failure(wrapping: error)
         report["passed"] = false
         report["error"] = "Failure: \(failure?.message ?? "")"
       }
@@ -594,7 +591,7 @@ enum TUIStress {
       do {
         report["final_receipts"] = try finalReceipts(output, workload: plan.workload)
       } catch {
-        receiptFailure = asFailure(error)
+        receiptFailure = Failure(wrapping: error)
         report["passed"] = false
         report["cleanup_receipt_error"] = "Failure: \(receiptFailure?.message ?? "")"
       }
@@ -651,7 +648,7 @@ enum TUIStress {
         try "first".write(toFile: source, atomically: true, encoding: .utf8)
         // Stands in for the compiler: its last argument is the output path.
         let compiler = directory + "/compiler"
-        try writeExecutable(compiler, script: "echo run >> '\(count)'; for last; do :; done; echo binary > \"$last\"")
+        try writeScript("echo run >> '\(count)'; for last; do :; done; echo binary > \"$last\"", to: compiler)
         func runs() -> Int { ((try? String(contentsOfFile: count, encoding: .utf8)) ?? "").split(separator: "\n").count }
         let binary = try compileHelper("Helper", source: source, into: directory, compiler: [compiler])
         try expect(binary == directory + "/Helper" && runs() == 1, "the first call compiles")
@@ -675,7 +672,7 @@ enum TUIStress {
         let manifest = try bundleManifest(bundle)
         try expect(manifest["Current"] == .link("Contents"), "a link is recorded by its target")
         try expect(manifest["Contents/Terminal"]
-                     == .file(sha256: sha256Hex(Data("binary".utf8)), bytes: 6),
+                     == .file(sha256: sha256(of: Data("binary".utf8)), bytes: 6),
                    "a file is recorded by hash and size: \(String(describing: manifest["Contents/Terminal"]))")
         try expect(manifest.count == 3, "directories are left out and hidden files kept: \(manifest.keys.sorted())")
         try FileManager.default.copyItem(atPath: bundle, toPath: copy)
@@ -696,7 +693,7 @@ enum TUIStress {
           PaneCheck(events: events, workload: workload, directory: directory)
         }
         func rejected(_ checks: [PaneCheck], _ workload: String) -> String? {
-          do { try judge(checks, workload: workload); return nil } catch { return asFailure(error).message }
+          do { try judge(checks, workload: workload); return nil } catch { return Failure(wrapping: error).message }
         }
         let files = (0..<4).map { check(transcript(pane: $0, kinds: ["files_listing"], sizes: 2, refresh: true), "files") }
         try expect(rejected(files, "files") == nil, "four resized, refreshed Files panes pass")

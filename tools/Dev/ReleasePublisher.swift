@@ -29,7 +29,7 @@ enum ReleasePublisher {
     let options = try parseOptions(Array(arguments.dropFirst()))
     let releaseDirectory = options["release-dir"] ?? "dist/release"
     let publisher = Publisher(root: Repository.root, environment: ProcessInfo.processInfo.environment) {
-      try runCommand($0, adding: $1, directory: Repository.root)
+      try runCommand($0, adding: $1, directory: Repository.root, errors: .separate)
     }
     switch action {
     case "validate":
@@ -78,10 +78,10 @@ enum ReleasePublisher {
     var eventName = ""
     var ref = ""
 
-    var json: JSONText {
+    var json: JSONValue {
       .object([
-        ("schema", .integer(1)), ("version", .string(version)), ("tag", .string(tag)),
-        ("source_sha", .string(sourceSHA)), ("publish", .boolean(publish)),
+        ("schema", 1), ("version", .string(version)), ("tag", .string(tag)),
+        ("source_sha", .string(sourceSHA)), ("publish", .bool(publish)),
         ("event_name", .string(eventName)), ("ref", .string(ref)),
       ])
     }
@@ -102,7 +102,7 @@ enum ReleasePublisher {
       bytes = size.intValue
     }
 
-    var json: JSONText { .object([("name", .string(name)), ("sha256", .string(sha256)), ("bytes", .integer(bytes))]) }
+    var json: JSONValue { .object([("name", .string(name)), ("sha256", .string(sha256)), ("bytes", .int(bytes))]) }
     var checksumLine: String { "\(sha256)  \(name)" }
   }
 
@@ -133,7 +133,7 @@ enum ReleasePublisher {
         guard ref == "refs/heads/main" else { throw Failure("manual release validation is allowed only from main") }
         publish = false
       default:
-        throw Failure("unsupported GitHub event \(JSONText.quote(event))")
+        throw Failure("unsupported GitHub event \(JSONValue.quoted(event))")
       }
       try runChecked(["git", "merge-base", "--is-ancestor", sourceSHA, "origin/main"])
 
@@ -151,8 +151,8 @@ enum ReleasePublisher {
     func manifest(metadata path: String, releaseDirectory: String) throws -> [Asset] {
       let metadata = try readMetadata(path)
       let assets = try expectedAssets(metadata, releaseDirectory)
-      let payload = JSONText.object([
-        ("schema", .integer(1)), ("version", .string(metadata.version)), ("tag", .string(metadata.tag)),
+      let payload = JSONValue.object([
+        ("schema", 1), ("version", .string(metadata.version)), ("tag", .string(metadata.tag)),
         ("source_sha", .string(metadata.sourceSHA)), ("assets", .array(assets.map(\.json))),
       ])
       try write(payload.pretty + "\n", to: releaseDirectory + "/release-manifest.json")
@@ -599,7 +599,7 @@ enum ReleasePublisher {
 
   private static func inspect(_ value: Any?) -> String {
     guard let value, !(value is NSNull) else { return "nil" }
-    return (value as? String).map(JSONText.quote) ?? "\(value)"
+    return (value as? String).map(JSONValue.quoted) ?? "\(value)"
   }
 
   // Tests. `FakeGitHub` stands in for `git` and `gh`; no command is run and
@@ -774,15 +774,15 @@ enum ReleasePublisher {
     SelfTest.Case(name: "release publisher: validate rejects a wrong tag or an unreachable source") {
       try withFixture { fixture in
         let wrongTag = fixture.tagEnvironment.merging(["GITHUB_REF": "refs/tags/v1.2.4"]) { $1 }
-        var message = try failureMessage("a tag that differs from the bundle version") {
+        var message = try expectFailure("a tag that differs from the bundle version") {
           try fixture.publisher(wrongTag).validate(output: fixture.metadata)
-        }
+        }.message
         try expect(message.contains("refs/tags/v1.2.3"), "got: \(message)")
 
         fixture.gitHub.ancestor = false
-        message = try failureMessage("a commit that is not on main") {
+        message = try expectFailure("a commit that is not on main") {
           try fixture.publisher(fixture.tagEnvironment).validate(output: fixture.metadata)
-        }
+        }.message
         try expect(message.contains("merge-base"), "got: \(message)")
         try expect(!FileManager.default.fileExists(atPath: fixture.metadata), "no metadata is written")
       }
@@ -796,7 +796,7 @@ enum ReleasePublisher {
         try expect(fixture.read(fixture.metadata).contains("\"publish\": false"), "metadata records it")
 
         try FileManager.default.createDirectory(atPath: fixture.releaseDirectory, withIntermediateDirectories: true)
-        let message = try failureMessage("publishing a manual run") { try fixture.publish() }
+        let message = try expectFailure("publishing a manual run") { try fixture.publish() }.message
         try expect(message == "metadata does not authorize publishing", "got: \(message)")
         try expect(!fixture.gitHub.calls.contains { $0.command.first == "gh" }, "GitHub is not contacted")
       }
@@ -823,7 +823,7 @@ enum ReleasePublisher {
           "assets": [["name": "HelgeTerminal-1.2.3-arm64.zip", "digest": "sha256:" + String(repeating: "0", count: 64),
                       "size": 3]] as [[String: Any]],
         ]
-        let message = try failureMessage("a different remote asset") { try fixture.publish() }
+        let message = try expectFailure("a different remote asset") { try fixture.publish() }.message
         try expect(message.contains("different SHA256"), "got: \(message)")
         try expect(fixture.gitHub.puts == 0, "cask is untouched")
         try expect(fixture.gitHub.assets.count == 1, "nothing is uploaded")
@@ -833,7 +833,7 @@ enum ReleasePublisher {
       try withFixture { fixture in
         try fixture.prepareRelease()
         fixture.gitHub.releaseError = "HTTP 502: GitHub is unavailable"
-        let message = try failureMessage("an unreadable release") { try fixture.publish() }
+        let message = try expectFailure("an unreadable release") { try fixture.publish() }.message
         try expect(message.contains("cannot read GitHub release"), "got: \(message)")
         try expect(fixture.gitHub.release == nil, "no release is created")
         try expect(fixture.gitHub.puts == 0, "cask is untouched")
@@ -862,7 +862,7 @@ enum ReleasePublisher {
         try fixture.write(fixture.read(fixture.metadata).replacingOccurrences(of: sha, with: other), to: fixture.metadata)
         try fixture.publishing.manifest(metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory)
 
-        let message = try failureMessage("metadata for another commit") { try fixture.publish() }
+        let message = try expectFailure("metadata for another commit") { try fixture.publish() }.message
         try expect(message.contains("GITHUB_SHA"), "got: \(message)")
         try expect(fixture.gitHub.release == nil, "no release is created")
       }
@@ -900,9 +900,9 @@ enum ReleasePublisher {
                    "got: \(assets.map(\.name))")
 
         try fixture.write("", to: fixture.releaseDirectory + "/stray.txt")
-        let message = try failureMessage("a stray file") {
+        let message = try expectFailure("a stray file") {
           try fixture.publishing.manifest(metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory)
-        }
+        }.message
         try expect(message == "unexpected release output: stray.txt", "got: \(message)")
       }
     },
@@ -964,17 +964,17 @@ enum ReleasePublisher {
         var withoutTap = fixture.publishingEnvironment
         withoutTap["TAP_GITHUB_TOKEN"] = nil
         fixture.gitHub.caskText = fixture.gitHub.caskText.replacingOccurrences(of: "1.2.3", with: "0.0.1")
-        let message = try failureMessage("a missing tap token") {
+        let message = try expectFailure("a missing tap token") {
           try fixture.publisher(withoutTap).publish(metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory)
-        }
+        }.message
         try expect(message == "TAP_GITHUB_TOKEN is required to update the Homebrew tap", "got: \(message)")
       }
     },
     SelfTest.Case(name: "release publisher: options take a separate or an attached value") {
       let options = try parseOptions(["--metadata", "a.json", "--release-dir=out"])
       try expect(options == ["metadata": "a.json", "release-dir": "out"], "got: \(options)")
-      _ = try failureMessage("an unknown option") { _ = try parseOptions(["--force"]) }
-      _ = try failureMessage("an option without a value") { _ = try parseOptions(["--output"]) }
+      try expectFailure("an unknown option") { _ = try parseOptions(["--force"]) }
+      try expectFailure("an option without a value") { _ = try parseOptions(["--output"]) }
     },
   ]
 }

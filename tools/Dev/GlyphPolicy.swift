@@ -58,23 +58,19 @@ enum GlyphPolicy {
       try FileManager.default.createDirectory(atPath: directory + "/bin", withIntermediateDirectories: true)
       try recipe().write(toFile: directory + "/justfile", atomically: true, encoding: .utf8)
       // Nested recipes only record that they were asked for; the CPU gate also exits as told.
-      try writeExecutable(directory + "/bin/just", """
-        #!/bin/bash
+      try writeScript("""
         printf '%s\\n' "$1" >> invoked
         if [[ "$1" == _glyph-raster-tests ]]; then exit "${CPU_STATUS:-0}"; fi
-
-        """)
+        """, to: directory + "/bin/just", interpreter: "/bin/bash")
       // `xcrun swift` prints a source list; `xcrun swiftc` installs the stand-in probe as the build product.
-      try writeExecutable(directory + "/bin/xcrun", """
-        #!/bin/bash
+      try writeScript("""
         if [[ "$1" == swift ]]; then
           echo tests/MetalUploadProbe.swift
         else
           cp "$PROBE_SOURCE" target/native/metal-upload-probe
           chmod +x target/native/metal-upload-probe
         fi
-
-        """)
+        """, to: directory + "/bin/xcrun", interpreter: "/bin/bash")
       var markers = scenario.knownDevice ? """
         echo 'METAL_UPLOAD_DEVICE=name=Apple Paravirtual registry=1'
         echo 'METAL_UPLOAD_PROBE=after_shared_texture_replace'
@@ -82,21 +78,21 @@ enum GlyphPolicy {
 
         """ : "echo unknown\n"
       if scenario.completedUpload { markers += "echo 'METAL_UPLOAD_PROBE=after_shared_heap_texture_replace'\n" }
-      try writeExecutable(directory + "/probe", "#!/bin/bash\n\(markers)exit \(scenario.probeStatus)\n")
+      try writeScript("\(markers)exit \(scenario.probeStatus)", to: directory + "/probe", interpreter: "/bin/bash")
       // A skip left by an earlier run must never survive a local pass or a failed run.
       let result = directory + "/reports/gpu-policy/glyph-residency.json"
       try FileManager.default.createDirectory(atPath: directory + "/reports/gpu-policy", withIntermediateDirectories: true)
       try #"{"status":"stale"}"#.write(toFile: result, atomically: true, encoding: .utf8)
 
       let path = ProcessInfo.processInfo.environment["PATH"] ?? ""
-      let finished = try runCaptured(
+      let finished = try runCommand(
         [just, "--justfile", directory + "/justfile", "_glyph-rendering-tests"],
         adding: ["PATH": "\(directory)/bin:\(path)", "PROBE_SOURCE": directory + "/probe",
                  "TERMINAL_CI_GPU_POLICY": scenario.policy, "CPU_STATUS": String(scenario.cpuStatus)],
         directory: directory)
       let calls = ((try? String(contentsOfFile: directory + "/invoked", encoding: .utf8)) ?? "").split(separator: "\n")
       try expect(!finished.signalled && Int(finished.code) == scenario.expectedStatus,
-                 "status \(finished.exitStatus), expected \(scenario.expectedStatus)\n\(finished.text)")
+                 "status \(finished.exitStatus), expected \(scenario.expectedStatus)\n\(finished.output)")
       try expect(calls.first == "_glyph-raster-tests", "missing CPU gate")
       try expect(calls.contains("_glyph-residency-tests") == scenario.runsGPUGate, "wrong GPU gate")
       try expect(FileManager.default.fileExists(atPath: result) == scenario.writesSkip, "wrong skip report")

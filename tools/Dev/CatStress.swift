@@ -62,13 +62,13 @@ enum CatStress {
       try run(executable: executable, source: source, initial: initial, output: output, motion: motion,
               process: &process, result: &result)
     } catch {
-      failure = asFailure(error)
+      failure = Failure(wrapping: error)
       result["failure"] = failure?.message
     }
     let survivors = (process?.cleanup() ?? []).map { Int($0) }
     result["cleanup_survivors"] = survivors
     if !survivors.isEmpty { result["passed"] = false }
-    try ReportJSON.write(result, to: output + "/provenance.json")
+    try JSONValue(sortingKeysOf: result).write(to: output + "/provenance.json")
     if let failure { throw failure }
     guard result["passed"] as? Bool == true else { throw Failure("Cat stress cleanup failed") }
   }
@@ -88,14 +88,14 @@ enum CatStress {
     guard exit.succeeded else { throw Failure("App exited unsuccessfully") }
     guard app.livePIDs.isEmpty else { throw Failure("App left owned children") }
     let data = try readJSONObject(report)
-    guard JSONValue.isTruthy(try data.fetch("passed")), JSONValue.isTruthy(try data.fetch("final")) else {
+    guard ReportValue.isTruthy(try data.fetch("passed")), ReportValue.isTruthy(try data.fetch("final")) else {
       throw Failure("Cat stress checks failed")
     }
-    guard JSONValue.equals(try data.fetch("source_file_bytes"), initial.bytes) else { throw Failure("Wrong source extent") }
+    guard ReportValue.equals(try data.fetch("source_file_bytes"), initial.bytes) else { throw Failure("Wrong source extent") }
     guard try data.object("renderer").number("command_errors") == 0 else { throw Failure("Metal command errors") }
     if motion { try checkMotion(try data.object("window_motion")) }
     let session = try data.object("session")
-    guard ["child_reaped", "read_ended", "parser_ended"].allSatisfy({ JSONValue.isTruthy(session[$0]) }) else {
+    guard ["child_reaped", "read_ended", "parser_ended"].allSatisfy({ ReportValue.isTruthy(session[$0]) }) else {
       throw Failure("Session did not drain and reap")
     }
     guard try Source(source).identity == initial.identity else { throw Failure("Source changed during the run") }
@@ -122,22 +122,22 @@ enum CatStress {
 
   static let tests = [
     SelfTest.Case(name: "cat stress: a passing app report from a clean exit passes and is recorded") {
-      try withFixtureApp(reportingScript(bytes: "$3")) { app, root in
+      try withFakeBundle(reportingScript(bytes: "$3")) { app, root in
         try "source text\n".write(toFile: root + "/source.txt", atomically: true, encoding: .utf8)
         try stress(app: app, source: root + "/source.txt", output: root + "/cat", motion: false)
         let provenance = try readJSONObject(root + "/cat/provenance.json")
         try expect(provenance["passed"] as? Bool == true, "run passed")
-        try expect(JSONValue.equals(provenance["source_bytes"], 12), "source size is recorded")
+        try expect(ReportValue.equals(provenance["source_bytes"], 12), "source size is recorded")
         try expect(provenance["source_name"] as? String == "source.txt", "source name is recorded")
         try expect((provenance["cleanup_survivors"] as? [Any])?.isEmpty == true, "nothing survives")
       }
     },
     SelfTest.Case(name: "cat stress: a report for another extent fails the run and is recorded") {
-      try withFixtureApp(reportingScript(bytes: "1")) { app, root in
+      try withFakeBundle(reportingScript(bytes: "1")) { app, root in
         try "source text\n".write(toFile: root + "/source.txt", atomically: true, encoding: .utf8)
-        let message = try failureMessage("wrong extent") {
+        let message = try expectFailure("wrong extent") {
           try stress(app: app, source: root + "/source.txt", output: root + "/cat", motion: false)
-        }
+        }.message
         try expect(message == "Wrong source extent", "got: \(message)")
         let provenance = try readJSONObject(root + "/cat/provenance.json")
         try expect(provenance["passed"] as? Bool == false, "run did not pass")

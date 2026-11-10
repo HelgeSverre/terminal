@@ -67,7 +67,7 @@ enum TerminfoSmoke {
         }
       }
       let replay = { (program: String, grid: [String], what: String) -> [String: Any] in
-        let result = try capture([probe] + grid, adding: [:], input: program, directory: directory)
+        let result = try runCommand([probe] + grid, directory: directory, input: program)
         guard result.succeeded else { throw Failure("\(what) failed:\n\(result.output)") }
         guard let screen = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [String: Any] else {
           throw Failure("\(what) did not print a JSON object:\n\(result.output)")
@@ -89,7 +89,7 @@ enum TerminfoSmoke {
   /// The output of a command that must succeed.
   @discardableResult
   private static func output(of command: [String], adding environment: [String: String] = [:]) throws -> String {
-    let result = try capture(command, adding: environment)
+    let result = try runCommand(command, adding: environment)
     guard result.succeeded else { throw Failure("\(command.joined(separator: " ")) failed:\n\(result.output)") }
     return result.output
   }
@@ -125,7 +125,7 @@ enum TerminfoSmoke {
     guard (cell["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 201] else {
       throw Failure("tput setaf lost indexed color: \(cell)")
     }
-    guard !truthy(screen["alternate"]) else { throw Failure("tput rmcup did not restore the main screen") }
+    guard !ReportValue.isTruthy(screen["alternate"]) else { throw Failure("tput rmcup did not restore the main screen") }
   }
 
   private static func checkLineDrawing(_ screen: [String: Any]) throws {

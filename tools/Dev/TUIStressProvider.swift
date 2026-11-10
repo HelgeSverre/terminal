@@ -37,9 +37,8 @@ enum TUIStressProvider {
 
   static func main(_ arguments: [String]) throws {
     guard arguments.isEmpty else {
-      var failure = Failure("usage: TERMINAL_TUI_STRESS_PROVIDER_PORT_FILE=/absolute/fixture/provider.json dev tui-stress provider")
-      failure.isUsage = true
-      throw failure
+      throw Failure.usage(
+        "usage: TERMINAL_TUI_STRESS_PROVIDER_PORT_FILE=/absolute/fixture/provider.json dev tui-stress provider")
     }
     let server = try Server(environment: ProcessInfo.processInfo.environment)
     Interruption.takeOver()
@@ -240,9 +239,7 @@ enum TUIStressProvider {
       guard !FileManager.default.fileExists(atPath: portFile) else {
         throw Failure("provider port file already exists; use a unique fixture path")
       }
-      var isDirectory: ObjCBool = false
-      let parent = URL(fileURLWithPath: portFile).deletingLastPathComponent().path
-      guard FileManager.default.fileExists(atPath: parent, isDirectory: &isDirectory), isDirectory.boolValue else {
+      guard isDirectory(URL(fileURLWithPath: portFile).deletingLastPathComponent().path) else {
         throw Failure("provider port-file parent directory is missing")
       }
       (listener, port) = try Self.listen()
@@ -381,7 +378,7 @@ enum TUIStressProvider {
       let payload: [String: Any] = [
         "protocol": "responses-sse-fixture-v1", "status": status, "pid": Int(getpid()), "host": "127.0.0.1",
         "port": port, "response_identity": "TUI_STRESS_RESPONSE",
-        "response_sha256": sha256Hex(Data(response.utf8)), "response_bytes": response.utf8.count,
+        "response_sha256": sha256(of: Data(response.utf8)), "response_bytes": response.utf8.count,
         "event_count": streamEvents(responseID: "resp_tui_stress_001").count, "slow_ms": slowMilliseconds,
         "max_requests": maxRequests, "lifetime_seconds": lifetimeSeconds, "request_count": requests.count,
         "requests": requests, "started_monotonic": started, "updated_monotonic": monotonic(),
@@ -393,7 +390,7 @@ enum TUIStressProvider {
       do {
         guard ftruncate(descriptor, 0) == 0 else { throw SystemFailure("truncate \(portFile)") }
         try writeAll(descriptor, try compactJSON(payload))
-      } catch { throw asFailure(error) }
+      } catch { throw Failure(wrapping: error) }
     }
   }
 
@@ -416,7 +413,7 @@ enum TUIStressProvider {
     SelfTest.Case(name: "tui-stress provider: the response text is the Ruby provider's, byte for byte") {
       try expect(response.utf8.count == 437, "437 bytes, got \(response.utf8.count)")
       try expect(chunks.count == 24, "24 pieces, got \(chunks.count)")
-      try expect(sha256Hex(Data(response.utf8)) == "0d483012cc211418402e9a4150739add2a98b93f1eb64e462b46c3cd0cae8852",
+      try expect(sha256(of: Data(response.utf8)) == "0d483012cc211418402e9a4150739add2a98b93f1eb64e462b46c3cd0cae8852",
                  "the hash recorded in earlier provenance files")
     },
     SelfTest.Case(name: "tui-stress provider: serves the stream over loopback and records each request") {

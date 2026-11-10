@@ -37,7 +37,7 @@ enum CompareStartup {
 
     let stamp = output.file("stamp")
     let stampSource = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Stamp.c").path
-    guard try runHelper("/usr/bin/xcrun", "clang", "-O2", "-Wall", "-Wextra", "-Werror", stampSource, "-o", stamp) else {
+    guard try runInherited(["/usr/bin/xcrun", "clang", "-O2", "-Wall", "-Wextra", "-Werror", stampSource, "-o", stamp]) else {
       throw Failure("cannot build \(stampSource)")
     }
     let (measured, skipped) = try Terminal.available(app: app, output: output)

@@ -90,7 +90,7 @@ enum EditingInputIsolation {
   /// Runs a build step from the repository root and keeps its output as
   /// `NAME.log` in the report directory.
   private static func build(_ name: String, _ command: [String], root: String, output: OutputDirectory) throws {
-    let result = try capture(command, adding: [:], directory: root)
+    let result = try runCommand(command, directory: root)
     try result.output.write(toFile: output.file(name + ".log"), atomically: true, encoding: .utf8)
     guard result.succeeded else { throw Failure("\(name) failed (see retained log)") }
   }
@@ -124,13 +124,13 @@ enum EditingInputIsolation {
   static func judge(_ name: String, _ smoke: [String: Any]) throws {
     let measurements = smoke["measurements"] as? [String: Any] ?? [:]
     let columns = ["fresh_initial_col", "fresh_typed_col", "fresh_erased_col"].map { measurements[$0] as? Int }
-    let passed = truthy(smoke["passed"])
+    let passed = ReportValue.isTruthy(smoke["passed"])
     if name == "baseline" {
       guard !passed, columns == [4, 6, 4], measurements["controlled_probes_observed"] as? Int == 2 else {
         throw Failure("baseline did not reproduce controlled contamination")
       }
       let others = (smoke["checks"] as? [String: Any] ?? [:]).filter { $0.key != "fresh_starship_cursor_alignment" }
-      guard others.values.allSatisfy({ truthy($0) }) else { throw Failure("baseline failed another check") }
+      guard others.values.allSatisfy(ReportValue.isTruthy) else { throw Failure("baseline failed another check") }
     } else {
       guard passed, columns == [2, 4, 2], measurements["controlled_probes_rejected"] as? Int == 2,
             (measurements["suppressed_external_key_events"] as? Int ?? 0) >= 2 else {

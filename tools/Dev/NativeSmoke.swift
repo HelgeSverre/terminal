@@ -96,23 +96,19 @@ enum NativeSmoke {
     },
     SelfTest.Case(name: "native smoke: a failing report names the failed checks") {
       try withFakeApp("printf '{\"passed\": false, \"checks\": {\"a\": true, \"b\": false}}' > \"$2\"") { executable, directory in
-        do {
+        let failure = try expectFailure("a failing report") {
           try run(modes[0], executable: executable, reportDirectory: directory)
-          throw Failure("a failing report was accepted")
-        } catch let failure as Failure {
-          try expect(failure.message.contains("1 of 2 checks failed: b"), "got: \(failure.message)")
         }
+        try expect(failure.message.contains("1 of 2 checks failed: b"), "got: \(failure.message)")
       }
     },
     SelfTest.Case(name: "native smoke: a lingering child fails the run and is ended") {
       // The app must live long enough for its child to be seen under it.
       try withFakeApp("sleep 30 & printf '{\"passed\": true}' > \"$2\"; sleep 0.4") { executable, directory in
-        do {
+        let failure = try expectFailure("a lingering child") {
           try run(modes[0], executable: executable, reportDirectory: directory)
-          throw Failure("a lingering child was accepted")
-        } catch let failure as Failure {
-          try expect(failure.message.contains("leaving children"), "got: \(failure.message)")
         }
+        try expect(failure.message.contains("leaving children"), "got: \(failure.message)")
       }
     },
   ]
@@ -121,8 +117,7 @@ enum NativeSmoke {
   private static func withFakeApp(_ script: String, _ body: (String, String) throws -> Void) throws {
     try withTemporaryDirectory("dev-native-smoke-") { directory in
       let executable = directory + "/app"
-      try ("#!/bin/sh\n" + script + "\n").write(toFile: executable, atomically: true, encoding: .utf8)
-      try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable)
+      try writeScript(script, to: executable)
       try body(executable, directory)
     }
   }

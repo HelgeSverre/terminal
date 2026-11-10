@@ -50,7 +50,7 @@ enum ReleaseSigning {
     /// Arguments can contain passwords. Neither they nor the command's output
     /// go into a message that GitHub Actions could print.
     private static func checked(_ command: [String]) throws -> CommandResult {
-      let result = try runCommand(command)
+      let result = try runCommand(command, errors: .separate)
       guard result.succeeded else { throw Failure(command.prefix(2).joined(separator: " ") + " failed") }
       return result
     }
@@ -63,10 +63,10 @@ enum ReleaseSigning {
     let searchList: [String]
 
     var json: String {
-      JSONText.object([
+      JSONValue.object([
         ("work_dir", .string(workDirectory)),
         ("keychain", .string(keychain)),
-        ("search_list", .array(searchList.map(JSONText.string))),
+        ("search_list", .strings(searchList)),
       ]).compact
     }
   }
@@ -197,11 +197,8 @@ enum ReleaseSigning {
 
     private func runnerTemp() throws -> String {
       guard let value = environment["RUNNER_TEMP"], !value.isEmpty else { throw Failure("RUNNER_TEMP must be set") }
-      let path = absolutePath(value)
-      var isDirectory: ObjCBool = false
-      guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
-        throw Failure("RUNNER_TEMP must name an existing directory")
-      }
+      let path = lexicalPath(value)
+      guard isDirectory(path) else { throw Failure("RUNNER_TEMP must name an existing directory") }
       return path
     }
 
@@ -211,7 +208,7 @@ enum ReleaseSigning {
       let output = try runner.output(["security", "list-keychains", "-d", "user"])
       guard let words = shellSplit(output) else { throw Failure("security returned an invalid keychain search list") }
       guard !words.isEmpty else { throw Failure("security keychain search list is empty") }
-      return words.map(absolutePath)
+      return words.map(lexicalPath)
     }
 
     private func setSearchList(_ paths: [String]) throws {
@@ -230,7 +227,7 @@ enum ReleaseSigning {
             let workDirectory = object["work_dir"] as? String,
             let keychain = object["keychain"] as? String,
             let searchList = object["search_list"] as? [String] else { throw invalid }
-      guard absolutePath(workDirectory).hasPrefix(try runnerTemp() + "/"),
+      guard lexicalPath(workDirectory).hasPrefix(try runnerTemp() + "/"),
             lastComponent(workDirectory).hasPrefix("terminal-signing-"),
             keychain == joined(workDirectory, "signing.keychain-db") else { throw invalid }
       return State(workDirectory: workDirectory, keychain: keychain, searchList: searchList)
@@ -286,7 +283,7 @@ enum ReleaseSigning {
 
   /// An absolute path with `~`, `.` and `..` resolved by name only. Symbolic
   /// links are left alone, so a path compares equal to the one a setup stored.
-  static func absolutePath(_ path: String) -> String {
+  static func lexicalPath(_ path: String) -> String {
     var path = path
     if path.hasPrefix("~") { path = (path as NSString).expandingTildeInPath }
     if !path.hasPrefix("/") { path = FileManager.default.currentDirectoryPath + "/" + path }
@@ -446,7 +443,7 @@ enum ReleaseSigning {
   }
 
   private static func withFixture(_ body: (Fixture) throws -> Void) throws {
-    try withTemporaryDirectory("dev-release-signing-") { try body(Fixture(temp: absolutePath($0))) }
+    try withTemporaryDirectory("dev-release-signing-") { try body(Fixture(temp: lexicalPath($0))) }
   }
 
   private static func mode(_ path: String) throws -> Int {
@@ -458,7 +455,7 @@ enum ReleaseSigning {
     SelfTest.Case(name: "release signing: missing variables are rejected before any command or file is created") {
       try withFixture { fixture in
         fixture.environment["APPLE_TEAM_ID"] = nil
-        let message = try failureMessage("a missing variable") { try fixture.session.setup() }
+        let message = try expectFailure("a missing variable") { try fixture.session.setup() }.message
         try expect(message.contains("APPLE_TEAM_ID"), "got: \(message)")
         try expect(fixture.runner.commands.isEmpty, "no command ran")
         try expect(!FileManager.default.fileExists(atPath: fixture.statePath), "no state file")
@@ -467,7 +464,7 @@ enum ReleaseSigning {
     SelfTest.Case(name: "release signing: invalid base64 is rejected before any command") {
       try withFixture { fixture in
         fixture.environment["APPLE_NOTARY_KEY_BASE64"] = "not base64!"
-        let message = try failureMessage("invalid base64") { try fixture.session.setup() }
+        let message = try expectFailure("invalid base64") { try fixture.session.setup() }.message
         try expect(message.contains("APPLE_NOTARY_KEY_BASE64"), "got: \(message)")
         try expect(fixture.runner.commands.isEmpty, "no command ran")
       }
@@ -531,7 +528,7 @@ enum ReleaseSigning {
     SelfTest.Case(name: "release signing: a setup failure restores the search list and removes state") {
       try withFixture { fixture in
         fixture.runner.failOn = { $0.starts(with: ["security", "import"]) }
-        _ = try failureMessage("a failed import") { try fixture.session.setup() }
+        try expectFailure("a failed import") { try fixture.session.setup() }
 
         try expect(!FileManager.default.fileExists(atPath: fixture.statePath), "state is removed")
         try expect(fixture.signingDirectories.isEmpty, "work directory is removed")
@@ -548,7 +545,7 @@ enum ReleaseSigning {
         fixture.runner.failOn = {
           $0.starts(with: ["security", "list-keychains", "-d", "user", "-s"]) && $0.last == "/tmp/login.keychain-db"
         }
-        _ = try failureMessage("a failed restore") { try fixture.session.cleanup() }
+        try expectFailure("a failed restore") { try fixture.session.cleanup() }
         try expect(FileManager.default.fileExists(atPath: fixture.statePath), "state is kept")
 
         fixture.runner.failOn = nil
@@ -580,7 +577,7 @@ enum ReleaseSigning {
         let renamed = "{\"work_dir\":\"\(fixture.temp)/other\",\"keychain\":\"\(fixture.temp)/other/signing.keychain-db\",\"search_list\":[]}"
         for text in [outside, escaping, renamed, "not json"] {
           try text.write(toFile: fixture.statePath, atomically: true, encoding: .utf8)
-          let message = try failureMessage("a foreign state file") { try fixture.session.cleanup() }
+          let message = try expectFailure("a foreign state file") { try fixture.session.cleanup() }.message
           try expect(message == "release signing state is invalid", "got: \(message)")
         }
         try expect(fixture.runner.commands.isEmpty, "no command ran")
@@ -592,7 +589,13 @@ enum ReleaseSigning {
       try expect(shellSplit("a\\ b 'c d'\"e\\\"f\" ''") ?? [] == ["a b", "c de\"f", ""], "escapes and joins")
       try expect(shellSplit("  \n") ?? ["x"] == [], "blank output has no words")
       try expect(shellSplit("\"unterminated") == nil, "an unmatched quote is refused")
-      try expect(absolutePath("/a/./b/../c/") == "/a/c", "paths are resolved by name")
+      try expect(lexicalPath("/a/./b/../c/") == "/a/c", "paths are resolved by name")
+    },
+    SelfTest.Case(name: "release signing: a failed command is named and nothing else") {
+      let message = try expectFailure("a failing command") {
+        try Runner.system.run(["sh", "-c", "echo printed-detail; echo more >&2; exit 1", "argument-detail"])
+      }.message
+      try expect(message == "sh -c failed", "got: \(message)")
     },
   ]
 }

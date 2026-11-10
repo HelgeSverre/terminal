@@ -4,12 +4,65 @@ import Foundation
 /// An error a command reports to the person running it.
 struct Failure: Error {
   let message: String
-  var isUsage = false
+  private(set) var isUsage = false
   init(_ message: String) { self.message = message }
-  static func usage(_ command: Command) -> Failure {
-    var failure = Failure("usage: dev \(command.name) \(command.usage)")
+
+  /// Any error as one a command can report, so that a runner can record it
+  /// in its report before passing it on.
+  init(wrapping error: Error) {
+    if let failure = error as? Failure {
+      self = failure
+    } else if let system = error as? SystemFailure {
+      self.init(system.message)
+    } else {
+      self.init(error.localizedDescription)
+    }
+  }
+
+  /// A wrong invocation. The tool ends with status 2 instead of 1.
+  static func usage(_ message: String) -> Failure {
+    var failure = Failure(message)
     failure.isUsage = true
     return failure
+  }
+  static func usage(_ command: Command) -> Failure { usage("usage: dev \(command.name) \(command.usage)") }
+}
+
+/// A failed system call, kept apart from `Failure` so that callers can act on the error number.
+struct SystemFailure: Error {
+  let call: String
+  let code: Int32
+  init(_ call: String, code: Int32 = errno) {
+    self.call = call
+    self.code = code
+  }
+  var message: String { "\(call): \(String(cString: strerror(code)))" }
+}
+
+/// Command-line options: `--name` flags and `--name VALUE` or `--name=VALUE` settings.
+struct Options {
+  private(set) var flags: Set<String> = []
+  private(set) var values: [String: String] = [:]
+  private(set) var positionals: [String] = []
+
+  /// Fails with the command's usage on an unknown option or a missing value.
+  init(_ arguments: [String], flags known: Set<String>, values settings: Set<String>, command: Command) throws {
+    var rest = arguments[...]
+    while let argument = rest.popFirst() {
+      let parts = argument.split(separator: "=", maxSplits: 1).map(String.init)
+      if known.contains(argument) {
+        flags.insert(argument)
+      } else if settings.contains(argument) {
+        guard let value = rest.popFirst() else { throw Failure.usage(command) }
+        values[argument] = value
+      } else if parts.count == 2, settings.contains(parts[0]) {
+        values[parts[0]] = parts[1]
+      } else if argument.hasPrefix("-") {
+        throw Failure.usage(command)
+      } else {
+        positionals.append(argument)
+      }
+    }
   }
 }
 
@@ -65,17 +118,6 @@ final class OwnedProcess {
   }
 }
 
-/// Runs a short helper to completion and returns whether it succeeded.
-@discardableResult
-func runHelper(_ executable: String, _ arguments: String...) throws -> Bool {
-  let process = Process()
-  process.executableURL = URL(fileURLWithPath: executable)
-  process.arguments = arguments
-  do { try process.run() } catch { throw Failure("cannot run \(executable): \(error.localizedDescription)") }
-  process.waitUntilExit()
-  return process.terminationStatus == 0
-}
-
 /// Whether any running process was started from `executable`.
 func isRunning(executable: String) -> Bool {
   let listing = Process()
@@ -125,10 +167,7 @@ struct OutputDirectory {
   }
   func file(_ name: String) -> String { path + "/" + name }
 
-  func write(json object: Any, to name: String) throws {
-    let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
-    try (data + Data("\n".utf8)).write(to: URL(fileURLWithPath: file(name)), options: .atomic)
-  }
+  func write(json object: Any, to name: String) throws { try writeJSON(object, to: file(name)) }
 }
 
 /// The machine state a report records beside its numbers.

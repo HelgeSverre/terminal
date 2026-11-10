@@ -101,7 +101,7 @@ enum ProfileTerminal {
         try sampleApp()
         result["passed"] = true
       } catch {
-        failure = asFailure(error)
+        failure = Failure(wrapping: error)
         result["failure"] = failure?.message
       }
       try finish(after: failure)
@@ -123,7 +123,7 @@ enum ProfileTerminal {
       if isDirectory(output) {
         result["provenance"] = provenance
         result["lifecycle"] = lifecycle
-        try ReportJSON.write(result, to: output + "/profile.json")
+        try JSONValue(sortingKeysOf: result).write(to: output + "/profile.json")
       }
       if let failure = failure ?? cleanupFailure { throw failure }
     }
@@ -210,12 +210,12 @@ enum ProfileTerminal {
     }
 
     private func validate(_ driverReport: [String: Any], pid: Int) throws {
-      guard JSONValue.equals(try driverReport.fetch("schema"), 2) else { throw Failure("Driver report schema mismatch") }
-      guard JSONValue.equals(try driverReport.fetch("terminal_pid"), pid) else {
+      guard ReportValue.equals(try driverReport.fetch("schema"), 2) else { throw Failure("Driver report schema mismatch") }
+      guard ReportValue.equals(try driverReport.fetch("terminal_pid"), pid) else {
         throw Failure("Driver report belongs to another process")
       }
-      guard JSONValue.equals(try driverReport.fetch("columns"), columns),
-            JSONValue.equals(try driverReport.fetch("rows"), rows) else {
+      guard ReportValue.equals(try driverReport.fetch("columns"), columns),
+            ReportValue.equals(try driverReport.fetch("rows"), rows) else {
         throw Failure("Driver report geometry mismatch")
       }
       guard let workload else { return }
@@ -245,9 +245,9 @@ enum ProfileTerminal {
 
   static let tests = [
     SelfTest.Case(name: "profile terminal: an early driver failure precedes a non-zero exit and cleanup is recorded") {
-      try withFixtureApp(failingDriverScript("fixture profile driver failed")) { app, root in
+      try withFakeBundle(failingDriverScript("fixture profile driver failed")) { app, root in
         var profile = try Profile(app: app, output: root + "/profile", workload: "all")
-        let message = try failureMessage("driver failure") { try profile.run() }
+        let message = try expectFailure("driver failure") { try profile.run() }.message
         try expect(message == "fixture profile driver failed", "got: \(message)")
         let report = try readJSONObject(root + "/profile/profile.json")
         try expect(report["passed"] as? Bool == false, "profile did not pass")
@@ -272,7 +272,7 @@ enum ProfileTerminal {
         }
         profile.lifecycle = ["sample": ["pid": 101, "natural_exit": false], "app": ["pid": 101, "natural_exit": false]]
         profile.result["passed"] = true
-        let message = try failureMessage("cleanup failure") { try profile.finish(after: nil) }
+        let message = try expectFailure("cleanup failure") { try profile.finish(after: nil) }.message
         try expect(message.contains("sample survivors: 4242"), "got: \(message)")
         try expect(sampleCleanups == 1 && appCleanups == 1, "each process is cleaned up once")
         let report = try readJSONObject(root + "/profile/profile.json")

@@ -101,7 +101,7 @@ enum AppleScriptSmoke {
     let line = Array("\(getpid())\n".utf8)
     _ = write(descriptor, line, line.count)
     close(descriptor)
-    _ = try? runHelper("/bin/stty", "raw", "-echo")
+    _ = try? runInherited(["/bin/stty", "raw", "-echo"])
 
     var digest = SHA256()
     var buffer = [UInt8](repeating: 0, count: 4096)
@@ -518,18 +518,11 @@ enum AppleScriptSmoke {
       childPIDsPath = pids
       fixtureShell = shell
       receiptShell = receipt
-      try writeExecutable(shell, """
-        #!/bin/sh
+      try writeScript("""
         printf '%s\\n' "$$" >> "$TERMINAL_AUTOMATION_CHILD_PIDS"
         exec /bin/sh -c 'stty raw -echo; exec /bin/cat'
-
-        """, mode: 0o700)
-      let tool = Bundle.main.executablePath ?? CommandLine.arguments[0]
-      try writeExecutable(receipt, """
-        #!/bin/sh
-        exec '\(tool.replacingOccurrences(of: "'", with: "'\\''"))' applescript-smoke --receipt-shell
-
-        """, mode: 0o700)
+        """, to: shell, mode: 0o700)
+      try Tool.writeLauncher(at: receipt, subcommand: ["applescript-smoke", "--receipt-shell"])
     }
 
     func recordedChildren() -> [Int] {
@@ -544,9 +537,9 @@ enum AppleScriptSmoke {
 
     /// Every process running the fixture's executable, whoever started it.
     func activeFixturePIDs() throws -> [Int] {
-      let listing = try runCaptured(["/bin/ps", "-axo", "pid=,command="], errors: .merged)
+      let listing = try runCommand(["/bin/ps", "-axo", "pid=,command="])
       guard listing.succeeded else { throw Failure("Cannot inspect active fixture process ownership.") }
-      return listing.text.split(separator: "\n").compactMap { line in
+      return listing.output.split(separator: "\n").compactMap { line in
         let fields = line.split(maxSplits: 1, whereSeparator: { $0 == " " || $0 == "\t" })
         return fields.count == 2 && fields[1].contains(executable) ? Int(fields[0]) : nil
       }
@@ -598,16 +591,7 @@ enum AppleScriptSmoke {
       guard quiet(command) else { throw Failure("Command failed: \(command.joined(separator: " "))") }
     }
 
-    private func quiet(_ command: [String]) -> Bool {
-      let process = Process()
-      process.executableURL = URL(fileURLWithPath: command[0])
-      process.arguments = Array(command.dropFirst())
-      process.standardOutput = FileHandle.nullDevice
-      process.standardError = FileHandle.nullDevice
-      guard (try? process.run()) != nil else { return false }
-      process.waitUntilExit()
-      return process.terminationStatus == 0
-    }
+    private func quiet(_ command: [String]) -> Bool { (try? runCommand(command))?.succeeded ?? false }
 
     func commandRecord(_ name: String, _ language: String, _ source: String, _ output: String, _ status: CommandStatus?,
                        timedOut: Bool, timeout: Double) -> JSONValue {
@@ -710,11 +694,6 @@ enum AppleScriptSmoke {
   static func isAlive(_ pid: Int) -> Bool {
     guard let pid = pid_t(exactly: pid) else { return false }
     return kill(pid, 0) == 0 || errno != ESRCH
-  }
-
-  private static func isDirectory(_ path: String) -> Bool {
-    var isDirectory: ObjCBool = false
-    return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
   }
 
   static func describe(_ exit: ProcessTree.Exit?) -> JSONValue {
@@ -848,7 +827,7 @@ enum AppleScriptSmoke {
         func outcome(_ answer: String, _ environment: [String: String] = [:]) throws -> (session: Session, error: Error?) {
           let session = Session(root: root, environment: environment)
           session.osascript = root + "/osascript"
-          try writeExecutable(session.osascript, "#!/bin/sh\necho '\(answer)' >&2\n")
+          try writeScript("echo '\(answer)' >&2", to: session.osascript)
           do { try session.preflightPermission() } catch { return (session, error) }
           return (session, nil)
         }
@@ -910,8 +889,7 @@ enum AppleScriptSmoke {
     session.process = FakeFixtureProcess()
     session.osascript = root + "/osascript"
     // The source is the fourth argument. The first matching pattern answers.
-    try writeExecutable(session.osascript, """
-      #!/bin/sh
+    try writeScript("""
       refuse() { echo "execution error: refused ($1)" >&2; exit 1; }
       case "$4" in
         *"to get name") echo "\(fixtureName)" ;;
@@ -929,8 +907,7 @@ enum AppleScriptSmoke {
         *"max characters 2048") echo "AUTOMATION_RECEIPT \(sha256(of: Data(largeCommittedText.utf8)))" ;;
         *"configure preferences"*) echo "font size 15, word characters -/@_" ;;
       esac
-
-      """)
+      """, to: session.osascript)
     return session
   }
 

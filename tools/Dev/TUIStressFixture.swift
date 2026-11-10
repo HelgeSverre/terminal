@@ -105,10 +105,10 @@ final class TUIStressFixture {
         throw Failure("could not configure fixture terminal")
       }
       if workload == "files" { try runFiles() } else { try runCodex() }
-    } catch { failure = asFailure(error) }
-    do { try terminateAndReap() } catch { failure = failure ?? asFailure(error) }
+    } catch { failure = Failure(wrapping: error) }
+    do { try terminateAndReap() } catch { failure = failure ?? Failure(wrapping: error) }
     closeTerminal()
-    do { try writeFinal(failure: failure) } catch { failure = failure ?? asFailure(error) }
+    do { try writeFinal(failure: failure) } catch { failure = failure ?? Failure(wrapping: error) }
     close(eventFile)
     if let failure { throw failure }
   }
@@ -401,7 +401,7 @@ final class TUIStressFixture {
     let descriptor = open(path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
     guard descriptor >= 0 else { throw Failure(SystemFailure("create \(path)").message) }
     defer { close(descriptor) }
-    do { try writeAll(descriptor, try compactJSON(receipt)) } catch { throw asFailure(error) }
+    do { try writeAll(descriptor, try compactJSON(receipt)) } catch { throw Failure(wrapping: error) }
   }
 
   static let tests = lifecycleTests + relayTests
@@ -430,12 +430,12 @@ final class TUIStressFixture {
         let payload = Array("\u{1B}[38;2;1;2;3m猫 FILES_FIXTURE README.md\u{1B}[0m".utf8)
           .map { String($0, radix: 8) }.joined(separator: " ")
         let binary = directory + "/files-fixture"
-        try writeExecutable(binary, script: """
+        try writeScript("""
           trap 'set -- $(/bin/stty size); printf " CHILD_RESIZE=%sx%s" "$2" "$1"' WINCH
           for byte in \(payload); do printf "\\\\$byte"; sleep 0.001; done
           sleep 0.75 &
           wait $!
-          """)
+          """, to: binary)
         let outer = try PseudoTerminal()
         try outer.setSize(rows: 21, columns: 71)
         let errors = Pipe()
@@ -511,12 +511,12 @@ final class TUIStressFixture {
       try withFixtureDirectory { directory, environment in
         let ready = directory + "/closed-tty-linger-ready"
         let binary = directory + "/closed-tty-linger"
-        try writeExecutable(binary, script: """
+        try writeScript("""
           trap '' TERM HUP
           : > "$TUI_STRESS_LINGER_READY"
           exec <&- >&- 2>&-
           while :; do sleep 1; done
-          """)
+          """, to: binary)
         let outer = try PseudoTerminal()
         try outer.setSize(rows: 18, columns: 62)
         var settings = environment
@@ -549,12 +549,12 @@ final class TUIStressFixture {
       try withFixtureDirectory { directory, environment in
         let arguments = directory + "/codex-arguments", state = directory + "/codex-state"
         let binary = directory + "/codex-fixture"
-        try writeExecutable(binary, script: """
+        try writeScript("""
           { printf '%s\\n' "$@"; echo "home=$CODEX_HOME"; echo "key=$DUMMY_CODEX_UI_KEY"; } > "$TUI_STRESS_ARGUMENTS"
           printf 'OpenAI Codex\\r\\nTUI_STRESS_RESPONSE'
           sleep 30 &
           wait $!
-          """)
+          """, to: binary)
         try FileManager.default.createDirectory(atPath: state, withIntermediateDirectories: true)
         let outer = try PseudoTerminal()
         try outer.setSize(rows: 30, columns: 100)
@@ -627,7 +627,7 @@ final class TUIStressFixture {
           "TERMINAL_TUI_STRESS_DIRECTORY": directory, "TERMINAL_TUI_STRESS_WORKLOAD": "files",
           "TERMINAL_TUI_STRESS_CWD": cwd, "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
         ])
-      } catch { throw asFailure(error) }
+      } catch { throw Failure(wrapping: error) }
     }
   }
 

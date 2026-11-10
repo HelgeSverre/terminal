@@ -33,12 +33,6 @@ enum SelfTest {
   }
 }
 
-/// Fails the running test unless `condition` holds.
-func expect(_ condition: @autoclosure () throws -> Bool, _ message: @autoclosure () -> String,
-            file: StaticString = #fileID, line: UInt = #line) throws {
-  if try !condition() { throw Failure("\(message()) (\(file):\(line))") }
-}
-
 enum ProcessTreeTests {
   static let cases = [
     SelfTest.Case(name: "process tree: a timeout reaps a resistant app and its child, and nothing else") {

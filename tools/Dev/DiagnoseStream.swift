@@ -45,7 +45,7 @@ enum DiagnoseStream {
       try measure(executable: executable, output: output, bytes: bytes, background: background,
                   process: &process, result: &result)
     } catch {
-      failure = asFailure(error)
+      failure = Failure(wrapping: error)
       result["failure"] = failure?.message
     }
     if let process {
@@ -53,7 +53,7 @@ enum DiagnoseStream {
       result["cleanup_survivors"] = survivors
       if !survivors.isEmpty { result["passed"] = false }
     }
-    try ReportJSON.write(result, to: output + "/diagnostic.json")
+    try JSONValue(sortingKeysOf: result).write(to: output + "/diagnostic.json")
     if let failure { throw failure }
     guard result["passed"] as? Bool == true else { throw Failure("Owned process cleanup failed") }
   }
@@ -101,11 +101,11 @@ enum DiagnoseStream {
   /// The single workload of the driver's report, once the report is known to
   /// be this run's and complete.
   private static func acceptedWorkload(_ data: [String: Any], pid: Int, bytes: Int) throws -> [String: Any] {
-    guard JSONValue.equals(try data.fetch("schema"), 2), JSONValue.equals(try data.fetch("terminal_pid"), pid) else {
+    guard ReportValue.equals(try data.fetch("schema"), 2), ReportValue.equals(try data.fetch("terminal_pid"), pid) else {
       throw Failure("Unexpected driver schema or process")
     }
     guard try data.fetch("terminal") as? String == "session-diagnostic" else { throw Failure("Unexpected terminal label") }
-    guard JSONValue.equals(data["columns"], 100), JSONValue.equals(data["rows"], 30) else {
+    guard ReportValue.equals(data["columns"], 100), ReportValue.equals(data["rows"], 30) else {
       throw Failure("Unexpected terminal geometry")
     }
     let workloads = try data.objects("workloads")
@@ -114,30 +114,30 @@ enum DiagnoseStream {
     }
     let workload = workloads[0]
     let summary = workload["mib_per_second"] as? [String: Any]
-    guard JSONValue.equals(try workload.fetch("source_bytes_per_run"), bytes), JSONValue.equals(summary?["samples"], runs) else {
+    guard ReportValue.equals(try workload.fetch("source_bytes_per_run"), bytes), ReportValue.equals(summary?["samples"], runs) else {
       throw Failure("Incomplete workload")
     }
     let observations = try workload.objects("run_samples")
     guard observations.count == runs,
-          try observations.enumerated().allSatisfy({ JSONValue.equals(try $1.fetch("run"), $0 + 1) }) else {
+          try observations.enumerated().allSatisfy({ ReportValue.equals(try $1.fetch("run"), $0 + 1) }) else {
       throw Failure("Missing ordered observations")
     }
     for observation in observations {
       for key in ["mib_per_second", "elapsed_seconds"] {
-        guard let value = JSONValue.number(try observation.fetch(key)), value.isFinite, value > 0 else {
+        guard let value = ReportValue.number(try observation.fetch(key)), value.isFinite, value > 0 else {
           throw Failure("Invalid \(key)")
         }
       }
     }
     let rates = try observations.map { try $0.number("mib_per_second") }.sorted()
-    guard rates[4] == JSONValue.number(summary?["p50"]) else { throw Failure("Raw rate median differs") }
+    guard rates[4] == ReportValue.number(summary?["p50"]) else { throw Failure("Raw rate median differs") }
     return workload
   }
 
   /// The session's stream counters, once the session is known to have read,
   /// parsed and accounted for everything the driver wrote.
   private static func acceptedCounters(_ session: [String: Any], bytes: Int) throws -> [String: Any] {
-    guard ["child_reaped", "read_ended", "parser_ended"].allSatisfy({ JSONValue.isTruthy(session[$0]) }) else {
+    guard ["child_reaped", "read_ended", "parser_ended"].allSatisfy({ ReportValue.isTruthy(session[$0]) }) else {
       throw Failure("Session did not drain and reap")
     }
     let parsed = try session.number("bytes_parsed")
@@ -153,10 +153,10 @@ enum DiagnoseStream {
 
   static let tests = [
     SelfTest.Case(name: "diagnose stream: the driver's failure precedes a non-zero exit and cleanup is recorded") {
-      try withFixtureApp(failingDriverScript("fixture stream driver failed")) { app, root in
-        let message = try failureMessage("driver failure") {
+      try withFakeBundle(failingDriverScript("fixture stream driver failed")) { app, root in
+        let message = try expectFailure("driver failure") {
           try diagnose(app: app, output: root + "/diagnostic", bytes: 1, background: false)
-        }
+        }.message
         try expect(message.contains("fixture stream driver failed"), "got: \(message)")
         let report = try readJSONObject(root + "/diagnostic/diagnostic.json")
         try expect(report["passed"] as? Bool == false, "diagnosis did not pass")
@@ -165,21 +165,21 @@ enum DiagnoseStream {
       }
     },
     SelfTest.Case(name: "diagnose stream: counters are reported per MiB of source, without the high-water marks") {
-      try withFixtureApp(reportingScript) { app, root in
+      try withFakeBundle(reportingScript) { app, root in
         let source = 1_048_576
-        try ReportJSON.write([
+        try JSONValue(sortingKeysOf: [
           "schema": 2, "terminal": "session-diagnostic", "terminal_pid": fixturePlaceholderPID, "columns": 100, "rows": 30,
           "workloads": [[
             "name": "ascii_short_lines", "source_bytes_per_run": source, "mib_per_second": ["samples": runs, "p50": 2.0],
             "run_samples": (1...runs).map { ["run": $0, "mib_per_second": 2.0, "elapsed_seconds": 0.5] as [String: Any] },
           ] as [String: Any]],
-        ] as [String: Any], to: app + "/Contents/MacOS/Terminal.driver")
-        try ReportJSON.write([
+        ] as [String: Any]).write(to: app + "/Contents/MacOS/Terminal.driver")
+        try JSONValue(sortingKeysOf: [
           "child_reaped": true, "read_ended": true, "parser_ended": true,
           "bytes_read": source * runs, "bytes_parsed": source * runs, "queued_output_bytes": 0,
           "stream_diagnostic": ["feed_bytes": source * runs, "output_events": 20, "event_queue_high_water": 3,
                                 "queued_output_bytes_high_water": 4],
-        ] as [String: Any], to: app + "/Contents/MacOS/Terminal.session")
+        ] as [String: Any]).write(to: app + "/Contents/MacOS/Terminal.session")
         try diagnose(app: app, output: root + "/diagnostic", bytes: source, background: false)
         let report = try readJSONObject(root + "/diagnostic/diagnostic.json")
         try expect(report["passed"] as? Bool == true && report["natural_exit"] as? Bool == true, "diagnosis passed")

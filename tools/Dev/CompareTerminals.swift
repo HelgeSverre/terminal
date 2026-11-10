@@ -98,25 +98,33 @@ enum CompareTerminals {
         result["passed"] = true
         result["stage"] = "finished"
       } catch {
-        failure = asFailure(error)
+        failure = Failure(wrapping: error)
         result["failure"] = failure?.message
       }
       result["load_after"] = try host("sysctl", "-n", "vm.loadavg")
       result["trials"] = trials.map(\.json)
       if let apps { result["apps"] = apps }
-      try ReportJSON.write(result, to: report)
+      try JSONValue(sortingKeysOf: result).write(to: report)
       if let failure { throw failure }
     }
 
-    private func host(_ command: String...) throws -> String {
-      try standardOutput(of: command, in: Repository.root)
+    private func host(_ command: String...) throws -> String { try host(command) }
+
+    /// What a command run in the repository wrote to standard output. Error
+    /// output is kept apart, so it cannot end up in the report, and becomes
+    /// the failure message when the command fails.
+    @discardableResult
+    private func host(_ command: [String]) throws -> String {
+      let result = try runCommand(command, directory: Repository.root, errors: .separate)
+      guard result.succeeded else { throw Failure("\(command[0]) failed: \(result.error)") }
+      return result.output
     }
 
     private mutating func measureBothOrders() throws {
       try FileManager.default.createDirectory(atPath: output, withIntermediateDirectories: true)
       result["stage"] = "compile_driver"
       let driver = output + "/terminal-bench"
-      _ = try standardOutput(of: BenchDriver.buildCommand(to: driver), in: Repository.root)
+      try host(BenchDriver.buildCommand(to: driver))
       result["driver_source_sha256"] = try sha256(ofFile: BenchDriver.source)
       result["driver_sha256"] = try sha256(ofFile: driver)
       result["runner_sha256"] = try sha256(ofFile: #filePath)
@@ -169,7 +177,7 @@ enum CompareTerminals {
       result["stage"] = "validate_trial_\(index)"
       let reports = trial.apps.values.map { $0["report"] as? [String: Any] ?? [:] }
       let sameLayout = ["columns", "rows", "output_post_processing"].allSatisfy { field in
-        reports.allSatisfy { JSONValue.same($0[field], reports[0][field]) }
+        reports.allSatisfy { ReportValue.same($0[field], reports[0][field]) }
       }
       guard sameLayout else { throw Failure("PTY geometry/modes differ") }
     }
@@ -215,30 +223,30 @@ enum CompareTerminals {
       record["report_pid"] = data["terminal_pid"] ?? NSNull()
       // The report may come from a child of the app that serves the terminal,
       // so ownership is judged against everything seen in the tree.
-      try validate(data, name: name, owned: process.observedOwned(JSONValue.integer(data["terminal_pid"])))
+      try validate(data, name: name, owned: process.observedOwned(ReportValue.integer(data["terminal_pid"])))
       record["report"] = data
     }
 
     private func validate(_ data: [String: Any], name: String, owned: Bool) throws {
-      guard JSONValue.equals(data["schema"], 2), owned,
-            JSONValue.equals(data["columns"], 100), JSONValue.equals(data["rows"], 30) else {
+      guard ReportValue.equals(data["schema"], 2), owned,
+            ReportValue.equals(data["columns"], 100), ReportValue.equals(data["rows"], 30) else {
         throw Failure("Wrong report owner/schema/grid")
       }
       guard data["terminal"] as? String == name else { throw Failure("Wrong report terminal label") }
-      guard JSONValue.isBoolean(data["output_post_processing"]) else { throw Failure("Missing output-processing mode") }
-      guard ["pixel_width", "pixel_height"].allSatisfy({ (JSONValue.integer(data[$0]) ?? 0) > 0 }) else {
+      guard ReportValue.isBoolean(data["output_post_processing"]) else { throw Failure("Missing output-processing mode") }
+      guard ["pixel_width", "pixel_height"].allSatisfy({ (ReportValue.integer(data[$0]) ?? 0) > 0 }) else {
         throw Failure("Missing cell-pixel geometry")
       }
       let workloads = try data.objects("workloads")
       guard workloads.map({ $0["name"] as? String ?? "" }) == BenchDriver.workloads else { throw Failure("Wrong corpus") }
       for workload in workloads {
         let samples = try workload.objects("run_samples")
-        guard JSONValue.equals(workload["source_bytes_per_run"], bytes), samples.count == runs,
-              samples.enumerated().allSatisfy({ JSONValue.equals($1["run"], $0 + 1) }) else {
+        guard ReportValue.equals(workload["source_bytes_per_run"], bytes), samples.count == runs,
+              samples.enumerated().allSatisfy({ ReportValue.equals($1["run"], $0 + 1) }) else {
           throw Failure("Incomplete samples")
         }
         let rates = try samples.map { try $0.number("mib_per_second") }.sorted()
-        let median = JSONValue.number((workload["mib_per_second"] as? [String: Any])?["p50"])
+        let median = ReportValue.number((workload["mib_per_second"] as? [String: Any])?["p50"])
         guard rates.allSatisfy({ $0.isFinite && $0 > 0 }), median == rates[(runs - 1) / 2] else {
           throw Failure("Invalid median")
         }
@@ -268,7 +276,7 @@ enum CompareTerminals {
       try expect(failure == nil, "got: \(failure ?? "")")
       try expect(record["natural_exit"] as? Bool == true, "exit is natural")
       try expect((record["report"] as? [String: Any])?["terminal"] as? String == "ghostty", "report is kept")
-      try expect(JSONValue.same(record["report_pid"], record["pid"]), "report names the launched process")
+      try expect(ReportValue.same(record["report_pid"], record["pid"]), "report names the launched process")
       try expect((record["cleanup_survivors"] as? [Int]) == [], "nothing survives")
     },
     SelfTest.Case(name: "compare terminals: the driver's failure is kept when the app exits non-zero") {
@@ -322,11 +330,10 @@ enum CompareTerminals {
                             status: Int = 0, linger: Bool = false) throws -> (record: [String: Any], failure: String?) {
     try withTemporaryDirectory("dev-compare-terminals-") { directory in
       let executable = directory + "/fixture"
-      if let report { try ReportJSON.write(report, to: executable + ".report") }
+      if let report { try JSONValue(sortingKeysOf: report).write(to: executable + ".report") }
       if let failed { try failed.write(toFile: executable + ".failed", atomically: true, encoding: .utf8) }
       // The fixture must live long enough to be seen, or its PID is not known as owned.
-      try writeExecutable("""
-        #!/bin/sh
+      try writeScript("""
         sleep \(linger ? "30" : "0.3")
         while [ "$#" -gt 0 ]; do
           if [ "$1" = --output ]; then
@@ -336,7 +343,6 @@ enum CompareTerminals {
           shift
         done
         exit \(status)
-
         """, to: executable)
       var comparison = Comparison(output: directory, bytes: 1, runs: 1)
       if linger { comparison.limit = 0.3 }
@@ -345,7 +351,7 @@ enum CompareTerminals {
       do {
         try comparison.measure(name, executable: executable, driver: "/fixture/driver",
                                configuration: "/fixture/config", index: 1, trial: &trial)
-      } catch { failure = asFailure(error).message }
+      } catch { failure = Failure(wrapping: error).message }
       return (trial.apps[name] ?? [:], failure)
     }
   }

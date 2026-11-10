@@ -174,3 +174,21 @@ final class ProcessTree {
     trees.forEach { $0.cleanup() }
   }
 }
+
+extension ProcessTree.Exit {
+  /// The exit code for a report; null when a signal ended the process.
+  var exitStatus: Any { signalled ? NSNull() : Int(code) as Any }
+  /// The signal for a report; null when the process exited by itself.
+  var terminationSignal: Any { signalled ? Int(code) as Any : NSNull() }
+  var summary: String { "\(signalled ? "signal" : "exit") \(code)" }
+  var record: [String: Any] { ["exitstatus": exitStatus, "termsig": terminationSignal, "success": succeeded] }
+}
+
+/// Whether a process with this PID exists. A PID that cannot be asked about
+/// is an error, not an answer.
+func processExists(_ pid: Int) throws -> Bool {
+  guard let narrow = pid_t(exactly: pid) else { return false }
+  if kill(narrow, 0) == 0 { return true }
+  guard errno == ESRCH else { throw Failure("cannot inspect process \(pid): \(String(cString: strerror(errno)))") }
+  return false
+}

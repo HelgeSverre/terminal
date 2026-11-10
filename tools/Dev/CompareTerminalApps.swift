@@ -73,12 +73,12 @@ enum CompareTerminalApps {
     mutating func run() throws {
       var failure: Failure?
       do { try compare() } catch {
-        failure = asFailure(error)
+        failure = Failure(wrapping: error)
         result["failure"] = failure?.message
       }
       if isDirectory(output) {
         result["apps"] = records
-        try ReportJSON.write(result, to: output + "/comparison.json")
+        try JSONValue(sortingKeysOf: result).write(to: output + "/comparison.json")
       }
       if let failure { throw failure }
     }
@@ -94,7 +94,7 @@ enum CompareTerminalApps {
       for (label, bundle) in apps { try measure(label, bundle) }
       guard let rust = reports["rust"], let swift = reports["swift"] else { throw Failure("key not found: \"rust\"") }
       let layout = ["columns", "rows", "pixel_width", "pixel_height", "output_post_processing"]
-      guard layout.allSatisfy({ JSONValue.same(rust[$0], swift[$0]) }) else { throw Failure("App PTY layouts differ") }
+      guard layout.allSatisfy({ ReportValue.same(rust[$0], swift[$0]) }) else { throw Failure("App PTY layouts differ") }
       let ratios = try Self.ratios(swift: swift, rust: rust)
       // The gate is recorded for the reader; a ratio below it does not fail the run.
       result["performance_gate"] = [
@@ -166,12 +166,12 @@ enum CompareTerminalApps {
       }
       record["natural_exit"] = true
       let data = try readJSONObject(report)
-      guard JSONValue.equals(try data.fetch("schema"), 2) else { throw Failure("\(label) driver schema mismatch") }
-      guard JSONValue.equals(try data.fetch("terminal_pid"), Int(process.pid)) else {
+      guard ReportValue.equals(try data.fetch("schema"), 2) else { throw Failure("\(label) driver schema mismatch") }
+      guard ReportValue.equals(try data.fetch("terminal_pid"), Int(process.pid)) else {
         throw Failure("\(label) report belongs to another process")
       }
       guard try data.fetch("terminal") as? String == label else { throw Failure("\(label) report label mismatch") }
-      guard JSONValue.equals(try data.fetch("columns"), 100), JSONValue.equals(try data.fetch("rows"), 30) else {
+      guard ReportValue.equals(try data.fetch("columns"), 100), ReportValue.equals(try data.fetch("rows"), 30) else {
         throw Failure("\(label) geometry mismatch")
       }
       let workloads = try data.objects("workloads")
@@ -188,8 +188,8 @@ enum CompareTerminalApps {
     /// distributions the gate uses must follow from them.
     func validateWorkload(_ item: [String: Any], _ label: String) throws {
       guard let samples = try item.fetch("run_samples") as? [[String: Any]],
-            JSONValue.equals(try item.fetch("source_bytes_per_run"), bytes), samples.count == runs,
-            try samples.enumerated().allSatisfy({ JSONValue.equals(try $1.fetch("run"), $0 + 1) }) else {
+            ReportValue.equals(try item.fetch("source_bytes_per_run"), bytes), samples.count == runs,
+            try samples.enumerated().allSatisfy({ ReportValue.equals(try $1.fetch("run"), $0 + 1) }) else {
         throw Failure("\(label) incomplete or unordered workload observations")
       }
       for metric in ["mib_per_second", "elapsed_seconds", "terminal_cpu_seconds"] {
@@ -198,15 +198,15 @@ enum CompareTerminalApps {
         let isCPU = metric == "terminal_cpu_seconds"
         // CPU time is unavailable for some terminals; then every observation must say so.
         if isCPU, summary is NSNull, values.allSatisfy({ $0 is NSNull }) { continue }
-        let numbers = values.compactMap { JSONValue.number($0) }
+        let numbers = values.compactMap { ReportValue.number($0) }
         guard numbers.count == values.count, numbers.allSatisfy({ $0.isFinite && (isCPU ? $0 >= 0 : $0 > 0) }) else {
           throw Failure("\(label) invalid \(metric) observations")
         }
         let sorted = numbers.sorted()
         let expected = ["p50": sorted[(runs - 1) / 2], "p95": sorted[(runs - 1) * 95 / 100],
                         "p99": sorted[(runs - 1) * 99 / 100], "max": sorted[runs - 1]]
-        guard let summary = summary as? [String: Any], JSONValue.equals(try summary.fetch("samples"), runs),
-              try expected.allSatisfy({ JSONValue.number(try summary.fetch($0.key)) == $0.value }) else {
+        guard let summary = summary as? [String: Any], ReportValue.equals(try summary.fetch("samples"), runs),
+              try expected.allSatisfy({ ReportValue.number(try summary.fetch($0.key)) == $0.value }) else {
           throw Failure("\(label) \(metric) distribution does not match observations")
         }
       }
@@ -229,10 +229,10 @@ enum CompareTerminalApps {
       try validate(observations())
     },
     SelfTest.Case(name: "compare terminal apps: the driver's failure precedes a non-zero exit and the app is reaped") {
-      try withFixtureApp(failingDriverScript("fixture driver failed")) { app, root in
+      try withFakeBundle(failingDriverScript("fixture driver failed")) { app, root in
         var comparison = Comparison(output: root, bytes: 2 * 1_048_576, runs: 3)
         comparison.driver = "/unused-driver"
-        let message = try failureMessage("driver failure") { try comparison.measure("swift", app) }
+        let message = try expectFailure("driver failure") { try comparison.measure("swift", app) }.message
         try expect(message == "fixture driver failed", "got: \(message)")
         let record = comparison.records["swift"] ?? [:]
         try expect(record["natural_exit"] as? Bool == false, "exit is not natural")
@@ -271,10 +271,10 @@ enum CompareTerminalApps {
       try rejects("an infinite rate") { try validate(samples) }
     },
     SelfTest.Case(name: "compare terminal apps: two accepted apps give a report with the order and the gate") {
-      try withFixtureApp(reportingScript) { app, root in
+      try withFakeBundle(reportingScript) { app, root in
         let summary: [String: Any] = ["samples": 1, "p50": 2.0, "p95": 2.0, "p99": 2.0, "max": 2.0]
         let time = summary.mapValues { $0 as? Double == 2.0 ? 0.5 : $0 }
-        try ReportJSON.write([
+        try JSONValue(sortingKeysOf: [
           "schema": 2, "terminal": "LABEL", "terminal_pid": fixturePlaceholderPID, "columns": 100, "rows": 30,
           "pixel_width": 800, "pixel_height": 540, "output_post_processing": true,
           "workloads": BenchDriver.workloads.map { name -> [String: Any] in
@@ -283,7 +283,7 @@ enum CompareTerminalApps {
              "run_samples": [["run": 1, "mib_per_second": 2.0, "elapsed_seconds": 0.5,
                               "terminal_cpu_seconds": NSNull()] as [String: Any]]]
           },
-        ] as [String: Any], to: app + "/Contents/MacOS/Terminal.report")
+        ] as [String: Any]).write(to: app + "/Contents/MacOS/Terminal.report")
         var comparison = try Comparison(output: root + "/report", rustApp: app, swiftApp: app, environment: [
           "BENCH_FIRST": "swift", "BENCH_BYTES": "1048576", "BENCH_RUNS": "1"])
         try comparison.run()
@@ -333,6 +333,6 @@ enum CompareTerminalApps {
   }
 
   private static func rejects(_ what: String, _ body: () throws -> Void) throws {
-    _ = try failureMessage(what, body)
+    try expectFailure(what, body)
   }
 }
