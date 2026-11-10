@@ -174,8 +174,14 @@ private final class TerminalEmulator {
   private var repeatRemaining = 0
   private var charsetSpecial = [false, false]
   private var charsetSlot = 0
-  private var decodedScalars: [Unicode.Scalar] = []
+  // Decoded text waiting to be printed: the first `decodedScalarCount`
+  // elements of a buffer that keeps its full size, so that decoding writes
+  // into it directly. Those before `decodedScalarStart` are already printed.
+  private var decodedScalars = [Unicode.Scalar](repeating: "\0", count: 2 * decodedFlushCount)
+  private var decodedScalarCount = 0
   private var decodedScalarStart = 0
+  /// Pending decoded scalars are printed once this many have gathered.
+  private static let decodedFlushCount = 1024
   // A shorter ASCII run that follows undrained decoded text joins that text,
   // so mixed-script output reaches the document as one transaction.
   private static let minimumDirectASCIIRun = 16
@@ -191,7 +197,6 @@ private final class TerminalEmulator {
     self.rowCount = max(1, min(4096, rows))
     document = TerminalDocument(columns: self.columns, rows: self.rowCount)
     tabs = (0..<self.columns).map { $0 > 0 && $0.isMultiple(of: 8) }
-    decodedScalars.reserveCapacity(1024)
     csiParameterScratch.reserveCapacity(16)
     csiBytes.reserveCapacity(64)
   }
@@ -230,7 +235,7 @@ private final class TerminalEmulator {
     searchHit = nil
   }
   private func finishDecodedText() {
-    if utf8.isIdle && decodedScalars.isEmpty { return }
+    if utf8.isIdle && decodedScalarCount == 0 { return }
     // Escape/control input interrupts an incomplete UTF-8 sequence. Emit its
     // maximal invalid prefix now so that the control byte is still parsed.
     flushDecodedScalars()
@@ -248,14 +253,20 @@ private final class TerminalEmulator {
     }
   }
   private func appendDecoded(_ scalar: Unicode.Scalar) {
-    decodedScalars.append(scalar)
-    if decodedScalars.count - decodedScalarStart == 1024 { flushDecodedScalars() }
+    if decodedScalarCount == decodedScalars.count { growDecodedScalars() }
+    decodedScalars[decodedScalarCount] = scalar
+    decodedScalarCount += 1
+    if decodedScalarCount - decodedScalarStart == Self.decodedFlushCount { flushDecodedScalars() }
+  }
+  /// Makes room when a flush left text pending in a full buffer.
+  private func growDecodedScalars() {
+    decodedScalars.append(contentsOf: repeatElement("\0", count: decodedScalars.count))
   }
   private func flushDecodedScalars() {
-    if decodedScalars.isEmpty { return }
-    while decodedScalarStart < decodedScalars.count {
+    if decodedScalarCount == 0 { return }
+    while decodedScalarStart < decodedScalarCount {
       let batch = decodedScalars.withUnsafeBufferPointer { scalars in
-        document.print(UnsafeBufferPointer(rebasing: scalars[decodedScalarStart...]),
+        document.print(UnsafeBufferPointer(rebasing: scalars[decodedScalarStart..<decodedScalarCount]),
                        usingAlternate: usingAlternate, leftRightMargins: leftRightMargins,
                        autoWrap: autoWrap, insertMode: insertMode, attributes: attributes)
       }
@@ -263,7 +274,7 @@ private final class TerminalEmulator {
       decodedScalarStart += batch.consumedScalarCount
       apply(batch.effect, mutations: batch.mutationCount)
     }
-    decodedScalars.removeAll(keepingCapacity: true)
+    decodedScalarCount = 0
     decodedScalarStart = 0
   }
   /// Decodes consecutive well-formed multi-byte scalars that lie wholly inside
@@ -272,40 +283,54 @@ private final class TerminalEmulator {
   /// malformed sequence, or a scalar cut off by the end of the buffer.
   private func decodeUTF8Run(_ bytes: UnsafePointer<UInt8>, offset: Int, limit: Int) -> Int {
     @inline(__always) func continuation(_ byte: UInt8) -> Bool { byte & 0xc0 == 0x80 }
-    var index = offset
-    while index < limit {
+    /// The scalar encoded at `index` and its length, or nil where the run ends.
+    @inline(__always) func scalar(at index: Int) -> (value: UInt32, length: Int)? {
       let lead = bytes[index]
-      let value: UInt32
-      let length: Int
       if lead < 0xc2 {
-        break
+        return nil
       } else if lead < 0xe0 {
-        guard index + 1 < limit, continuation(bytes[index + 1]) else { break }
-        value = UInt32(lead & 0x1f) << 6 | UInt32(bytes[index + 1] & 0x3f)
-        length = 2
+        guard index + 1 < limit, continuation(bytes[index + 1]) else { return nil }
+        return (UInt32(lead & 0x1f) << 6 | UInt32(bytes[index + 1] & 0x3f), 2)
       } else if lead < 0xf0 {
-        guard index + 2 < limit else { break }
+        guard index + 2 < limit else { return nil }
         let second = bytes[index + 1], third = bytes[index + 2]
         // E0 excludes overlong forms; ED excludes surrogates.
         guard continuation(second), continuation(third),
-              lead != 0xe0 || second >= 0xa0, lead != 0xed || second <= 0x9f else { break }
-        value = UInt32(lead & 0x0f) << 12 | UInt32(second & 0x3f) << 6 | UInt32(third & 0x3f)
-        length = 3
+              lead != 0xe0 || second >= 0xa0, lead != 0xed || second <= 0x9f else { return nil }
+        return (UInt32(lead & 0x0f) << 12 | UInt32(second & 0x3f) << 6 | UInt32(third & 0x3f), 3)
       } else if lead <= 0xf4 {
-        guard index + 3 < limit else { break }
+        guard index + 3 < limit else { return nil }
         let second = bytes[index + 1], third = bytes[index + 2], fourth = bytes[index + 3]
         // F0 excludes overlong forms; F4 excludes values above U+10FFFF.
         guard continuation(second), continuation(third), continuation(fourth),
-              lead != 0xf0 || second >= 0x90, lead != 0xf4 || second <= 0x8f else { break }
-        value = UInt32(lead & 0x07) << 18 | UInt32(second & 0x3f) << 12
-          | UInt32(third & 0x3f) << 6 | UInt32(fourth & 0x3f)
-        length = 4
-      } else {
-        break
+              lead != 0xf0 || second >= 0x90, lead != 0xf4 || second <= 0x8f else { return nil }
+        return (UInt32(lead & 0x07) << 18 | UInt32(second & 0x3f) << 12
+                  | UInt32(third & 0x3f) << 6 | UInt32(fourth & 0x3f), 4)
       }
-      // The guards above admit exactly the well-formed encodings of a scalar.
-      appendDecoded(Unicode.Scalar(value).unsafelyUnwrapped)
-      index += length
+      return nil
+    }
+    var index = offset
+    var ended = false
+    while !ended {
+      if decodedScalarCount == decodedScalars.count { growDecodedScalars() }
+      // Each pass stops where pending text reaches the flush threshold, so
+      // the document sees the same batches whatever the run's length.
+      let pending = decodedScalarCount - decodedScalarStart
+      let start = decodedScalarCount
+      var end = start
+      decodedScalars.withUnsafeMutableBufferPointer { buffer in
+        let stop = pending < Self.decodedFlushCount
+          ? min(buffer.count, start + Self.decodedFlushCount - pending) : buffer.count
+        while end < stop {
+          guard index < limit, let next = scalar(at: index) else { ended = true; break }
+          // The guards above admit exactly the well-formed encodings of a scalar.
+          buffer[end] = Unicode.Scalar(next.value).unsafelyUnwrapped
+          end += 1
+          index += next.length
+        }
+      }
+      decodedScalarCount = end
+      if end - decodedScalarStart == Self.decodedFlushCount { flushDecodedScalars() }
     }
     return index - offset
   }
@@ -318,7 +343,7 @@ private final class TerminalEmulator {
     var end = offset + 1
     while end < limit, bytes[end] &- 0x20 < 0x5f { end += 1 }
     let count = end - offset
-    if count < Self.minimumDirectASCIIRun, decodedScalarStart < decodedScalars.count {
+    if count < Self.minimumDirectASCIIRun, decodedScalarStart < decodedScalarCount {
       for index in offset..<end { appendDecoded(Unicode.Scalar(bytes[index])) }
       return count
     }
