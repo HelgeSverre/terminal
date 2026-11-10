@@ -56,6 +56,30 @@ physical slot layout differs from Rust's former 16-byte cell. Historical
 retention charges remain a compatibility contract and must not be presented as
 the actual allocation size or a complete process-memory budget.
 
+## Text path and release flags
+
+The v0.2.4 emulator alone, fed without a PTY or window, was slower than
+Ghostty's whole app on every workload, so the text path was rebuilt rather than
+tuned. The [measurements](../reports/direct-text-path-2026-11-10/README.md)
+record the before and after.
+
+Cells shrank from 24 to 8 bytes by moving the style into a per-row table. The
+table is row-local on purpose: a row stays a self-contained value for
+snapshots, history and reflow, and no style needs a lifetime beyond its row.
+Reflow admission still charges the earlier 24-byte cell and 80-byte row, and
+history reports the capacity its identity dictionary would have had, so no
+existing budget decision moved.
+
+Release builds pass `-enforce-exclusivity=unchecked`. The dynamic checks cost
+a quarter to a third of parser throughput once the rest was fast, because every
+access to the emulator's stored properties paid one. Development and test
+builds keep them, so a violation still traps where the tests can see it.
+
+The reader waits up to 10 µs for a PTY refill before delivering a read. That
+adds about 0.01 ms to an idle echo and removes one owner wake-up per kilobyte
+under load. A pause after every read raised a read-and-discard loop from 230 to
+300 MiB/s but did nothing measurable in the app, and was not kept.
+
 ## Launch
 
 `openpty` plus `posix_spawn` starts a small C launcher. Only intended descriptors

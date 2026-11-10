@@ -1,0 +1,139 @@
+{
+  "anchored_snapshots" : 0,
+  "checks" : {
+    "all_pty_bytes_parsed" : true,
+    "child_exit_success" : true,
+    "complete_file" : true,
+    "history_within_64_mib" : true,
+    "not_timed_out" : true
+  },
+  "current_physical_footprint_bytes" : 78465856,
+  "exit_status" : "Process exited (status 0); draining output",
+  "final" : true,
+  "main_queue_delay" : {
+    "max_ms" : 5.3552090000000003,
+    "p50_ms" : 1.215625,
+    "p95_ms" : 4.8399999999999999,
+    "p99_ms" : 5.0387079999999997,
+    "samples" : 429
+  },
+  "note" : "Actual \/bin\/cat of a local SQL dump with opt-in smooth programmatic window motion. Report contains no SQL content. PTY wire bytes can exceed file bytes because normal terminal output processing expands LF to CRLF. Timings are a development stress run, not an isolated comparison benchmark.",
+  "passed" : true,
+  "peak_physical_footprint_bytes" : 84659008,
+  "renderer" : {
+    "attachment" : "BGRA8Unorm_sRGB",
+    "command_errors" : 0,
+    "completed_submissions" : 2,
+    "dropped_quad_buffers" : 0,
+    "dropped_stale_frames" : 2617,
+    "exact_glyph_fallbacks" : 0,
+    "font" : "Obel Mono",
+    "glyph_atlas" : "premultiplied linear RGBA8Unorm",
+    "glyph_residency" : {
+      "capacity_waiting" : false,
+      "denied_allocations" : 0,
+      "direct_bytes" : 0,
+      "pending_jobs" : 0,
+      "queued_uploads" : 0,
+      "quiescent" : true,
+      "reservations" : 0,
+      "resident_bytes" : 17989632
+    },
+    "gpu_command_ms" : [
+      0.96408333774888888,
+      0.14200000441633165
+    ],
+    "last_completed_glyph_revision" : 8529554,
+    "last_completed_substitutes" : 0,
+    "mismatched_drawables" : 2617,
+    "mismatched_presents" : 0,
+    "oversized_glyph_fallbacks" : 0,
+    "peak_atlas_pages" : 1,
+    "peak_glyph_fallback_bytes" : 0,
+    "peak_glyph_fallback_count" : 0,
+    "preparation_ms" : [
+      2.2863329999999999,
+      2.9121250000000001
+    ],
+    "submissions" : 2,
+    "substitute_glyph_fallbacks" : 2524,
+    "visible_glyph_drops" : 0
+  },
+  "samples" : 44,
+  "semantic_queue_probe_delay" : {
+    "max_ms" : 11.323584,
+    "p50_ms" : 0.036415999999999997,
+    "p95_ms" : 3.914625,
+    "p99_ms" : 11.061334,
+    "samples" : 44
+  },
+  "session" : {
+    "bytes_parsed" : 8183995220,
+    "bytes_read" : 8183995220,
+    "child_pid" : 95796,
+    "child_reaped" : true,
+    "history_bytes" : 61989995,
+    "parsed_mib_per_second" : 178.53269889867525,
+    "parser_ended" : true,
+    "queued_output_bytes" : 0,
+    "read_ended" : true,
+    "stream_seconds" : 43.716731416999998
+  },
+  "snapshot_updates" : 4456,
+  "source_file_bytes" : 8162501113,
+  "viewport" : {
+    "alternate" : false,
+    "clamp_revision" : 1,
+    "columns" : 94,
+    "following_tail" : true,
+    "geometry_epoch" : 377,
+    "history_rows" : 10000,
+    "rows" : 27,
+    "scroll_offset" : 0
+  },
+  "wall_seconds" : 43.711542416999997,
+  "window_motion" : {
+    "applied_frame_bounds" : {
+      "max_height" : 782,
+      "max_width" : 1081,
+      "max_x" : 2947,
+      "max_y" : 608,
+      "min_height" : 567,
+      "min_width" : 752,
+      "min_x" : 1936,
+      "min_y" : 161
+    },
+    "duration_seconds" : 43.709271792000003,
+    "note" : "Programmatic NSWindow.setFrame trajectory only. This report does not demonstrate physical pointer dragging or compositor presentation.",
+    "observed_window_frame" : {
+      "height" : 632,
+      "width" : 858,
+      "x" : 2865,
+      "y" : 425
+    },
+    "requested_frame_bounds" : {
+      "max_height" : 781.83980315297526,
+      "max_width" : 1080.8799054095523,
+      "max_x" : 2947.6179044304172,
+      "max_y" : 608.8399740462047,
+      "min_height" : 566.16000520572413,
+      "min_width" : 751.120349692167,
+      "min_x" : 1936.9116603072139,
+      "min_y" : 161.09747426346962
+    },
+    "restored_window_frame" : {
+      "height" : 674,
+      "width" : 916,
+      "x" : 2380,
+      "y" : 384
+    },
+    "stopped_reason" : "cat_finished",
+    "target_hz" : 60,
+    "tick_count" : 2623,
+    "tick_lateness_milliseconds" : {
+      "average" : 1.3432939710255445,
+      "count" : 2623,
+      "maximum" : 18.649367000000002
+    }
+  }
+}

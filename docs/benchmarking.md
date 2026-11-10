@@ -1,7 +1,12 @@
 # Performance measurements
 
-The [three-app comparison](../reports/terminal-comparison-2026-11-10/README.md)
-measures the Swift shared-reader build, Ghostty and Kitty with ten samples per
+The [direct text path report](../reports/direct-text-path-2026-11-10/README.md)
+is the current standing: three-app, paired against v0.2.4, headless, SQL stress
+and input latency. It also holds the headless benchmark, the differential
+fuzzer and the PTY-ceiling probes used to get there.
+
+The earlier [three-app comparison](../reports/terminal-comparison-2026-11-10/README.md)
+measures the v0.2.4 shared-reader build, Ghostty and Kitty with ten samples per
 workload in two reversed launch orders. Run it with the reference apps installed:
 
 ```shell

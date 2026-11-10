@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "app": "/private/tmp/claude-501/-Users-helge-code-terminal/4ad0ab98-76a1-45d0-ad73-7f79aa0abd7a/scratchpad/apps/Final.app",
+  "source_name": "reflow-latest-9.sql",
+  "window_motion_requested": true,
+  "source_bytes": 8162501113,
+  "source_identity": [
+    16777232,
+    732076605,
+    8162501113,
+    1792592227,
+    931268800
+  ],
+  "executable_sha256": "bf6d5bb2804276f6a8a44d2b0623b586cfc2479c49f44718522682c5b6c1917d",
+  "runner_sha256": "85919482c07323c5eb48edefb556a1f81469eb93a0d7d5f676c3f827e68c6055",
+  "scope": "Full local file through /bin/cat, primary history and scheduled live resize probes; no file contents recorded.",
+  "pid": 95779,
+  "exit_status": 0,
+  "natural_exit": true,
+  "cleanup_survivors": []
+}

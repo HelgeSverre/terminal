@@ -15,6 +15,14 @@ owner submissions; terminal state stays on the session queue.
 `TerminalDocument` owns retained text, history, and reflow. Immutable
 `TerminalSnapshot` values cross into the AppKit view.
 
+Printable ASCII goes from the feed buffer straight into row cells, and a
+complete `ESC [ … m` is parsed in place; everything else takes the streaming
+parser. Decoded text is printed as runs of fresh one- and two-cell scalars, with
+a whole multi-scalar cluster extended in one step. A row cell is eight bytes: a
+scalar, an index into the row's own style table, and flags. Text of more than
+one scalar and hyperlinks live in a sparse per-row payload dictionary, and a
+cell flag records whether a cell has an entry there.
+
 The canvas handles keyboard, IME, paste, mouse input, and selection. It derives
 its accessibility projection from the delivered snapshot and requests rendering
 for its pane surface. Accessibility exposes text and ranges through a bounded,
@@ -24,8 +32,12 @@ interfaces.
 
 ## PTY transport
 
-The read broker batches immediately available output without waiting for a
-target size. A control submission seals the preceding output batch. The broker
+The kernel returns at most about a kilobyte per PTY read. The read endpoint
+gathers consecutive reads into one slab, waiting up to 10 µs for the child to
+refill the queue, so the owner is woken once per slab rather than once per
+kilobyte. The read runs outside the broker's admission lock; a separate read
+lock makes close wait for the read in flight. A control submission seals the
+preceding output batch. The broker
 holds byte credit until the parser consumes those bytes, and node credit until
 all resumable work for that record finishes. The owner queue keeps one immutable
 record per delivery, including a fully consumed record with pending REP work.
