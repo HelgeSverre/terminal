@@ -435,13 +435,17 @@ enum ReleasePublisher {
       return (version, url, sha)
     }
 
+    /// The cask with its version, URL and checksum replaced and the livecheck
+    /// block rewritten. A field's indentation is matched without newlines, so
+    /// that the match starts on the field's own line and blank lines before it stay.
     func replacedCask(_ text: String, _ metadata: Metadata, _ zip: Asset) throws -> String {
       let s = LinePattern.space
+      let indent = "[ \\t]*"
       var updated = text
       let fields = [
-        (LinePattern("^\(s)*version\(s)+\"[^\"]+\""), "  version \"\(metadata.version)\""),
-        (LinePattern("^\(s)*url\(s)+\"[^\"]+\""), "  url \"\(releaseURL(metadata, zip))\""),
-        (LinePattern("^\(s)*sha256\(s)+\"[0-9a-f]{64}\"", ignoringCase: true), "  sha256 \"\(zip.sha256)\""),
+        (LinePattern("^\(indent)version\(s)+\"[^\"]+\""), "  version \"\(metadata.version)\""),
+        (LinePattern("^\(indent)url\(s)+\"[^\"]+\""), "  url \"\(releaseURL(metadata, zip))\""),
+        (LinePattern("^\(indent)sha256\(s)+\"[0-9a-f]{64}\"", ignoringCase: true), "  sha256 \"\(zip.sha256)\""),
       ]
       for (pattern, replacement) in fields {
         updated = pattern.replacingFirst(in: updated, with: replacement) ?? updated
@@ -555,8 +559,10 @@ enum ReleasePublisher {
       return try runner(command, ["GH_TOKEN": token])
     }
 
+    /// The first of the two variables that has a value. An empty one counts
+    /// as unset, as it does for `gh`.
     private func gitHubEnvironment() throws -> [String: String] {
-      guard let token = environment["GITHUB_TOKEN"] ?? environment["GH_TOKEN"], !token.isEmpty else {
+      guard let token = ["GITHUB_TOKEN", "GH_TOKEN"].compactMap({ environment[$0] }).first(where: { !$0.isEmpty }) else {
         throw Failure("GITHUB_TOKEN or GH_TOKEN is required for GitHub commands")
       }
       return ["GH_TOKEN": token]
@@ -968,6 +974,40 @@ enum ReleasePublisher {
           try fixture.publisher(withoutTap).publish(metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory)
         }.message
         try expect(message == "TAP_GITHUB_TOKEN is required to update the Homebrew tap", "got: \(message)")
+      }
+    },
+    SelfTest.Case(name: "release publisher: an empty GITHUB_TOKEN does not hide GH_TOKEN") {
+      try withFixture { fixture in
+        try fixture.prepareRelease()
+        var environment = fixture.publishingEnvironment
+        environment["GITHUB_TOKEN"] = ""
+        environment["GH_TOKEN"] = "fallback-token"
+        try fixture.publisher(environment).publish(metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory)
+        let releaseCalls = fixture.gitHub.calls.filter { $0.command.starts(with: ["gh", "release"]) }
+        try expect(!releaseCalls.isEmpty && releaseCalls.allSatisfy { $0.environment == ["GH_TOKEN": "fallback-token"] },
+                   "release commands get the token that is set")
+
+        environment["GH_TOKEN"] = ""
+        let message = try expectFailure("two empty tokens") {
+          try fixture.publisher(environment).publish(metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory)
+        }.message
+        try expect(message == "GITHUB_TOKEN or GH_TOKEN is required for GitHub commands", "got: \(message)")
+      }
+    },
+    SelfTest.Case(name: "release publisher: the cask rewrite changes only the three fields' own lines") {
+      try withFixture { fixture in
+        try fixture.prepareRelease()
+        let zip = try Asset(path: fixture.zip)
+        let metadata = Metadata(version: "1.2.3", tag: "v1.2.3", sourceSHA: sha, publish: true)
+        let old = String(repeating: "1", count: 64)
+        let livecheck = "  livecheck do\n    url \"https://example.invalid\"\n  end\nend\n"
+        let cask = "cask \"helge-terminal\" do\n\n\n  version \"0.2.2\"\n\n  sha256 \"\(old)\"\n\t\n"
+          + "\turl \"https://example.invalid/old.zip\"\n\n" + livecheck
+        let rewritten = try fixture.publishing.replacedCask(cask, metadata, zip)
+        let expected = "cask \"helge-terminal\" do\n\n\n  version \"1.2.3\"\n\n  sha256 \"\(zip.sha256)\"\n\t\n"
+          + "  url \"https://github.com/HelgeSverre/terminal/releases/download/v1.2.3/\(zip.name)\"\n\n"
+        try expect(rewritten.hasPrefix(expected), "got: \(rewritten.debugDescription)")
+        try expect(rewritten.hasSuffix("    strategy :github_releases\n  end\nend\n"), "the livecheck block is replaced")
       }
     },
     SelfTest.Case(name: "release publisher: options take a separate or an attached value") {

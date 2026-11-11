@@ -145,7 +145,7 @@ enum ReleaseSigning {
           // explicit cleanup if restoring the search list failed.
           try? cleanup()
         } else {
-          if let state = try? statePath() { try? FileManager.default.removeItem(atPath: state) }
+          // No state file here is this run's: a failed write removes its own.
           try? FileManager.default.removeItem(atPath: workDirectory)
         }
         throw error
@@ -164,8 +164,12 @@ enum ReleaseSigning {
         if FileManager.default.fileExists(atPath: state.keychain) { failed = true }
       }
 
-      try? FileManager.default.removeItem(atPath: state.workDirectory)
+      do { try FileManager.default.removeItem(atPath: state.workDirectory) } catch {
+        // An earlier interrupted cleanup may already have removed it.
+        if FileManager.default.fileExists(atPath: state.workDirectory) { failed = true }
+      }
 
+      // The state stays after a failure, so that cleanup can be run again.
       guard !failed else { throw Failure("release signing cleanup failed") }
       try? FileManager.default.removeItem(atPath: try statePath())
     }
@@ -217,7 +221,8 @@ enum ReleaseSigning {
 
     /// The recorded state, or nil when no setup is outstanding. A state that
     /// does not describe a directory this tool made under `RUNNER_TEMP` is
-    /// refused, so cleanup can never be pointed at another path.
+    /// refused, so cleanup can never be pointed at another path. So is one
+    /// without a search list: restoring it would leave the user with no keychains.
     private func readState() throws -> State? {
       let path = try statePath()
       guard FileManager.default.fileExists(atPath: path) else { return nil }
@@ -229,7 +234,7 @@ enum ReleaseSigning {
             let searchList = object["search_list"] as? [String] else { throw invalid }
       guard lexicalPath(workDirectory).hasPrefix(try runnerTemp() + "/"),
             lastComponent(workDirectory).hasPrefix("terminal-signing-"),
-            keychain == joined(workDirectory, "signing.keychain-db") else { throw invalid }
+            keychain == joined(workDirectory, "signing.keychain-db"), !searchList.isEmpty else { throw invalid }
       return State(workDirectory: workDirectory, keychain: keychain, searchList: searchList)
     }
 
@@ -240,22 +245,21 @@ enum ReleaseSigning {
     }
 
     /// The file never exists with the default, possibly group-readable, mode,
-    /// and `O_EXCL` refuses a path this run did not make.
-    private func writePrivateFile(_ path: String, _ contents: Data) throws {
+    /// and `O_EXCL` refuses a path this run did not make. Such a path is left
+    /// as it was; only a file this call created is removed when writing it fails.
+    func writePrivateFile(_ path: String, _ contents: Data) throws {
       let descriptor = open(path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
-      var written = descriptor >= 0
-      if written {
-        written = contents.withUnsafeBytes { buffer -> Bool in
-          var offset = 0
-          while offset < buffer.count {
-            let count = write(descriptor, buffer.baseAddress! + offset, buffer.count - offset)
-            if count <= 0 { return false }
-            offset += count
-          }
-          return true
+      guard descriptor >= 0 else { throw Failure("cannot write \(lastComponent(path))") }
+      var written = contents.withUnsafeBytes { buffer -> Bool in
+        var offset = 0
+        while offset < buffer.count {
+          let count = write(descriptor, buffer.baseAddress! + offset, buffer.count - offset)
+          if count <= 0 { return false }
+          offset += count
         }
-        written = close(descriptor) == 0 && written
+        return true
       }
+      written = close(descriptor) == 0 && written
       guard written else {
         try? FileManager.default.removeItem(atPath: path)
         throw Failure("cannot write \(lastComponent(path))")
@@ -371,7 +375,7 @@ enum ReleaseSigning {
     var commands: [[String]] = []
     var failOn: (([String]) -> Bool)?
     var onRun: (([String]) throws -> Void)?
-    let searchList = ["/tmp/login.keychain-db"]
+    var searchList = ["/tmp/login.keychain-db"]
 
     var runner: Runner {
       Runner(
@@ -382,6 +386,7 @@ enum ReleaseSigning {
         },
         output: { command in
           self.commands.append(command)
+          try self.onRun?(command)
           try self.failIfNeeded(command)
           guard command.dropFirst().first == "list-keychains" else { return "" }
           return self.searchList.map { "\"\($0)\"" }.joined(separator: "\n") + "\n"
@@ -433,7 +438,8 @@ enum ReleaseSigning {
 
     func state() throws -> [String: Any] { try readJSONObject(statePath) }
     var signingDirectories: [String] {
-      ((try? FileManager.default.contentsOfDirectory(atPath: temp)) ?? []).filter { $0.hasPrefix("terminal-signing-") }
+      ((try? FileManager.default.contentsOfDirectory(atPath: temp)) ?? [])
+        .filter { $0.hasPrefix("terminal-signing-") && $0 != stateName }
     }
   }
 
@@ -570,11 +576,72 @@ enum ReleaseSigning {
                                                     "/tmp/login.keychain-db"], "search list is restored")
       }
     },
+    SelfTest.Case(name: "release signing: an empty keychain search list is refused at setup and at cleanup") {
+      try withFixture { fixture in
+        fixture.runner.searchList = []
+        let message = try expectFailure("an empty search list") { try fixture.session.setup() }.message
+        try expect(message == "security keychain search list is empty", "got: \(message)")
+        try expect(!FileManager.default.fileExists(atPath: fixture.statePath), "no state is written")
+        try expect(fixture.runner.restores.isEmpty, "the search list is not set")
+
+        let directory = fixture.temp + "/terminal-signing-x"
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: false)
+        try "{\"work_dir\":\"\(directory)\",\"keychain\":\"\(directory)/signing.keychain-db\",\"search_list\":[]}"
+          .write(toFile: fixture.statePath, atomically: true, encoding: .utf8)
+        fixture.runner.commands = []
+        let refused = try expectFailure("a state without a search list") { try fixture.session.cleanup() }.message
+        try expect(refused == "release signing state is invalid", "got: \(refused)")
+        try expect(fixture.runner.commands.isEmpty, "no command ran: \(fixture.runner.commands)")
+        try expect(FileManager.default.fileExists(atPath: directory), "the work directory is left alone")
+      }
+    },
+    SelfTest.Case(name: "release signing: cleanup fails and retains state when the work directory cannot be removed") {
+      try withFixture { fixture in
+        try fixture.session.setup()
+        let workDirectory = try fixture.state()["work_dir"] as? String ?? ""
+        try Data().write(to: URL(fileURLWithPath: workDirectory + "/held"))
+        // Nothing can be unlinked from a directory that cannot be written.
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: workDirectory)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: workDirectory) }
+        let message = try expectFailure("a work directory that stays") { try fixture.session.cleanup() }.message
+        try expect(message == "release signing cleanup failed", "got: \(message)")
+        try expect(FileManager.default.fileExists(atPath: fixture.statePath), "state is kept")
+        try expect(FileManager.default.fileExists(atPath: workDirectory), "the work directory is still there")
+
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: workDirectory)
+        try fixture.session.cleanup()
+        try expect(!FileManager.default.fileExists(atPath: workDirectory), "the work directory is removed")
+        try expect(!FileManager.default.fileExists(atPath: fixture.statePath), "state is removed")
+      }
+    },
+    SelfTest.Case(name: "release signing: a private file that already exists is refused and left alone") {
+      try withFixture { fixture in
+        let path = fixture.temp + "/existing"
+        try "earlier".write(toFile: path, atomically: true, encoding: .utf8)
+        let message = try expectFailure("an existing file") {
+          try fixture.session.writePrivateFile(path, Data("new".utf8))
+        }.message
+        try expect(message == "cannot write existing", "got: \(message)")
+        try expect(FileManager.default.contents(atPath: path) == Data("earlier".utf8), "the file is untouched")
+
+        // A state file that appears after setup looked for one belongs to another run.
+        fixture.runner.onRun = { command in
+          guard command == ["security", "list-keychains", "-d", "user"] else { return }
+          try "another run".write(toFile: fixture.statePath, atomically: true, encoding: .utf8)
+        }
+        try expectFailure("a state file from another run") { try fixture.session.setup() }
+        try expect(FileManager.default.contents(atPath: fixture.statePath) == Data("another run".utf8),
+                   "the other run's state is untouched")
+        try expect(fixture.signingDirectories.isEmpty, "the work directory is removed")
+        try expect(fixture.lines.isEmpty, "nothing is emitted")
+      }
+    },
     SelfTest.Case(name: "release signing: cleanup refuses a state file that points outside RUNNER_TEMP") {
       try withFixture { fixture in
-        let outside = "{\"work_dir\":\"/tmp/terminal-signing-x\",\"keychain\":\"/tmp/terminal-signing-x/signing.keychain-db\",\"search_list\":[]}"
-        let escaping = "{\"work_dir\":\"\(fixture.temp)/terminal-signing-x/../..\",\"keychain\":\"\(fixture.temp)/terminal-signing-x/../../signing.keychain-db\",\"search_list\":[]}"
-        let renamed = "{\"work_dir\":\"\(fixture.temp)/other\",\"keychain\":\"\(fixture.temp)/other/signing.keychain-db\",\"search_list\":[]}"
+        let list = "[\"/tmp/login.keychain-db\"]"
+        let outside = "{\"work_dir\":\"/tmp/terminal-signing-x\",\"keychain\":\"/tmp/terminal-signing-x/signing.keychain-db\",\"search_list\":\(list)}"
+        let escaping = "{\"work_dir\":\"\(fixture.temp)/terminal-signing-x/../..\",\"keychain\":\"\(fixture.temp)/terminal-signing-x/../../signing.keychain-db\",\"search_list\":\(list)}"
+        let renamed = "{\"work_dir\":\"\(fixture.temp)/other\",\"keychain\":\"\(fixture.temp)/other/signing.keychain-db\",\"search_list\":\(list)}"
         for text in [outside, escaping, renamed, "not json"] {
           try text.write(toFile: fixture.statePath, atomically: true, encoding: .utf8)
           let message = try expectFailure("a foreign state file") { try fixture.session.cleanup() }.message
