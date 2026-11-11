@@ -331,6 +331,25 @@ import AppKit
     ]
   }
 
+  /// Why the run never started: what each pane showed when time ran out.
+  /// The fixture's prompt and buffer are synthetic, so the lines can be kept.
+  private func baselineDiagnosis() -> [String: Any] {
+    let panes: [[String: Any]] = controller.panes.map { pane in
+      guard let snapshot = latest[ObjectIdentifier(pane)] else { return ["snapshot": false] }
+      return [
+        "columns": snapshot.cols, "rows": snapshot.rows.count,
+        "area": Double(pane.bounds.width * pane.bounds.height),
+        "prompt_markers": markerOccurrences(promptMarker, in: snapshot),
+        "right_prompt_markers": markerOccurrences(rightPromptMarker, in: snapshot),
+        "buffer_present": contains(bufferMarker, in: snapshot),
+        "cursor_immediately_after_buffer": cursorImmediatelyFollowsBuffer(snapshot),
+        "cursor": [snapshot.cursor.row, snapshot.cursor.col],
+        "lines": logicalLines(snapshot).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty },
+      ]
+    }
+    return ["pane_count": controller.panes.count, "layout_created": layoutCreated, "panes": panes]
+  }
+
   private func finish(timedOut: Bool) {
     guard !finished else { return }
     finished = true
@@ -352,6 +371,7 @@ import AppKit
       "divider_range_points": dividerRange,
       "phases": phaseReports,
       "final_target": finalTargetMetrics ?? [:],
+      "unsettled_baseline": baselineCaptured ? [:] : baselineDiagnosis(),
       "note": "Synthetic Starship fixture only; report contains counts and geometry, never user shell data.",
     ]
     do {
