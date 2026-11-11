@@ -1,0 +1,127 @@
+{
+  "app" : "\/Users\/helge\/.cache\/terminal-perf\/apps\/Main.app",
+  "load_after" : [
+    3.6400000000000001,
+    3.98,
+    3.6299999999999999
+  ],
+  "load_before" : [
+    4.5999999999999996,
+    4.1600000000000001,
+    3.6400000000000001
+  ],
+  "method" : "fresh instance with its default shell, idle 1.5 s, then a quit request (NSRunningApplication.terminate)",
+  "rounds" : 5,
+  "samples" : {
+    "apple_terminal" : [
+      {
+        "process_gone_ms" : 111.017792,
+        "window_gone_ms" : 108.320334
+      },
+      {
+        "process_gone_ms" : 115.937209,
+        "window_gone_ms" : 113.128
+      },
+      {
+        "process_gone_ms" : 108.601041,
+        "window_gone_ms" : 105.50262499999999
+      },
+      {
+        "process_gone_ms" : 114.833125,
+        "window_gone_ms" : 113.80820799999999
+      },
+      {
+        "process_gone_ms" : 115.28162500000001,
+        "window_gone_ms" : 114.295
+      }
+    ],
+    "ghostty" : [
+      {
+        "process_gone_ms" : 7.0096249999999998,
+        "window_gone_ms" : 5.9589590000000001
+      },
+      {
+        "process_gone_ms" : 6.612209,
+        "window_gone_ms" : 5.4832090000000004
+      },
+      {
+        "process_gone_ms" : 6.9956670000000001,
+        "window_gone_ms" : 5.9319170000000003
+      },
+      {
+        "process_gone_ms" : 6.8968749999999996,
+        "window_gone_ms" : 5.8591249999999997
+      },
+      {
+        "process_gone_ms" : 6.8580839999999998,
+        "window_gone_ms" : 5.7890839999999999
+      }
+    ],
+    "iterm2" : [
+      {
+
+      },
+      {
+
+      },
+      {
+
+      },
+      {
+
+      },
+      {
+
+      }
+    ],
+    "kitty" : [
+      {
+        "process_gone_ms" : 40.414417,
+        "window_gone_ms" : 37.193292
+      },
+      {
+        "process_gone_ms" : 39.487457999999997,
+        "window_gone_ms" : 37.172541000000002
+      },
+      {
+        "process_gone_ms" : 40.513375000000003,
+        "window_gone_ms" : 38.351959000000001
+      },
+      {
+        "process_gone_ms" : 38.018084000000002,
+        "window_gone_ms" : 35.882375000000003
+      },
+      {
+        "process_gone_ms" : 37.903416999999997,
+        "window_gone_ms" : 35.742291999999999
+      }
+    ],
+    "terminal" : [
+      {
+        "process_gone_ms" : 49.543917,
+        "window_gone_ms" : 47.444749999999999
+      },
+      {
+        "process_gone_ms" : 16.490082999999998,
+        "window_gone_ms" : 14.41625
+      },
+      {
+        "process_gone_ms" : 17.532916,
+        "window_gone_ms" : 16.917957999999999
+      },
+      {
+        "process_gone_ms" : 19.502958,
+        "window_gone_ms" : 17.404667
+      },
+      {
+        "process_gone_ms" : 16.874041999999999,
+        "window_gone_ms" : 16.260292
+      }
+    ]
+  },
+  "skipped" : {
+
+  },
+  "system" : "Version 15.6 (Build 24G84)",
+  "unit" : "milliseconds after the quit request"
+}

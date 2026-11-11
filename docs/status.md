@@ -148,17 +148,17 @@ Implemented and locally exercised:
 
 Current automated evidence:
 
-- Whole-app throughput is 226 / 254 / 208 / 139 MiB/s on short ASCII, long
-  ASCII, truecolor and mixed Unicode, against Ghostty's 268 / 297 / 201 / 185
-  in the same run: 84%, 86%, 103% and 75%. ASCII is limited by the PTY reader
+- Whole-app throughput is 219 / 252 / 201 / 142 MiB/s on short ASCII, long
+  ASCII, truecolor and mixed Unicode, against Ghostty's 280 / 288 / 201 / 186
+  in the same run: 78%, 87%, 100% and 76%. ASCII is limited by the PTY reader
   and mixed Unicode by multi-scalar clusters; neither gap is closed. See the
-  [report](../reports/unicode-clusters-2026-11-10/README.md). The earlier
+  [0.3.0 measurements](../reports/release-0.3.0-2026-11-11/README.md) and the
+  [cluster and reader report](../reports/unicode-clusters-2026-11-10/README.md). The earlier
   [direct text path report](../reports/direct-text-path-2026-11-10/README.md)
   has the comparison against v0.2.4 and the SQL motion stress (150 s to 44 s).
-- A warm launch shows its window in about 133 ms and has the child command
-  running after 26 ms; a quit removes the process and its Dock icon in about
-  46 ms, down from 3 s. Ghostty: 186 ms, 150 ms and 12 ms. See the
-  [startup and shutdown report](../reports/startup-shutdown-2026-11-10/README.md).
+- A warm launch shows its window in about 111 ms; a quit removes the process
+  and its Dock icon in about 18 ms, down from 3 s. Ghostty: 171 ms and 7 ms.
+  See the [0.3.0 measurements](../reports/release-0.3.0-2026-11-11/README.md).
 - Session recovery after a crash or hard reset is planned, not built: see the
   [plan](session-recovery-plan.md).
 

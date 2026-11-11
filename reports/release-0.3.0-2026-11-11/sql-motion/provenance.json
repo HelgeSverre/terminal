@@ -1,0 +1,21 @@
+{
+  "app": "/Users/helge/.cache/terminal-perf/apps/Main.app",
+  "cleanup_survivors": [],
+  "executable_sha256": "d68acb0fd206b2ac7c4070ee33110f24e8e8dbc79bc509006519972043a6b7d2",
+  "exit_status": 0,
+  "natural_exit": true,
+  "passed": true,
+  "pid": 5061,
+  "runner_sha256": "0bec10e29e1dd8d8d83390de723cfe48e4f7e86fcac67bfc0b63a7d1d19a48a8",
+  "scope": "Full local file through /bin/cat, primary history and scheduled live resize probes; no file contents recorded.",
+  "source_bytes": 8162501113,
+  "source_identity": [
+    16777234,
+    732076605,
+    8162501113,
+    1792592227,
+    931268800
+  ],
+  "source_name": "reflow-latest-9.sql",
+  "window_motion_requested": true
+}

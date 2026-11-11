@@ -1,5 +1,10 @@
 # Startup and shutdown time
 
+> Superseded by the [0.3.0 measurements](../release-0.3.0-2026-11-11/README.md).
+> The 26 ms "child command running" figure below was for an `--execute`
+> command, which is no longer started before the first window; only the login
+> shell is.
+
 Measured on an Apple M2 Max, macOS 15.6, on AC power, at a one-minute load
 average of 2.4–6.9 with the desktop in use. "Before" is `38b87ad`, the build
 before this work; "after" is `909f15b`. References are Ghostty 1.4.0, Kitty
