@@ -113,3 +113,20 @@ first two footprints as MiB; they are megabytes of 10⁶ bytes.
 
 Cold start, display smoothness, input-to-photon latency, and the login-shell
 start time.
+
+## Control sequences with a private marker
+
+`tools/CSIProbe.swift` feeds every CSI final byte, with each private marker
+and each intermediate byte, to the emulator and compares the screen, cursor,
+modes and replies with a terminal that never received the sequence. It builds
+like the differential fuzzer in
+[`../direct-text-path-2026-11-10/tools`](../direct-text-path-2026-11-10/tools).
+
+| Source | Marked or intermediate variants the emulator acted on |
+| --- | ---: |
+| `325b8a1`, before the fix | 1,733 |
+| `27eac7c`, the release | 33 |
+
+The 33 are the combinations the emulator implements: DEC private modes,
+selective erase, the keyboard-flag commands, secondary device attributes,
+soft reset, cursor style, character protection and the private-mode request.
