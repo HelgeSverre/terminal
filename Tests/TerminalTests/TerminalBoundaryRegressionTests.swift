@@ -279,12 +279,14 @@ import Foundation
     }.joined().trimmingCharacters(in: .whitespaces)
   }
   static func csiParameterBudget() throws {
-    let asciiCap = Data(repeating: 0x20, count: 16_384)
+    // The filler is the digit zero: a parameter byte that leaves the value
+    // alone. A space would be an intermediate byte and name another command.
+    let asciiCap = Data(repeating: 0x30, count: 16_384)
     let highCap = Data(repeating: 0x80, count: 8_192)
-    let overshoot = Data(repeating: 0x20, count: 16_383) + Data([0x80])
+    let overshoot = Data(repeating: 0x30, count: 16_383) + Data([0x80])
     let fixtures: [(Data, String)] = [
       (asciiCap, "X Z"), // Final C is accepted at the exact budget.
-      (Data(repeating: 0x20, count: 16_383) + Data("3".utf8), "X   Z"),
+      (Data(repeating: 0x30, count: 16_383) + Data("3".utf8), "X   Z"),
       (asciiCap + Data("1".utf8), "XCZ"), // Overflow consumes 1; C is now printable.
       (highCap, "XZ"), // High bytes charge two and reject the completed packet.
       (highCap + Data("1".utf8), "XCZ"),

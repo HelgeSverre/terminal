@@ -441,12 +441,13 @@ import Foundation
     precondition(cells(snapshot(concatenated), 0)[0]["text"] as? String == "X")
     precondition(cells(snapshot(concatenated), 0)[1]["text"] as? String == "Y")
 
-    // `>` only has its raw-first-field rule for keyboard `u`; ordinary CSI
-    // commands continue to use the legacy flattened parameter stream.
+    // `>` belongs to the keyboard `u` commands and secondary device
+    // attributes. Before any other final byte it names a command this terminal
+    // does not have, so the cursor stays where it is.
     let prefixedMotion = terminal_create(8, 2)!
     defer { terminal_destroy(prefixedMotion) }
     feed(prefixedMotion, "X\u{1b}[>31CY")
-    precondition(cells(snapshot(prefixedMotion), 0)[7]["text"] as? String == "Y")
+    precondition(cells(snapshot(prefixedMotion), 0)[1]["text"] as? String == "Y")
   }
   static func sgrCompatibility() {
     // Expected styles were replayed through archived Rust 9190820's public
@@ -473,6 +474,45 @@ import Foundation
       ("private markers and intermediates before m are not SGR",
         "\u{1b}[?4mA\u{1b}[<1mB\u{1b}[=1mC\u{1b}[1 mD", [style(), style(), style(), style()]),
     ]
+    // A private marker or an intermediate byte names another command. Those
+    // this terminal lacks leave the screen, cursor, margins and replies alone.
+    do {
+      let prepared = "one\r\ntwo\r\nthree\r\nfour\u{1b}[2;3H"
+      func observed(_ sequence: String) -> (rows: [String], replies: String) {
+        let terminal = terminal_create(12, 4)!
+        defer { terminal_destroy(terminal) }
+        feed(terminal, prepared + sequence + "Z")
+        let reply = String(decoding: replies(terminal), as: UTF8.self)
+        guard let snapshot = swiftTerminalSnapshot(terminal, scroll: 0, now: 0).snapshot else {
+          preconditionFailure("missing snapshot for \(sequence.debugDescription)")
+        }
+        return (snapshot.rows.map { $0.cells.map(\.text).joined() }, reply)
+      }
+      let untouched = observed("")
+      let foreign = [
+        "\u{1b}[?1;1;0S", "\u{1b}[?1000r", "\u{1b}[#P", "\u{1b}[>1T", "\u{1b}[2 A", "\u{1b}[1;2$r",
+        "\u{1b}[>0q", "\u{1b}[=c", "\u{1b}[>2A", "\u{1b}[?3@", "\u{1b}[<2L", "\u{1b}[1?J", "\u{1b}[!\"p",
+      ]
+      for sequence in foreign {
+        let result = observed(sequence)
+        precondition(result.rows == untouched.rows && result.replies.isEmpty,
+                     "foreign CSI acted: \(sequence.debugDescription)")
+      }
+      // An ignored command does not touch a pending wrap either: the next
+      // character still starts the next line.
+      let wrapping = terminal_create(4, 2)!
+      defer { terminal_destroy(wrapping) }
+      feed(wrapping, "abcd\u{1b}[>0qe")
+      precondition(cells(snapshot(wrapping), 0)[3]["text"] as? String == "d", "last column kept")
+      precondition(cells(snapshot(wrapping), 1)[0]["text"] as? String == "e", "wrap still pending")
+      // The commands that share those final bytes still work.
+      precondition(observed("\u{1b}[S").rows != untouched.rows, "CSI S scrolls")
+      precondition(observed("\u{1b}[?J").rows != untouched.rows, "DECSED erases")
+      precondition(observed("\u{1b}[c").replies == "\u{1b}[?62;4c", "primary device attributes")
+      precondition(observed("\u{1b}[>c").replies == "\u{1b}[>1;10;0c", "secondary device attributes")
+      precondition(observed("\u{1b}[?u").replies == "\u{1b}[?0u", "keyboard flags query")
+      precondition(observed("\u{1b}[?69$p").replies == "\u{1b}[?69;2$y", "DECRQM for a private mode")
+    }
     for command in [38, 48, 58] {
       for invalid in [256, 4_294_967_295] {
         for parameter in ["\(command);5;\(invalid)", "\(command):5:\(invalid)",

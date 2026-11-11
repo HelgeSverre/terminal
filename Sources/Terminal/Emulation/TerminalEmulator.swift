@@ -814,16 +814,38 @@ private final class TerminalEmulator {
       : nil
     return CSIParameterPacket(values: parameters, keyboardFlags: keyboardFlags, hasColon: hasColon)
   }
+  /// Whether the command with this final byte, and the private marker and
+  /// intermediate byte found in `raw`, is one `handleCSI` carries out.
+  static func implementsCSI(final: UInt8, raw: [UInt8]) -> Bool {
+    let marker = raw.first.flatMap { (0x3c...0x3f).contains($0) ? $0 : nil }
+    let intermediates = raw.filter { (0x20...0x2f).contains($0) }
+    // A marker anywhere but first, or more than one intermediate, is no
+    // command this terminal knows.
+    guard !raw.dropFirst().contains(where: { (0x3c...0x3f).contains($0) }), intermediates.count <= 1 else { return false }
+    switch (marker, intermediates.first) {
+    case (nil, nil): return true
+    // DECSED and DECSEL, DEC private modes, DSR, the keyboard-flags query.
+    case (0x3f, nil): return [0x4a, 0x4b, 0x68, 0x6c, 0x6e, 0x75].contains(final)
+    // Keyboard flags (set, push, pop); secondary device attributes.
+    case (0x3d, nil), (0x3c, nil): return final == 0x75
+    case (0x3e, nil): return final == 0x75 || final == 0x63
+    // DECSTR, DECSCA, DECSCUSR, DECRQM for a private mode.
+    case (nil, 0x21): return final == 0x70
+    case (nil, 0x22), (nil, 0x20): return final == 0x71
+    case (0x3f, 0x24): return final == 0x70
+    default: return false
+    }
+  }
   private func handleCSI(_ raw: [UInt8], final: UInt8) {
     switch final {
     case 0x6d, 0x6e, 0x63, 0x75: break
     default: resetClusterBoundary()
     }
-    // Only a bare parameter string before `m` is SGR. With a private marker it
-    // is another command: `CSI > Pp ; Pv m` sets xterm's key-modifier options
-    // and `CSI ? Pp m` queries them. Read as SGR, the `> 4 ; 2 m` that
-    // programs send to enable modifyOtherKeys turns on underline and faint.
-    if final == 0x6d, raw.contains(where: { (0x3c...0x3f).contains($0) || (0x20...0x2f).contains($0) }) { return }
+    // A private marker or an intermediate byte makes a different command of
+    // the same final byte. `CSI > 4 ; 2 m` enables xterm's modifyOtherKeys; it
+    // is not SGR 4;2. `CSI ? 1 ; 1 ; 0 S` asks about graphics; it does not
+    // scroll. Combinations this terminal does not implement are ignored.
+    guard Self.implementsCSI(final: final, raw: raw) else { return }
     guard let packet = Self.parseCSIParameters(raw, final: final, into: &csiParameterScratch) else { return }
     // SGR changes the pen only. Preserve the usual semantic revision without
     // copying and writing back an unchanged screen or clearing pending wrap.
@@ -895,6 +917,9 @@ private final class TerminalEmulator {
       }
       else { originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false }
     case 0x6e: clearsPending = false; if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = s.cursorRow + 1 - (originMode ? s.topMargin : 0); let column = s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0); replies.append(contentsOf: "\u{1b}[\(row);\(column)R".utf8) }
+    // Secondary device attributes: a VT220-class terminal, firmware version
+    // 10, no ROM cartridge. Primary attributes otherwise.
+    case 0x63 where first == 0x3e: clearsPending = false; replies.append(contentsOf: "\u{1b}[>1;10;0c".utf8)
     case 0x63: clearsPending = false; replies.append(contentsOf: "\u{1b}[?62;4c".utf8)
     case 0x70 where privateMode && last == 0x24:
       clearsPending = false
