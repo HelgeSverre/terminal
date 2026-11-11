@@ -76,5 +76,9 @@
 	<string>A program running in Helge Terminal wants to administer this computer.</string>
 	<key>OSAScriptingDefinition</key>
 	<string>Terminal.sdef</string>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/HelgeSverre/terminal/releases/latest/download/appcast.xml</string>
 </dict>
 </plist>

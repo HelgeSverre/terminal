@@ -14,19 +14,25 @@ let testHooks: [SwiftSetting] = Context.environment["TERMINAL_TEST_HOOKS"] == ni
 let package = Package(
   name: "Terminal",
   platforms: [.macOS(.v15)],
+  dependencies: [
+    // The updater. Pinned exactly: it installs software on the user's machine.
+    .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1"),
+  ],
   targets: [
     .target(
       name: "TerminalInterop", path: "Sources/Terminal/Interop", publicHeadersPath: ".",
       cSettings: [.unsafeFlags(["-Wall", "-Wextra", "-Werror"])]),
     .executableTarget(
       name: "TerminalApp",
-      dependencies: ["TerminalInterop"],
+      dependencies: ["TerminalInterop", .product(name: "Sparkle", package: "Sparkle")],
       path: "Sources/Terminal",
       exclude: ["Interop"],
       swiftSettings: [
         .swiftLanguageMode(.v5),
         .unsafeFlags(["-import-objc-header", bridgingHeader, "-disable-bridging-pch"]),
-      ] + testHooks),
+      ] + testHooks,
+      // Where the bundle keeps the frameworks it carries.
+      linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]),
     // The helper every PTY child is started through.
     .executableTarget(
       name: "TerminalLauncher", path: "Sources/TerminalLauncher",

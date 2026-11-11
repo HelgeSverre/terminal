@@ -139,6 +139,16 @@ struct Distribution {
     // macOS still asks the user each time; these only make asking possible.
     let entitlements = root.appendingPathComponent("Resources/Terminal/Terminal.entitlements").path
     let signing = ["codesign", "--force", "--options", "runtime", "--timestamp", "--sign", application]
+    // The updater's own programs first, innermost first, as Sparkle documents
+    // for an app that is signed outside Xcode. Its downloader keeps the
+    // entitlements it was built with.
+    let updater = app.appendingPathComponent("Contents/Frameworks/Sparkle.framework")
+    let version = updater.appendingPathComponent("Versions/B")
+    _ = try run(signing + [version.appendingPathComponent("XPCServices/Installer.xpc").path])
+    _ = try run(signing + ["--preserve-metadata=entitlements", version.appendingPathComponent("XPCServices/Downloader.xpc").path])
+    _ = try run(signing + [version.appendingPathComponent("Autoupdate").path])
+    _ = try run(signing + [version.appendingPathComponent("Updater.app").path])
+    _ = try run(signing + [updater.path])
     _ = try run(signing + [app.appendingPathComponent("Contents/MacOS/TerminalLauncher").path])
     _ = try run(signing + ["--entitlements", entitlements, app.path])
     _ = try run(["codesign", "--verify", "--strict", "--deep", app.path])

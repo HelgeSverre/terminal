@@ -32,6 +32,7 @@ enum AppBundle {
     let products = try Console.step("Compile Terminal (\(configuration.rawValue))") {
       try configuration == .development ? compileIncrementally() : compileWholeModule(into: scratch + "/release")
     }
+    let frameworks = app + "/Contents/Frameworks"
     try Console.step("Icon, shader and terminfo") {
       try icon(into: scratch + "/Terminal.icns")
       let intermediate = scratch + "/Terminal.air"
@@ -50,7 +51,9 @@ enum AppBundle {
       try Console.quietly(["/usr/bin/ditto", Repository.path("Resources/Terminal/ShellIntegration"),
                            resources + "/ShellIntegration"])
       try Console.quietly(["/usr/bin/ditto", Repository.path("assets/fonts"), resources + "/Fonts"])
+      try embedUpdater(into: frameworks)
       // Ad hoc: a local build is signed for this machine only.
+      try Console.quietly(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", frameworks + "/Sparkle.framework"])
       try Console.quietly(["/usr/bin/codesign", "--force", "--sign", "-", programs + "/TerminalLauncher"])
       try Console.quietly(["/usr/bin/codesign", "--force", "--sign", "-", app])
     }
@@ -65,7 +68,7 @@ enum AppBundle {
   /// with its test hooks. Returns the directory holding the two programs.
   private static func compileIncrementally() throws -> String {
     let build = ["swift", "build", "--package-path", Repository.root,
-                 "--scratch-path", Repository.path("target/swiftpm/development"), "-c", "debug", "-Xswiftc", "-O"]
+                 "--scratch-path", packageDirectory, "-c", "debug", "-Xswiftc", "-O"]
     let withoutHooks: [String: String?] = ["TERMINAL_TEST_HOOKS": nil]
     for product in ["TerminalApp", "TerminalLauncher"] {
       try Console.quietly(build + ["--product", product], adding: withoutHooks)
@@ -86,6 +89,8 @@ enum AppBundle {
     let sourceRoot = Repository.path("Sources/Terminal")
     guard let found = FileManager.default.enumerator(atPath: sourceRoot) else { throw Failure("cannot list \(sourceRoot)") }
     let sources = found.compactMap { $0 as? String }.filter { $0.hasSuffix(".swift") }.sorted().map { sourceRoot + "/" + $0 }
+    // The package fetches the updater; this build only links against it.
+    try Console.quietly(["swift", "package", "--package-path", Repository.root, "--scratch-path", packageDirectory, "resolve"])
     let warnings = ["-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=15.0"]
     let spawn = directory + "/Spawn.o"
     try Console.quietly(["xcrun", "clang"] + warnings + ["-c", sourceRoot + "/Interop/Spawn.c", "-o", spawn])
@@ -94,10 +99,42 @@ enum AppBundle {
     try Console.quietly(["xcrun", "swiftc", "-swift-version", "5", "-O", "-whole-module-optimization",
                          "-enforce-exclusivity=unchecked", "-target", "arm64-apple-macosx15.0", "-module-name", "Terminal",
                          "-import-objc-header", sourceRoot + "/Interop/Bridge.h",
+                         "-F", (updaterFramework as NSString).deletingLastPathComponent, "-framework", "Sparkle",
+                         "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
                          "-framework", "AppKit", "-framework", "QuartzCore", "-framework", "Metal",
                          "-framework", "CoreText", "-framework", "ImageIO"]
       + sources + [spawn, "-o", directory + "/TerminalApp"])
     return directory
+  }
+
+  private static let packageDirectory = Repository.path("target/swiftpm/development")
+  /// Sparkle as the package downloads it: for both Mac architectures, with headers.
+  private static let updaterFramework = packageDirectory
+    + "/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+
+  /// Copies the updater into the bundle, reduced to what this app ships:
+  /// Apple Silicon code and no headers. That halves it, to about 1.5 MB.
+  private static func embedUpdater(into frameworks: String) throws {
+    let destination = frameworks + "/Sparkle.framework"
+    try? FileManager.default.removeItem(atPath: destination)
+    try FileManager.default.createDirectory(atPath: frameworks, withIntermediateDirectories: true)
+    try Console.quietly(["/usr/bin/ditto", updaterFramework, destination])
+    for name in ["Headers", "PrivateHeaders", "Modules"] {
+      try? FileManager.default.removeItem(atPath: destination + "/" + name)
+      try? FileManager.default.removeItem(atPath: destination + "/Versions/B/" + name)
+    }
+    guard let found = FileManager.default.enumerator(atPath: destination) else { return }
+    for case let relative as String in found {
+      let path = destination + "/" + relative
+      var isDirectory: ObjCBool = false
+      guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue,
+        (try? FileManager.default.destinationOfSymbolicLink(atPath: path)) == nil,
+        FileManager.default.isExecutableFile(atPath: path),
+        let architectures = try? runCommand(["/usr/bin/lipo", "-archs", path]), architectures.succeeded,
+        architectures.output.contains("x86_64")
+      else { continue }
+      try Console.quietly(["/usr/bin/lipo", "-thin", "arm64", path, "-output", path])
+    }
   }
 
   /// Makes the `.icns` from the one source image, when that image is newer.

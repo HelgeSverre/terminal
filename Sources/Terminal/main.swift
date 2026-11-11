@@ -438,6 +438,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// `--background` opens the launch window behind other apps and leaves
   /// focus where it is, for measurement runs on a desktop in use.
   private let launchesInBackground = CommandLine.arguments.prefix { $0 != "--execute" }.contains("--background")
+  @objc func checkForUpdates(_ sender: Any?) {
+    MainActor.assumeIsolated { Updates.shared.check(sender) }
+  }
+  /// The item is dimmed in a copy that does not update itself, such as a local build.
+  @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    guard item.action == #selector(checkForUpdates(_:)) else { return true }
+    return MainActor.assumeIsolated { Updates.shared.isEnabled }
+  }
   func applicationDidFinishLaunching(_ notification: Notification) {
     if let renderingError { NSLog("Metal initialization failed: %@", renderingError) }
     NSApp.setActivationPolicy(.regular)
@@ -540,6 +548,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     {
       IntenseResizeSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
     }
+    MainActor.assumeIsolated { Updates.shared.checkAtLaunch() }
     if let path = selectionSmokeReportPath(), let window = windows.first {
       SelectionSmokeTest.start(window: window, path: path)
     }
@@ -646,6 +655,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     let app = submenu("Helge Terminal")
     item(app, "About Helge Terminal", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), "")
+    item(app, "Check for Updates…", #selector(checkForUpdates(_:)), "", target: self)
     item(app, "Settings…", #selector(settings(_:)), ",", target: self)
     app.addItem(.separator())
     item(app, "Quit Helge Terminal", #selector(NSApplication.terminate(_:)), "q")
