@@ -1,6 +1,8 @@
 import Foundation
+import Testing
+@testable import TerminalApp
 
-@main enum PTYReadEndpointTests {
+@Suite struct PTYReadEndpointTests {
   final class Fixture: @unchecked Sendable {
     let owner = DispatchQueue(label: "endpoint-test-owner")
     let ownerEntered = DispatchSemaphore(value: 0), releaseOwner = DispatchSemaphore(value: 0)
@@ -12,8 +14,8 @@ import Foundation
     var pausedOnce = false // IO lane-only
     func run() {
       var fds: [Int32] = [0, 0]
-      precondition(pipe(&fds) == 0)
-      precondition(fcntl(fds[0], F_SETFL, O_NONBLOCK) == 0)
+      #expect(pipe(&fds) == 0)
+      #expect(fcntl(fds[0], F_SETFL, O_NONBLOCK) == 0)
       owner.async { self.ownerEntered.signal(); self.releaseOwner.wait() }
       ownerEntered.wait()
       let lifetime = PTYDescriptorLifetime(descriptor: fds[0], sources: 1) { fd in
@@ -36,25 +38,24 @@ import Foundation
           releaseOwner.signal(); drainedInitial.wait()
         }
       let bytes = Array("123456789".utf8)
-      precondition(bytes.withUnsafeBytes { Darwin.write(fds[1], $0.baseAddress!, $0.count) } == 9)
-      precondition(drainedFinal.wait(timeout: .now() + 5) == .success)
+      #expect(bytes.withUnsafeBytes { Darwin.write(fds[1], $0.baseAddress!, $0.count) } == 9)
+      #expect(drainedFinal.wait(timeout: .now() + 5) == .success)
       endpoint.close()
-      precondition(closed.wait(timeout: .now() + 5) == .success)
+      #expect(closed.wait(timeout: .now() + 5) == .success)
       Darwin.close(fds[1])
-      owner.sync { precondition(delivered == 9) }
+      owner.sync { #expect(delivered == 9) }
     }
   }
-  static func main() {
-    Fixture().run()
-    suspendedCloseWithLease()
-    print("PASS read endpoint: credit returned before pause publication resumes without another owner notification; cancellation retires source")
-  }
-}
 
-extension PTYReadEndpointTests {
-  static func suspendedCloseWithLease() {
-    var fds: [Int32] = [0, 0]; precondition(pipe(&fds) == 0)
-    precondition(fcntl(fds[0], F_SETFL, O_NONBLOCK) == 0)
+  /// Credit returned before pause publication resumes without another owner
+  /// notification; cancellation retires the source.
+  @Test static func creditReturnedBeforePause() {
+    Fixture().run()
+  }
+
+  @Test static func suspendedCloseWithLease() {
+    var fds: [Int32] = [0, 0]; #expect(pipe(&fds) == 0)
+    #expect(fcntl(fds[0], F_SETFL, O_NONBLOCK) == 0)
     let owner = DispatchQueue(label: "suspended-close-owner")
     let ownerHeld = DispatchSemaphore(value: 0), releaseOwner = DispatchSemaphore(value: 0)
     owner.async { ownerHeld.signal(); releaseOwner.wait() }; ownerHeld.wait()
@@ -71,15 +72,15 @@ extension PTYReadEndpointTests {
     let endpoint = PTYReadEndpoint(fd: fds[0], broker: broker, lifetime: lifetime, eofObserved: {})
     endpoint.didPauseForCredit = { paused.signal(); releasePause.wait() }
     let bytes = Array("123456789".utf8)
-    precondition(bytes.withUnsafeBytes { Darwin.write(fds[1], $0.baseAddress!, $0.count) } == 9)
-    precondition(paused.wait(timeout: .now() + 5) == .success)
+    #expect(bytes.withUnsafeBytes { Darwin.write(fds[1], $0.baseAddress!, $0.count) } == 9)
+    #expect(paused.wait(timeout: .now() + 5) == .success)
     endpoint.close(); lifetime.sourceCancelled(1)
-    precondition(lifetime.withLease { _ in 1 } == nil)
-    precondition(closed.wait(timeout: .now()) == .timedOut)
+    #expect(lifetime.withLease { _ in 1 } == nil)
+    #expect(closed.wait(timeout: .now()) == .timedOut)
     releasePause.signal(); releaseLease.signal(); leaseDone.wait()
-    precondition(closed.wait(timeout: .now() + 5) == .success)
+    #expect(closed.wait(timeout: .now() + 5) == .success)
     endpoint.close(); lifetime.sourceCancelled(1)
-    precondition(closed.wait(timeout: .now()) == .timedOut)
+    #expect(closed.wait(timeout: .now()) == .timedOut)
     releaseOwner.signal(); owner.sync {}; Darwin.close(fds[1])
   }
 }

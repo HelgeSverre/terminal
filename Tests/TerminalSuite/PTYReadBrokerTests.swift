@@ -1,6 +1,8 @@
 import Foundation
+import Testing
+@testable import TerminalApp
 
-@main enum PTYReadBrokerTests {
+@Suite struct PTYReadBrokerTests {
   final class Log: @unchecked Sendable {
     private let lock = NSLock()
     private var entries: [String] = []
@@ -9,12 +11,15 @@ import Foundation
   }
   static func read(_ broker: PTYReadBroker, _ text: String) -> PTYReadBroker.ReadResult {
     broker.readOnce { buffer in
-      let bytes = Array(text.utf8); precondition(bytes.count <= buffer.count)
+      let bytes = Array(text.utf8); #expect(bytes.count <= buffer.count)
       for (index, byte) in bytes.enumerated() { buffer[index] = byte }
       return (bytes.count, 0)
     }
   }
-  static func main() {
+
+  /// Output/control/output FIFO, bounded coalescing, credit retained through
+  /// delivery and REP, ordered EOF, idempotent stop.
+  @Test static func fifoCreditAndEOF() {
     let owner = DispatchQueue(label: "broker-test-owner")
     let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
     owner.async { entered.signal(); release.wait() }; entered.wait()
@@ -24,28 +29,31 @@ import Foundation
     _ = read(broker, "A"); _ = read(broker, "B")
     broker.submit { log.add("resize") }
     _ = read(broker, "CD")
-    precondition(broker.credit.bytes == 4 && broker.credit.nodes == 0)
+    #expect(broker.credit.bytes == 4 && broker.credit.nodes == 0)
     release.signal(); owner.sync {}
-    precondition(log.values == ["AB", "resize", "CD"])
+    #expect(log.values == ["AB", "resize", "CD"])
     // Delivery has not returned credit. In particular zero-byte parser work
     // can still retain a completely consumed output head's node.
-    precondition(broker.credit.bytes == 4 && broker.credit.nodes == 0)
-    if case .creditExhausted = read(broker, "") {} else { preconditionFailure() }
+    #expect(broker.credit.bytes == 4 && broker.credit.nodes == 0)
+    if case .creditExhausted = read(broker, "") {} else { Issue.record("expected creditExhausted") }
     broker.consumed(2, completedNode: false)
-    precondition(broker.credit.bytes == 6 && broker.credit.nodes == 0)
+    #expect(broker.credit.bytes == 6 && broker.credit.nodes == 0)
     broker.consumed(0, completedNode: true)
     broker.consumed(2, completedNode: true)
-    precondition(broker.credit.bytes == 8 && broker.credit.nodes == 2)
+    #expect(broker.credit.bytes == 8 && broker.credit.nodes == 2)
     _ = read(broker, "E"); _ = read(broker, "")
     owner.sync {}
-    precondition(log.values == ["AB", "resize", "CD", "E", "EOF:0"])
+    #expect(log.values == ["AB", "resize", "CD", "E", "EOF:0"])
     broker.consumed(1, completedNode: true)
-    if case .ended = read(broker, "late") {} else { preconditionFailure() }
+    if case .ended = read(broker, "late") {} else { Issue.record("expected ended after EOF") }
     broker.stopReading(); broker.stopReading()
-    precondition(broker.credit.bytes == 8 && broker.credit.nodes == 2)
-    // Close can arrive while a read owns the admission boundary. It waits for
-    // that one nonblocking operation, preserves its accepted bytes, and never
-    // admits a later read. A held owner queue covers the delivery-pending phase.
+    #expect(broker.credit.bytes == 8 && broker.credit.nodes == 2)
+  }
+
+  /// Close can arrive while a read owns the admission boundary. It waits for
+  /// that one nonblocking operation, preserves its accepted bytes, and never
+  /// admits a later read. A held owner queue covers the delivery-pending phase.
+  @Test static func closeDuringRead() {
     let owner2 = DispatchQueue(label: "broker-close-owner")
     let ownerHeld = DispatchSemaphore(value: 0), releaseOwner = DispatchSemaphore(value: 0)
     owner2.async { ownerHeld.signal(); releaseOwner.wait() }; ownerHeld.wait()
@@ -62,14 +70,13 @@ import Foundation
     readEntered.wait()
     DispatchQueue.global().async { closeStarted.signal(); broker2.stopReading(); closeDone.signal() }
     closeStarted.wait(); releaseRead.signal(); readDone.wait(); closeDone.wait()
-    if case .ended = read(broker2, "late") {} else { preconditionFailure() }
-    precondition(broker2.credit.bytes == 7 && broker2.credit.nodes == 1)
+    if case .ended = read(broker2, "late") {} else { Issue.record("expected ended after close") }
+    #expect(broker2.credit.bytes == 7 && broker2.credit.nodes == 1)
     releaseOwner.signal(); owner2.sync {}
-    precondition(log2.values == ["Z"])
+    #expect(log2.values == ["Z"])
     broker2.consumed(1, completedNode: true)
-    let unopened = PTYReadBroker(owner: owner2, deliver: { _ in preconditionFailure() }, ended: { _ in preconditionFailure() })
+    let unopened = PTYReadBroker(owner: owner2, deliver: { _ in Issue.record("unexpected delivery") }, ended: { _ in Issue.record("unexpected EOF") })
     unopened.stopReading()
-    if case .ended = read(unopened, "late") {} else { preconditionFailure() }
-    print("PASS broker: output/control/output FIFO, bounded coalescing, credit retained through delivery and REP, ordered EOF, idempotent stop")
+    if case .ended = read(unopened, "late") {} else { Issue.record("expected ended on an unopened broker") }
   }
 }
