@@ -60,7 +60,7 @@ enum NativeSmoke {
 
     // Behind whatever is on screen and without taking the keyboard: the
     // smokes drive their own window and do not need the app to be active.
-    let app = try ProcessTree([executable, "--background", mode.flag, report] + mode.extra,
+    let app = try ProcessTree([executable, mode.flag, report, "--background"] + mode.extra,
                               output: mode.printsReport ? .discarded : .inherited)
     var failure: Failure?
     do {
