@@ -14,16 +14,6 @@ enum AppBundle {
   enum Configuration: String {
     case development, release
 
-    /// Development is optimized too, since the smokes and measurements run
-    /// it, but compiles file by file so a small edit is a short build.
-    /// Release optimizes the whole module and skips dynamic exclusivity
-    /// checks: on the parser's hot path they cost a quarter of throughput.
-    var buildArguments: [String] {
-      switch self {
-      case .development: ["-c", "debug", "-Xswiftc", "-O"]
-      case .release: ["-c", "release", "-Xswiftc", "-enforce-exclusivity=unchecked"]
-      }
-    }
   }
 
   static func run(_ arguments: [String]) throws {
@@ -39,7 +29,9 @@ enum AppBundle {
       try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
     }
 
-    let products = try Console.step("Compile Terminal (\(configuration.rawValue))") { try compile(configuration) }
+    let products = try Console.step("Compile Terminal (\(configuration.rawValue))") {
+      try configuration == .development ? compileIncrementally() : compileWholeModule(into: scratch + "/release")
+    }
     try Console.step("Icon, shader and terminfo") {
       try icon(into: scratch + "/Terminal.icns")
       let intermediate = scratch + "/Terminal.air"
@@ -66,19 +58,46 @@ enum AppBundle {
     Console.done(String(format: "dist/Terminal.app  %.1f s", seconds))
   }
 
-  /// Compiles the app and its launcher and returns the directory holding them.
-  /// Each configuration has its own build directory, apart from the one the
-  /// test suites use: they compile the app with its test hooks.
-  private static func compile(_ configuration: Configuration) throws -> String {
+  /// The development build: the package compiles the app and its launcher
+  /// file by file, so a small edit is a short build. It is optimized too,
+  /// since the smokes and measurements run it. It has its own build
+  /// directory, apart from the one the test suites use: they compile the app
+  /// with its test hooks. Returns the directory holding the two programs.
+  private static func compileIncrementally() throws -> String {
     let build = ["swift", "build", "--package-path", Repository.root,
-                 "--scratch-path", Repository.path("target/swiftpm/\(configuration.rawValue)")]
-      + configuration.buildArguments
+                 "--scratch-path", Repository.path("target/swiftpm/development"), "-c", "debug", "-Xswiftc", "-O"]
     let withoutHooks: [String: String?] = ["TERMINAL_TEST_HOOKS": nil]
     for product in ["TerminalApp", "TerminalLauncher"] {
       try Console.quietly(build + ["--product", product], adding: withoutHooks)
     }
     return try Console.quietly(build + ["--show-bin-path"], adding: withoutHooks)
       .trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// The release build: one compiler run over every source.
+  ///
+  /// The package is not used here. Its release builds optimize the whole
+  /// module but generate code on many threads, one unit per file, and that
+  /// measured 9% slower on truecolor output than a single unit. Dynamic
+  /// exclusivity checks are off as well: on the parser's hot path they cost
+  /// a quarter of throughput. Returns the directory holding the two programs.
+  private static func compileWholeModule(into directory: String) throws -> String {
+    try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+    let sourceRoot = Repository.path("Sources/Terminal")
+    guard let found = FileManager.default.enumerator(atPath: sourceRoot) else { throw Failure("cannot list \(sourceRoot)") }
+    let sources = found.compactMap { $0 as? String }.filter { $0.hasSuffix(".swift") }.sorted().map { sourceRoot + "/" + $0 }
+    let warnings = ["-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=15.0"]
+    let spawn = directory + "/Spawn.o"
+    try Console.quietly(["xcrun", "clang"] + warnings + ["-c", sourceRoot + "/Interop/Spawn.c", "-o", spawn])
+    try Console.quietly(["xcrun", "clang"] + warnings
+      + [Repository.path("Sources/TerminalLauncher/Launcher.c"), "-o", directory + "/TerminalLauncher"])
+    try Console.quietly(["xcrun", "swiftc", "-swift-version", "5", "-O", "-whole-module-optimization",
+                         "-enforce-exclusivity=unchecked", "-target", "arm64-apple-macosx15.0", "-module-name", "Terminal",
+                         "-import-objc-header", sourceRoot + "/Interop/Bridge.h",
+                         "-framework", "AppKit", "-framework", "QuartzCore", "-framework", "Metal",
+                         "-framework", "CoreText", "-framework", "ImageIO"]
+      + sources + [spawn, "-o", directory + "/TerminalApp"])
+    return directory
   }
 
   /// Makes the `.icns` from the one source image, when that image is newer.
