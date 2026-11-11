@@ -644,11 +644,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       i.target = target
       menu.addItem(i)
     }
-    let app = submenu("Terminal")
-    item(app, "About Terminal", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), "")
+    let app = submenu("Helge Terminal")
+    item(app, "About Helge Terminal", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), "")
     item(app, "Settings…", #selector(settings(_:)), ",", target: self)
     app.addItem(.separator())
-    item(app, "Quit Terminal", #selector(NSApplication.terminate(_:)), "q")
+    item(app, "Quit Helge Terminal", #selector(NSApplication.terminate(_:)), "q")
     let shell = submenu("Shell")
     item(shell, "New Window", #selector(newWindow(_:)), "n", target: self)
     item(shell, "New Tab", #selector(newTab(_:)), "t", target: self)
