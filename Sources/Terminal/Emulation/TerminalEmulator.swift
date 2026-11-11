@@ -819,6 +819,11 @@ private final class TerminalEmulator {
     case 0x6d, 0x6e, 0x63, 0x75: break
     default: resetClusterBoundary()
     }
+    // Only a bare parameter string before `m` is SGR. With a private marker it
+    // is another command: `CSI > Pp ; Pv m` sets xterm's key-modifier options
+    // and `CSI ? Pp m` queries them. Read as SGR, the `> 4 ; 2 m` that
+    // programs send to enable modifyOtherKeys turns on underline and faint.
+    if final == 0x6d, raw.contains(where: { (0x3c...0x3f).contains($0) || (0x20...0x2f).contains($0) }) { return }
     guard let packet = Self.parseCSIParameters(raw, final: final, into: &csiParameterScratch) else { return }
     // SGR changes the pen only. Preserve the usual semantic revision without
     // copying and writing back an unchanged screen or clearing pending wrap.

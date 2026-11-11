@@ -467,6 +467,11 @@ import Foundation
       ("SGR 21 double underline", "\u{1b}[21mA\u{1b}[24mB", [style(underline: 2), style()]),
       ("incomplete colon RGB ignored", "\u{1b}[31mA\u{1b}[38:2:1:2mB", [style(0x0100_0001), style(0x0100_0001)]),
       ("colon RGB takes its three channels", "\u{1b}[38:2::1:2:3:99mA", [style(0x0201_0203)]),
+      // xterm's key-modifier options end in `m` too, behind a private marker.
+      ("modifyOtherKeys is not underline and faint", "\u{1b}[>4;2mA", [style()]),
+      ("a key-modifier reset keeps the pen", "\u{1b}[31mA\u{1b}[>4mB", [style(0x0100_0001), style(0x0100_0001)]),
+      ("private markers and intermediates before m are not SGR",
+        "\u{1b}[?4mA\u{1b}[<1mB\u{1b}[=1mC\u{1b}[1 mD", [style(), style(), style(), style()]),
     ]
     for command in [38, 48, 58] {
       for invalid in [256, 4_294_967_295] {
