@@ -40,6 +40,7 @@ import Foundation
         "typed_key_paths_admitted", "modifier_keys_preserve_anchored_viewport",
         "resize_rejection_preserves_fifo_and_pty", "resumable_resize_commits_before_later_input",
         "pending_resize_close_is_fair_and_cancels", "rapid_resize_returns_to_original_before_input",
+        "resize_waits_for_reflow_budget",
         "selection_stale_hit_is_rejected", "selection_copy_is_immutable_before_later_output",
         "selection_fifo_preserves_output_mode_order", "selection_cross_screen_state_restores",
         "selection_word_profile_configuration_is_fifo",
@@ -644,8 +645,9 @@ import Foundation
       "rejected resize: requested=\(rejectedResizeRequested), delivered=\(rejectedResizeDelivered), winch=\(rejectedResizeSignals)")
     rejectedResize.close()
     // A resize back to the currently committed geometry is not a no-op while
-    // an earlier resize remains queued. It must stay behind A and commit before
-    // the later input observes the restored PTY size.
+    // an earlier resize remains queued: it is the size that is wanted, and
+    // the later input must observe it. The earlier size is superseded and may
+    // be skipped, so the child sees either no size change or both.
     let rapidResizeDirectory = FileManager.default.temporaryDirectory
       .appendingPathComponent("terminal-rapid-resize-\(UUID().uuidString)", isDirectory: true)
     let rapidResizeReceipt = rapidResizeDirectory.appendingPathComponent("winch.txt")
@@ -686,10 +688,43 @@ import Foundation
     let rapidResizeSignals = ((try? String(contentsOf: rapidResizeReceipt, encoding: .utf8)) ?? "")
       .split(whereSeparator: \.isNewline).map(String.init)
     checks["rapid_resize_returns_to_original_before_input"] =
-      rapidResizeRequested && rapidResizeDelivered && (1...2).contains(rapidResizeSignals.count)
+      rapidResizeRequested && rapidResizeDelivered && rapidResizeSignals.count <= 2
     expect(checks["rapid_resize_returns_to_original_before_input"] == true,
       "rapid resize: requested=\(rapidResizeRequested), delivered=\(rapidResizeDelivered), winch=\(rapidResizeSignals)")
     rapidResize.close()
+    // Reflow memory comes from one budget for the whole process. A resize
+    // that finds it taken by other panes must wait and then commit, not be
+    // dropped: the pane's view already has the new size.
+    var heldBudget: [ReflowReservationLedger.Lease] = []
+    while let lease = ReflowReservationLedger.shared.reserve(32 * 1024 * 1024) { heldBudget.append(lease) }
+    let budgetResize = own(Session(launch: spec("stty raw -echo; printf BUDGET_RESIZE_READY; exec /bin/cat")))
+    var budgetResizeRequested: Date?
+    var budgetResizeGrid = (columns: 0, rows: 0)
+    var budgetResizeStatuses: [String] = []
+    budgetResize.onStatus = { budgetResizeStatuses.append($0) }
+    budgetResize.onSnapshot = { snapshot in
+      budgetResizeGrid = (snapshot.cols, snapshot.rows.count)
+      let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
+      if budgetResizeRequested == nil && text.contains("BUDGET_RESIZE_READY") {
+        budgetResizeRequested = Date()
+        budgetResize.resize(cols: 40, rows: 10)
+      }
+    }
+    let budgetResizeDeadline = Date().addingTimeInterval(8)
+    while Date() < budgetResizeDeadline, budgetResizeRequested.map({ Date().timeIntervalSince($0) < 0.4 }) ?? true {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    let budgetResizeWaited = budgetResizeRequested != nil && budgetResizeGrid == (80, 24)
+    heldBudget.removeAll()
+    while Date() < budgetResizeDeadline, budgetResizeGrid != (40, 10) {
+      RunLoop.main.run(until: Date().addingTimeInterval(0.01))
+    }
+    checks["resize_waits_for_reflow_budget"] =
+      budgetResizeWaited && budgetResizeGrid == (40, 10)
+      && !budgetResizeStatuses.contains { $0.contains("rejected") }
+    expect(checks["resize_waits_for_reflow_budget"] == true,
+      "budget resize: waited=\(budgetResizeWaited), grid=\(budgetResizeGrid), statuses=\(budgetResizeStatuses)")
+    budgetResize.close()
     // The reflow fixture builds enough wide history to require the bridge's
     // resumable path. Input and probes remain after the resize event until its
     // one coherent commit, where the PTY gets exactly one matching WINCH.

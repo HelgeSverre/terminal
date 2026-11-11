@@ -299,6 +299,11 @@ final class Session: @unchecked Sendable {
   private var cellHeightPx = 16
   private var resizePending = false
   private var queuedResizeCount = 0
+  /// The size the view last asked for, kept so a resize refused for want of
+  /// reflow budget can be asked for again.
+  private var wantedGrid: (cols: Int, rows: Int, cellWidth: Int, cellHeight: Int)?
+  private var resizeRetryDelay = Session.firstResizeRetryDelay
+  private static let firstResizeRetryDelay = 16
   private var selectionPending = false
   private var linkPending = false
   private var configuration = TerminalSessionConfiguration()
@@ -810,6 +815,13 @@ final class Session: @unchecked Sendable {
       if configuration.followTailOnInput { terminal_view_follow_tail(core) }
       release(cost)
     case .resize(let cols, let rows, let cw, let ch, let began):
+      if !began && queuedResizeCount > 1 {
+        // A later size is already queued. Only the last one is shown, so do
+        // not reflow the whole document for one that is about to be replaced.
+        queuedResizeCount -= 1
+        publishNeeded = false
+        break
+      }
       if !began && cols == columns && rows == rowCount && cw == cellWidthPx && ch == cellHeightPx {
         precondition(queuedResizeCount > 0)
         queuedResizeCount -= 1
@@ -835,6 +847,7 @@ final class Session: @unchecked Sendable {
         publishNeeded = false
       case .committed(let geometry):
         resizePending = false
+        resizeRetryDelay = Self.firstResizeRetryDelay
         precondition(queuedResizeCount > 0)
         queuedResizeCount -= 1
         columns = geometry.columns
@@ -853,7 +866,7 @@ final class Session: @unchecked Sendable {
         resizePending = false
         precondition(queuedResizeCount > 0)
         queuedResizeCount -= 1
-        report("Resize rejected: \(reason)")
+        if reason == .processBudget { retryResizeLater() } else { report("Resize rejected: \(reason)") }
       }
     case .selection(let action, let completion, let cost, let began, let retainsCopyResult):
       guard let core else {
@@ -1173,9 +1186,29 @@ final class Session: @unchecked Sendable {
       enqueue(.configure(value))
     }
   }
+  /// Asks again for the wanted size after a resize was refused because other
+  /// panes held the process's reflow budget. That budget frees as their
+  /// reflows finish, so the refusal is a wait, not an answer: dropping the
+  /// resize would leave this pane at a size its view no longer has.
+  private func retryResizeLater() {
+    let delay = resizeRetryDelay
+    resizeRetryDelay = min(250, delay * 2)
+    queue.asyncAfter(deadline: .now() + .milliseconds(delay)) { [weak self] in
+      self?.readBroker.submit {
+        // A newer request, if one is queued, already carries the wanted size.
+        guard let self, !self.closed, self.queuedResizeCount == 0, let wanted = self.wantedGrid,
+          wanted.cols != self.columns || wanted.rows != self.rowCount
+            || wanted.cellWidth != self.cellWidthPx || wanted.cellHeight != self.cellHeightPx
+        else { return }
+        self.queuedResizeCount += 1
+        self.enqueue(.resize(wanted.cols, wanted.rows, wanted.cellWidth, wanted.cellHeight, false))
+      }
+    }
+  }
   func resize(cols: Int, rows: Int, cellWidth: Int = 8, cellHeight: Int = 16) {
     readBroker.submit { [self] in
       guard !closed, cols >= 1, rows >= 1, cols <= 4096, rows <= 4096 else { return }
+      wantedGrid = (cols, rows, cellWidth, cellHeight)
       if cols != columns || rows != rowCount || cellWidth != cellWidthPx
         || cellHeight != cellHeightPx || queuedResizeCount > 0
       {
