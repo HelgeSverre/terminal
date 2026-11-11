@@ -24,7 +24,7 @@ Maintain these contracts when changing the emulator:
 5. Run owned native application fixtures for input, settings, accessibility,
    automation, quit, glyph pressure and resizing. Always reap their PTY children.
 
-`dev compare-swift-rows` (formerly `tools/compare_swift_rows.rb`) compiles one probe against two immutable Git
+`dev compare-swift-rows` (formerly `tools/compare_swift_rows.rb`, removed after 0.3.0) compiled one probe against two immutable Git
 revisions. It recognizes each archived revision's source-group name, so the
 naming cleanup does not discard earlier compatibility checkpoints. Native
 pixel captures and real input-method/VoiceOver validation remain distinct

@@ -44,21 +44,18 @@ disabled, and an alternate screen. Existing user configuration is not changed.
 The alternate screen deliberately excludes history retention; the SQL stress run
 below exercises primary-screen history separately.
 
-Build this terminal once, then run the apps **sequentially**, with no other heavy
-work and a consistent display, power mode, and window visibility:
+Run it with no other heavy work and a consistent display, power mode, and
+window visibility. It builds the release bundle and launches the three apps one
+after another, in both orders:
 
 ```shell
-just build
-just benchmark terminal reports/comparison-001
-just benchmark ghostty reports/comparison-001
-just benchmark kitty reports/comparison-001
+just benchmark-terminals reports/comparison-001
 ```
 
 The runner saves exact reference versions, configuration, OS version, and executable
 hashes alongside each JSON report. It refuses to replace an existing report.
-`BENCH_BYTES=67108864 BENCH_RUNS=10` increases each workload to 64 MiB and ten
-samples. The default is a short 16 MiB × five-run comparison, not a sustained
-acceptance test. Keep both apps' versions and all settings with any published
+The default is ten 16 MiB samples per workload; `BENCH_BYTES` and `BENCH_RUNS`
+change that. Keep both apps' versions and all settings with any published
 numbers. If geometry differs, the driver refuses to benchmark it.
 
 The first completed pilot is in `reports/comparison-002` (M2 Max, macOS 15.6,

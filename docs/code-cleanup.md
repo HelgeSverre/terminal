@@ -155,7 +155,7 @@ keystrokes entering the smoke window before scripted input. Controlled two-event
 injection reproduces 4→6→4; filtering only the smoke window restores 2→4→2.
 The fixture permits its exact synthetic events through the existing AppKit
 route and removes its monitor on completion/timeout. Strict cursor and ZLE
-assertions remain. The portable `editing-input-isolation` recipe compiles
+assertions remain. The `editing-input-isolation` recipe (removed after 0.3.0) compiled
 private variants, isolates other desktop input in both, and requires a red
 baseline and green candidate with exactly two controlled probe rejections.
 It stores only numeric editing evidence; no history suggestions are recorded.
