@@ -78,6 +78,12 @@ import Darwin
   init(window: TerminalWindow, path: String) {
     controller = window
     self.path = path
+    // The idle run closes the pane the accessibility checks read and then
+    // only watches the app at rest. Those checks belong to the normal run.
+    if idle {
+      checks["accessibility_text_ranges"] = nil
+      checks["accessibility_attributed_text"] = nil
+    }
   }
   static func start(window: TerminalWindow, path: String) {
     let test = NativeSmokeTest(window: window, path: path)
