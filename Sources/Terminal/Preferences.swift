@@ -93,6 +93,7 @@ struct TerminalPreferences {
   let inactivePaneDim: PaneInactiveDim
   /// Header color of every pane that has not been given its own.
   let defaultPaneColor: PaneChromeColor
+  var sidePulseEnabled: Bool = false
   enum ValidationError: LocalizedError {
     case font, history, directory, wordCharacters
     var errorDescription: String? {
@@ -144,7 +145,7 @@ struct TerminalPreferences {
                      followTailOnInput: Bool, startingDirectory: String,
                      selectionWordCharacters: String, showPaneTitles: Bool,
                      inactivePaneDim: PaneInactiveDim,
-                     defaultPaneColor: PaneChromeColor) throws -> Self {
+                     defaultPaneColor: PaneChromeColor, sidePulseEnabled: Bool = false) throws -> Self {
     guard let font = Double(fontSize), font.isFinite, (8...40).contains(font) else { throw ValidationError.font }
     guard let rows = Int(historyRows), (0...50_000).contains(rows) else { throw ValidationError.history }
     guard let directory = Self.directory(startingDirectory) else { throw ValidationError.directory }
@@ -153,7 +154,8 @@ struct TerminalPreferences {
     return Self(fontSize: font, historyRows: rows, optionSendsEscape: optionSendsEscape,
                 followTailOnInput: followTailOnInput, startingDirectory: directory,
                 selectionWordProfile: profile, showPaneTitles: showPaneTitles,
-                inactivePaneDim: inactivePaneDim, defaultPaneColor: defaultPaneColor)
+                inactivePaneDim: inactivePaneDim, defaultPaneColor: defaultPaneColor,
+                sidePulseEnabled: sidePulseEnabled)
   }
   // Transient launch options never modify saved preferences, nor inspect child argv.
   static func launchInteger(_ name: String, within range: ClosedRange<Int>) -> Int? {
@@ -197,10 +199,12 @@ struct TerminalPreferences {
       inactivePaneDim: PaneInactiveDim(storedValue: defaults.object(forKey: "inactivePaneDim") == nil
         ? PaneInactiveDim.five.rawValue : defaults.integer(forKey: "inactivePaneDim")),
       defaultPaneColor: defaults.string(forKey: "defaultPaneColor")
-        .flatMap { PaneChromeColor(hex: $0) } ?? .standard)
+        .flatMap { PaneChromeColor(hex: $0) } ?? .standard,
+      sidePulseEnabled: defaults.bool(forKey: "sidePulseEnabled"))
   }
   func save() { save(to: .standard) }
   func save(to d: UserDefaults) {
+    d.set(sidePulseEnabled, forKey: "sidePulseEnabled")
     d.set(fontSize, forKey: "fontSize")
     d.set(historyRows, forKey: "historyRows")
     d.set(optionSendsEscape, forKey: "optionSendsEscape")

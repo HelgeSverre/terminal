@@ -213,7 +213,8 @@ final class TerminalConfigurePreferencesCommand: TerminalScriptCommand {
         fontSize: fontSize, historyRows: historyRows, optionSendsEscape: optionSendsEscape,
         followTailOnInput: followTailOnInput, startingDirectory: startingDirectory,
         selectionWordCharacters: selectionWordCharacters, showPaneTitles: current.showPaneTitles,
-        inactivePaneDim: current.inactivePaneDim, defaultPaneColor: current.defaultPaneColor)
+        inactivePaneDim: current.inactivePaneDim, defaultPaneColor: current.defaultPaneColor,
+        sidePulseEnabled: current.sidePulseEnabled)
       delegate.applyPreferences(preferences)
       return "font size \(String(format: "%.15g", Double(preferences.fontSize))), scrollback rows \(preferences.historyRows), starting directory \(preferences.startingDirectory), word characters \(preferences.selectionWordProfile.punctuation)"
     } catch {

@@ -13,8 +13,9 @@ function _helge_terminal_report_directory() {
   printf '\e]7;file://localhost%s\a' "$encoded"
 }
 function _helge_terminal_precmd() {
+  local command_status=$?
   _helge_terminal_report_directory
-  printf '\e]133;D\a\e]133;A;redraw=1\a'
+  printf '\e]133;D;%d\a\e]133;A;redraw=1\a' "$command_status"
 }
 function _helge_terminal_preexec() { printf '\e]133;C\a' }
 function _helge_terminal_line_init() { printf '\e]133;B\a' }

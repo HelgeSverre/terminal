@@ -116,6 +116,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   }
 
   private func recordSessionFinished(for pane: TerminalCanvasView) {
+    SidePulse.shared.remove(session: pane.session.sidePulseID)
     guard panes.contains(where: { $0 === pane }) else { return }
     var state = paneTitles[ObjectIdentifier(pane)] ?? PaneTitle()
     state.finished = true
@@ -168,6 +169,10 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
           } else { NSApp.terminate(nil) }
         }
       }
+    }
+    pane.session.onActivity = { [weak self, weak pane] activity, running in
+      guard let self, let pane, self.panes.contains(where: { $0 === pane }) else { return }
+      SidePulse.shared.record(activity, session: pane.session.sidePulseID, running: running)
     }
     pane.onTitle = { [weak self, weak pane] title in
       if let pane { self?.recordTitle(title, from: pane) }
@@ -303,6 +308,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       window?.performClose(sender)
       return
     }
+    SidePulse.shared.remove(session: pane.session.sidePulseID)
     pane.session.close()
     pane.detachRenderingSurface()
     panes.removeAll { $0 === pane }
@@ -335,6 +341,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   func windowDidDeminiaturize(_ notification: Notification) { panes.forEach { $0.refresh() } }
   func windowWillClose(_ notification: Notification) {
     panes.forEach {
+      SidePulse.shared.remove(session: $0.session.sidePulseID)
       $0.session.close()
       $0.detachRenderingSurface()
     }
@@ -424,6 +431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private let launchesInBackground = CommandLine.arguments.prefix { $0 != "--execute" }.contains("--background")
   func applicationDidFinishLaunching(_ notification: Notification) {
     if let renderingError { NSLog("Metal initialization failed: %@", renderingError) }
+    SidePulse.shared.configure(enabled: TerminalPreferences.load().sidePulseEnabled)
     NSApp.setActivationPolicy(.regular)
     menu()
     if let _ = paneLifecycleSmokeReportPath() {
@@ -573,6 +581,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
   func applyPreferences(_ preferences: TerminalPreferences) {
     preferences.save()
+    SidePulse.shared.configure(enabled: preferences.sidePulseEnabled)
     windows.lazy.flatMap(\.panes).forEach { $0.applyPreferences(preferences) }
     windows.forEach { $0.applyPanePresentationPreferences(preferences) }
     preferencesWindow?.reload()
@@ -590,6 +599,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     guard !terminationRequested else { return .terminateLater }
     terminationRequested = true
+    SidePulse.shared.configure(enabled: false)
     windows.forEach { $0.close() }
     // Closing hangs every child up. The app leaves as soon as the last one
     // has been reaped, which for a shell at its prompt is a few milliseconds.

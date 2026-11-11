@@ -1,7 +1,7 @@
 import AppKit
 
 // A separate native utility window keeps the terminal usable while editing settings.
-final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
+final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate, NSWindowDelegate {
   private let fontSize = FontSizeInput()
   private let familyName = NSTextField(labelWithString: "Obel Mono")
   private let historyRows = SettingsTextField(value: "")
@@ -16,6 +16,10 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   private let inactivePaneDim = SettingsSegmentedControl(
     labels: PaneInactiveDim.allCases.map(\.label), trackingMode: .selectOne, target: nil, action: nil)
   private let defaultPaneColor = PaneColorPaletteView(padding: 0)
+  private let sidePulse = NSButton(checkboxWithTitle: "Enable SidePulse Pro", target: nil, action: nil)
+  private let sidePulseStatus = NSTextField(wrappingLabelWithString: "Disabled")
+  private let sidePulseTest = SettingsActionButton(title: "Test lights", target: nil, action: nil)
+  private var sidePulseTimer: Timer?
   private let error = NSTextField(wrappingLabelWithString: "")
   private let apply = SettingsActionButton(title: "Apply", primary: true, target: nil, action: nil)
   private let onApply: (TerminalPreferences) -> Void
@@ -26,6 +30,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       styleMask: [.titled, .closable], backing: .buffered, defer: false)
     super.init(window: window)
     window.title = "Settings"
+    window.delegate = self
     window.setAccessibilityIdentifier("no.helgesverre.terminal.settings")
     window.isReleasedWhenClosed = false
     window.tabbingMode = .disallowed
@@ -175,8 +180,9 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     case number(String, String?, NSView, Presentation, suffix: String)
     case check(String, NSButton, Presentation)
     case segment(String, NSSegmentedControl, Presentation)
-    case readOnly(String, NSTextField)
+    case readOnly(String, NSTextField, Presentation? = nil)
     case palette(String, String?, PaneColorPaletteView, Presentation)
+    case action(String, NSButton, Presentation, Selector)
     case note(String)
   }
   private var navigation: [SettingsNavigationButton] = []
@@ -216,6 +222,15 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
         Presentation(id: "option-sends-escape", accessibilityLabel: "Option key sends Escape",
           hint: "Off uses native Option characters. Option arrows always move by word.")),
       .note("Off uses native Option characters. Option arrows always move by word."),
+    ]),
+    Section(id: "sidepulse", icon: "light.strip.2", title: "SidePulse Pro", subtitle: "Hardware light-strip integration.", fields: [
+      .check("Enable SidePulse Pro", sidePulse,
+        Presentation(id: "sidepulse-enabled", accessibilityLabel: "Enable SidePulse Pro")),
+      .readOnly("Status", sidePulseStatus,
+        Presentation(id: "sidepulse-status", accessibilityLabel: "SidePulse Pro status")),
+      .note("Cyan: running · Green: success · Red: failure · Amber: bell. Apply to enable. Use one controller app at a time."),
+      .action("Test lights", sidePulseTest,
+        Presentation(id: "sidepulse-test", accessibilityLabel: "Test lights"), #selector(testSidePulse(_:))),
     ]),
   ]
   private func configure(_ field: NSTextField, presentation: Presentation) {
@@ -275,10 +290,16 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       presentation.apply(to: input)
       input.setAccessibilityElement(true)
       input.setAccessibilityRole(.group)
-    case let .readOnly(name, input):
+    case let .readOnly(name, input, presentation):
       title = name; control = input
+      presentation?.apply(to: input)
       input.font = .systemFont(ofSize: 14)
       input.textColor = TerminalTheme.color(TerminalTheme.Settings.text)
+    case let .action(name, button, presentation, selector):
+      title = name; control = button
+      presentation.apply(to: button)
+      button.target = self
+      button.action = selector
     case let .note(text):
       title = ""
       control = label(text, size: 12, color: TerminalTheme.Settings.muted)
@@ -345,10 +366,31 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     defaultPaneColor.selected = prefs.defaultPaneColor
     startingDirectory.stringValue = prefs.startingDirectoryText
     wordCharacters.stringValue = prefs.selectionWordProfile.punctuation
+    sidePulse.state = prefs.sidePulseEnabled ? .on : .off
+    sidePulseTest.isEnabled = prefs.sidePulseEnabled
+    refreshSidePulseStatus()
     validate()
+  }
+  private func refreshSidePulseStatus() {
+    SidePulse.shared.status { [weak self] value in self?.sidePulseStatus.stringValue = value }
+  }
+  @objc private func testSidePulse(_ sender: Any?) {
+    SidePulse.shared.test()
+    refreshSidePulseStatus()
+  }
+  deinit { sidePulseTimer?.invalidate() }
+  func windowWillClose(_ notification: Notification) {
+    sidePulseTimer?.invalidate()
+    sidePulseTimer = nil
   }
   func present() {
     if window?.isVisible != true { reload() }
+    if sidePulseTimer == nil {
+      sidePulseTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        guard let self, self.window?.isVisible == true else { return }
+        self.refreshSidePulseStatus()
+      }
+    }
     showWindow(nil)
     window?.makeKeyAndOrderFront(nil)
   }
@@ -363,7 +405,8 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       startingDirectory: startingDirectory.stringValue,
       selectionWordCharacters: wordCharacters.stringValue,
       showPaneTitles: showPaneTitles.state == .on,
-      inactivePaneDim: dim, defaultPaneColor: defaultPaneColor.selected ?? .standard)
+      inactivePaneDim: dim, defaultPaneColor: defaultPaneColor.selected ?? .standard,
+      sidePulseEnabled: sidePulse.state == .on)
   }
   private func validate() {
     do {

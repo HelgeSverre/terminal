@@ -419,7 +419,7 @@ import QuartzCore
       optionSendsEscape: current.optionSendsEscape, followTailOnInput: current.followTailOnInput,
       startingDirectory: current.startingDirectory, selectionWordProfile: current.selectionWordProfile,
       showPaneTitles: showTitles, inactivePaneDim: current.inactivePaneDim,
-      defaultPaneColor: current.defaultPaneColor)
+      defaultPaneColor: current.defaultPaneColor, sidePulseEnabled: current.sidePulseEnabled)
   }
 
   /// Assert that the canvas—the CAMetalLayer owner—received the reduced frame,

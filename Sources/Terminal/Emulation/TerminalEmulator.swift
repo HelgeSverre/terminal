@@ -57,6 +57,13 @@ private final class BorrowedSnapshotCells {
 }
 
 private final class TerminalEmulator {
+  var commandRunning = false
+  private var activity: TerminalActivity?
+  func takeActivity() -> TerminalActivity? {
+    defer { activity = nil }
+    return activity
+  }
+
   private enum DisplayClearAction: UInt32 {
     case ignoredAlternate = 0, cleared = 1, redrawPrompt = 2
   }
@@ -496,7 +503,7 @@ private final class TerminalEmulator {
             continue
           }
           parser = .escape
-        case 0x00...0x07: finishDecodedText(); if byte == 0x07 { /* bell belongs to host */ }
+        case 0x00...0x07: finishDecodedText(); if byte == 0x07 { activity = .attention }
         case 0x08: finishDecodedText(); backspace()
         case 0x09: finishDecodedText(); tab()
         case 0x0a, 0x0b, 0x0c: finishDecodedText(); lineFeed()
@@ -714,6 +721,8 @@ private final class TerminalEmulator {
   private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
   private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
   private func reset() {
+    commandRunning = false
+    activity = .idle
     selectionDocumentGeneration = UUID(); selection.reset(); pendingSelectionRevision = nil
     graphics.clear()
     document = TerminalDocument(columns: columns, rows: rowCount)
@@ -1241,6 +1250,18 @@ private final class TerminalEmulator {
         default: break
         }
         screen = current
+        if marker == "C" {
+          commandRunning = true
+          activity = .working
+        } else if marker == "D", commandRunning {
+          commandRunning = false
+          let fields = value.split(separator: ";", omittingEmptySubsequences: false)
+          if fields.count > 1, let status = UInt8(fields[1]) {
+            activity = status == 0 ? .succeeded : .failed
+          } else {
+            activity = .idle
+          }
+        }
       }
       return
     }
@@ -1981,6 +2002,10 @@ private final class TerminalEmulator {
 private func core(_ pointer: OpaquePointer?) -> TerminalEmulator? { pointer.map { Unmanaged<TerminalEmulator>.fromOpaque(UnsafeMutableRawPointer($0)).takeUnretainedValue() } }
 // Internal Swift adapter: same owner-confined handle, no C callback or borrowed
 // row/cell storage. The returned value survives later mutation and destruction.
+func swiftTerminalCommandRunning(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.commandRunning ?? false }
+
+func swiftTerminalTakeActivity(_ pointer: OpaquePointer?) -> TerminalActivity? { core(pointer)?.takeActivity() }
+
 func swiftTerminalSnapshot(_ pointer: OpaquePointer?, scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
   core(pointer)?.snapshotValue(scroll: scroll, now: now) ?? (nil, nil)
 }

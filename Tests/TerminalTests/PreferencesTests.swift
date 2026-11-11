@@ -15,6 +15,21 @@ import Testing
       defaultPaneColor: .standard)
   }
 
+  /// SidePulse is off until enabled, and the choice persists both ways.
+  @Test static func sidePulseDefaultsOffAndPersists() {
+    let suite = "sidepulse-preferences-\(UUID())"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    #expect(!TerminalPreferences.load(from: defaults).sidePulseEnabled)
+    var prefs = TerminalPreferences.load(from: defaults)
+    prefs.sidePulseEnabled = true
+    prefs.save(to: defaults)
+    #expect(TerminalPreferences.load(from: defaults).sidePulseEnabled)
+    prefs.sidePulseEnabled = false
+    prefs.save(to: defaults)
+    #expect(!TerminalPreferences.load(from: defaults).sidePulseEnabled)
+  }
+
   /// Home, tilde, launch directories, word characters, OSC 7 reporting and
   /// rejection of invalid editor input.
   @Test static func directoriesAndValidation() throws {
@@ -74,6 +89,17 @@ import Testing
     let report = String(decoding: output, as: UTF8.self)
     #expect(process.terminationStatus == 0 && report.hasPrefix("\u{001b}]7;file://localhost/") &&
       report.hasSuffix("/project%20%E7%8C%AB%20%23%25\u{0007}"), "Incorrect OSC7 encoding: \(report.debugDescription)")
+    for (command, expected) in [("true", "0"), ("false", "1")] {
+      let statusProcess = Process()
+      statusProcess.executableURL = URL(fileURLWithPath: "/bin/zsh")
+      statusProcess.arguments = ["-f", "-c", "source \"$1\"; \(command); _helge_terminal_precmd", "fixture", hooks.path]
+      let statusPipe = Pipe()
+      statusProcess.standardOutput = statusPipe
+      try statusProcess.run()
+      let statusOutput = statusPipe.fileHandleForReading.readDataToEndOfFile()
+      statusProcess.waitUntilExit()
+      precondition(String(decoding: statusOutput, as: UTF8.self).contains("\u{001b}]133;D;\(expected)\u{0007}"))
+    }
     let reportedLocation = String(report.dropFirst(4).dropLast())
     let actualDirectory = blank.launchDirectory(inheriting: reportedLocation)
     let actualIdentity = try FileManager.default.attributesOfItem(atPath: actualDirectory)
