@@ -32,6 +32,9 @@ import Darwin
   let controller: TerminalWindow
   let path: String
   let idle = CommandLine.arguments.contains("--idle-test")
+  private var keyboardMonitor: Any?
+  private var syntheticEvent: NSEvent?
+  private var suppressedExternalKeys = 0
   var checks = Dictionary(
     uniqueKeysWithValues: [
       "pty_input_and_output", "unicode_text", "sgr_red", "ime_marked_state", "ime_unmarked_state",
@@ -79,6 +82,17 @@ import Darwin
   static func start(window: TerminalWindow, path: String) {
     let test = NativeSmokeTest(window: window, path: path)
     active = test
+    // The smoke's window is key while it runs, so keys typed by whoever is
+    // using the machine would land in its shell and fail the input checks.
+    // Only the key events the smoke sends itself reach the window.
+    test.keyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak test] event in
+      guard let test, event.window === test.controller.window else { return event }
+      guard event === test.syntheticEvent else {
+        test.suppressedExternalKeys += 1
+        return nil
+      }
+      return event
+    }
     DispatchQueue.main.async { test.run() }
     DispatchQueue.main.asyncAfter(deadline: .now() + (test.idle ? 80 : 12)) {
       if active != nil { test.finish(timedOut: true) }
@@ -509,7 +523,11 @@ import Darwin
         context: nil, characters: left ? "\u{f702}" : "\u{f703}",
         charactersIgnoringModifiers: left ? "\u{f702}" : "\u{f703}",
         isARepeat: false, keyCode: left ? 123 : 124)
-      { NSApp.sendEvent(event) }
+      {
+        syntheticEvent = event
+        NSApp.sendEvent(event)
+        syntheticEvent = nil
+      }
     }
   }
   private func cpuSeconds() -> Double {
@@ -624,6 +642,9 @@ import Darwin
   private func completeFinish(timedOut: Bool) {
     guard Self.active != nil else { return }
     Self.active = nil
+    if let keyboardMonitor { NSEvent.removeMonitor(keyboardMonitor) }
+    keyboardMonitor = nil
+    measurements["suppressed_external_keys"] = suppressedExternalKeys
     (NSApp.delegate as? AppDelegate)?.settings(nil)
     if let settings = NSApp.windows.first(where: { $0.title == "Settings" && $0.isVisible }) {
       checks["settings_window"] = true
