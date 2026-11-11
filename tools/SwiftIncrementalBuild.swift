@@ -57,7 +57,7 @@ if arguments.contains("--verify") {
       fputs("Duplicate source in \(name)\n", stderr); exit(2)
     }
     for value in values {
-      let allowedRoots = ["Sources/Terminal", "Tests/TerminalTests"]
+      let allowedRoots = ["Sources/Terminal", "Tests/Programs"]
       let source = root.appendingPathComponent(value).standardizedFileURL.resolvingSymlinksInPath()
       guard value.hasSuffix(".swift"), allowedRoots.contains(where: { directory in
         value.hasPrefix(directory + "/")
@@ -80,9 +80,9 @@ if arguments.contains("--verify") {
       .map { String($0.path.dropFirst(root.path.count + 1)) })
   }
   let appFiles = swiftFiles(in: "Sources/Terminal")
-  let testFiles = swiftFiles(in: "Tests/TerminalTests")
+  let testFiles = swiftFiles(in: "Tests/Programs")
   let declaredApp = Set(graph.app)
-  let declaredTests = Set((graph.tests ?? [:]).values.flatMap { $0 }.filter { $0.hasPrefix("Tests/TerminalTests/") })
+  let declaredTests = Set((graph.tests ?? [:]).values.flatMap { $0 }.filter { $0.hasPrefix("Tests/Programs/") })
   guard appFiles == declaredApp else {
     fputs("App source graph mismatch; unlisted: \(appFiles.subtracting(declaredApp).sorted()), stale: \(declaredApp.subtracting(appFiles).sorted())\n", stderr); exit(2)
   }

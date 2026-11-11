@@ -4,10 +4,9 @@ set positional-arguments
 
 export TERMINAL_PROJECT_ROOT := justfile_directory()
 
-# Compiler flags and frameworks the emulator's test suites share.
-swift_flags := "-swift-version 5 -O"
-core_flags := swift_flags + " -import-objc-header Sources/Terminal/Interop/Bridge.h"
-core_frameworks := "-framework Foundation -framework CoreGraphics -framework ImageIO"
+# The test suites run optimized, with testing enabled so they can reach
+# internal declarations, and one at a time: several hold process-wide state.
+swift_test := "swift test -c release -Xswiftc -enable-testing --no-parallel"
 
 [private]
 default:
@@ -26,7 +25,7 @@ default:
 # Remove build outputs (target/, dist/) and stray compiler module files.
 [group('build')]
 clean:
-    rm -rf target dist
+    rm -rf target dist .build
     rm -f Terminal-*.abi.json Terminal-*.swiftdoc Terminal-*.swiftmodule Terminal-*.swiftsourceinfo
 
 # Regenerate app icons from assets/AppIcon.png.
@@ -126,53 +125,20 @@ swift-build-test:
 [group('test')]
 @test: lint build
     just workflow-tests
-    just settings-window-test
-    just visible-links-test
     just _terminfo-test
-    just _clipboard-access-tests
-    just _shell-editing-test
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    just emulator-test
-    just terminal-document-ownership
-    just terminal-document-oracle
-    just terminal-viewport-oracle
-    just history-search-test
-    just terminal-reflow-semantics
-    just terminal-selection
-    just terminal-presented-content
-    just terminal-prompt-clear-oracle
-    just terminal-scheduler-oracle
-    just terminal-semantic-regression
-    just terminal-boundary-regression
-    just terminal-graphics-oracle
-    just terminal-palette
-    just unicode18-corpus
-    just unicode-decoder
-    just unicode-lowercase
-    just terminal-width
-    just input-encoder
-    just window-stress-motion-test
-    just tab-navigation-test
-    just osc52-protocol
-    xcrun clang -Wall -Wextra -Werror -I Sources/Terminal/Interop -c Tests/TerminalTests/pty.c -o target/native/swift-pty-tests.o
+    {{swift_test}} --skip GlyphRasterWorkerTests --skip GlyphResidency
+    just _glyph-rendering-tests
+    xcrun clang -Wall -Wextra -Werror -I Sources/Terminal/Interop -c Tests/Programs/pty.c -o target/native/swift-pty-tests.o
     xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty) target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
     target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
-    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print transport) -o target/native/transport-tests
-    target/native/transport-tests
-    just session-io-test
-    just _session-test
-    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print geometry) -o target/native/geometry-tests
-    target/native/geometry-tests
-    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print statistics) -o target/native/statistics-tests
-    target/native/statistics-tests
-    just _glyph-rendering-tests
-    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print preferences) -framework AppKit -o target/native/preferences-tests
-    target/native/preferences-tests
-    xcrun swiftc -D SNAPSHOT_ABI_DIAGNOSTICS -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print snapshot_bridge) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/snapshot-bridge-tests
-    target/native/snapshot-bridge-tests
-    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print keymap) -framework AppKit -framework CoreText -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/keymap-tests
-    target/native/keymap-tests
+
+# Arguments go to `swift test`: `just unit-test --filter SessionTests`.
+# Run the Swift Testing suites.
+[group('test')]
+unit-test *arguments:
+    {{swift_test}} {{arguments}}
 
 # Tooling tests; no app launch or GPU.
 [group('test')]
@@ -189,115 +155,11 @@ workflow-tests: _dev
     xcrun sdp -fs -o target/native/automation-dictionary Resources/Terminal/Terminal.sdef
 
 [group('test')]
-session-test: build _session-test
-
-[group('test')]
-session-io-test:
-    mkdir -p target/native
-    xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print session_ingress) -o target/native/session-ingress-tests
-    target/native/session-ingress-tests
-    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_descriptor_lifetime) -o target/native/pty-descriptor-lifetime-tests
-    target/native/pty-descriptor-lifetime-tests
-    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_read_broker) -o target/native/pty-read-broker-tests
-    target/native/pty-read-broker-tests
-    xcrun swiftc -D SESSION_IO_TESTING -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_read_endpoint) -o target/native/pty-read-endpoint-tests
-    target/native/pty-read-endpoint-tests
-    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty_admission) -o target/native/pty-admission-tests
-    target/native/pty-admission-tests
-
-# Interactive zsh editing through a real PTY.
-[group('test')]
-shell-editing-test: build _shell-editing-test
-
-[group('test')]
-settings-window-test: (_suite "settings_window" "settings-window-tests" "-swift-version 5" "-framework AppKit -framework CoreText")
-
-[group('test')]
-emulator-test: (_suite "emulator" "emulator-tests" core_flags core_frameworks)
-
-[group('test')]
-history-search-test: (_suite "history_search" "history-search-tests" swift_flags "-framework Foundation")
-
-[group('test')]
-terminal-graphics-oracle: (_suite "terminal_graphics_oracle" "terminal-graphics-oracle-tests" core_flags core_frameworks)
-
-[group('test')]
-terminal-palette: (_suite "terminal_palette" "terminal-palette-tests" swift_flags "-framework Foundation")
-
-[group('test')]
-terminal-prompt-clear-oracle: (_suite "terminal_prompt_clear_oracle" "terminal-prompt-clear-oracle" core_flags core_frameworks)
-
-[group('test')]
-terminal-scheduler-oracle: (_suite "terminal_scheduler_oracle" "terminal-scheduler-oracle" core_flags core_frameworks)
-
-[group('test')]
-terminal-document-oracle: (_suite "terminal_document_oracle" "terminal-document-oracle-tests" core_flags core_frameworks)
-
-[group('test')]
-terminal-document-ownership: (_suite "terminal_document_ownership" "terminal-document-ownership-tests" swift_flags "-framework Foundation")
-
-[group('test')]
-terminal-viewport-oracle: (_suite "terminal_viewport_oracle" "terminal-viewport-oracle-tests" core_flags core_frameworks)
-
-[group('test')]
-terminal-reflow-semantics: (_suite "terminal_reflow_semantics" "terminal-reflow-semantics-tests" core_flags core_frameworks)
-
-[group('test')]
-terminal-semantic-regression: (_suite "terminal_semantic_regression" "terminal-semantic-regression" core_flags core_frameworks)
-
-[group('test')]
-terminal-boundary-regression: (_suite "terminal_boundary_regression" "terminal-boundary-regression" core_flags core_frameworks)
-
-[group('test')]
-terminal-selection: (_suite "terminal_selection" "terminal-selection-tests" core_flags core_frameworks)
-
-[group('test')]
-terminal-presented-content: (_suite "presented_content" "presented-content-tests" core_flags core_frameworks)
-
-[group('test')]
-visible-links-test: (_suite "visible_links" "visible-links-tests" swift_flags "-framework Foundation -framework AppKit -framework CoreText")
-
-[group('test')]
-unicode18-corpus:
-    mkdir -p target/native
-    xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O $(xcrun swift tools/SwiftIncrementalBuild.swift --print unicode18_corpus) -framework Foundation -o target/native/unicode18-corpus
-    target/native/unicode18-corpus "$PWD" --strict
-
-[group('test')]
-unicode-decoder: (_suite "unicode_decoder" "unicode-decoder-tests" swift_flags "-framework Foundation")
-
-[group('test')]
-unicode-lowercase: (_suite "unicode_lowercase" "unicode-lowercase-tests" swift_flags "-framework Foundation")
-
-[group('test')]
-terminal-width: (_suite "terminal_width" "terminal-width-tests" swift_flags "-framework Foundation")
-
-[group('test')]
-input-encoder: (_suite "input_encoder" "input-encoder-tests" swift_flags "-framework Foundation")
-
-[group('test')]
-osc52-protocol: (_suite "osc52_protocol" "osc52-protocol-tests" core_flags core_frameworks)
-
-[group('test')]
 terminfo-test: build _terminfo-test
-
-[group('test')]
-clipboard-access-test: build _clipboard-access-tests
-
-[group('test')]
-tab-navigation-test: (_suite "tab_navigation" "tab-navigation-tests" swift_flags "-framework AppKit")
-
-[group('test')]
-window-stress-motion-test: (_suite "window_stress_motion" "window-stress-motion-tests" swift_flags "-framework AppKit -framework Foundation -framework CoreGraphics")
 
 # Glyph raster and residency tests; needs a real GPU.
 [group('test')]
 glyph-rendering-tests: build _glyph-rendering-tests
-
-[group('test')]
-metal-upload-probe: (_suite "metal_upload_probe" "metal-upload-probe" "-parse-as-library" "-framework Metal")
 
 # ── smoke ─────────────────────────────────────────────────────────────
 
@@ -459,13 +321,6 @@ release-status:
 
 # ── helpers ───────────────────────────────────────────────────────────
 
-# Build one test group from the source graph and run it. `lint` verifies the graph.
-[private]
-_suite group binary flags="" libraries="":
-    mkdir -p target/native
-    xcrun swiftc {{flags}} $(xcrun swift tools/SwiftIncrementalBuild.swift --print {{group}}) {{libraries}} -o target/native/{{binary}}
-    target/native/{{binary}}
-
 # Build the developer tool (tools/Dev) when its sources are newer. Sources are
 # given by absolute path: the tool finds the repository from where it was built.
 [private]
@@ -509,20 +364,6 @@ _suite group binary flags="" libraries="":
     target/native/distribute "$1"
 
 [private]
-_session-test:
-    mkdir -p target/native
-    xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print session) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/session-tests
-    target/native/session-tests "$PWD"
-
-[private]
-_shell-editing-test:
-    mkdir -p target/native
-    xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print shell_editing) target/native/Spawn.o -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/shell-editing-tests
-    env -u LANG -u LC_ALL -u LC_CTYPE -u NO_COLOR -u CLICOLOR -u CLICOLOR_FORCE -u FORCE_COLOR target/native/shell-editing-tests "$PWD"
-
-[private]
 _glyph-rendering-tests:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -551,16 +392,18 @@ _glyph-rendering-tests:
 
 [private]
 _glyph-raster-tests:
-    mkdir -p target/native
-    xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc $(xcrun swift tools/SwiftIncrementalBuild.swift --print glyph_raster_worker) -framework AppKit -framework CoreText -o target/native/glyph-raster-worker-tests
-    target/native/glyph-raster-worker-tests
+    {{swift_test}} --filter GlyphRasterWorkerTests
 
 [private]
 _glyph-residency-tests:
+    {{swift_test}} --filter GlyphResidency
+
+# Standalone Metal texture upload check, as the hosted-runner policy runs it.
+[group('test')]
+metal-upload-probe:
     mkdir -p target/native
-    xcrun swiftc -D GLYPH_RESIDENCY_TESTING $(xcrun swift tools/SwiftIncrementalBuild.swift --print glyph_residency) -framework AppKit -framework CoreText -framework Metal -o target/native/glyph-residency-tests
-    target/native/glyph-residency-tests
+    xcrun swiftc -parse-as-library $(xcrun swift tools/SwiftIncrementalBuild.swift --print metal_upload_probe) -framework Metal -o target/native/metal-upload-probe
+    target/native/metal-upload-probe
 
 [private]
 _terminfo-test: _terminfo-probe _dev
@@ -571,10 +414,3 @@ _terminfo-probe:
     mkdir -p target/native
     xcrun swift tools/SwiftIncrementalBuild.swift --verify >&2
     xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminfo_probe) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminfo-probe
-
-[private]
-_clipboard-access-tests:
-    mkdir -p target/native
-    xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print clipboard_access) target/native/Spawn.o -framework AppKit -framework Foundation -framework CoreFoundation -framework CoreGraphics -framework ImageIO -framework Security -liconv -o target/native/clipboard-access-tests
-    target/native/clipboard-access-tests "$PWD"

@@ -25,6 +25,6 @@ let package = Package(
     .testTarget(
       name: "TerminalTests",
       dependencies: ["TerminalApp", "TerminalLauncher"],
-      path: "Tests/TerminalSuite",
+      path: "Tests/TerminalTests",
       swiftSettings: [.swiftLanguageMode(.v5), .unsafeFlags(["-import-objc-header", bridgingHeader, "-disable-bridging-pch"])]),
   ])

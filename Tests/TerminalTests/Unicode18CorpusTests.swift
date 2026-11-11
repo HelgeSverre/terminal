@@ -44,9 +44,7 @@ import Testing
     #expect(checked == 0x110000)
   }
 
-  /// Reports the exact parity state of the grapheme corpus. The boundary
-  /// failures only fail the test when `TERMINAL_UNICODE18_STRICT` is set, as
-  /// the old `--strict` flag did.
+  /// Every boundary in the Unicode 18 grapheme corpus must match.
   @Test static func graphemeBreakCorpus() throws {
     let fixture = root.appendingPathComponent("tools/unicode/GraphemeBreakTest-18.0.0.txt")
     let bytes = try Data(contentsOf: fixture)
@@ -77,6 +75,6 @@ import Testing
     }
     let report = "Unicode 18 corpus: \(cases) cases, \(failures) boundary failures\(first.map { "; first \($0)" } ?? "")\n"
     FileHandle.standardOutput.write(Data(report.utf8))
-    if ProcessInfo.processInfo.environment["TERMINAL_UNICODE18_STRICT"] != nil { #expect(failures == 0) }
+    #expect(failures == 0)
   }
 }
