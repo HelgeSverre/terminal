@@ -937,7 +937,7 @@ import Testing
     // Synchronized output withholds publication; such inputs check replies only.
     let published = swiftTerminalSnapshot(terminal, scroll: 0, now: 0).snapshot
     let text = (published?.rows ?? []).map { row in
-      String(row.cells.map(\.text).joined().reversed().drop { $0 == " " }.reversed())
+      String(row.cells.map { $0.text.isEmpty ? " " : $0.text }.joined().reversed().drop { $0 == " " }.reversed())
     }
     guard published != nil, let cursor = Self.snapshot(terminal)["cursor"] as? [String: Any] else {
       return (text, reply, (-1, -1))
@@ -968,6 +968,39 @@ import Testing
       let actual = observe(input, rows: 4).replies
       #expect(actual == reply, "\(label): got \(actual.debugDescription)")
     }
+  }
+  // Strings the terminal does not interpret are consumed to ST, and an
+  // escape sequence is cancelled, restarted or interleaved with C0 controls
+  // as in xterm. None of it may leak onto the screen.
+  @Test static func escapeSequenceParsing() {
+    let e = "\u{1b}"
+    let screens: [(String, [String], String)] = [
+      ("a\(e)P1zhello\(e)\\b", ["ab", "", ""], "DCS body is not printed"),
+      ("a\(e)P+q544e\(e)\\b", ["ab", "", ""], "XTGETTCAP is not printed"),
+      ("a\(e)Pq#0;2;0;0;0~~-\(e)\\b", ["ab", "", ""], "sixel data is not printed"),
+      ("a\(e)Ptmux;\(e)\(e)]0;t\u{7}\(e)\\b", ["ab", "", ""], "tmux passthrough is consumed whole"),
+      ("a\(e)Xhello\(e)\\b", ["ab", "", ""], "SOS body is not printed"),
+      ("a\(e)^hello\(e)\\b", ["ab", "", ""], "PM body is not printed"),
+      ("a\(e)Phello\u{18}b", ["ab", "", ""], "CAN ends a DCS"),
+      ("a\(e)[1;2\u{18}b", ["ab", "", ""], "CAN cancels a CSI"),
+      ("a\(e)[1;2\u{1a}b", ["ab", "", ""], "SUB cancels a CSI"),
+      ("a\(e)[1;\(e)[2Cb", ["a  b", "", ""], "ESC restarts a CSI"),
+      ("a\(e)[\n2Cb", ["a", "   b", ""], "LF inside a CSI executes"),
+      ("ab\(e)[\r3Cc", ["ab c", "", ""], "CR inside a CSI executes"),
+      ("\(e)#8", ["EEEE", "EEEE", "EEEE"], "DECALN fills the screen"),
+      ("\(e)*Bx\(e)%Gy\(e) Fz", ["xyz", "", ""], "other escape intermediates take their final"),
+      ("a\(e)#\u{18}b", ["ab", "", ""], "CAN cancels an escape intermediate"),
+    ]
+    for (input, rows, label) in screens {
+      let columns: UInt32 = input.hasSuffix("#8") ? 4 : 20
+      let actual = observe(input, columns: columns, rows: 3).rows
+      #expect(actual == rows, "\(label): got \(actual)")
+    }
+    let aligned = observe("\(e)[2;3r\(e)[1;31m\(e)[3;4H\(e)#8\(e)[6nX", columns: 4, rows: 3)
+    #expect(aligned.replies == "\(e)[1;1R" && aligned.rows[0] == "XEEE", "DECALN homes the cursor")
+    // Reverse index at row 1 scrolls only when the region reaches the top.
+    let margins = observe("\(e)[2;3r\(e)#8\(e)[1;1H\(e)M", columns: 4, rows: 3)
+    #expect(margins.rows == ["", "EEEE", "EEEE"], "DECALN resets the scroll region: \(margins.rows)")
   }
   @Test static func swiftCoreSmoke() {
     guard let core = terminal_create(8, 3) else { Issue.record("create"); return }

@@ -295,6 +295,7 @@ import Testing
       "a\u{1b}[38:2::12:34:56m猫👩🏽‍💻e\u{301}\u{1b}]8;;https://example.com\u{1b}\\X\u{1b}]8;;\u{1b}\\\u{1b}[6n",
       "abcd\u{1b}[?1049hhello\u{1b}[?1049h!\u{1b}[?1049lZ",
       "a\u{1b}Pstuff\u{1b}[31mignored\u{1b}\\b\u{1b}_unsupported\u{7}garbage\u{1b}\\c",
+      "a\u{1b}P+q544e\u{1b}\\b\u{1b}[1;\u{18}c\u{1b}[\r2Cd\u{1b}^pm\u{1b}\\\u{1b}*Be\u{1b}#8f",
       "\u{1b}]2;title\u{1b}\\abcd\r\n猫猫cat\u{1b}[2;3HX\u{1b}[0J",
     ]
     for fixture in fixtures {

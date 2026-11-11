@@ -16,7 +16,7 @@ private func decSpecialGraphics(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
   return mapping[scalar.value].flatMap(Unicode.Scalar.init) ?? scalar
 }
 
-private enum VTParserState { case ground, escape, charset(Int), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool) }
+private enum VTParserState { case ground, escape, charset(Int), escapeIntermediate(UInt8), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool) }
 
 private final class TerminalSearchToken {
   // The task contains only immutable page snapshots while it is with the
@@ -525,6 +525,13 @@ private final class TerminalEmulator {
         parser = .ground
         if byte == 0x30 { charsetSpecial[slot] = true }
         else if byte == 0x42 { charsetSpecial[slot] = false }
+      case .escapeIntermediate(let intermediate):
+        if (0x30...0x7e).contains(byte) {
+          parser = .ground
+          if intermediate == 0x23 && byte == 0x38 { screenAlignment() }
+        } else if byte == 0x18 || byte == 0x1a { parser = .ground }
+        else if byte == 0x1b { parser = .escape }
+        else if byte < 0x20 { executeControl(byte) }
       case .csi:
         // Parameter bytes cannot produce replies or REP work. Admit their
         // contiguous run once, preserving the scalar-backed UTF-8 budget.
@@ -532,7 +539,7 @@ private final class TerminalEmulator {
         var budget = csiUTF8Count
         while offset < limit {
           let next = bytes[offset]
-          if (0x40...0x7e).contains(next) || budget >= 16_384 { break }
+          if (0x40...0x7e).contains(next) || next < 0x20 || budget >= 16_384 { break }
           budget += next < 0x80 ? 1 : 2
           offset += 1
         }
@@ -545,6 +552,13 @@ private final class TerminalEmulator {
         if (0x40...0x7e).contains(final) {
           handleCSI(csiBytes, final: final); parser = .ground
           if repeatRemaining > 0 { return offset + 1 }
+        } else if final < 0x20 {
+          // CAN and SUB cancel the sequence, ESC starts a new one, and any
+          // other C0 control executes without ending it.
+          if final == 0x18 || final == 0x1a || final == 0x1b {
+            csiBytes.removeAll(keepingCapacity: true); csiUTF8Count = 0
+            parser = final == 0x1b ? .escape : .ground
+          } else { executeControl(final) }
         } else {
           // A final is accepted even at the limit; only a further parameter
           // byte overflows, and that byte is consumed without interpretation.
@@ -654,8 +668,14 @@ private final class TerminalEmulator {
     case 0x5b: csiBytes.removeAll(keepingCapacity: true); csiUTF8Count = 0; parser = .csi
     case 0x5d: sequence = ""; parser = .osc
     case 0x5f: sequence = ""; parser = .apc
+    // DCS, SOS and PM carry strings this terminal does not interpret. They
+    // are consumed up to ST so their bodies never reach the screen.
+    case 0x50, 0x58, 0x5e: parser = .discardString(escaped: false, osc: false)
     case 0x28: parser = .charset(0)
     case 0x29: parser = .charset(1)
+    // Other intermediates (`ESC #`, `ESC *`, `ESC %`, `ESC SP` …) take a
+    // final byte; only DECALN among them is implemented.
+    case 0x20...0x2f: parser = .escapeIntermediate(byte)
     case 0x37: saveCursor()
     case 0x38: restoreCursor()
     case 0x48: tabs[screen.cursorColumn] = true
@@ -670,6 +690,41 @@ private final class TerminalEmulator {
     case 0x1b: parser = .escape
     default: break
     }
+  }
+  /// A C0 control received inside an escape sequence.
+  private func executeControl(_ byte: UInt8) {
+    switch byte {
+    case 0x08: backspace()
+    case 0x09: tab()
+    case 0x0a, 0x0b, 0x0c: lineFeed()
+    case 0x0d: carriageReturn()
+    case 0x0e: charsetSlot = 1
+    case 0x0f: charsetSlot = 0
+    default: break
+    }
+  }
+  /// DECALN: fill the screen with `E` in the default rendition, reset the
+  /// scroll region and home the cursor.
+  private func screenAlignment() {
+    resetClusterBoundary()
+    var s = screen
+    s.rows = (0..<rowCount).map { _ in document.eraseRow(TerminalStyle()) }
+    s.topMargin = 0; s.bottomMargin = rowCount - 1
+    screen = s
+    let kept = attributes
+    attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
+    for row in 0..<rowCount {
+      var line = screen; line.cursorRow = row; line.cursorColumn = 0; line.pendingWrap = false; screen = line
+      for _ in 0..<columns {
+        if let effect = document.print(
+          "E", usingAlternate: usingAlternate, leftRightMargins: false, autoWrap: false,
+          insertMode: false, attributes: attributes) { apply(effect) }
+      }
+    }
+    attributes = kept
+    var home = screen; home.cursorRow = 0; home.cursorColumn = 0; home.pendingWrap = false; screen = home
+    forgetLastPrinted()
+    changed()
   }
   private func put(_ scalar: Unicode.Scalar) {
     guard let effect = document.print(
