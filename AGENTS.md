@@ -95,8 +95,9 @@ alone and tell Helge.
 
 ## Tests
 
-Tests are Swift Testing suites in `Tests/TerminalTests`, built once by
-`Package.swift` and run by `just unit-test` (part of `just test`). Run some
+Tests are Swift Testing suites, built once by `Package.swift` and run by
+`just unit-test` (part of `just test`): `Tests/TerminalTests` for the app,
+`Tests/DevTests` for the developer tool. Run some
 with `just unit-test --filter SuiteName`. A new test goes into a suite there,
 with `#expect` and `#require`; do not add test programs with their own
 `main`. Tests wait with `await TestEnvironment.wait`, never by spinning the

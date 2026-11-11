@@ -128,7 +128,7 @@ swift-build-test:
     just _terminfo-test
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
     xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    {{swift_test}} --skip GlyphRasterWorkerTests --skip GlyphResidency
+    {{swift_test}} --skip DevTests --skip GlyphRasterWorkerTests --skip GlyphResidency
     just _glyph-rendering-tests
     xcrun clang -Wall -Wextra -Werror -I Sources/Terminal/Interop -c Tests/Programs/pty.c -o target/native/swift-pty-tests.o
     xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty) target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
@@ -144,7 +144,9 @@ unit-test *arguments:
 [group('test')]
 workflow-tests: _dev
     mkdir -p target/native
-    target/native/dev self-test
+    {{swift_test}} --filter DevTests
+    target/native/dev tui-stress --prepare
+    target/native/dev rendering-proof --prepare
     xcrun swiftc -parse-as-library -O tools/tui_stress/Driver.swift -o target/native/tui-stress-driver-tests
     target/native/tui-stress-driver-tests --self-test
     xcrun clang -Wall -Wextra -Werror -O2 Benchmarks/TerminalBench/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
