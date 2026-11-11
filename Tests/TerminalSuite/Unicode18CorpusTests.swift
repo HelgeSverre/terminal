@@ -1,12 +1,17 @@
 import CryptoKit
 import Foundation
+import Testing
+@testable import TerminalApp
 
-@main enum Unicode18CorpusTests {
-  private static func verifyEveryCategory(root: String) throws {
-    let url = URL(fileURLWithPath: root).appendingPathComponent("tools/unicode/grapheme-ranges-18.0.0.txt")
+@Suite enum Unicode18CorpusTests {
+  private static let root = TestEnvironment.repository
+
+  /// Every code point, including surrogates, against an independent range lookup.
+  @Test static func categoryOracle() throws {
+    let url = root.appendingPathComponent("tools/unicode/grapheme-ranges-18.0.0.txt")
     let data = try Data(contentsOf: url)
     let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-    precondition(digest == "df81b11f8af22806c3d5f0fecd8ca93537e129d4b8cd7a3270dfb3fc83babec5")
+    #expect(digest == "df81b11f8af22806c3d5f0fecd8ca93537e129d4b8cd7a3270dfb3fc83babec5")
     let categories: [String: Unicode18GraphemeTables.Category] = [
       "Other": .Other, "CR": .CR, "Control": .Control, "Extend": .Extend,
       "Extended_Pictographic": .Extended_Pictographic, "InCB_Consonant": .InCB_Consonant,
@@ -30,23 +35,23 @@ import Foundation
       }
       let expected: Unicode18GraphemeTables.Category =
         low < ranges.count && ranges[low].0 <= value ? ranges[low].2 : .Other
-      precondition(Unicode18GraphemeTables.category(value) == expected,
-                   "category mismatch at U+\(String(value, radix: 16))")
+      #expect(Unicode18GraphemeTables.category(value) == expected,
+              "category mismatch at U+\(String(value, radix: 16))")
       checked += 1
     }
-    precondition(Unicode18GraphemeTables.category(0x110000) == .Other)
-    precondition(Unicode18GraphemeTables.category(UInt32.max) == .Other)
-    print("PASS Unicode category oracle: \(checked) code points (including surrogates)")
+    #expect(Unicode18GraphemeTables.category(0x110000) == .Other)
+    #expect(Unicode18GraphemeTables.category(UInt32.max) == .Other)
+    #expect(checked == 0x110000)
   }
 
-  static func main() throws {
-    let root = CommandLine.arguments.dropFirst().first ?? FileManager.default.currentDirectoryPath
-    try verifyEveryCategory(root: root)
-    let fixture = URL(fileURLWithPath: root).appendingPathComponent(
-      "tools/unicode/GraphemeBreakTest-18.0.0.txt")
+  /// Reports the exact parity state of the grapheme corpus. The boundary
+  /// failures only fail the test when `TERMINAL_UNICODE18_STRICT` is set, as
+  /// the old `--strict` flag did.
+  @Test static func graphemeBreakCorpus() throws {
+    let fixture = root.appendingPathComponent("tools/unicode/GraphemeBreakTest-18.0.0.txt")
     let bytes = try Data(contentsOf: fixture)
     let digest = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
-    precondition(digest == "b0cf047ee94485bbdc846de2b902f5f8a815f6b674f9d04223cddadd91c9df31",
+    #expect(digest == "b0cf047ee94485bbdc846de2b902f5f8a815f6b674f9d04223cddadd91c9df31",
       "Unicode 18 corpus checksum changed")
     let data = String(decoding: bytes, as: UTF8.self)
     var cases = 0, failures = 0
@@ -60,7 +65,8 @@ import Foundation
         if token == "÷" { expected = true; continue }
         if token == "×" { expected = false; continue }
         guard let value = UInt32(token, radix: 16), let scalar = Unicode.Scalar(value) else {
-          fatalError("bad fixture token \(token) on line \(lineNumber + 1)")
+          Issue.record("bad fixture token \(token) on line \(lineNumber + 1)")
+          return
         }
         if segmenter.push(scalar) != expected {
           failures += 1
@@ -71,9 +77,6 @@ import Foundation
     }
     let report = "Unicode 18 corpus: \(cases) cases, \(failures) boundary failures\(first.map { "; first \($0)" } ?? "")\n"
     FileHandle.standardOutput.write(Data(report.utf8))
-    // This executable reports exact parity state without turning expected work
-    // into a misleading green test. It becomes a hard gate once generated
-    // tables are present.
-    if CommandLine.arguments.contains("--strict") { precondition(failures == 0) }
+    if ProcessInfo.processInfo.environment["TERMINAL_UNICODE18_STRICT"] != nil { #expect(failures == 0) }
   }
 }
