@@ -1,24 +1,10 @@
 import Foundation
+import Testing
+@testable import TerminalApp
+import Testing
+@testable import TerminalApp
 
-@main enum EmulatorTests {
-  // Optimized Swift preconditions otherwise terminate with an unlabelled
-  // SIGTRAP, hiding which smoke-test contract failed in CI.
-  private static func precondition(
-    _ condition: @autoclosure () -> Bool, _ message: @autoclosure () -> String = "",
-    file: StaticString = #fileID, line: UInt = #line
-  ) {
-    guard condition() else {
-      preconditionFailure(message(), file: file, line: line)
-    }
-  }
-  private static func preconditionFailure(
-    _ message: @autoclosure () -> String = "", file: StaticString = #fileID, line: UInt = #line
-  ) -> Never {
-    let detail = message()
-    let suffix = detail.isEmpty ? "" : ": \(detail)"
-    FileHandle.standardError.write(Data("FAIL emulator assertion at \(file):\(line)\(suffix)\n".utf8))
-    Foundation.exit(1)
-  }
+@Suite enum EmulatorTests {
   private final class Bytes { var value = Data() }
   private final class Metadata { var value = Data() }
   private static let collect: @convention(c) (
@@ -36,21 +22,21 @@ import Foundation
   }
   static func binaryHeader(_ core: OpaquePointer, scroll: Int) -> [String: Any] {
     let capture = Metadata()
-    precondition(terminal_snapshot_binary(
+    #expect(terminal_snapshot_binary(
       core, scroll, 0, Unmanaged.passUnretained(capture).toOpaque(), collectMetadata))
     return try! JSONSerialization.jsonObject(with: capture.value) as! [String: Any]
   }
   static func viewHeader(_ core: OpaquePointer) -> [String: Any] {
     let capture = Metadata()
-    precondition(terminal_view_snapshot_binary(core, 0, Unmanaged.passUnretained(capture).toOpaque(), collectMetadata))
+    #expect(terminal_view_snapshot_binary(core, 0, Unmanaged.passUnretained(capture).toOpaque(), collectMetadata))
     return try! JSONSerialization.jsonObject(with: capture.value) as! [String: Any]
   }
   static func snapshot(_ core: OpaquePointer) -> [String: Any] {
-    guard let snapshot = TerminalSnapshotTestSupport.ownerSnapshot(core) else { fatalError("missing snapshot") }
+    guard let snapshot = TerminalSnapshotTestSupport.ownerSnapshot(core) else { Issue.record("missing snapshot"); return [:] }
     return snapshot
   }
   static func legacySnapshot(_ core: OpaquePointer, scroll: Int) -> [String: Any] {
-    guard let raw = terminal_snapshot(core, scroll, 0) else { fatalError("missing legacy snapshot") }
+    guard let raw = terminal_snapshot(core, scroll, 0) else { Issue.record("missing legacy snapshot"); return [:] }
     defer { terminal_string_free(raw) }
     return try! JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8)) as! [String: Any]
   }
@@ -65,7 +51,7 @@ import Foundation
       terminal_input(
         core, $0, key, modifiers, event, Unmanaged.passUnretained(capture).toOpaque(), collect)
     }
-    precondition(accepted)
+    #expect(accepted)
     return capture.value
   }
   static func replies(_ core: OpaquePointer) -> Data {
@@ -80,26 +66,26 @@ import Foundation
       terminal_input_with_metadata(core, $0, key, modifiers, event, nil, nil, 0, 0,
                                    Unmanaged.passUnretained(capture).toOpaque(), collect)
     }
-    precondition(accepted)
+    #expect(accepted)
     return capture.value
   }
-  static func nativeModifierWire() {
+  @Test static func nativeModifierWire() {
     let core = terminal_create(8, 2)!
     defer { terminal_destroy(core) }
     feed(core, "\u{1b}[>11u") // Full key reporting plus press/repeat/release.
     for (mask, encoded) in [(UInt32(64), 65), (128, 129), (192, 193)] {
       let expected = Data("\u{1b}[97;\(encoded):1u".utf8)
-      precondition(nativeInput(core, text: "a", key: 200, modifiers: mask) == expected)
-      precondition(input(core, text: "a", key: 200, modifiers: mask) == expected)
+      #expect(nativeInput(core, text: "a", key: 200, modifiers: mask) == expected)
+      #expect(input(core, text: "a", key: 200, modifiers: mask) == expected)
     }
     for code: UInt32 in 400...412 {
       let wireCode = code == 412 ? 57358 : 57441 + code - 400
-      precondition(nativeInput(core, key: code, modifiers: 1) == Data("\u{1b}[\(wireCode);2:1u".utf8))
-      precondition(nativeInput(core, key: code, event: 2) == Data("\u{1b}[\(wireCode);1:3u".utf8))
+      #expect(nativeInput(core, key: code, modifiers: 1) == Data("\u{1b}[\(wireCode);2:1u".utf8))
+      #expect(nativeInput(core, key: code, event: 2) == Data("\u{1b}[\(wireCode);1:3u".utf8))
     }
     feed(core, "\u{1b}[<u\u{1b}[>2u")
-    precondition(nativeInput(core, key: 400, modifiers: 1).isEmpty)
-    precondition(nativeInput(core, key: 400, event: 2).isEmpty)
+    #expect(nativeInput(core, key: 400, modifiers: 1).isEmpty)
+    #expect(nativeInput(core, key: 400, event: 2).isEmpty)
   }
   static func cells(_ snapshot: [String: Any], _ row: Int) -> [[String: Any]] {
     ((snapshot["rows"] as! [[String: Any]])[row]["cells"] as! [[String: Any]])
@@ -126,8 +112,8 @@ import Foundation
           let pointer = offset < end ? buffer.bindMemory(to: UInt8.self).baseAddress!.advanced(by: offset) : nil
           return terminal_feed(core, pointer, end - offset, 0)
         }
-        precondition(count >= 0 && count <= end - offset)
-        precondition(count > 0 || wasWorking)
+        #expect(count >= 0 && count <= end - offset)
+        #expect(count > 0 || wasWorking)
         offset += count
       }
     }
@@ -137,8 +123,8 @@ import Foundation
         let pointer = offset < bytes.count ? buffer.bindMemory(to: UInt8.self).baseAddress!.advanced(by: offset) : nil
         return terminal_feed(core, pointer, bytes.count - offset, 0)
       }
-      precondition(count >= 0 && count <= bytes.count - offset)
-      precondition(count > 0 || wasWorking)
+      #expect(count >= 0 && count <= bytes.count - offset)
+      #expect(count > 0 || wasWorking)
       offset += count
     }
   }
@@ -147,7 +133,7 @@ import Foundation
       terminal_feed(core, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0)
     }
   }
-  static func asciiByteAdmission() {
+  @Test static func asciiByteAdmission() {
     // The whole-buffer path admits long ASCII in bulk to the same decoder
     // scratch. One-byte and irregular feeds retain per-byte decoding; their
     // complete snapshots must nevertheless remain identical.
@@ -161,7 +147,7 @@ import Foundation
     feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
     feed(irregular, bytes: payload, partitions: [3, 17, 1_023, 2, 19, 7, 53])
     let expected = stableSnapshot(whole)
-    precondition(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
+    #expect(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
 
     // A viable prefix must force its following ASCII through UTF-8 rejection
     // first; bulk admission resumes only after the decoder becomes idle.
@@ -170,7 +156,7 @@ import Foundation
     defer { terminal_destroy(pendingWhole); terminal_destroy(pendingBytes) }
     feed(pendingWhole, bytes: pending, partitions: [pending.count])
     feed(pendingBytes, bytes: pending, partitions: [1, 1] + Array(repeating: 1, count: 32))
-    precondition(stableSnapshot(pendingWhole) == stableSnapshot(pendingBytes))
+    #expect(stableSnapshot(pendingWhole) == stableSnapshot(pendingBytes))
 
     // DEC Special Graphics maps printable bytes, so its run remains on the
     // ordinary decoder path; normal charset resumes borrowed admission.
@@ -180,7 +166,7 @@ import Foundation
     defer { terminal_destroy(decWhole); terminal_destroy(decBytes) }
     feed(decWhole, bytes: dec, partitions: [dec.count])
     feed(decBytes, bytes: dec, partitions: Array(repeating: 1, count: dec.count))
-    precondition(stableSnapshot(decWhole) == stableSnapshot(decBytes))
+    #expect(stableSnapshot(decWhole) == stableSnapshot(decBytes))
 
     // Runs below the admission threshold stay on the existing decoder path.
     // Repeated Unicode and ANSI boundaries must not change their partition
@@ -194,7 +180,7 @@ import Foundation
     feed(shortBytes, bytes: shortMixed, partitions: Array(repeating: 1, count: shortMixed.count))
     feed(shortIrregular, bytes: shortMixed, partitions: [4, 11, 3, 15, 2, 7, 9])
     let shortExpected = stableSnapshot(shortWhole)
-    precondition(stableSnapshot(shortBytes) == shortExpected && stableSnapshot(shortIrregular) == shortExpected)
+    #expect(stableSnapshot(shortBytes) == shortExpected && stableSnapshot(shortIrregular) == shortExpected)
 
     // Feed consumes no more than 64 KiB even when that first chunk is one
     // bulk ASCII run. History is disabled to keep this ABI boundary small.
@@ -202,9 +188,9 @@ import Foundation
     defer { terminal_destroy(boundary) }
     terminal_set_history_limit(boundary, 0)
     let bytes = Data(repeating: UInt8(ascii: "z"), count: 65_537)
-    precondition(rawFeed(boundary, bytes) == 65_536)
-    precondition(rawFeed(boundary, Data(bytes.suffix(1))) == 1)
-    precondition(terminal_validate(boundary))
+    #expect(rawFeed(boundary, bytes) == 65_536)
+    #expect(rawFeed(boundary, Data(bytes.suffix(1))) == 1)
+    #expect(terminal_validate(boundary))
 
     // REP remains a resumable input boundary even after a bulk ASCII run:
     // the final CSI byte is admitted, then both repeat budgets drain before
@@ -213,26 +199,26 @@ import Foundation
     defer { terminal_destroy(repeatCore) }
     let repeatPrefix = Data((String(repeating: "A", count: 32) + "\u{1b}[5000bZ").utf8)
     let suffixOffset = repeatPrefix.firstIndex(of: UInt8(ascii: "Z"))!
-    precondition(rawFeed(repeatCore, repeatPrefix) == suffixOffset)
+    #expect(rawFeed(repeatCore, repeatPrefix) == suffixOffset)
     func visibleZCount() -> Int {
       (snapshot(repeatCore)["rows"] as! [[String: Any]]).flatMap { $0["cells"] as! [[String: Any]] }
         .filter { $0["text"] as? String == "Z" }.count
     }
-    precondition(visibleZCount() == 0)
-    precondition(rawFeed(repeatCore, Data("Z".utf8)) == 0) // first 4,096 repeats
-    precondition(visibleZCount() == 0)
-    precondition(rawFeed(repeatCore, Data("Z".utf8)) == 0) // remaining 904
-    precondition(visibleZCount() == 0)
-    precondition(rawFeed(repeatCore, Data("Z".utf8)) == 1)
+    #expect(visibleZCount() == 0)
+    #expect(rawFeed(repeatCore, Data("Z".utf8)) == 0) // first 4,096 repeats
+    #expect(visibleZCount() == 0)
+    #expect(rawFeed(repeatCore, Data("Z".utf8)) == 0) // remaining 904
+    #expect(visibleZCount() == 0)
+    #expect(rawFeed(repeatCore, Data("Z".utf8)) == 1)
     let afterSuffix = snapshot(repeatCore)
-    precondition((afterSuffix["revision"] as? Int) == 5_035)
-    precondition((afterSuffix["document_epoch"] as? Int) == 5_035)
-    precondition(visibleZCount() == 1)
-    precondition(rawFeed(repeatCore, Data("\u{1b}[1b".utf8)) == 4)
-    precondition(terminal_feed(repeatCore, nil, 0, 0) == 0)
-    precondition(visibleZCount() == 2)
+    #expect((afterSuffix["revision"] as? Int) == 5_035)
+    #expect((afterSuffix["document_epoch"] as? Int) == 5_035)
+    #expect(visibleZCount() == 1)
+    #expect(rawFeed(repeatCore, Data("\u{1b}[1b".utf8)) == 4)
+    #expect(terminal_feed(repeatCore, nil, 0, 0) == 0)
+    #expect(visibleZCount() == 2)
   }
-  static func borrowedASCIIContinuationEquivalence() {
+  @Test static func borrowedASCIIContinuationEquivalence() {
     // Bytewise feeds never enter the >=16-byte shortcut. Compare complete
     // owner snapshots (including revisions), replies, and history charges.
     // Short cases keep the preceding cluster visible; long cases cross both
@@ -260,7 +246,7 @@ import Foundation
           terminal_set_history_byte_limit(core, budget)
           feed(core, bytes: payload, partitions: partitions)
           terminal_finish(core)
-          precondition(terminal_validate(core), "ASCII continuation invariants: \(name)")
+          #expect(terminal_validate(core), "ASCII continuation invariants: \(name)")
           return (stableSnapshot(core), replies(core), terminal_history_bytes(core))
         }
         let expected = run(Array(repeating: 1, count: payload.count))
@@ -270,14 +256,14 @@ import Foundation
         }
         for chunks in partitions {
           let actual = run(chunks)
-          precondition(actual.0 == expected.0, "ASCII continuation snapshot: \(name), budget \(budget), chunks \(chunks.prefix(8))")
-          precondition(actual.1 == expected.1, "ASCII continuation replies: \(name)")
-          precondition(actual.2 == expected.2, "ASCII continuation history charge: \(name)")
+          #expect(actual.0 == expected.0, "ASCII continuation snapshot: \(name), budget \(budget), chunks \(chunks.prefix(8))")
+          #expect(actual.1 == expected.1, "ASCII continuation replies: \(name)")
+          #expect(actual.2 == expected.2, "ASCII continuation history charge: \(name)")
         }
       }
     }
   }
-  static func decodedBatchEquivalence() {
+  @Test static func decodedBatchEquivalence() {
     // The whole-buffer case reaches the <=1024 decoded scalar writer, while
     // the byte and irregular cases force ordinary feed boundaries.  A full
     // snapshot comparison includes rich cells/styles/links, cursor, wrap,
@@ -295,10 +281,10 @@ import Foundation
     feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
     feed(irregular, bytes: payload, partitions: [3, 1021, 2, 17, 5, 31, 7, 509])
     let expected = stableSnapshot(all)
-    precondition(stableSnapshot(bytewise) == expected)
-    precondition(stableSnapshot(irregular) == expected)
+    #expect(stableSnapshot(bytewise) == expected)
+    #expect(stableSnapshot(irregular) == expected)
     let expectedReplies = replies(all)
-    precondition(replies(bytewise) == expectedReplies && replies(irregular) == expectedReplies)
+    #expect(replies(bytewise) == expectedReplies && replies(irregular) == expectedReplies)
 
     // Extending a styled/hyperlinked cluster must retain its base attributes
     // for REP, rather than using the SGR/OSC 8 state current at the mark.
@@ -307,9 +293,9 @@ import Foundation
     feed(richRepeat, bytes: Data("\u{1b}]8;;https://one.example\u{1b}\\\u{1b}[31mA\u{1b}]8;;https://two.example\u{1b}\\\u{1b}[32m\u{301}\u{1b}[2b".utf8), partitions: [4, 1, 7, 2, 99])
     let repeated = cells(snapshot(richRepeat), 0)
     for index in 0..<3 {
-      precondition(repeated[index]["text"] as? String == "A\u{301}")
-      precondition(repeated[index]["link"] as? String == "https://one.example")
-      precondition((repeated[index]["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 1])
+      #expect(repeated[index]["text"] as? String == "A\u{301}")
+      #expect(repeated[index]["link"] as? String == "https://one.example")
+      #expect((repeated[index]["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 1])
     }
 
     // An incomplete UTF-8 prefix is only finished by an actual control/ESC,
@@ -319,7 +305,7 @@ import Foundation
     defer { terminal_destroy(once); terminal_destroy(split) }
     feed(once, bytes: interrupted, partitions: [interrupted.count])
     feed(split, bytes: interrupted, partitions: [1, 1, 1, 2, 3])
-    precondition(stableSnapshot(once) == stableSnapshot(split))
+    #expect(stableSnapshot(once) == stableSnapshot(split))
 
     // E1 80 + B emits two scalars (replacement and B).  The replacement
     // lands exactly at capacity after 1023 ASCII scalars, so this guards the
@@ -331,7 +317,7 @@ import Foundation
     feed(twoBytes, bytes: twoEmission, partitions: Array(repeating: 1, count: twoEmission.count))
     feed(twoIrregular, bytes: twoEmission, partitions: [1023, 1, 2])
     let twoExpected = stableSnapshot(twoWhole)
-    precondition(stableSnapshot(twoBytes) == twoExpected && stableSnapshot(twoIrregular) == twoExpected)
+    #expect(stableSnapshot(twoBytes) == twoExpected && stableSnapshot(twoIrregular) == twoExpected)
 
     // Exercise a pinned viewport while every newly scrolled row is evicted
     // by a zero/tiny byte budget.  Snapshot equality covers history bytes,
@@ -352,19 +338,19 @@ import Foundation
       feed(bytewise, bytes: bufferedWrap, partitions: Array(repeating: 1, count: bufferedWrap.count))
       feed(irregular, bytes: bufferedWrap, partitions: [5, 1023, 2, 17, 11, 71])
       let expected = stableSnapshot(whole)
-      precondition(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
-      precondition((snapshot(whole)["history_rows"] as? Int) == 0)
+      #expect(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
+      #expect((snapshot(whole)["history_rows"] as? Int) == 0)
       let reply = replies(whole)
-      precondition(replies(bytewise) == reply && replies(irregular) == reply)
+      #expect(replies(bytewise) == reply && replies(irregular) == reply)
     }
   }
-  static func indexHistoryUsesMutatedPrimaryForViewportClamp() {
+  @Test static func indexHistoryUsesMutatedPrimaryForViewportClamp() {
     for budget in ["count", "bytes-zero", "bytes-one"] {
       let core = terminal_create(4, 2)!
       defer { terminal_destroy(core) }
       feed(core, "A\r\nB\r\nC")
       terminal_view_scroll(core, 1) // Pin the row identity for A.
-      precondition(terminal_resize(core, 4, 3)) // A becomes primary, not history.
+      #expect(terminal_resize(core, 4, 3)) // A becomes primary, not history.
       switch budget {
       case "count": terminal_set_history_limit(core, 0)
       case "bytes-zero": terminal_set_history_byte_limit(core, 0)
@@ -375,51 +361,51 @@ import Foundation
       let revision = before["viewport_clamp_revision"] as! Int
       feed(core, "\r\nD") // Appends old primary A, then immediately evicts it.
       let after = snapshot(core)
-      precondition(after["viewport_clamp_revision"] as! Int == revision + 1, budget)
-      precondition(after["following_tail"] as? Bool == false && after["scroll_offset"] as? Int == 0, budget)
-      precondition(after["history_rows"] as? Int == 0 && lines(after) == ["B", "C", "D"], budget)
-      precondition((snapshot(core)["viewport_clamp_revision"] as! Int) == after["viewport_clamp_revision"] as! Int, budget)
+      #expect(after["viewport_clamp_revision"] as! Int == revision + 1, "\(budget)")
+      #expect(after["following_tail"] as? Bool == false && after["scroll_offset"] as? Int == 0, "\(budget)")
+      #expect(after["history_rows"] as? Int == 0 && lines(after) == ["B", "C", "D"], "\(budget)")
+      #expect((snapshot(core)["viewport_clamp_revision"] as! Int) == after["viewport_clamp_revision"] as! Int, "\(budget)")
     }
   }
-  static func csiASCIIParsing() {
+  @Test static func csiASCIIParsing() {
     let core = terminal_create(8, 2)!
     defer { terminal_destroy(core) }
     // Empty fields retain default-zero semantics; max UInt32 is valid while
     // an overflowing contiguous parameter ignores its whole CSI command.
     feed(core, "\u{1b}[31mR\u{1b}[;mD\u{1b}[4294967295CZ\u{1b}[4294967296DQ")
     let first = cells(snapshot(core), 0)
-    precondition((first[0]["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 1])
-    precondition((first[1]["style"] as? [String: Any])?["foreground"] as? String == "Default")
-    precondition(first[7]["text"] as? String == "Z")
+    #expect((first[0]["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 1])
+    #expect((first[1]["style"] as? [String: Any])?["foreground"] as? String == "Default")
+    #expect(first[7]["text"] as? String == "Z")
     // Overflowing D was ignored, so Q follows the max-valid C movement.
-    precondition(cells(snapshot(core), 1)[0]["text"] as? String == "Q")
+    #expect(cells(snapshot(core), 1)[0]["text"] as? String == "Q")
 
     let rendition = terminal_create(8, 2)!
     defer { terminal_destroy(rendition) }
     feed(rendition, "\u{1b}[38:2::255:255:255;4:3;48;5;7mX")
     let style = cells(snapshot(rendition), 0)[0]["style"] as! [String: Any]
-    precondition(style["foreground"] as? [String: [Int]] == ["Rgb": [255, 255, 255]])
-    precondition(style["background"] as? [String: Int] == ["Indexed": 7])
-    precondition(style["underline"] as? Int == 3)
+    #expect(style["foreground"] as? [String: [Int]] == ["Rgb": [255, 255, 255]])
+    #expect(style["background"] as? [String: Int] == ["Indexed": 7])
+    #expect(style["underline"] as? Int == 3)
 
     // Keyboard prefixes and private/intermediate CSI syntax remain byte
     // syntax, rather than becoming Unicode Character classification work.
     feed(core, "\u{1b}[>31u")
-    precondition(nativeInput(core, text: "a", key: 200) == Data("\u{1b}[97;1:1u".utf8),
+    #expect(nativeInput(core, text: "a", key: 200) == Data("\u{1b}[97;1:1u".utf8),
       "explicit absent metadata must omit associated text")
-    precondition(input(core, text: "a", key: 200) == Data("\u{1b}[97;1:1;97u".utf8),
+    #expect(input(core, text: "a", key: 200) == Data("\u{1b}[97;1:1;97u".utf8),
       "convenience input must synthesize associated text")
     // Kitty's set-flags command parses its first field before generic CSI
     // filtering. Colons make that field invalid rather than concatenating it.
     feed(core, "\u{1b}[>1:1u")
-    precondition(nativeInput(core, text: "a", key: 200) == Data("a".utf8))
+    #expect(nativeInput(core, text: "a", key: 200) == Data("a".utf8))
     feed(core, "\u{1b}[>31u")
     feed(core, "\u{1b}[>429496729:6u")
-    precondition(nativeInput(core, text: "a", key: 200) == Data("a".utf8))
+    #expect(nativeInput(core, text: "a", key: 200) == Data("a".utf8))
     feed(core, "\u{1b}[?1049hA\u{1b}[?1049l\u{1b}[1\"q猫\u{1b}[?2J")
     let afterPrivate = snapshot(core)
-    precondition(afterPrivate["alternate"] as? Bool == false)
-    precondition((afterPrivate["rows"] as! [[String: Any]]).flatMap { $0["cells"] as! [[String: Any]] }
+    #expect(afterPrivate["alternate"] as? Bool == false)
+    #expect((afterPrivate["rows"] as! [[String: Any]]).flatMap { $0["cells"] as! [[String: Any]] }
       .contains { $0["text"] as? String == "猫" })
 
     // A non-ASCII parameter byte used to be rejected by the UInt32 numeric
@@ -429,17 +415,17 @@ import Foundation
     feed(malformed, "X")
     feed(malformed, bytes: Data([0x1b, 0x5b, 0xb2, 0x42]), partitions: [4])
     feed(malformed, "Y")
-    precondition(cells(snapshot(malformed), 0)[0]["text"] as? String == "X")
-    precondition(cells(snapshot(malformed), 0)[1]["text"] as? String == "Y")
-    precondition(cells(snapshot(malformed), 1).allSatisfy { ($0["text"] as? String)?.isEmpty == true })
+    #expect(cells(snapshot(malformed), 0)[0]["text"] as? String == "X")
+    #expect(cells(snapshot(malformed), 0)[1]["text"] as? String == "Y")
+    #expect(cells(snapshot(malformed), 1).allSatisfy { ($0["text"] as? String)?.isEmpty == true })
 
     // Individual digit runs fit UInt32 here, but the old flattened value was
     // Int.max and could overflow cursor arithmetic. It is one invalid CSI.
     let concatenated = terminal_create(4, 2)!
     defer { terminal_destroy(concatenated) }
     feed(concatenated, "X\u{1b}[922337203:6:854775807CY")
-    precondition(cells(snapshot(concatenated), 0)[0]["text"] as? String == "X")
-    precondition(cells(snapshot(concatenated), 0)[1]["text"] as? String == "Y")
+    #expect(cells(snapshot(concatenated), 0)[0]["text"] as? String == "X")
+    #expect(cells(snapshot(concatenated), 0)[1]["text"] as? String == "Y")
 
     // `>` belongs to the keyboard `u` commands and secondary device
     // attributes. Before any other final byte it names a command this terminal
@@ -447,9 +433,9 @@ import Foundation
     let prefixedMotion = terminal_create(8, 2)!
     defer { terminal_destroy(prefixedMotion) }
     feed(prefixedMotion, "X\u{1b}[>31CY")
-    precondition(cells(snapshot(prefixedMotion), 0)[1]["text"] as? String == "Y")
+    #expect(cells(snapshot(prefixedMotion), 0)[1]["text"] as? String == "Y")
   }
-  static func sgrCompatibility() {
+  @Test static func sgrCompatibility() {
     // Expected styles were replayed through archived Rust 9190820's public
     // ABI. Check the normal immutable Swift publication and legacy ABI alike.
     func style(_ foreground: UInt32 = 0, _ background: UInt32 = 0,
@@ -484,7 +470,7 @@ import Foundation
         feed(terminal, prepared + sequence + "Z")
         let reply = String(decoding: replies(terminal), as: UTF8.self)
         guard let snapshot = swiftTerminalSnapshot(terminal, scroll: 0, now: 0).snapshot else {
-          preconditionFailure("missing snapshot for \(sequence.debugDescription)")
+          Issue.record("missing snapshot for \(sequence.debugDescription)"); return ([], reply)
         }
         return (snapshot.rows.map { $0.cells.map(\.text).joined() }, reply)
       }
@@ -495,7 +481,7 @@ import Foundation
       ]
       for sequence in foreign {
         let result = observed(sequence)
-        precondition(result.rows == untouched.rows && result.replies.isEmpty,
+        #expect(result.rows == untouched.rows && result.replies.isEmpty,
                      "foreign CSI acted: \(sequence.debugDescription)")
       }
       // An ignored command does not touch a pending wrap either: the next
@@ -503,15 +489,15 @@ import Foundation
       let wrapping = terminal_create(4, 2)!
       defer { terminal_destroy(wrapping) }
       feed(wrapping, "abcd\u{1b}[>0qe")
-      precondition(cells(snapshot(wrapping), 0)[3]["text"] as? String == "d", "last column kept")
-      precondition(cells(snapshot(wrapping), 1)[0]["text"] as? String == "e", "wrap still pending")
+      #expect(cells(snapshot(wrapping), 0)[3]["text"] as? String == "d", "last column kept")
+      #expect(cells(snapshot(wrapping), 1)[0]["text"] as? String == "e", "wrap still pending")
       // The commands that share those final bytes still work.
-      precondition(observed("\u{1b}[S").rows != untouched.rows, "CSI S scrolls")
-      precondition(observed("\u{1b}[?J").rows != untouched.rows, "DECSED erases")
-      precondition(observed("\u{1b}[c").replies == "\u{1b}[?62;4c", "primary device attributes")
-      precondition(observed("\u{1b}[>c").replies == "\u{1b}[>1;10;0c", "secondary device attributes")
-      precondition(observed("\u{1b}[?u").replies == "\u{1b}[?0u", "keyboard flags query")
-      precondition(observed("\u{1b}[?69$p").replies == "\u{1b}[?69;2$y", "DECRQM for a private mode")
+      #expect(observed("\u{1b}[S").rows != untouched.rows, "CSI S scrolls")
+      #expect(observed("\u{1b}[?J").rows != untouched.rows, "DECSED erases")
+      #expect(observed("\u{1b}[c").replies == "\u{1b}[?62;4c", "primary device attributes")
+      #expect(observed("\u{1b}[>c").replies == "\u{1b}[>1;10;0c", "secondary device attributes")
+      #expect(observed("\u{1b}[?u").replies == "\u{1b}[?0u", "keyboard flags query")
+      #expect(observed("\u{1b}[?69$p").replies == "\u{1b}[?69;2$y", "DECRQM for a private mode")
     }
     for command in [38, 48, 58] {
       for invalid in [256, 4_294_967_295] {
@@ -536,16 +522,16 @@ import Foundation
       defer { terminal_destroy(terminal) }
       feed(terminal, wire)
       guard let direct = swiftTerminalSnapshot(terminal, scroll: 0, now: 0).snapshot else {
-        preconditionFailure("missing direct SGR snapshot: \(name)")
+        Issue.record("missing direct SGR snapshot: \(name)"); return
       }
       let json = try! JSONSerialization.data(withJSONObject: legacySnapshot(terminal, scroll: 0)["rows"]!)
       let legacy = try! JSONDecoder().decode([RowSnapshot].self, from: json)
-      precondition(direct.rows == legacy, "direct/legacy SGR snapshot mismatch: \(name)")
+      #expect(direct.rows == legacy, "direct/legacy SGR snapshot mismatch: \(name)")
       let actual = direct.rows.flatMap(\.cells).filter { !$0.text.isEmpty }.map(\.style)
-      precondition(actual == expected, "SGR style mismatch: \(name)")
+      #expect(actual == expected, "SGR style mismatch: \(name)")
     }
   }
-  static func csiScratchReuseEquivalence() {
+  @Test static func csiScratchReuseEquivalence() {
     let grown = Array(repeating: "1", count: 256).joined(separator: ";")
     let text = "\u{1b}[" + grown + "mA" +
       "\u{1b}[1;2;4294967296;3mB" + // invalid after partial scratch values
@@ -559,27 +545,27 @@ import Foundation
     feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
     feed(irregular, bytes: payload, partitions: [5, 63, 2, 127, 17, 3, 71])
     let expected = stableSnapshot(whole)
-    precondition(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
+    #expect(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
     let first = cells(snapshot(whole), 0)[0]
-    precondition(first["text"] as? String == "A")
-    precondition((first["style"] as? [String: Any])?["bold"] as? Bool == true)
+    #expect(first["text"] as? String == "A")
+    #expect((first["style"] as? [String: Any])?["bold"] as? Bool == true)
     let second = cells(snapshot(whole), 0)[1]
-    precondition(second["text"] as? String == "B")
-    precondition((second["style"] as? [String: Any])?["bold"] as? Bool == true)
+    #expect(second["text"] as? String == "B")
+    #expect((second["style"] as? [String: Any])?["bold"] as? Bool == true)
     let styled = cells(snapshot(whole), 1)
-    precondition(styled[3]["text"] as? String == "C")
-    precondition((styled[3]["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 2])
-    precondition(styled[4]["text"] as? String == "D")
+    #expect(styled[3]["text"] as? String == "C")
+    #expect((styled[3]["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 2])
+    #expect(styled[4]["text"] as? String == "D")
     let rich = styled[4]["style"] as! [String: Any]
-    precondition(rich["foreground"] as? [String: [Int]] == ["Rgb": [255, 1, 2]])
-    precondition(rich["background"] as? [String: Int] == ["Indexed": 7])
-    precondition(rich["underline"] as? Int == 3)
-    precondition(styled[5]["text"] as? String == "E")
-    precondition((styled[5]["style"] as? [String: Any])?["foreground"] as? String == "Default")
+    #expect(rich["foreground"] as? [String: [Int]] == ["Rgb": [255, 1, 2]])
+    #expect(rich["background"] as? [String: Int] == ["Indexed": 7])
+    #expect(rich["underline"] as? Int == 3)
+    #expect(styled[5]["text"] as? String == "E")
+    #expect((styled[5]["style"] as? [String: Any])?["foreground"] as? String == "Default")
     let expectedReplies = replies(whole)
-    precondition(replies(bytewise) == expectedReplies && replies(irregular) == expectedReplies)
+    #expect(replies(bytewise) == expectedReplies && replies(irregular) == expectedReplies)
   }
-  static func carriageReturnEquivalence() {
+  @Test static func carriageReturnEquivalence() {
     let text = "\u{1b}[?69h\u{1b}[3;6s\u{1b}[4GQ\rR\r\nS" +
       "\u{1b}[3;1He\u{301}\rZ\u{1b}(0q\u{1b}(B\rT"
     let payload = Data(text.utf8)
@@ -589,18 +575,18 @@ import Foundation
     feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
     feed(irregular, bytes: payload, partitions: [1, 4, 2, 7, 3, 11, 5, 19])
     let expected = stableSnapshot(whole)
-    precondition(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
+    #expect(stableSnapshot(bytewise) == expected && stableSnapshot(irregular) == expected)
     let rows = snapshot(whole)["rows"] as! [[String: Any]]
     let first = rows[0]["cells"] as! [[String: Any]]
     let second = rows[1]["cells"] as! [[String: Any]]
-    precondition(first[2]["text"] as? String == "R")
-    precondition(second[2]["text"] as? String == "S")
+    #expect(first[2]["text"] as? String == "R")
+    #expect(second[2]["text"] as? String == "S")
     let third = rows[2]["cells"] as! [[String: Any]]
-    precondition(third[0]["text"] as? String == "Z")
-    precondition(third[1]["text"] as? String == "─")
-    precondition(third[2]["text"] as? String == "T")
+    #expect(third[0]["text"] as? String == "Z")
+    #expect(third[1]["text"] as? String == "─")
+    #expect(third[2]["text"] as? String == "T")
   }
-  static func searchABI() {
+  @Test static func searchABI() {
     func create(_ core: OpaquePointer, _ query: String) -> OpaquePointer? {
       let bytes = Array(query.utf8)
       return bytes.withUnsafeBufferPointer { terminal_search_create(core, $0.baseAddress, $0.count) }
@@ -609,13 +595,13 @@ import Foundation
       for _ in 0..<10_000 {
         switch terminal_search_fill(core, task) {
         case 0:
-          precondition([UInt32(0), 1, 2].contains(terminal_search_step(task)))
+          #expect([UInt32(0), 1, 2].contains(terminal_search_step(task)))
         case 2: return terminal_search_accept(core, task)
         case 3, 4: return terminal_search_fill(core, task)
-        default: preconditionFailure("unexpected search status")
+        default: Issue.record("unexpected search status"); return UInt32.max
         }
       }
-      preconditionFailure("search did not finish")
+      Issue.record("search did not finish"); return UInt32.max
     }
     func run(_ core: OpaquePointer, _ query: String) -> UInt32 {
       guard let task = create(core, query) else { return UInt32.max }
@@ -626,24 +612,24 @@ import Foundation
     let soft = terminal_create(4, 3)!
     defer { terminal_destroy(soft) }
     feed(soft, "abcdEFGH\r\nnext  ")
-    precondition(run(soft, "dEf") == 5)
-    precondition((snapshot(soft)["search"] as! [[String: Int]]).count == 2)
-    precondition(run(soft, "GHnext") == 2)
-    precondition(run(soft, "GH\nnext") == 5)
-    precondition(run(soft, "next  ") == 5)
-    precondition(run(soft, "\n") == 5) // A zero-width hard-break proof still navigates.
+    #expect(run(soft, "dEf") == 5)
+    #expect((snapshot(soft)["search"] as! [[String: Int]]).count == 2)
+    #expect(run(soft, "GHnext") == 2)
+    #expect(run(soft, "GH\nnext") == 5)
+    #expect(run(soft, "next  ") == 5)
+    #expect(run(soft, "\n") == 5) // A zero-width hard-break proof still navigates.
 
     let history = terminal_create(8, 2)!
     defer { terminal_destroy(history) }
     feed(history, "target\r\nsecond\r\nTARGET\r\nlater\r\nlast")
-    precondition(run(history, "target") == 5)
+    #expect(run(history, "target") == 5)
     // The newest match is selected and centered, clear of a bar docked over
     // the first rows; the older match is published as a secondary highlight.
     let anchored = snapshot(history)
-    precondition(anchored["scroll_offset"] as? Int == 2)
-    precondition((anchored["search"] as! [[String: Int]]) == [["row": 1, "start": 0, "end": 6]])
-    precondition((anchored["search_matches"] as! [[String: Int]]).isEmpty)
-    precondition((binaryHeader(history, scroll: 0)["search"] as! [[String: Int]]).isEmpty)
+    #expect(anchored["scroll_offset"] as? Int == 2)
+    #expect((anchored["search"] as! [[String: Int]]) == [["row": 1, "start": 0, "end": 6]])
+    #expect((anchored["search_matches"] as! [[String: Int]]).isEmpty)
+    #expect((binaryHeader(history, scroll: 0)["search"] as! [[String: Int]]).isEmpty)
     func position(_ core: OpaquePointer) -> [UInt32]? {
       var index: UInt32 = 0, total: UInt32 = 0, capped = true
       guard terminal_search_position(core, &index, &total, &capped), !capped else { return nil }
@@ -654,57 +640,57 @@ import Foundation
       guard terminal_search_navigate(core, older, &index, &total, &capped), !capped else { return nil }
       return [index, total]
     }
-    precondition(position(history) == [1, 2])
-    precondition(navigate(history, older: true) == [2, 2])
+    #expect(position(history) == [1, 2])
+    #expect(navigate(history, older: true) == [2, 2])
     let older = snapshot(history)
-    precondition(older["scroll_offset"] as? Int == 3)
-    precondition((older["search"] as! [[String: Int]]) == [["row": 0, "start": 0, "end": 6]])
+    #expect(older["scroll_offset"] as? Int == 3)
+    #expect((older["search"] as! [[String: Int]]) == [["row": 0, "start": 0, "end": 6]])
     let both = binaryHeader(history, scroll: 2)
-    precondition((both["search"] as! [[String: Int]]).isEmpty)
-    precondition((both["search_matches"] as! [[String: Int]]) == [["row": 1, "start": 0, "end": 6]])
+    #expect((both["search"] as! [[String: Int]]).isEmpty)
+    #expect((both["search_matches"] as! [[String: Int]]) == [["row": 1, "start": 0, "end": 6]])
     // Navigation wraps in both directions.
-    precondition(navigate(history, older: true) == [1, 2])
-    precondition(navigate(history, older: false) == [2, 2])
-    precondition(navigate(history, older: false) == [1, 2])
+    #expect(navigate(history, older: true) == [1, 2])
+    #expect(navigate(history, older: false) == [2, 2])
+    #expect(navigate(history, older: false) == [1, 2])
     terminal_search_clear(history)
-    precondition(position(history) == nil && navigate(history, older: true) == nil)
-    precondition((snapshot(history)["search"] as! [[String: Int]]).isEmpty)
+    #expect(position(history) == nil && navigate(history, older: true) == nil)
+    #expect((snapshot(history)["search"] as! [[String: Int]]).isEmpty)
 
     // Several matches on one row: one navigated, the others secondary.
     let sameRow = terminal_create(12, 2)!
     defer { terminal_destroy(sameRow) }
     feed(sameRow, "ab ab ab")
-    precondition(run(sameRow, "ab") == 5 && position(sameRow) == [1, 3])
-    precondition((snapshot(sameRow)["search"] as! [[String: Int]]) == [["row": 0, "start": 6, "end": 8]])
-    precondition((snapshot(sameRow)["search_matches"] as! [[String: Int]]).count == 2)
+    #expect(run(sameRow, "ab") == 5 && position(sameRow) == [1, 3])
+    #expect((snapshot(sameRow)["search"] as! [[String: Int]]) == [["row": 0, "start": 6, "end": 8]])
+    #expect((snapshot(sameRow)["search_matches"] as! [[String: Int]]).count == 2)
     // A rewritten row drops its matches; navigation then reports none left.
     feed(sameRow, "\rX")
-    precondition((snapshot(sameRow)["search_matches"] as! [[String: Int]]).isEmpty)
-    precondition(navigate(sameRow, older: true) == nil && position(sameRow) == nil)
+    #expect((snapshot(sameRow)["search_matches"] as! [[String: Int]]).isEmpty)
+    #expect(navigate(sameRow, older: true) == nil && position(sameRow) == nil)
 
     // Navigation skips a match whose row changed and lands on a live one.
     let skipping = terminal_create(8, 3)!
     defer { terminal_destroy(skipping) }
     feed(skipping, "hit\r\nhit\r\nhit")
-    precondition(run(skipping, "hit") == 5 && position(skipping) == [1, 3])
+    #expect(run(skipping, "hit") == 5 && position(skipping) == [1, 3])
     feed(skipping, "\u{1b}[2;1HX")
-    precondition(navigate(skipping, older: true) == [3, 3])
+    #expect(navigate(skipping, older: true) == [3, 3])
 
     let alternate = terminal_create(8, 2)!
     defer { terminal_destroy(alternate) }
     feed(alternate, "needle")
     feed(alternate, "\u{1b}[?1049hALT")
-    precondition(run(alternate, "needle") == 2)
-    precondition(run(alternate, "alt") == 5)
+    #expect(run(alternate, "needle") == 2)
+    #expect(run(alternate, "alt") == 5)
 
     let unicode = terminal_create(5, 3)!
     defer { terminal_destroy(unicode) }
     feed(unicode, "Ée\u{301}猫👩🏽‍💻")
-    precondition(run(unicode, "éE\u{301}猫") == 5)
-    precondition(run(unicode, "猫👩🏽‍💻") == 5)
-    precondition((snapshot(unicode)["search"] as! [[String: Int]]).count == 2) // Wrap spacer excluded.
-    precondition(run(unicode, "👩") == 5)
-    precondition((snapshot(unicode)["search"] as! [[String: Int]]).contains {
+    #expect(run(unicode, "éE\u{301}猫") == 5)
+    #expect(run(unicode, "猫👩🏽‍💻") == 5)
+    #expect((snapshot(unicode)["search"] as! [[String: Int]]).count == 2) // Wrap spacer excluded.
+    #expect(run(unicode, "👩") == 5)
+    #expect((snapshot(unicode)["search"] as! [[String: Int]]).contains {
       $0["end", default: 0] - $0["start", default: 0] == 2
     })
 
@@ -713,143 +699,143 @@ import Foundation
     let decoration = terminal_create(8, 3)!
     defer { terminal_destroy(decoration) }
     feed(decoration, "target\r\nmiddle\r\nlater")
-    precondition(run(decoration, "target") == 5)
-    precondition(!(snapshot(decoration)["search"] as! [[String: Int]]).isEmpty)
+    #expect(run(decoration, "target") == 5)
+    #expect(!(snapshot(decoration)["search"] as! [[String: Int]]).isEmpty)
     feed(decoration, "\u{1b}[3;1Hother")
-    precondition(!(snapshot(decoration)["search"] as! [[String: Int]]).isEmpty)
+    #expect(!(snapshot(decoration)["search"] as! [[String: Int]]).isEmpty)
     feed(decoration, "\u{1b}[1;1HX")
-    precondition((snapshot(decoration)["search"] as! [[String: Int]]).isEmpty)
+    #expect((snapshot(decoration)["search"] as! [[String: Int]]).isEmpty)
 
     // A task captures its final row identity at creation. Later output is not
     // chased, while a changed matched row is still rejected by row proof.
     let future = terminal_create(8, 2)!
     defer { terminal_destroy(future) }
     feed(future, "first\r\nend")
-    guard let futureTask = create(future, "future") else { preconditionFailure("future task") }
+    guard let futureTask = create(future, "future") else { Issue.record("future task"); return }
     defer { terminal_search_destroy(futureTask) }
     feed(future, "\r\nfuture")
-    precondition(runTask(future, futureTask) == 2)
+    #expect(runTask(future, futureTask) == 2)
 
     let staleCore = terminal_create(8, 2)!
     defer { terminal_destroy(staleCore) }
     feed(staleCore, "target")
-    guard let stale = create(staleCore, "target") else { preconditionFailure("search create") }
+    guard let stale = create(staleCore, "target") else { Issue.record("search create"); return }
     defer { terminal_search_destroy(stale) }
     // Fill lends an immutable old row; overwriting that row before its worker
     // step must be rejected by proof at owner acceptance, not mis-highlighted.
-    precondition(terminal_search_fill(staleCore, stale) == 0)
+    #expect(terminal_search_fill(staleCore, stale) == 0)
     feed(staleCore, "\rX")
-    precondition([UInt32(0), 1, 2].contains(terminal_search_step(stale)))
-    precondition(runTask(staleCore, stale) == 3)
+    #expect([UInt32(0), 1, 2].contains(terminal_search_step(stale)))
+    #expect(runTask(staleCore, stale) == 3)
 
     let transition = terminal_create(8, 2)!
     defer { terminal_destroy(transition) }
     feed(transition, "target")
-    guard let transitionTask = create(transition, "target") else { preconditionFailure("transition task") }
+    guard let transitionTask = create(transition, "target") else { Issue.record("transition task"); return }
     defer { terminal_search_destroy(transitionTask) }
-    precondition(terminal_search_fill(transition, transitionTask) == 0)
+    #expect(terminal_search_fill(transition, transitionTask) == 0)
     feed(transition, "\u{1b}[?1049hALT\u{1b}[?1049l")
     _ = terminal_search_step(transitionTask)
-    precondition(runTask(transition, transitionTask) == 3)
+    #expect(runTask(transition, transitionTask) == 3)
 
     let cleared = terminal_create(8, 2)!
     defer { terminal_destroy(cleared) }
     feed(cleared, "target")
-    guard let clearTask = create(cleared, "target") else { preconditionFailure("clear task") }
+    guard let clearTask = create(cleared, "target") else { Issue.record("clear task"); return }
     defer { terminal_search_destroy(clearTask) }
-    precondition(terminal_search_fill(cleared, clearTask) == 0)
+    #expect(terminal_search_fill(cleared, clearTask) == 0)
     _ = terminal_clear_display(cleared)
     _ = terminal_search_step(clearTask)
-    precondition(runTask(cleared, clearTask) == 3)
+    #expect(runTask(cleared, clearTask) == 3)
 
     let resized = terminal_create(8, 2)!
     defer { terminal_destroy(resized) }
     feed(resized, "target")
-    guard let resizedTask = create(resized, "target") else { preconditionFailure("resize task") }
+    guard let resizedTask = create(resized, "target") else { Issue.record("resize task"); return }
     defer { terminal_search_destroy(resizedTask) }
-    precondition(terminal_resize(resized, 9, 2))
-    precondition(terminal_search_fill(resized, resizedTask) == 3)
+    #expect(terminal_resize(resized, 9, 2))
+    #expect(terminal_search_fill(resized, resizedTask) == 3)
 
     let pendingResize = terminal_create(8, 2)!
     defer { terminal_destroy(pendingResize) }
     feed(pendingResize, "target")
-    guard let pendingResizeTask = create(pendingResize, "target") else { preconditionFailure("pending resize task") }
+    guard let pendingResizeTask = create(pendingResize, "target") else { Issue.record("pending resize task"); return }
     defer { terminal_search_destroy(pendingResizeTask) }
-    precondition(terminal_resize(pendingResize, 9, 2))
-    precondition(terminal_search_accept(pendingResize, pendingResizeTask) == 3)
+    #expect(terminal_resize(pendingResize, 9, 2))
+    #expect(terminal_search_accept(pendingResize, pendingResizeTask) == 3)
 
     let evicted = terminal_create(8, 2)!
     defer { terminal_destroy(evicted) }
     feed(evicted, "target\r\none\r\ntwo")
-    guard let evictedTask = create(evicted, "target") else { preconditionFailure("eviction task") }
+    guard let evictedTask = create(evicted, "target") else { Issue.record("eviction task"); return }
     defer { terminal_search_destroy(evictedTask) }
     terminal_set_history_limit(evicted, 0)
-    precondition(terminal_search_fill(evicted, evictedTask) == 3)
+    #expect(terminal_search_fill(evicted, evictedTask) == 3)
 
     // Raising or reapplying a scrollback limit without evicting a proven row
     // does not change Rust's search stamp. The task remains acceptable.
     let unchangedLimit = terminal_create(8, 2)!
     defer { terminal_destroy(unchangedLimit) }
     feed(unchangedLimit, "target")
-    guard let unchangedLimitTask = create(unchangedLimit, "target") else { preconditionFailure("limit task") }
+    guard let unchangedLimitTask = create(unchangedLimit, "target") else { Issue.record("limit task"); return }
     defer { terminal_search_destroy(unchangedLimitTask) }
     terminal_set_history_limit(unchangedLimit, 10_000)
-    precondition(runTask(unchangedLimit, unchangedLimitTask) == 5)
+    #expect(runTask(unchangedLimit, unchangedLimitTask) == 5)
 
     // A captured final row does not chase later output, but if later output
     // makes it soft-wrap it still keeps that successor in its proof.
     let extendedStop = terminal_create(4, 2)!
     defer { terminal_destroy(extendedStop) }
     feed(extendedStop, "aaaaBBBB")
-    guard let extendedStopTask = create(extendedStop, "BBBB") else { preconditionFailure("stop task") }
+    guard let extendedStopTask = create(extendedStop, "BBBB") else { Issue.record("stop task"); return }
     defer { terminal_search_destroy(extendedStopTask) }
     feed(extendedStop, "C")
-    precondition(runTask(extendedStop, extendedStopTask) == 5)
+    #expect(runTask(extendedStop, extendedStopTask) == 5)
 
     // RIS restarts document row IDs; the dedicated generation prevents an ABA
     // match when a fresh terminal prints identical text into the same grid.
     let reset = terminal_create(8, 2)!
     defer { terminal_destroy(reset) }
     feed(reset, "same")
-    guard let resetTask = create(reset, "same") else { preconditionFailure("reset task") }
+    guard let resetTask = create(reset, "same") else { Issue.record("reset task"); return }
     defer { terminal_search_destroy(resetTask) }
-    precondition(terminal_search_fill(reset, resetTask) == 0)
+    #expect(terminal_search_fill(reset, resetTask) == 0)
     feed(reset, "\u{1b}csame")
     _ = terminal_search_step(resetTask)
-    precondition(runTask(reset, resetTask) == 3)
+    #expect(runTask(reset, resetTask) == 3)
     let tooLong = [UInt8](repeating: 120, count: 4_097)
-    precondition(tooLong.withUnsafeBufferPointer { terminal_search_create(soft, $0.baseAddress, $0.count) } == nil)
+    #expect(tooLong.withUnsafeBufferPointer { terminal_search_create(soft, $0.baseAddress, $0.count) } == nil)
 
     let overlaps = terminal_create(4_096, 2)!
     defer { terminal_destroy(overlaps) }
     feed(overlaps, String(repeating: "a", count: 4_096))
-    precondition(run(overlaps, String(repeating: "a", count: 2_048)) == 5)
-    precondition((snapshot(overlaps)["search"] as! [[String: Int]]) == [
+    #expect(run(overlaps, String(repeating: "a", count: 2_048)) == 5)
+    #expect((snapshot(overlaps)["search"] as! [[String: Int]]) == [
       ["row": 0, "start": 2_048, "end": 4_096]
     ])
 
     let detached = terminal_create(80, 2)!
     feed(detached, String(repeating: "x", count: 80))
-    guard let workerOnly = create(detached, "x") else { preconditionFailure("worker task") }
-    precondition(terminal_search_fill(detached, workerOnly) == 0)
+    guard let workerOnly = create(detached, "x") else { Issue.record("worker task"); return }
+    #expect(terminal_search_fill(detached, workerOnly) == 0)
     terminal_destroy(detached)
-    precondition([UInt32(0), 1, 2].contains(terminal_search_step(workerOnly)))
+    #expect([UInt32(0), 1, 2].contains(terminal_search_step(workerOnly)))
     terminal_search_destroy(workerOnly)
   }
-  static func binarySnapshotOffsetsRemainIndependentOfOwnerViewport() {
+  @Test static func binarySnapshotOffsetsRemainIndependentOfOwnerViewport() {
     let core = terminal_create(4, 2)!
     defer { terminal_destroy(core) }
     feed(core, "A\r\nB\r\nC")
-    precondition(binaryHeader(core, scroll: 1)["scroll_offset"] as? Int == 1)
+    #expect(binaryHeader(core, scroll: 1)["scroll_offset"] as? Int == 1)
     terminal_view_scroll(core, 1)
-    precondition(viewHeader(core)["following_tail"] as? Bool == false)
-    precondition(binaryHeader(core, scroll: 0)["following_tail"] as? Bool == true)
-    precondition(terminal_resize(core, 4, 3)) // The anchor moves into the live grid.
-    precondition(viewHeader(core)["scroll_offset"] as? Int == 0)
-    precondition(viewHeader(core)["following_tail"] as? Bool == false)
-    precondition(binaryHeader(core, scroll: 0)["following_tail"] as? Bool == true)
+    #expect(viewHeader(core)["following_tail"] as? Bool == false)
+    #expect(binaryHeader(core, scroll: 0)["following_tail"] as? Bool == true)
+    #expect(terminal_resize(core, 4, 3)) // The anchor moves into the live grid.
+    #expect(viewHeader(core)["scroll_offset"] as? Int == 0)
+    #expect(viewHeader(core)["following_tail"] as? Bool == false)
+    #expect(binaryHeader(core, scroll: 0)["following_tail"] as? Bool == true)
   }
-  static func legacySnapshotHonorsExplicitNumericScroll() {
+  @Test static func legacySnapshotHonorsExplicitNumericScroll() {
     let core = terminal_create(8, 3)!
     defer { terminal_destroy(core) }
     feed(core, "zero\r\none\r\ntwo\r\nthree\r\nfour\r\nfive")
@@ -858,156 +844,141 @@ import Foundation
     let previous = legacySnapshot(core, scroll: 1)
     let oldest = legacySnapshot(core, scroll: Int.max)
     let historyRows = tail["history_rows"] as! Int
-    precondition(historyRows > 1)
-    precondition(tail["scroll_offset"] as? Int == 0 && tail["following_tail"] as? Bool == true)
-    precondition(previous["scroll_offset"] as? Int == 1 && previous["following_tail"] as? Bool == false)
-    precondition(oldest["scroll_offset"] as? Int == historyRows && oldest["following_tail"] as? Bool == false)
-    precondition(JSON(tail["cursor"]!) == JSON(previous["cursor"]!))
-    precondition(JSON(previous["cursor"]!) == JSON(oldest["cursor"]!))
+    #expect(historyRows > 1)
+    #expect(tail["scroll_offset"] as? Int == 0 && tail["following_tail"] as? Bool == true)
+    #expect(previous["scroll_offset"] as? Int == 1 && previous["following_tail"] as? Bool == false)
+    #expect(oldest["scroll_offset"] as? Int == historyRows && oldest["following_tail"] as? Bool == false)
+    #expect(JSON(tail["cursor"]!) == JSON(previous["cursor"]!))
+    #expect(JSON(previous["cursor"]!) == JSON(oldest["cursor"]!))
     for key in ["revision", "document_epoch", "history_epoch", "screen_epoch", "geometry_epoch", "cols", "history_rows"] {
-      precondition(tail[key] as? Int == previous[key] as? Int && previous[key] as? Int == oldest[key] as? Int)
+      #expect(tail[key] as? Int == previous[key] as? Int && previous[key] as? Int == oldest[key] as? Int)
     }
     let tailRows = tail["rows"] as! [[String: Any]]
     let previousRows = previous["rows"] as! [[String: Any]]
     let oldestRows = oldest["rows"] as! [[String: Any]]
-    precondition((tailRows.last?["id"] as? Int) != (previousRows.last?["id"] as? Int))
-    precondition((previousRows.first?["id"] as? Int) != (oldestRows.first?["id"] as? Int))
+    #expect((tailRows.last?["id"] as? Int) != (previousRows.last?["id"] as? Int))
+    #expect((previousRows.first?["id"] as? Int) != (oldestRows.first?["id"] as? Int))
 
     let wrapped = terminal_create(4, 2)!
     defer { terminal_destroy(wrapped) }
     feed(wrapped, "abcdefghijkl")
     let wrappedOldest = legacySnapshot(wrapped, scroll: Int.max)
-    precondition((wrappedOldest["rows"] as! [[String: Any]]).contains { $0["soft_wrapped"] as? Bool == true })
+    #expect((wrappedOldest["rows"] as! [[String: Any]]).contains { $0["soft_wrapped"] as? Bool == true })
 
     terminal_view_scroll(core, 1)
-    precondition(terminal_resize(core, 8, 4))
+    #expect(terminal_resize(core, 8, 4))
     let owner = snapshot(core)
     let explicitTail = legacySnapshot(core, scroll: 0)
-    precondition(owner["scroll_offset"] as? Int == 0 && owner["following_tail"] as? Bool == false)
-    precondition(explicitTail["scroll_offset"] as? Int == 0 && explicitTail["following_tail"] as? Bool == true)
-    precondition(JSON(owner["rows"]!) == JSON(explicitTail["rows"]!))
+    #expect(owner["scroll_offset"] as? Int == 0 && owner["following_tail"] as? Bool == false)
+    #expect(explicitTail["scroll_offset"] as? Int == 0 && explicitTail["following_tail"] as? Bool == true)
+    #expect(JSON(owner["rows"]!) == JSON(explicitTail["rows"]!))
   }
-  static func defaultHistoryBudgetSurvivesContinuousOutput() {
+  @Test static func defaultHistoryBudgetSurvivesContinuousOutput() {
     let core = terminal_create(4_096, 1)!
     defer { terminal_destroy(core) }
     let limit: UInt64 = 64 * 1_048_576
     let line = Data((String(repeating: "x", count: 4_096) + "\r\n").utf8)
     for _ in 0..<200 {
-      precondition(rawFeed(core, line) == line.count)
-      precondition(terminal_history_bytes(core) <= limit)
+      #expect(rawFeed(core, line) == line.count)
+      #expect(terminal_history_bytes(core) <= limit)
     }
     terminal_view_scroll(core, Int64.max) // Retain the oldest available row.
     let before = viewHeader(core)["viewport_clamp_revision"] as! Int
     for _ in 0..<300 {
-      precondition(rawFeed(core, line) == line.count)
-      precondition(terminal_history_bytes(core) <= limit)
+      #expect(rawFeed(core, line) == line.count)
+      #expect(terminal_history_bytes(core) <= limit)
     }
     let after = viewHeader(core)
-    precondition((after["viewport_clamp_revision"] as! Int) > before)
-    precondition(after["following_tail"] as? Bool == false)
-    precondition((after["history_rows"] as! Int) < 500)
-    precondition(terminal_resize(core, 2_048, 2))
-    precondition(terminal_history_bytes(core) <= limit)
-    precondition(terminal_resize(core, 4_096, 1))
-    precondition(terminal_history_bytes(core) <= limit)
-    precondition(terminal_validate(core))
+    #expect((after["viewport_clamp_revision"] as! Int) > before)
+    #expect(after["following_tail"] as? Bool == false)
+    #expect((after["history_rows"] as! Int) < 500)
+    #expect(terminal_resize(core, 2_048, 2))
+    #expect(terminal_history_bytes(core) <= limit)
+    #expect(terminal_resize(core, 4_096, 1))
+    #expect(terminal_history_bytes(core) <= limit)
+    #expect(terminal_validate(core))
   }
 
-  static func geometryABIContract() {
+  @Test static func geometryABIContract() {
     // Rust returns a null ABI handle for invalid creation geometry; silently
     // clamping here would make a malformed host request look valid.
     let invalid: [(UInt32, UInt32)] = [(0, 1), (1, 0), (4_097, 1), (1, 4_097), (4_096, 257)]
     for (columns, rows) in invalid {
       if let terminal = terminal_create(columns, rows) {
         terminal_destroy(terminal)
-        preconditionFailure("terminal_create accepted invalid geometry \(columns)x\(rows)")
+        Issue.record("terminal_create accepted invalid geometry \(columns)x\(rows)"); return
       }
     }
     // Exercise Rust's exact maximum once, releasing it before the rejection
     // checks so the ABI contract does not retain a large fixture.
     guard let maximum = terminal_create(4_096, 256) else {
-      preconditionFailure("terminal_create rejected valid maximum geometry")
+      Issue.record("terminal_create rejected valid maximum geometry"); return
     }
     terminal_destroy(maximum)
     let resized = terminal_create(8, 2)!
     defer { terminal_destroy(resized) }
     for (columns, rows) in invalid {
-      precondition(!terminal_resize(resized, columns, rows))
+      #expect(!terminal_resize(resized, columns, rows))
     }
-    precondition(viewHeader(resized)["cols"] as? Int == 8)
+    #expect(viewHeader(resized)["cols"] as? Int == 8)
     // Rust validates pixel metrics before applying either geometry or cell
     // dimensions; malformed metrics must not be normalized into a resize.
     let invalidPixels: [(UInt32, UInt32)] = [(0, 16), (16, 0), (1_025, 16), (16, 1_025)]
     for (width, height) in invalidPixels {
-      precondition(!terminal_resize_pixels(resized, 8, 2, width, height))
+      #expect(!terminal_resize_pixels(resized, 8, 2, width, height))
     }
-    precondition(viewHeader(resized)["cols"] as? Int == 8)
+    #expect(viewHeader(resized)["cols"] as? Int == 8)
   }
 
-  static func main() {
-    nativeModifierWire()
-    asciiByteAdmission()
-    borrowedASCIIContinuationEquivalence()
-    decodedBatchEquivalence()
-    indexHistoryUsesMutatedPrimaryForViewportClamp()
-    csiASCIIParsing()
-    sgrCompatibility()
-    csiScratchReuseEquivalence()
-    carriageReturnEquivalence()
-    searchABI()
-    binarySnapshotOffsetsRemainIndependentOfOwnerViewport()
-    legacySnapshotHonorsExplicitNumericScroll()
-    defaultHistoryBudgetSurvivesContinuousOutput()
-    geometryABIContract()
-    guard let core = terminal_create(8, 3) else { fatalError("create") }
+  @Test static func swiftCoreSmoke() {
+    guard let core = terminal_create(8, 3) else { Issue.record("create"); return }
     defer { terminal_destroy(core) }
     feed(core, "one\ntwo")
     var value = snapshot(core)
     let first = cells(value, 0)
-    precondition(first[0]["text"] as? String == "o")
+    #expect(first[0]["text"] as? String == "o")
     feed(core, "\u{1b}[31mR\u{1b}[0m")
     value = snapshot(core)
     let second = cells(value, 1)
     let red = second.first { $0["text"] as? String == "R" }
-    precondition((red?["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 1])
+    #expect((red?["style"] as? [String: Any])?["foreground"] as? [String: Int] == ["Indexed": 1])
 
     // Alternate-screen switching must isolate the primary grid.
     feed(core, "\u{1b}[?1049hALT")
     value = snapshot(core)
-    precondition(value["alternate"] as? Bool == true)
-    precondition((value["rows"] as! [[String: Any]]).contains {
+    #expect(value["alternate"] as? Bool == true)
+    #expect((value["rows"] as! [[String: Any]]).contains {
       ($0["cells"] as! [[String: Any]]).contains { $0["text"] as? String == "A" }
     })
     feed(core, "\u{1b}[?1049l")
     value = snapshot(core)
-    precondition(value["alternate"] as? Bool == false)
-    precondition(cells(value, 0)[0]["text"] as? String == "o")
+    #expect(value["alternate"] as? Bool == false)
+    #expect(cells(value, 0)[0]["text"] as? String == "o")
 
     // The C-facing input and reply callbacks are the Session's only wire path.
-    precondition(input(core, text: "AUTOMATION_TEXT\n", key: 0) == Data("AUTOMATION_TEXT\n".utf8))
-    precondition(input(core, key: 10) == Data("\u{1b}[A".utf8))
-    precondition(input(core, text: "x\n\u{1b}y", key: 1) == Data("x\ry".utf8))
+    #expect(input(core, text: "AUTOMATION_TEXT\n", key: 0) == Data("AUTOMATION_TEXT\n".utf8))
+    #expect(input(core, key: 10) == Data("\u{1b}[A".utf8))
+    #expect(input(core, text: "x\n\u{1b}y", key: 1) == Data("x\ry".utf8))
     feed(core, "\u{1b}[?2004h")
-    precondition(input(core, text: "paste", key: 1) == Data("\u{1b}[200~paste\u{1b}[201~".utf8))
+    #expect(input(core, text: "paste", key: 1) == Data("\u{1b}[200~paste\u{1b}[201~".utf8))
     feed(core, "\u{1b}[5n\u{1b}[6n")
     let response = replies(core)
-    precondition(response.starts(with: Data("\u{1b}[0n".utf8)))
-    precondition(response.contains(Data("R".utf8)))
+    #expect(response.starts(with: Data("\u{1b}[0n".utf8)))
+    #expect(response.contains(Data("R".utf8)))
 
     // The parser owns Kitty APC hand-off; snapshots expose only finalized
     // generation-addressable graphics state.
     feed(core, "\u{1b}_Ga=T,i=42,f=32,s=1,v=1;AP8A/w==\u{1b}\\")
     value = snapshot(core)
     let images = value["images"] as! [[String: Any]]
-    precondition(images.count == 1 && images[0]["image"] as? Int == 42)
+    #expect(images.count == 1 && images[0]["image"] as? Int == 42)
 
-    precondition(terminal_resize(core, 4, 2))
+    #expect(terminal_resize(core, 4, 2))
     let euro = Array("€".utf8)
     for byte in euro { var b = byte; _ = terminal_feed(core, &b, 1, 0) }
     value = snapshot(core)
-    precondition(value["cols"] as? Int == 4)
+    #expect(value["cols"] as? Int == 4)
     // This is a safety/reentrancy smoke only: semantic maximal-subpart UTF-8
     // equivalence remains a documented parity gap.
-    print("PASS Swift core smoke: grid, SGR, alternate screen, wire input/replies, resize")
   }
 }
