@@ -113,7 +113,7 @@ import Testing
     feed("\u{1b}]133;B\u{7}")
     let inputReady = try check()
     #expect(inputReady.at_prompt && inputReady.input_ready == true)
-    guard let readyJSON = terminal_snapshot(core, 0, 0) else { fatalError("ready snapshot") }
+    let readyJSON = try #require(terminal_snapshot(core, 0, 0), "ready snapshot")
     var oldMetadata = try JSONSerialization.jsonObject(
       with: Data(bytes: readyJSON, count: strlen(readyJSON))) as! [String: Any]
     terminal_string_free(readyJSON)
