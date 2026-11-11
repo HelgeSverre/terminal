@@ -25,7 +25,6 @@ let commands = [
   AccessibilitySmoke.command,
   AppleScriptSmoke.command,
   TerminfoSmoke.command,
-  EditingInputIsolation.command,
   CatStress.command,
   TUIStress.command,
   RenderingProof.command,
@@ -39,10 +38,6 @@ let commands = [
   CompareTerminalApps.command,
   ProfileTerminal.command,
   DiagnoseStream.command,
-  // Comparisons of the emulator between implementations and commits.
-  CompareEmulators.command,
-  CompareCSIDispatch.command,
-  CompareSwiftRows.command,
   // Releases.
   ReleaseSigning.command,
   ReleasePublisher.command,

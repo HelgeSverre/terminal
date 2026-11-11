@@ -609,26 +609,6 @@
       "Sources/Terminal/TabNavigation.swift",
       "Tests/TerminalTests/TabNavigationTests.swift"
     ],
-    "csi_differential_probe": [
-      "Sources/Terminal/Text/TerminalWidth.swift",
-      "Sources/Terminal/Text/TerminalWidthTables.swift",
-      "Sources/Terminal/Text/TerminalText.swift",
-      "Sources/Terminal/Text/Unicode18GraphemeTables.swift",
-      "Sources/Terminal/Emulation/TerminalInputEncoder.swift",
-      "Sources/Terminal/Emulation/ClipboardProtocol.swift",
-      "Sources/Terminal/Emulation/KittyGraphics.swift",
-      "Sources/Terminal/Emulation/TerminalPalette.swift",
-      "Sources/Terminal/Text/UnicodeLowercase.swift",
-      "Sources/Terminal/Emulation/HistorySearch.swift",
-      "Sources/Terminal/Emulation/TerminalDocument.swift",
-      "Sources/Terminal/Emulation/DocumentReflow.swift",
-      "Sources/Terminal/Emulation/TerminalSnapshot.swift",
-      "Sources/Terminal/Text/SelectionWordProfile.swift",
-      "Sources/Terminal/Emulation/TerminalSelection.swift",
-      "Sources/Terminal/Emulation/PresentedContent.swift",
-      "Sources/Terminal/Emulation/TerminalEmulator.swift",
-      "Tests/TerminalTests/CSIDifferentialProbe.swift"
-    ],
     "settings_window": [
       "Sources/Terminal/Text/SelectionWordProfile.swift",
       "Sources/Terminal/Preferences.swift",

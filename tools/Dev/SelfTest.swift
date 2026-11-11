@@ -17,11 +17,10 @@ enum SelfTest {
   static let cases: [Case] = [
     ProcessTreeTests.cases, CommandTests.cases, JSONValueTests.cases, Interruption.tests,
     NativeSmoke.tests, CloseSmoke.tests, SelectionSmoke.tests, StartupGridSmoke.tests, AccessibilitySmoke.tests,
-    AppleScriptSmoke.tests, TerminfoSmoke.tests, EditingInputIsolation.tests, CatStress.tests,
+    AppleScriptSmoke.tests, TerminfoSmoke.tests, CatStress.tests,
     TUIStress.tests, TUIStressFixture.tests, TUIStressProvider.tests,
     RenderingProof.tests, RenderingProofFixture.tests, Gallery.tests, GlyphPolicy.tests,
     CompareTerminals.tests, CompareTerminalApps.tests, ProfileTerminal.tests, DiagnoseStream.tests,
-    CompareEmulators.tests, CompareCSIDispatch.tests, CompareSwiftRows.tests,
     ReleaseSigning.tests, ReleasePublisher.tests, Sources.tests, CompareInputLatency.tests,
   ].flatMap { $0 }
 

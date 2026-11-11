@@ -470,76 +470,6 @@ gallery-panes: build _dev
 
 # ── bench ─────────────────────────────────────────────────────────────
 
-# PTY throughput: just benchmark terminal|ghostty|kitty [output].
-[group('bench')]
-@benchmark terminal output="reports/comparison":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    ROOT_DIR="$TERMINAL_PROJECT_ROOT"
-    TERMINAL_NAME="${1:-}"
-    case "$TERMINAL_NAME" in terminal|ghostty|kitty) ;; *) echo "usage: $0 terminal|ghostty|kitty [output-directory]" >&2; exit 2 ;; esac
-    REPORT_DIR="${2:-$ROOT_DIR/reports/comparison}"
-    mkdir -p "$REPORT_DIR" target/native
-    REPORT_DIR="$(cd "$REPORT_DIR" && pwd)"
-    BYTES="${BENCH_BYTES:-16777216}"
-    RUNS="${BENCH_RUNS:-5}"
-    xcrun clang -Wall -Wextra -Werror -O2 Benchmarks/TerminalBench/terminal-bench.c -o target/native/terminal-bench
-    DRIVER="$ROOT_DIR/target/native/terminal-bench"
-    REPORT="$REPORT_DIR/$TERMINAL_NAME.json"
-    if [[ -e "$REPORT" ]]; then echo "Refusing to overwrite $REPORT; choose a new output directory." >&2; exit 2; fi
-    ARGS=(--output "$REPORT" --terminal "$TERMINAL_NAME" --bytes "$BYTES" --runs "$RUNS" --columns 100 --rows 30)
-    case "$TERMINAL_NAME" in
-      terminal)
-        APP="$ROOT_DIR/dist/Terminal.app"
-        if [[ ! -x "$APP/Contents/MacOS/Terminal" ]]; then just build; fi
-        "$APP/Contents/MacOS/Terminal" --columns 100 --rows 30 --font-size 14 --history-limit 10000 --exit-after-command --execute "$DRIVER" "${ARGS[@]}" > "$REPORT_DIR/terminal-launch.log" 2>&1 &
-        ;;
-      ghostty)
-        APP=/Applications/Ghostty.app
-        "$APP/Contents/MacOS/ghostty" +version > "$REPORT_DIR/ghostty-version.txt"
-        cat > "$REPORT_DIR/ghostty.conf" <<'CONFIG'
-    config-default-files = false
-    font-family = Obel Mono
-    font-size = 14
-    cursor-style-blink = false
-    background-opacity = 1
-    window-width = 100
-    window-height = 30
-    window-padding-x = 8
-    window-padding-y = 8
-    scrollback-limit-lines = 10000
-    scrollback-limit-bytes = 67108864
-    shell-integration = none
-    confirm-close-surface = false
-    quit-after-last-window-closed = true
-    window-save-state = never
-    CONFIG
-        open -na "$APP" --args --config-default-files=false --config-file="$REPORT_DIR/ghostty.conf" -e "$DRIVER" "${ARGS[@]}"
-        ;;
-      kitty)
-        APP=/Applications/kitty.app
-        "$APP/Contents/MacOS/kitty" --version > "$REPORT_DIR/kitty-version.txt"
-        open -na "$APP" --args -c NONE -o 'font_family=Obel Mono' -o font_size=14 -o initial_window_width=100c -o initial_window_height=30c -o remember_window_size=no -o cursor_blink_interval=0 -o scrollback_lines=10000 -o background_opacity=1 -o shell_integration=disabled -o window_padding_width=8 "$DRIVER" "${ARGS[@]}"
-        ;;
-    esac
-    sw_vers > "$REPORT_DIR/os-version.txt"
-    shasum -a 256 "$DRIVER" "$APP/Contents/MacOS/$( [[ "$TERMINAL_NAME" == terminal ]] && echo Terminal || echo "$TERMINAL_NAME" )" > "$REPORT_DIR/$TERMINAL_NAME-binaries.sha256"
-    for ((attempt = 0; attempt < 600; attempt++)); do
-      if [[ -e "$REPORT" ]]; then
-        jq '{terminal,columns,rows,idle_cpu_percent_one_core,idle_physical_bytes,workloads:[.workloads[]|{name,mib_per_second}],dsr_roundtrip_ms}' "$REPORT"
-        BENCH_APP_PID="$(jq -r '.terminal_pid' "$REPORT")"
-        BENCH_APP_COMMAND="$(ps -p "$BENCH_APP_PID" -o command= || true)"
-        case "$BENCH_APP_COMMAND" in
-          "$APP/Contents/MacOS/"*"$DRIVER"*"$REPORT"*) kill -TERM "$BENCH_APP_PID" 2>/dev/null || true ;;
-        esac
-        exit 0
-      fi
-      if [[ -e "$REPORT.failed" ]]; then cat "$REPORT.failed" >&2; exit 1; fi
-      sleep 1
-    done
-    echo "No complete report after 600 seconds. Inspect the separate benchmark window for errors." >&2
-    exit 1
-
 # Compare the optimized app, Ghostty and Kitty in both orders.
 [group('bench')]
 @benchmark-terminals output="reports/terminal-comparison": release-build _dev
@@ -592,20 +522,6 @@ gallery-panes: build _dev
 [group('diagnose')]
 @replay columns="80" rows="24": _terminfo-probe
     target/native/terminfo-probe "$1" "$2"
-
-[group('diagnose')]
-@compare-swift-rows baseline candidate output: _dev
-    target/native/dev compare-swift-rows "$1" "$2" "$3"
-
-# Run the CSI corpus against two frozen Swift refs.
-[group('diagnose')]
-compare-csi baseline candidate output: _dev
-    target/native/dev compare-csi-dispatch "$1" "$2" "$3"
-
-# Keyboard isolation in copied smoke fixtures.
-[group('diagnose')]
-editing-input-isolation app output: _dev
-    target/native/dev editing-input-isolation "$1" "$2"
 
 # ── release ───────────────────────────────────────────────────────────
 

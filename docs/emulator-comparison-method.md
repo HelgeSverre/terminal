@@ -1,5 +1,11 @@
 # Frozen Swift–Rust core comparison
 
+> Historical. The Rust core is archived on `archive/rust-2026-11-08`, and the
+> client and runner this describes (`tools/EmulatorComparison.c`,
+> `dev compare-emulators`) were removed after 0.3.0; they are in the history
+> at tag `v0.3.0`. The method stands as the record of how the published
+> comparisons were made.
+
 tools/EmulatorComparison.c is one identical C ABI client, linked once to the
 frozen Swift core and once to the frozen Rust core. `dev compare-emulators`
 (tools/Dev/CompareEmulators.swift) orchestrates the resulting two executables. It never builds an executable, opens
