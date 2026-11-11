@@ -281,6 +281,9 @@ final class Session: @unchecked Sendable {
     case eof, idle
   }
   private let launchSpec: LaunchSpec?
+  private let awaitsGrid: Bool
+  /// The core exists and the child is still to be started.
+  private var awaitingGrid = false
   private var exitStatus: Int32 = 0
   private var startedNanoseconds = DispatchTime.now().uptimeNanoseconds
   private var ingress = SessionEventQueue<Event>()
@@ -352,8 +355,14 @@ final class Session: @unchecked Sendable {
   var onEnd: (@MainActor (SessionEnd) -> Void)?
   var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
   private var onClipboardClosed: (@MainActor (UUID) -> Void)?
-  init(launch: LaunchSpec? = nil) {
+  /// With `startsAtFirstGrid` the child is started when the pane's first
+  /// size arrives, on a terminal of that size. A pane is created before it
+  /// is laid out; a shell started at once would draw its first prompt for
+  /// 80 columns and be resized a moment later, which leaves a stray `%` line
+  /// or a misplaced right prompt behind.
+  init(launch: LaunchSpec? = nil, startsAtFirstGrid: Bool = false) {
     launchSpec = launch
+    awaitsGrid = startsAtFirstGrid
     if CommandLine.arguments.prefix(while: { $0 != "--execute" }).contains("--session-statistics-file") {
       streamStatistics = StreamStatistics()
     }
@@ -643,7 +652,21 @@ final class Session: @unchecked Sendable {
       report("Invalid launch arguments")
       return
     }
-    let child = EarlyChild.adopt(spec) ?? spec.spawn(columns: 80, rows: 24)
+    guard awaitsGrid else { return launch(spec, columns: 80, rows: 24, cellWidth: 0, cellHeight: 0) }
+    awaitingGrid = true
+    // A pane that is never laid out still gets its shell.
+    queue.asyncAfter(deadline: .now() + .seconds(1)) { [weak self] in
+      self?.readBroker.submit {
+        guard let self, self.awaitingGrid, !self.closed else { return }
+        self.awaitingGrid = false
+        self.launch(spec, columns: 80, rows: 24, cellWidth: 0, cellHeight: 0)
+      }
+    }
+  }
+  /// Starts the child on a terminal of the given size and attaches to it.
+  private func launch(_ spec: LaunchSpec, columns: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
+    let adopted = EarlyChild.adopt(spec)
+    let child = adopted ?? spec.spawn(columns: columns, rows: rows)
     guard child.error == 0 else {
       stopAcceptingInput()
       report("Launch failed: \(String(cString:strerror(child.error)))")
@@ -651,6 +674,14 @@ final class Session: @unchecked Sendable {
     }
     master = child.master
     pid = child.pid
+    if adopted == nil, cellWidth > 0 {
+      // The pixel size too, before the child looks: the resize that follows
+      // then changes nothing and sends it no signal.
+      var size = winsize(
+        ws_row: UInt16(rows), ws_col: UInt16(columns),
+        ws_xpixel: UInt16(clamping: columns * cellWidth), ws_ypixel: UInt16(clamping: rows * cellHeight))
+      _ = ioctl(master, TIOCSWINSZ, &size)
+    }
     startedNanoseconds = DispatchTime.now().uptimeNanoseconds
     LiveChildren.started()
     let lifetime = PTYDescriptorLifetime(descriptor: master, sources: 2)
@@ -696,6 +727,7 @@ final class Session: @unchecked Sendable {
     p.resume()
     reap()
     publish()
+    scheduleOwner()
   }
   /// The child is gone and everything it wrote is on screen.
   private func finish() {
@@ -743,7 +775,8 @@ final class Session: @unchecked Sendable {
     }
   }
   private func pump() {
-    guard !closed, !ingress.isEmpty else { return }
+    // Nothing is processed before the child exists; events wait in order.
+    guard !closed, !awaitingGrid, !ingress.isEmpty else { return }
     let started = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
     defer {
       if streamStatistics != nil { streamStatistics!.pumpNanoseconds &+= DispatchTime.now().uptimeNanoseconds - started }
@@ -1242,6 +1275,10 @@ final class Session: @unchecked Sendable {
     readBroker.submit { [self] in
       guard !closed, cols >= 1, rows >= 1, cols <= 4096, rows <= 4096 else { return }
       wantedGrid = (cols, rows, cellWidth, cellHeight)
+      if awaitingGrid {
+        awaitingGrid = false
+        launch(launchSpec ?? .shell, columns: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
+      }
       if cols != columns || rows != rowCount || cellWidth != cellWidthPx
         || cellHeight != cellHeightPx || queuedResizeCount > 0
       {
