@@ -1,26 +1,32 @@
 import AppKit
+import Testing
+@testable import TerminalApp
 
-@main struct TabNavigationTests {
-  static func main() {
-    typealias Selection = TerminalTabNavigation.Selection
+@Suite @MainActor struct TabNavigationTests {
+  typealias Selection = TerminalTabNavigation.Selection
+
+  @Test func selectionIndexMath() {
     for count in 0...12 {
       for number in 1...9 {
         let expected: Int? = count == 0 ? nil
           : number == 9 ? count - 1 : number <= count ? number - 1 : nil
-        precondition(Selection.numbered(number).index(count: count, current: 0) == expected)
+        #expect(Selection.numbered(number).index(count: count, current: 0) == expected)
       }
       for current in 0..<count {
-        precondition(Selection.next.index(count: count, current: current) == (current + 1) % count)
-        precondition(Selection.previous.index(count: count, current: current)
+        #expect(Selection.next.index(count: count, current: current) == (current + 1) % count)
+        #expect(Selection.previous.index(count: count, current: current)
           == (current + count - 1) % count)
       }
     }
-    precondition(Selection.numbered(0).index(count: 10, current: 0) == nil)
-    precondition(Selection.numbered(10).index(count: 10, current: 0) == nil)
-    precondition(Selection.next.index(count: 0, current: 0) == nil)
-    precondition(Selection.previous.index(count: 3, current: -1) == nil)
-    precondition(Selection.next.index(count: 3, current: 3) == nil)
+    #expect(Selection.numbered(0).index(count: 10, current: 0) == nil)
+    #expect(Selection.numbered(10).index(count: 10, current: 0) == nil)
+    #expect(Selection.next.index(count: 0, current: 0) == nil)
+    #expect(Selection.previous.index(count: 3, current: -1) == nil)
+    #expect(Selection.next.index(count: 3, current: 3) == nil)
 
+  }
+
+  @Test func keyEquivalentDispatch() {
     // Exercise actual AppKit key-equivalent dispatch, including no target
     // window. A handled result prevents delivery to the terminal key encoder.
     _ = NSApplication.shared
@@ -43,43 +49,29 @@ import AppKit
     }
     for number in 1...9 {
       let before = dispatchCount
-      precondition(dispatch(String(number), [.command]))
-      precondition(dispatchCount == before + 1)
+      #expect(dispatch(String(number), [.command]))
+      #expect(dispatchCount == before + 1)
     }
     for (key, code) in [(NSLeftArrowFunctionKey, UInt16(123)),
       (NSRightArrowFunctionKey, UInt16(124))]
     {
       let before = dispatchCount
-      precondition(dispatch(String(UnicodeScalar(key)!), [.command, .option, .function], code: code))
-      precondition(dispatchCount == before + 1)
+      #expect(dispatch(String(UnicodeScalar(key)!), [.command, .option, .function], code: code))
+      #expect(dispatchCount == before + 1)
     }
     let before = dispatchCount
-    precondition(!dispatch("1", []))
-    precondition(!dispatch("!", [.command, .shift]))
-    precondition(!dispatch("0", [.command]))
-    precondition(!dispatch("\t", [.control], code: 48))
-    precondition(!dispatch(String(UnicodeScalar(NSLeftArrowFunctionKey)!), [.command], code: 123))
-    precondition(dispatchCount == before)
-    if CommandLine.arguments.contains("--windows") {
-      DispatchQueue.main.async {
-        windowTests()
-        print("Tab navigation tests passed")
-        exit(0)
-      }
-      NSApplication.shared.run()
-    }
-    print("Tab navigation tests passed")
+    #expect(!dispatch("1", []))
+    #expect(!dispatch("!", [.command, .shift]))
+    #expect(!dispatch("0", [.command]))
+    #expect(!dispatch("\t", [.control], code: 48))
+    #expect(!dispatch(String(UnicodeScalar(NSLeftArrowFunctionKey)!), [.command], code: 123))
+    #expect(dispatchCount == before)
   }
 
-  private static func windowTests() {
-    func expect(_ condition: @autoclosure () -> Bool, _ message: String = "",
-      line: UInt = #line)
-    {
-      guard condition() else {
-        FileHandle.standardError.write(Data("FAIL native tab navigation line \(line): \(message)\n".utf8))
-        exit(1)
-      }
-    }
+  /// Opens real windows and needs the foreground, so it runs only when
+  /// `TERMINAL_TAB_WINDOWS` is set (the old `--windows` flag).
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["TERMINAL_TAB_WINDOWS"] != nil))
+  func nativeWindowTabs() async {
     final class InputView: NSView {
       var receivedKeys: [NSEvent] = []
       override var acceptsFirstResponder: Bool { true }
@@ -88,13 +80,8 @@ import AppKit
     let app = NSApplication.shared
     app.setActivationPolicy(.regular)
     app.activate(ignoringOtherApps: true)
-    func settle() {
-      let deadline = Date(timeIntervalSinceNow: 0.5)
-      while let event = app.nextEvent(matching: .any, until: deadline, inMode: .default, dequeue: true) {
-        app.sendEvent(event)
-        if Date() >= deadline { break }
-      }
-    }
+    // The main run loop cannot be spun here, so suspend and let queued work run.
+    func settle() async { _ = await TestEnvironment.wait(seconds: 0.5) { false } }
     var windows: [NSWindow] = []
     var inputs: [InputView] = []
     func makeWindow(_ title: String, group: String) -> NSWindow {
@@ -131,12 +118,12 @@ import AppKit
     bar.addItem(windowItem)
     navigation.addMenuItems(to: menu)
     app.mainMenu = bar
-    func focus(_ window: NSWindow) {
+    func focus(_ window: NSWindow) async {
       window.makeKeyAndOrderFront(nil)
       app.activate(ignoringOtherApps: true)
-      settle()
+      await settle()
       intendedWindow = window
-      expect((window.tabGroup?.selectedWindow ?? window) === window)
+      #expect((window.tabGroup?.selectedWindow ?? window) === window)
     }
     func event(_ characters: String, flags: NSEvent.ModifierFlags = [.command],
       code: UInt16 = 18) -> NSEvent
@@ -147,53 +134,52 @@ import AppKit
         isARepeat: false, keyCode: code)!
     }
     func select(_ characters: String, expected: NSWindow,
-      flags: NSEvent.ModifierFlags = [.command], code: UInt16 = 18)
+      flags: NSEvent.ModifierFlags = [.command], code: UInt16 = 18) async
     {
-      expect(menu.performKeyEquivalent(with: event(characters, flags: flags, code: code)))
-      settle()
+      #expect(menu.performKeyEquivalent(with: event(characters, flags: flags, code: code)))
+      await settle()
       intendedWindow = intendedWindow?.tabGroup?.selectedWindow ?? intendedWindow
-      expect(intendedWindow === expected,
+      #expect(intendedWindow === expected,
         "Wrong selected tab for \(characters.debugDescription): expected=\(expected.title), actual=\(intendedWindow?.title ?? "nil")")
     }
-    focus(a)
-    expect(a.tabbedWindows == [a, b, c])
-    select("2", expected: b)
-    select("9", expected: c)
-    select(String(UnicodeScalar(NSRightArrowFunctionKey)!), expected: a,
+    await focus(a)
+    #expect(a.tabbedWindows == [a, b, c])
+    await select("2", expected: b)
+    await select("9", expected: c)
+    await select(String(UnicodeScalar(NSRightArrowFunctionKey)!), expected: a,
       flags: [.command, .option, .function], code: 124)
-    select(String(UnicodeScalar(NSLeftArrowFunctionKey)!), expected: c,
+    await select(String(UnicodeScalar(NSLeftArrowFunctionKey)!), expected: c,
       flags: [.command, .option, .function], code: 123)
-    select("8", expected: c)
+    await select("8", expected: c)
     // Reorder through AppKit and resolve the next shortcut from its display order.
     a.addTabbedWindow(c, ordered: .below)
-    focus(c)
-    expect(c.tabbedWindows == [c, a, b])
-    select("2", expected: a)
-    select("9", expected: b)
-    focus(d)
-    select("9", expected: e)
-    select("1", expected: d)
-    expect(a.tabbedWindows == [c, a, b])
-    focus(single)
-    select("8", expected: single)
-    select("9", expected: single)
-    select(String(UnicodeScalar(NSLeftArrowFunctionKey)!), expected: single,
+    await focus(c)
+    #expect(c.tabbedWindows == [c, a, b])
+    await select("2", expected: a)
+    await select("9", expected: b)
+    await focus(d)
+    await select("9", expected: e)
+    await select("1", expected: d)
+    #expect(a.tabbedWindows == [c, a, b])
+    await focus(single)
+    await select("8", expected: single)
+    await select("9", expected: single)
+    await select(String(UnicodeScalar(NSLeftArrowFunctionKey)!), expected: single,
       flags: [.command, .option, .function], code: 123)
     // Native field-editor focus is restored when returning to its tab.
     let field = NSTextField(frame: NSRect(x: 20, y: 20, width: 200, height: 24))
     a.contentView!.addSubview(field)
-    focus(a)
-    expect(a.makeFirstResponder(field))
-    expect(field.currentEditor() === a.firstResponder)
-    select("9", expected: b)
-    select("2", expected: a)
-    expect(field.currentEditor() === a.firstResponder)
+    await focus(a)
+    #expect(a.makeFirstResponder(field))
+    #expect(field.currentEditor() === a.firstResponder)
+    await select("9", expected: b)
+    await select("2", expected: a)
+    #expect(field.currentEditor() === a.firstResponder)
     // Send through NSApplication as well: consumed keys must never reach a
     // terminal-like first responder, even when their target index is missing.
-    focus(single)
-    expect(single.makeFirstResponder(inputs.last!))
+    await focus(single)
+    #expect(single.makeFirstResponder(inputs.last!))
     guard app.isActive, app.keyWindow === single else {
-      print("Native tab selection and field-editor restoration passed")
       print("SKIP application event routing: test app could not retain foreground focus")
       return
     }
@@ -201,14 +187,13 @@ import AppKit
       event(String(UnicodeScalar(NSRightArrowFunctionKey)!),
         flags: [.command, .option, .function], code: 124)]
     for shortcut in shortcuts { app.sendEvent(shortcut) }
-    expect(inputs.allSatisfy { input in
+    #expect(inputs.allSatisfy { input in
       !input.receivedKeys.contains { received in shortcuts.contains { $0 === received } }
     }, "A synthetic tab shortcut reached the input responder")
     // Prove the recorder receives ordinary input through the same route.
     let ordinaryKey = event("x", flags: [], code: 7)
     app.sendEvent(ordinaryKey)
-    expect(inputs.last!.receivedKeys.filter { $0 === ordinaryKey }.count == 1,
+    #expect(inputs.last!.receivedKeys.filter { $0 === ordinaryKey }.count == 1,
       "The ordinary synthetic key did not reach the input responder exactly once")
-    print("Native window tab navigation and responder routing passed")
   }
 }
