@@ -96,8 +96,9 @@ int main(int argc,char **argv){assert(argc==2);snprintf(launcher,sizeof launcher
     // from it, does not reach the child; this terminal's own version does.
     setenv("TERM_PROGRAM_VERSION","9.9.9",1);setenv("GHOSTTY_RESOURCES_DIR","/elsewhere",1);
     setenv("KITTY_WINDOW_ID","7",1);setenv("ITERM_SESSION_ID","w0t0p0",1);setenv("TMUX","/tmp/tmux-0/default,1,0",1);
+    setenv("TERMINFO","/elsewhere/terminfo",1);
     setenv("UNRELATED_VARIABLE","kept",1);
-    run("/bin/sh","/tmp","test -z \"${TERM_PROGRAM_VERSION+x}${GHOSTTY_RESOURCES_DIR+x}${KITTY_WINDOW_ID+x}${ITERM_SESSION_ID+x}${TMUX+x}\""
+    run("/bin/sh","/tmp","test -z \"${TERM_PROGRAM_VERSION+x}${GHOSTTY_RESOURCES_DIR+x}${KITTY_WINDOW_ID+x}${ITERM_SESSION_ID+x}${TMUX+x}${TERMINFO+x}\""
         " && test \"$TERM_PROGRAM\" = HelgeTerminal && test \"$UNRELATED_VARIABLE\" = kept && printf 'FOREIGN_GONE'",0,"FOREIGN_GONE");
     terminal_set_program_version("1.2.3");
     run("/bin/sh","/tmp","test \"$TERM_PROGRAM_VERSION\" = 1.2.3 && printf 'VERSION_OK'",0,"VERSION_OK");

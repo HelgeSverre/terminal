@@ -62,7 +62,7 @@ void terminal_set_program_version(const char *version){
 // one, so what that terminal said about itself must not reach them. Programs
 // choose features by these variables.
 static int names_another_terminal(const char *value){
-    static const char *const prefixes[]={"TERM_PROGRAM_VERSION=","TERM_SESSION_ID=","LC_TERMINAL=","LC_TERMINAL_VERSION=",
+    static const char *const prefixes[]={"TERM_PROGRAM_VERSION=","TERM_SESSION_ID=","TERMINFO=","LC_TERMINAL=","LC_TERMINAL_VERSION=",
         "GHOSTTY_","KITTY_","ITERM_","WEZTERM_","ALACRITTY_","KONSOLE_","VTE_VERSION=","WT_SESSION=","WT_PROFILE_ID=","TMUX=","TMUX_PANE="};
     for(size_t i=0;i<sizeof prefixes/sizeof *prefixes;i++)if(!strncmp(value,prefixes[i],strlen(prefixes[i])))return 1;
     return 0;

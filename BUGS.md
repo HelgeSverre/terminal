@@ -5,13 +5,6 @@ Found on 2026-11-11 by probing 0.3.0 (`22b9f69`) from a real window
 Expected behaviour is xterm's unless noted. Each entry is removed when its
 fix and regression test land.
 
-## Environment
-
-1. **`TERMINFO` is inherited from the launching terminal.** Started from a
-   Ghostty shell, every child gets
-   `TERMINFO=/Applications/Ghostty.app/Contents/Resources/terminfo` while
-   `TERM=xterm-256color`. `names_another_terminal` in `Spawn.c` must drop it.
-
 ## Not implemented (no reply)
 
 Not bugs, listed so they are not rediscovered: XTVERSION (`CSI > q`),
