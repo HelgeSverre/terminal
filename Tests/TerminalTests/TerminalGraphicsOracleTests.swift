@@ -53,6 +53,19 @@ import Testing
     feed(core, command("a=T,f=100,i=1,C=1", Array(Data(base64Encoded: encoded)!)))
     #expect(rgba(core, images(core)[0]) == Data([120, 20, 30, 99]))
   }}
+  @Test static func paddedChunks() { withTerminal { core in
+    // chafa's shape: a header-only first chunk, padded data chunks that
+    // still carry m=1, and an empty m=0 chunk to finish.
+    let pixels = Data([1, 2, 3, 4, 5, 6])
+    feed(core, "\u{1b}_Ga=T,f=24,s=2,v=1,i=7,C=1,q=2,m=1\u{1b}\\")
+    feed(core, "\u{1b}_Gm=1;\(pixels.prefix(4).base64EncodedString())\u{1b}\\")
+    feed(core, "\u{1b}_Gm=1;\(pixels.suffix(2).base64EncodedString())\u{1b}\\")
+    #expect(images(core).isEmpty)
+    feed(core, "\u{1b}_Gm=0\u{1b}\\")
+    let image = images(core).first { $0["image"] as? Int == 7 }
+    #expect(image.flatMap { rgba(core, $0) } == Data([1, 2, 3, 255, 4, 5, 6, 255]), "padded chunks assemble")
+    #expect(replies(core).isEmpty, "q=2 stays quiet")
+  }}
   @Test static func axisLimit() { withTerminal { core in
     let encoded = Data(repeating: 42, count: 4_097 * 4).base64EncodedString()
     var remaining = encoded[...]

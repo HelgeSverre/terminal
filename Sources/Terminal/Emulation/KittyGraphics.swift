@@ -164,7 +164,10 @@ final class KittyGraphicsStore {
       guard continuation <= 1 else { throw KittyGraphicsError.invalid }
       more = continuation == 1
       try validateTransport(upload.fields)
-      if payload.count > 4096 || (more && payload.contains(UInt8(ascii: "="))) { throw KittyGraphicsError.invalid }
+      // Each chunk is decoded on its own, as kitty does, so a padded chunk
+      // may be followed by more: chafa pads its last data chunk and closes
+      // the transmission with an empty m=0 chunk.
+      if payload.count > 4096 { throw KittyGraphicsError.invalid }
       guard let decoded = Data(base64Encoded: payload, options: []), decoded.base64EncodedData() == payload else { throw KittyGraphicsError.invalid }
       guard upload.bytes.count + decoded.count <= Self.maximumImageBytes else { throw KittyGraphicsError.tooLarge }
       upload.bytes.append(decoded)
