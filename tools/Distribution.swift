@@ -221,7 +221,9 @@ struct Distribution {
     }
     var source = root.appendingPathComponent("dist/Terminal.app")
     let release = root.appendingPathComponent("dist/release/Helge Terminal.app")
-    if let released = try? payload(release), released == (try? payload(source)),
+    // Fingerprinting a bundle that is not there only prints a tool's error.
+    if files.fileExists(atPath: release.path),
+      let released = try? payload(release), released == (try? payload(source)),
       (try? run(["spctl", "--assess", "--type", "execute", release.path])) != nil {
       source = release
       print("Installing the matching notarized build.")
