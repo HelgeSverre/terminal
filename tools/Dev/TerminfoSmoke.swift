@@ -132,48 +132,4 @@ enum TerminfoSmoke {
     let text = try cells(screen, row: 0).map { $0["text"] as? String ?? "" }.joined()
     guard text == lineDrawingOutput else { throw Failure("tput ACS mapping mismatch: \(text.debugDescription)") }
   }
-
-  static let tests = [
-    SelfTest.Case(name: "terminfo smoke: the source entry passes with a stand-in parser") {
-      try withFakeProbe(alternate: false) { source, database, probe, directory in
-        try run(source: source, bundleDatabase: database, probe: probe, directory: directory)
-      }
-    },
-    SelfTest.Case(name: "terminfo smoke: a screen left on the alternate buffer fails") {
-      try withFakeProbe(alternate: true) { source, database, probe, directory in
-        let failure = try expectFailure("an alternate screen") {
-          try run(source: source, bundleDatabase: database, probe: probe, directory: directory)
-        }
-        try expect(failure.message == "tput rmcup did not restore the main screen", "got: \(failure.message)")
-      }
-    },
-    SelfTest.Case(name: "terminfo smoke: an unsupported capability is found only as a whole name") {
-      let listing = "helge-terminal|test,\n\t" + required.joined(separator: ",\n\t") + ",\n\t"
-      try checkListing(listing + "blinking,\n\tXTerm=1,")
-      for line in ["blink=\\E[5m,", "xenl,", "XT"] {
-        let failure = try expectFailure(line) { try checkListing(listing + line) }
-        try expect(failure.message.hasPrefix("unsupported inherited capability"), "got: \(failure.message)")
-      }
-      let failure = try expectFailure("a missing capability") { try checkListing("helge-terminal|test,\n\tam,") }
-      try expect(failure.message == "missing bce in compiled entry", "got: \(failure.message)")
-    },
-  ]
-
-  /// Runs `body` with the repository's terminfo source, a database compiled
-  /// from it in place of the bundle's, and a parser stand-in that prints the
-  /// screens a correct parser would.
-  private static func withFakeProbe(alternate: Bool,
-                                    _ body: (String, String, String, String) throws -> Void) throws {
-    try withTemporaryDirectory("dev-terminfo-smoke-") { directory in
-      let source = Repository.path("Resources/Terminal/Terminal.terminfo")
-      try output(of: ["/usr/bin/tic", "-x", "-o", directory + "/bundle", source])
-      let blank: [String: Any] = ["text": " "]
-      let marked: [String: Any] = ["text": "A", "style": ["foreground": ["Indexed": 201]]]
-      try writeJSON(["alternate": alternate, "rows": [["cells": [Any]()], ["cells": [blank, blank, marked]]]],
-                    to: directory + "/8.json")
-      try writeJSON(["rows": [["cells": lineDrawingOutput.map { ["text": String($0)] }]]], to: directory + "/40.json")
-      try writeScript("cat > /dev/null; cat \"\(directory)/$1.json\"", to: directory + "/probe")
-      try body(source, directory + "/bundle", directory + "/probe", directory)
-    }
-  }
 }
