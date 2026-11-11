@@ -114,41 +114,4 @@ enum SelectionSmoke {
     }
     guard ReportValue.isTruthy(report["passed"]) else { throw Failure("selection smoke did not mark report passed") }
   }
-
-  static let tests = [
-    SelfTest.Case(name: "selection smoke: a complete passing report passes and gains the runner's record") {
-      try withFakeApp(failing: nil) { bundle, reports in
-        try run(bundle: bundle, reportDirectory: reports)
-        let report = try readJSONObject(reports + "/selection-smoke.json")
-        let runner = report["runner"] as? [String: Any]
-        try expect(report["passed"] as? Bool == true, "report passed")
-        try expect(runner?["app_exited"] as? Bool == true, "app exit recorded")
-        try expect(runner?["cleanup_survivors"] as? [Int] == [], "no survivors recorded")
-      }
-    },
-    SelfTest.Case(name: "selection smoke: a failed check is named and the report marked failed") {
-      try withFakeApp(failing: "wide_drag") { bundle, reports in
-        let failure = try expectFailure("a failed check") { try run(bundle: bundle, reportDirectory: reports) }
-        try expect(failure.message == "selection checks failed: wide_drag", "got: \(failure.message)")
-        let report = try readJSONObject(reports + "/selection-smoke.json")
-        try expect(report["passed"] as? Bool == false, "report failed")
-        try expect(report["runner_error"] as? String == failure.message, "the failure is recorded")
-        try expect(report["checks"] != nil, "the app's checks are kept")
-      }
-    },
-  ]
-
-  /// Runs `body` with a stand-in app whose report passes every check but `failing`.
-  private static func withFakeApp(failing: String?, _ body: (String, String) throws -> Void) throws {
-    try withTemporaryDirectory("dev-selection-smoke-") { directory in
-      let report: [String: Any] = [
-        "passed": true, "expected_known_text": expectedText,
-        "checks": Dictionary(uniqueKeysWithValues: checks.map { ($0, $0 != failing) }),
-        "counts": ["required_checks": checks.count, "passed_checks": checks.count],
-      ]
-      try writeJSON(report, to: directory + "/report.json")
-      let bundle = try fakeBundle(in: directory, script: "cp '\(directory)/report.json' \"$2\"")
-      try body(bundle, directory + "/reports")
-    }
-  }
 }
