@@ -1,240 +1,349 @@
 # Session recovery plan
 
-Status: proposal, 2026-11-10. Research and design only; nothing here is implemented.
+Status: plan, revised 2026-11-11. Nothing here is implemented. Code references
+are to `main` at `3c96cb7`.
 
 ## Summary
 
-Today the app persists nothing about its windows. A crash, a kill or a reboot
-loses every window, tab, pane, scrollback and running program.
+After a crash, kill, force quit or hard reset, the app reopens its windows,
+tabs and panes with their working directories and scrollback, and offers to
+resume the coding agent that was running in each pane. Programs are not kept
+alive; they are restarted.
 
-**Recommendation.** Build recovery in three layers, in this order:
+### Decisions (Helge, 2026-11-11)
 
-1. **Core snapshot and restore (failure class b, also covers a and c partly).**
-   The app writes its own crash-safe state: window frames, tab groups, pane
-   tree, per-pane cwd, title, launch spec and bounded scrollback text. On
-   launch it rebuilds the layout, shows the saved scrollback as dimmed
-   "restored" history, and starts a fresh shell in each pane's cwd.
-2. **Generic resume recipes.** Each pane can carry one *resume recipe*: an
-   argv plus cwd that would bring back what was running. A recipe comes from
-   a program declaring it, or from a data-only rules table matched against the
-   pane's foreground process. The terminal offers it per pane; it never runs
-   one without consent unless Helge has trusted that rule.
-3. **Agent pack (separate layer).** Claude Code, Codex and others are entries
-   in the rules table plus optional hook snippets. No agent name appears in
-   the terminal's Swift code.
+| # | Decision | Effect on the plan |
+| --- | --- | --- |
+| 1 | Restore only after an unclean exit | No restore after a normal quit, no setting. A clean quit deletes the saved state |
+| 2 | Trusted resume rules: undecided | One open question, prepared in [Resume rules](#resume-rules) |
+| 3 | Use existing defaults, no new knobs | Scrollback is saved up to the existing history and copy limits. No new settings |
+| 4 | No encryption | Files are readable by the user only; the environment is not saved. Everything else is plain text |
+| 5 | No tmux, no keeping processes alive | Helper phase and tmux alternative removed; see [Considered and not planned](#considered-and-not-planned) |
+| 6 | Nothing is implemented yet | Phases 0 to 2 can start now. Phase 3 waits for the answer to the open question |
 
-A PTY-holding helper process (keeps programs alive across an app crash or
-update) is a later, optional phase behind a spike. It would not have helped
-with today's hard reset.
+Consequence of decision 1: a normal macOS restart, shutdown or logout quits
+the app cleanly, so nothing is restored after it. Only a crash, a kill, a
+force quit, a power loss or a hard reset leads to a restore.
 
-**What cmux does, in one line:** it reconstructs layout, cwd and best-effort
-scrollback from a JSON snapshot and re-runs agent resume commands from session
-ids captured by hooks. It does not keep processes alive unless the user opts
-into running panes inside tmux. Details in [cmux](#cmux).
+### First version
+
+| Does | Does not |
+| --- | --- |
+| Restore window frames, tab groups, pane splits and ratios, focus | Restore after ⌘Q, after closing the last window, or after an orderly restart |
+| Start a fresh login shell in each pane's last working directory | Keep any process alive, or restore a process's memory |
+| Show each pane's saved scrollback, dimmed, above the new shell | Restore the alternate screen, images, selection, find state, per-pane font size |
+| Offer to resume a recognised coding agent in its pane | Run any command without a click (unless the open question is answered `auto`) |
+| Keep agent knowledge in a data file, none in Swift code | Add settings, encryption, opt-outs or new limits |
+
+### Open question
+
+**After a crash, should agents resume only when you click (per pane, or one
+"Resume All"), or automatically for rules you have marked trusted? Answer
+`click` or `auto`.** Recommendation: `click`. The material is in
+[Resume rules](#resume-rules).
+
+Nothing else blocks phase 0.
 
 ## Failure classes
 
-| Class | Event | What can survive | Mechanism needed |
-| --- | --- | --- | --- |
-| a | App crash, `kill -9`, force quit, app update; machine stays up | Child processes, if something other than the app holds the PTY master | PTY-holding helper, or a multiplexer inside the pane |
-| b | Logout, reboot, hard reset, power loss | Only what is on disk | Periodic snapshot, restore, resume recipes |
-| c | The child exits or is killed | The pane and its final screen | Keep the pane, offer restart or resume |
-
-Without a helper, class a degrades to class b: the children get SIGHUP when
-the master closes. Phases 1 to 3 therefore cover all three classes at the
-"reconstruct" level; only phase 5 adds "keep alive" for class a.
-
-## What exists today
-
-Read from the worktree at `359c8f3` (`perf/terminal-throughput`).
-
-| Area | Current state | Source |
+| Class | Event | Outcome in the first version |
 | --- | --- | --- |
-| State restoration | None. No `NSWindowRestoration`, no state files; only preferences in `UserDefaults` | `Sources/Terminal/Preferences.swift`, grep of `Sources` |
-| Windows | `TerminalWindow` creates a 1000×680 window and centres it; frame is never saved | `Sources/Terminal/main.swift:69-88` |
-| Tabs | Native AppKit tabs: each tab is its own `TerminalWindow` in a tab group (`tabbingIdentifier = "HelgeTerminal"`) | `main.swift:77-78`, `466-475` |
-| Pane tree | The nested `NSSplitView` hierarchy *is* the model; there is no value-type layout. Splits are binary | `main.swift:223-256`, `289-316` |
-| Pane identity | `automationID` is a fresh UUID per launch | `main.swift:54`, `Sources/Terminal/Automation.swift:26` |
-| Launch | `LaunchSpec { executable, arguments, cwd, launcher }`; default is `$SHELL -l`. No per-pane environment | `Sources/Terminal/Session.swift:18-34` |
-| Child environment | The app's environment, with `TERM`, `COLORTERM`, `TERM_PROGRAM=HelgeTerminal`, and a zsh `ZDOTDIR` shim. `HELGE_TERMINAL_*` is the reserved prefix | `Sources/Terminal/Interop/Spawn.c:56-88` |
-| cwd | OSC 7 stored by the emulator, delivered in snapshots, used for split inheritance | `Emulation/TerminalEmulator.swift:1173`, `Session.swift:231-232` |
-| Prompt marks | OSC 133 A/B/C/D drive prompt phase only. `C` carries no command line | `TerminalEmulator.swift:1185-1203`, `Resources/Terminal/ShellIntegration/zsh/hooks.zsh` |
-| Shell integration | zsh only | `Resources/Terminal/ShellIntegration/zsh` |
-| History | Up to 50,000 rows per pane, rows have stable identities | `Preferences.swift:111-118`, `docs/decisions.md` |
-| Text capture | Copy captures text on the session owner in bounded turns, 16 MiB cap | `docs/status.md` (owner-confined selection) |
-| Quit | `applicationShouldTerminate` closes every window, children get SIGHUP then SIGKILL after 2 s; a 3 s timer ends termination | `main.swift:512-524`, `Session.swift:1230-1289` |
-| Child exit | Pane stays, title becomes "Terminal — Finished", content stays selectable | `main.swift:117-124`, `docs/status.md` |
-| Test fixtures | Smoke modes are launch flags; a separately signed disposable "Terminal Automation Fixture" exists | `main.swift:367-459`, `docs/automation.md:227` |
+| a | The app dies, the machine stays up: crash, `kill`, force quit | Children get a hang-up when the PTY closes. Layout, cwd and scrollback are restored; agents are offered for resume |
+| b | The machine dies: hard reset, power loss, kernel panic | Same as a, from what was on disk |
+| c | A child exits while the app runs | Unchanged from today: the pane stays, titled "Terminal — Finished" |
 
-Consequences for the design:
+An orderly restart or logout is a clean quit, not class b.
 
-- A layout model and stable pane ids must be added before anything can be saved.
-- The bounded owner-side text capture is the natural basis for scrollback checkpoints.
-- The existing "installed app remains 0.2.2 with live sessions; 0.2.3 publication
-  is pending" note in `docs/status.md` shows that app updates are already blocked
-  by live sessions. That is the main argument for phase 5.
+## Current code
 
-## Research
+| Area | State at `3c96cb7` | Source |
+| --- | --- | --- |
+| Saved state | Preferences and the first pane's last grid size (`LaunchGrid`) in `UserDefaults`. No window state, no state files, no AppKit restoration | `Preferences.swift:166-213`, `Session.swift:47-93` |
+| Windows | `TerminalWindow` opens at 1000×680 points, centred. The frame is not saved | `main.swift:69-88` |
+| Tabs | Native AppKit tabs; each tab is a `TerminalWindow` with `tabbingIdentifier = "HelgeTerminal"` | `main.swift:77-78`, `527-536` |
+| Pane tree | The nested `TerminalSplitView` hierarchy is the only model. Splits are binary | `main.swift:232-265`, `298-325`, `675` |
+| Pane and window identity | `automationID`: a new UUID per launch, on the pane and on the window | `Canvas.swift:5`, `main.swift:54`, `Automation.swift:26` |
+| Pane presentation | Each pane has a `TerminalPanePresentationView` with a header, a find bar, and an optional colour chosen for that pane; the default colour is a preference | `PanePresentation.swift:18-21`, `Preferences.swift:95` |
+| Font size | Per pane; ⌘+ and ⌘− change one pane | `Canvas.swift:808-819` |
+| Launch | `LaunchSpec { executable, arguments, cwd, launcher }`; default `$SHELL -l`. No per-pane environment | `Session.swift:96-125` |
+| Early child | The first window's login shell is spawned at process launch, before the application object exists. The first session adopts it only if its `LaunchSpec` is equal; otherwise the early child is closed | `main.swift:414-419`, `662-666`, `Session.swift:43-94`, `623` |
+| Child environment | The app's environment plus `TERM`, `COLORTERM`, `TERM_PROGRAM=HelgeTerminal` and a zsh `ZDOTDIR` shim. `HELGE_TERMINAL_` is the reserved prefix | `Interop/Spawn.c:75-85` |
+| cwd | OSC 7, stored by the emulator, delivered in snapshots, inherited by splits | `Emulation/TerminalEmulator.swift:1215`, `Session.swift:325`, `1357` |
+| Prompt marks | OSC 133 A/B/C/D set the prompt phase. zsh integration only | `Emulation/TerminalEmulator.swift:1226`, `Resources/Terminal/ShellIntegration/zsh/hooks.zsh` |
+| History | Setting 0 to 50,000 rows, default 50,000; the emulator also stops at 64 MiB per session | `Preferences.swift:181-188`, `Emulation/TerminalEmulator.swift:88`, `Settings.swift:201` |
+| Text capture | Copy walks text on the session owner in bounded turns, up to 16 MiB | `Emulation/TerminalSelection.swift:32` |
+| Find | ⌘F searches history through `HistorySearch`; state is per pane and transient | `FindBar.swift`, `Canvas.swift:822-836` |
+| Quit | `applicationShouldTerminate` closes every window and replies when `LiveChildren` reports no child left, 3 s at most. A session sends SIGHUP, then SIGKILL after 2 s | `main.swift:573-594`, `Session.swift:29-37`, `1413-1418` |
+| Last window | Closing it quits the app | `main.swift:568` |
+| Signals | The app installs no signal handlers; SIGTERM ends it without `applicationShouldTerminate` | grep of `Sources/Terminal` |
+| Bundle id | `no.helgesverre.terminal` for the installed app **and** for `dist/Terminal.app`; `just dev` launches the latter with no arguments | `Resources/Terminal/Info.plist:11-12`, `justfile:46-47` |
+| Fixture | `Terminal Automation Fixture`, bundle id `no.helgesverre.terminal.automation-fixture` | `tools/Dev/AppleScriptSmoke.swift:23`, `docs/automation.md` |
 
-Every claim is marked **V** (verified today, with source) or **U** (not verified).
+What this forces:
+
+- A value-type layout model and stable pane ids come first (phase 0).
+- The restore decision is made before `EarlyChild.start` (`main.swift:662`),
+  or the early shell starts in the wrong directory and is thrown away.
+- The bundle id does not separate a development build from the installed app.
+  State is tied to where the bundle runs from; see [Location](#location).
+- A clean quit takes milliseconds. Nothing is flushed during it.
+
+## Findings
+
+Marks: **V 11-11** verified 2026-11-11 for this revision; **V 11-10** verified
+2026-11-10 for the first version of this plan and not rechecked; **U** not
+verified.
 
 ### cmux
 
-Source read from a shallow clone of `manaflow-ai/cmux` at
-`b4cb6ad1920a1b1f825427bca6bc6dcc986d0ef4` (2026-11-10). Nothing was built or
-run; behaviour below is from reading source and README.
+Source and [README](https://github.com/manaflow-ai/cmux/blob/main/README.md)
+read at `manaflow-ai/cmux@b4cb6ad` on 2026-11-10; nothing was built or run.
+All rows V 11-10.
 
-| Question | Finding | Mark | Source |
+| Question | Finding |
+| --- | --- |
+| Live processes | Not kept alive. No PTY-holding daemon. Opt-in `cmux local-tmux` runs panes in a user-owned tmux server |
+| What is restored | Layout, working directories, best-effort scrollback, browser URLs |
+| Format | One JSON snapshot in `~/Library/Application Support/cmux/`, with a previous generation |
+| Cadence | Layout every 8 s without scrollback. Scrollback checkpoints at most every 60 s, only for terminals with new output and only when typing is quiet |
+| Scrollback limit | 4,000 lines and 400,000 characters per terminal |
+| Scrollback replay | Through the shell: integration `cat`s a temp file. Depends on shell integration |
+| Crash detection | A sentinel file with the pid, removed on clean termination |
+| Restore trigger | Automatic at launch; skipped when launch arguments are present |
+| Agent resume | Hooks record each agent's session id; on restore cmux types a resume command into the new shell. Automatic once hooks are installed |
+| Agent knowledge | Compiled into the app: an enum of agents and per-agent argv builders |
+
+Taken: own state file, cheap layout save separate from scrollback checkpoint,
+checkpoints gated on new output and quiet, previous generation, sentinel, no
+restore with launch arguments. Not taken: agent knowledge in app code, replay
+through the shell.
+
+### Other terminals
+
+All rows V 11-10. Sources: [iTerm2](https://iterm2.com/documentation-restoration.html),
+[Terminal.app](https://support.apple.com/guide/terminal/change-profiles-window-settings-trmlwindw/mac),
+[Ghostty](https://ghostty.org/docs/config/reference#window-save-state),
+[kitty](https://sw.kovidgoyal.net/kitty/sessions/),
+[tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect/blob/master/docs/restoring_programs.md),
+[zellij](https://zellij.dev/documentation/session-resurrection.html).
+
+| Tool | After the app dies | After a reboot | Taken from it |
 | --- | --- | --- | --- |
-| What is it | Native macOS Swift/AppKit app that uses libghostty as a library for terminal rendering; not a Ghostty fork (it builds against its own fork of the ghostty repo as a submodule) | V | [README](https://github.com/manaflow-ai/cmux/blob/main/README.md) lines 148, 394; `.gitmodules` |
-| Claim scope | "cmux does not checkpoint arbitrary live process state. Ordinary terminals, tmux, vim, shells, and unsupported terminal apps reopen as normal terminals." | V | README "Session restore" |
-| What is restored | Window/workspace/pane layout, working directories, "terminal scrollback (best effort)", browser URL and history | V | README "Session restore" |
-| Format and place | One JSON snapshot, schema version 1, at `~/Library/Application Support/cmux/session-<bundleId>.json`, with a `-previous.json` backup | V | `Sources/SessionPersistence.swift`, `Packages/macOS/CmuxWorkspaces/.../SessionSnapshotFileLocation.swift` |
-| Cadence | 8 s autosave timer **without** scrollback; full save with scrollback on quit, power-off notification and update relaunch | V | `SessionPersistence.swift:37`, `Sources/SessionScrollbackCheckpoint.swift:5-12` |
-| Crash-safe scrollback | Separate checkpoints: at most every 60 s, only after typing has been quiet, only for terminals with new output, at most a few exports per round within a main-thread budget, one file per terminal; merged only after an unclean exit | V | `Sources/SessionScrollbackCheckpoint.swift:5-40` |
-| Scrollback limits | 4,000 lines and 400,000 characters per terminal | V | `SessionPersistence.swift:41-42` |
-| Scrollback replay | Text is written to a 0600 temp file whose path is passed in an environment variable; cmux's shell integration `cat`s it at shell start. Replay therefore depends on shell integration | V | `SessionPersistence.swift`, `Resources/shell-integration/cmux-zsh-integration.zsh` |
-| Restore trigger | Automatic at launch, no prompt; skipped when launch arguments are present or `CMUX_DISABLE_SESSION_RESTORE=1` | V | `SessionPersistence.swift:245-262` |
-| Crash detection | Launch sentinel file with the pid, removed only on clean termination | V | `Sources/GhosttyCrashBreadcrumb.swift` |
-| Live processes | No PTY-holding daemon for ordinary panes. Opt-in `cmux local-tmux` (or `local-zellij`) runs panes inside a user-owned tmux server, which survives cmux quit, crash and update but "cannot survive logout, restart, shutdown, or power loss" | V | README FAQ "Are my sessions saved?", `docs/local-tmux.md` |
-| Agent resume | Hooks installed by `cmux hooks setup` record each agent's native session id; on restore cmux types a `cmux restore <kind> <sessionId>` command into the new shell, which builds the native resume argv (for example `claude --resume <id>`, `codex resume <id>`) | V | README; `Sources/RestorableAgentSession.swift`; `Packages/macOS/CMUXAgentLaunch/.../AgentResumeArgv.swift` |
-| Auto-run | Auto-resume is on by default once hooks are installed | V (setting default read in source) | `Packages/macOS/CmuxSettings/.../TerminalCatalogSection.swift` |
-| Where agent knowledge lives | In the app: a `RestorableAgentKind` enum, per-agent argv builders, a hook-definition table, and a Claude wrapper binary | V | `Sources/RestorableAgentTypes.swift`, `AgentResumeArgv.swift` |
-| Generic escape hatch | `cmux surface resume set --shell "..."` attaches a custom resume command to a pane; it auto-runs only if trusted (signed approved prefix bound to cwd and environment); secret-looking environment keys are dropped | V | README "Session restore" |
-| Reboot | No separate path: the power-off notification triggers a full save, and restore is the same as after a quit | V | `Sources/AppDelegate.swift` |
-| Per-agent resume flags | Exact argv for each of the 13 listed agents | U | not read line by line |
-| Hosted docs page | cmux.com session-restore page | U | not fetched |
+| iTerm2 | Jobs survive in long-lived servers | Contents return with a "Session Restored" banner | Marker row |
+| Terminal.app | Text and layout | Same | — |
+| Ghostty | Layout and cwd; no scrollback | Same | — |
+| kitty | Nothing automatic | Layout and scrollback, restored before the shell starts; non-shell programs are not restarted | Scrollback fed before the shell's output; no automatic re-run |
+| tmux + resurrect | Everything (server outlives clients) | Layout, cwd, allowlisted programs with per-program restore commands | The rules table |
+| zellij | Not checked | Layout and commands; commands wait behind "Press ENTER to run" | Consent before running |
 
-Lessons taken: own the snapshot file instead of AppKit restoration; separate the
-cheap layout save from the expensive scrollback checkpoint; gate checkpoints on
-idleness and dirtiness; keep a previous generation; detect unclean exit with a
-sentinel; skip restore when launched with arguments. Lessons rejected: agent
-knowledge compiled into the app, and replaying scrollback through the shell.
+### Claude Code and Codex
 
-### Other terminals and multiplexers
+Checked 2026-11-11 against official documentation, upstream source and local
+`--help` output (Claude Code 2.1.322, codex-cli 0.167.1). No session of either
+was started.
 
-| Tool | (a) app dies, machine up | (b) reboot | Notes that inform this design | Mark and source |
-| --- | --- | --- | --- | --- |
-| iTerm2 | Jobs survive: they run "within long-lived servers rather than as child processes"; app reconnects. Not on Cmd-Q by default | Jobs die; window contents come back with a "Session Restored" banner | The server passes the PTY master fd with `SCM_RIGHTS`; newer builds use one multi-server daemon | V: [restoration docs](https://iterm2.com/documentation-restoration.html), [design note](https://github.com/gnachman/iTerm2/blob/master/docs/session-restoration-and-process-reattachment.md) |
-| Terminal.app | Text and layout only | Same | Profile option "Restore text when reopening windows" with a row limit; per-session shell history files keyed by `TERM_SESSION_ID`; `SHELL_SESSIONS_DISABLE=1` opts out | V: [Apple guide](https://support.apple.com/guide/terminal/change-profiles-window-settings-trmlwindw/mac), local `/etc/zshrc_Apple_Terminal` |
-| Ghostty | Layout and cwd | Same | `window-save-state`; each surface encodes only pwd, uuid and title. Scrollback is not restored (open issue) | V: [config reference](https://ghostty.org/docs/config/reference#window-save-state), [issue 1847](https://github.com/ghostty-org/ghostty/issues/1847). Behaviour after power loss: U |
-| tmux | Everything (server outlives clients) | Nothing built in | tmux-resurrect saves layout, cwd, optional pane contents, and restores only allowlisted programs; `"grunt->grunt development"` maps a program to a custom restore command. tmux-continuum saves every 15 min | V: [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect), [restoring programs](https://github.com/tmux-plugins/tmux-resurrect/blob/master/docs/restoring_programs.md), [continuum](https://github.com/tmux-plugins/tmux-continuum) |
-| zellij | Not checked | Layout and each pane's command, serialized every 1 s | Restored commands wait behind "Press ENTER to run..." to prevent accidents; a hook can rewrite the discovered command | V: [session resurrection](https://zellij.dev/documentation/session-resurrection.html) |
-| WezTerm | Panes live when attached to its mux server | Nothing built in found | Third-party resurrect plugin | V: [multiplexing](https://wezterm.org/multiplexing.html); absence of built-in restore: U |
-| kitty | Nothing automatic | `restore_session_after_logout` (0.50): layout plus scrollback | Scrollback is restored **before** the shell starts, followed by a line saying when it was saved; non-shell programs are not restarted "since they could have been run for their effects, like rm"; on macOS the saved state is encrypted with a key in the login keychain | V: [kitty sessions](https://sw.kovidgoyal.net/kitty/sessions/) |
-| VS Code | Reconnects on window reload | "Revive": content restored, process relaunched | Separate settings for reconnection, revive and scrollback amount | V: [terminal advanced](https://code.visualstudio.com/docs/terminal/advanced) |
-| shpool | Shells live in a daemon | Not stated | Minimal precedent for a PTY-holding daemon without multiplexing | V: [shpool](https://github.com/shell-pool/shpool) |
+| # | Claim | Mark | Source |
+| --- | --- | --- | --- |
+| C1 | `claude --resume <session-id>` resumes that session and works from any directory | V 11-11 | [sessions](https://code.claude.com/docs/en/sessions), local help |
+| C2 | `claude --continue` reopens the most recent session in the current directory | V 11-11 | [cli reference](https://code.claude.com/docs/en/cli-reference), local help |
+| C3 | A resumed session keeps its id unless `--fork-session` is passed | V 11-11 | cli reference, local help |
+| C4 | Transcripts are at `~/.claude/projects/<project>/<session-id>.jsonl`, kept 30 days by default (`cleanupPeriodDays`) | V 11-11 | sessions |
+| C5 | Hooks receive `session_id`, `transcript_path`, `cwd` and `permission_mode` on stdin. `SessionStart` fires with source `startup`, `resume`, `clear`, `compact` or `fork` | V 11-11 | [hooks](https://code.claude.com/docs/en/hooks) |
+| C6 | User hooks are configured in `~/.claude/settings.json` | V 11-11 | hooks |
+| C7 | A running session has `~/.claude/sessions/<pid>.json` with `sessionId` and `cwd` | V 11-11 locally; the file is undocumented | local listing, field names only |
+| C8 | The process reports `argv[0]` = `claude`; its executable is `~/.local/share/claude/versions/<version>` | V 11-11 locally | `ps` |
+| C9 | A tool call that was running when the process died is not rerun on resume. Background shells and subagents are not restarted | V 11-11 | sessions |
+| C10 | Resume by id from a terminal restores `plan` and `auto` mode. A session that ended in `bypassPermissions` resumes in the mode a new session would start in | V 11-11 | sessions, "Permission mode on resume" |
+| C11 | A new session starts in `bypassPermissions` when `--dangerously-skip-permissions` is passed or `permissions.defaultMode` says so; auto mode is the built-in default since 2.1.283 | V 11-11 | [permission modes](https://code.claude.com/docs/en/permission-modes) |
+| C12 | A goal that was active when the session ended is restored on resume | V 11-11 | [goal](https://code.claude.com/docs/en/goal) |
+| C13 | Whether a resumed session with an active goal starts a turn before the user types | U | not stated in the docs |
+| C14 | Whether `SessionEnd` hooks run on SIGKILL or power loss | U | the design assumes not |
+| C15 | Whether `~/.claude/sessions/<pid>.json` follows `/clear` and forks | U | |
+| C16 | Whether a hook command inherits environment variables the terminal set for the pane | U | tested in phase 3 |
+| X1 | `codex resume <SESSION_ID>` resumes that session; the id is a UUID or a session name | V 11-11 | [developer commands](https://learn.chatgpt.com/docs/developer-commands?surface=cli), local help |
+| X2 | `codex resume --last` picks the most recent session in the current directory unless `--all` | V 11-11 | developer commands, local help |
+| X3 | If the current directory differs from the session's saved directory, Codex asks which to use | V 11-11 | developer commands |
+| X4 | Sessions are at `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl`; the first line holds the id and cwd | V 11-11 locally | local listing, field names only |
+| X5 | Hooks receive `session_id`, `transcript_path`, `cwd` on stdin; `SessionStart` has source `startup`, `resume`, `clear`, `compact` or `fork` | V 11-11 | [hooks](https://learn.chatgpt.com/docs/hooks) |
+| X6 | User hooks are configured in `~/.codex/hooks.json` or `~/.codex/config.toml`, and a new or changed hook is skipped until trusted through `/hooks` | V 11-11 | hooks |
+| X7 | On exit Codex prints `codex resume <id>` | V 11-11 | [exit_summary.rs](https://github.com/openai/codex/blob/main/codex-rs/tui/src/app/exit_summary.rs) |
+| X8 | The process's `argv[0]` ends in `/codex` | V 11-11 locally | `ps` |
+| X9 | A file or other signal that maps a running Codex pid to its session id | U | none found |
+| X10 | Whether a resumed session keeps its id | U | not stated in the docs |
+| X11 | Whether resume restores the session's approval policy and sandbox, including `--dangerously-bypass-approvals-and-sandbox` | U | not in the docs; [issue 59666](https://github.com/openai/codex/issues/59666) reports that 0.166 and later restore them |
+| X12 | Behaviour after a hard kill | U | |
 
-Patterns worth copying:
+What follows from the table:
 
-- **Program restore is an allowlist with templates** (tmux-resurrect). That is the rules table.
-- **Consent before re-running** (zellij banner, kitty's refusal). That is the default here.
-- **Scrollback restored by the terminal, before the shell starts, with a marker line** (kitty, iTerm2).
-- **Class a needs a second process**; every tool that keeps programs alive has one (iTerm2 server, tmux, WezTerm mux, shpool).
-
-### Coding-agent CLIs
-
-Checked against official docs, upstream source, and local `--help` output
-(Claude Code 2.1.322, codex-cli 0.167.0).
-
-| Fact | Claude Code | Codex CLI |
-| --- | --- | --- |
-| Resume most recent | `claude --continue` / `-c`: most recent conversation **in the current directory** (V: [cli reference](https://code.claude.com/docs/en/cli-reference)) | `codex resume --last`: filtered to the current cwd unless `--all` (V: local help, [tui/src/lib.rs](https://github.com/openai/codex/blob/main/codex-rs/tui/src/lib.rs)) |
-| Resume exact | `claude --resume <session-id>`; an id works from any directory (V: [sessions](https://code.claude.com/docs/en/sessions)) | `codex resume <SESSION_ID>` (V: local help) |
-| Pre-assign id at launch | `--session-id <uuid>` (V: cli reference) | Not found (U) |
-| Resume keeps the id | Yes unless `--fork-session` (V) | U |
-| Storage | `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl`; retention `cleanupPeriodDays`, default 30 (V: sessions, [claude directory](https://code.claude.com/docs/en/claude-directory)) | `~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl`; first line holds id and cwd (V: local listing) |
-| Learn the running session id | Hooks receive `session_id`, `transcript_path`, `cwd`; `SessionStart` fires with `source` = startup, resume, clear, compact or fork (V: [hooks](https://code.claude.com/docs/en/hooks)). Also `~/.claude/sessions/<pid>.json` with `sessionId` and `cwd` while running; its field layout is undocumented (V locally, format U) | `SessionStart` hook with `session_id`, `cwd` (V: [hooks docs](https://learn.chatgpt.com/docs/hooks)); prints `codex resume <uuid>` on exit (V: [exit_summary.rs](https://github.com/openai/codex/blob/main/codex-rs/tui/src/app/exit_summary.rs)) |
-| Argv reveals the session | No. Argv shows launch flags only (V locally) | No (V locally) |
-| Open transcript file as a signal | No file held open (V locally) | Not reliable (V locally) |
-| After a hard kill | Transcript is saved continuously but may lag; an interrupted tool call is not rerun; background shells and subagents are not restored (V: sessions) | U |
-| Flags lost on resume | Several launch flags must be passed again, and permission-bypass mode is not restored (V: sessions) | U |
-
-Other CLIs, for generality (V from local `--help` unless noted): opencode
-`--continue` and `--session <id>`; Gemini CLI `--resume` and `--session-id`;
-Copilot CLI `--continue`, `--resume [id]`; Amp `amp threads continue`; Cursor
-`agent resume` / `--resume [chatId]` ([docs](https://cursor.com/docs/cli/reference/parameters));
-aider `--restore-chat-history`, no session ids ([docs](https://aider.chat/docs/config/options.html)).
-
-What this means:
-
-- Every agent has "resume by id" and most have "resume latest in this cwd".
-  A template with `{session}` and `{cwd}` covers all of them.
-- The id is not discoverable from argv. It must be **declared** (hook) or
-  **looked up** (a per-pid file, for Claude).
-- "Latest in cwd" is wrong when two agents ran in the same directory, which is
-  Helge's normal setup. It is a fallback and must be labelled as a guess.
-- Resume does not bring back in-flight tool calls or background work. The plan
-  can restore the conversation, not the moment.
-- No standard lets a program tell a terminal how to restart it (U: none found;
-  nearest are kitty's `cmdline` on OSC 133;C and the agents' own hooks).
+- Both agents resume by id. A template with `{session}` covers them.
+- The id is not in argv. It is looked up (C7, Claude Code only) or reported by
+  a hook (C5, X5).
+- "Most recent in this directory" (C2, X2) is wrong when two agents share a
+  directory, which is Helge's normal setup. It is a guess and is labelled so.
+- Resume restores the conversation, not the moment (C9).
+- A resumed agent can come back with wide permissions (C10 to C13, X11). The
+  terminal cannot change that; it can only decide who starts the agent.
 
 ### Not verified
 
-- `tcgetpgrp` on the PTY master, `proc_pidpath` and `PROC_PIDVNODEPATHINFO`
-  were not exercised individually; `ps` and `lsof` returned argv, environment,
-  cwd and open files for a same-user process on this machine. Hardened-runtime
-  effects on these calls were not tested.
-- What process name or executable path a running Claude Code or Codex reports
-  (it may be a versioned binary path rather than `claude`).
-- Whether closing a PTY master always delivers SIGHUP (the man page describes
-  modem disconnect only), and whether a helper started by double fork plus
-  `setsid` survives app termination under launchd.
-- iTerm2 `OSC 1337 SetUserVar` semantics; Ghostty's handling of `cmdline`.
+- `tcgetpgrp` on the PTY master, `proc_pidpath` and reading another process's
+  argv from inside the app, including under the hardened runtime. `ps` returns
+  them for same-user processes on this machine.
+- That macOS logout, restart and shutdown always reach
+  `applicationShouldTerminate` for this app. Standard AppKit behaviour; not
+  tested here.
 - Durability of `fsync` versus `F_FULLFSYNC` on APFS, and whether an unsynced
   rename can leave an empty file after power loss. The design assumes it can.
-- Whether agent `SessionEnd` hooks run on SIGKILL or power loss. Assume not.
-- macOS saved-state paths, `NSQuitAlwaysKeepsWindows`, and crash-loop handling
-  of AppKit restoration (third-party sources only). The design does not use them.
+- Claims C13 to C16 and X9 to X12 above.
 
 ## Design
 
-### Layers
+### State saved
 
-| Layer | Owns | Knows about agents |
+| Item | Saved | Note |
 | --- | --- | --- |
-| 0. Core snapshot | Layout model, state files, checkpoint scheduling, restore, restored-history presentation | No |
-| 1. Resume recipes | Recipe storage per pane, the declaration channel, the rules engine, foreground-process sampling, consent and trust | No. It knows "argv templates" and "process matchers" |
-| 2. Packs | Data files with rules, and optional hook snippets a user installs into an agent's own config | Yes, as data |
+| Window frame, zoomed or full screen | Yes | Clamped to the visible screens on restore |
+| Tab groups | Yes | Window order per group, selected tab |
+| Pane tree | Yes | Binary tree: pane, or split with orientation and ratio. Ratio, not points |
+| Active pane, key window | Yes | |
+| Pane id | Yes | Stable UUID; also the automation id |
+| cwd | Yes | Last OSC 7 value |
+| Title | Yes | Shown until the new shell sets one |
+| Pane colour | Yes, when the pane has its own | One hex value |
+| Scrollback | Yes | Primary history and primary screen as plain text, soft wraps joined |
+| Resume record | Yes | Rule id and session id; see [Resume rules](#resume-rules) |
+| Environment | **No** | |
+| Command lines and argv | **No** | Only the matched rule id |
+| Alternate screen, modes, images, selection, find state, font size | No | Not meaningful for a new process, or reset to the preference |
 
-Layer 2 ships as files (`Resources/Terminal/ResumeRules/*.json` for bundled
-defaults, `~/Library/Application Support/<bundle id>/ResumeRules/*.json` for
-user rules). It can live in a separate repository. Removing it leaves a
-terminal that still restores layout, cwd, scrollback and declared recipes.
+Limits, all existing:
 
-### Resume recipe
+| Limit | Value | Unit | Source |
+| --- | --- | --- | --- |
+| Scrollback rows saved per pane | the pane's history: setting, default 50,000, maximum 50,000 | rows | `Preferences.swift:181-188` |
+| Scrollback text saved per pane | 16; the newest rows are kept | MiB | `TerminalSelection.maximumCopyBytes`, `Emulation/TerminalSelection.swift:32` |
+| cwd length | 8,192 | bytes | `Preferences.swift:124` |
 
-One optional value per pane:
+**Stored in plain text:** everything each pane printed that is still in its
+history, including any secret a command printed; working directories; pane
+titles; agent session ids. **Not stored:** the environment, command lines,
+and input that was never echoed, such as typed passwords.
 
-```json
-{
-  "argv": ["claude", "--resume", "0b6c…"],
-  "cwd": "/Users/helge/code/terminal",
-  "label": "Claude Code",
-  "source": "declared",
-  "exact": true,
-  "owner_pid": 41822
-}
+### Location
+
+| Launch | State directory |
+| --- | --- |
+| `--state-directory <dir>` given | `<dir>` |
+| No launch arguments, and the bundle is inside `/Applications` or `~/Applications` | `~/Library/Application Support/no.helgesverre.terminal/Sessions/` |
+| Anything else: `dist/Terminal.app`, a frozen benchmark copy, any smoke or benchmark flag | None. No state is read or written |
+
+A development build shares the installed app's bundle id, so the bundle's
+location, not its id, decides. `just dev --state-directory <dir>` gives a
+development build its own state.
+
+```
+Sessions/                  mode 0700
+  running                  pid and process start time; held with flock
+  layout.json              current layout, mode 0600
+  layout.previous.json     last generation that loaded
+  panes/<pane-uuid>.scrollback
+  panes/<pane-uuid>.resume written by an agent hook; see Resume rules
+  quarantine/              the one most recent state that failed to restore
 ```
 
-- `source` is `declared`, `rule` or `command-line`.
-- `exact: false` marks a guess such as "latest in this cwd".
-- `owner_pid` is the process the recipe belongs to. A recipe is offered after
-  restore only if that process was still in the pane at the last snapshot.
-  This replaces "session ended" hooks, which do not fire on power loss.
+- `layout.json`: `{ "version": 1, "saved_at", "app_build", "windows": [...] }`.
+- `*.scrollback`: one JSON header line (`version`, `rows`, `bytes`,
+  `captured_at`, checksum of the body), then the text.
 
-### Options for producing a recipe
+### Clean and unclean exit
 
-| Option | How | Strengths | Weaknesses | Verdict |
-| --- | --- | --- | --- | --- |
-| A. Declaration file | The app sets `HELGE_TERMINAL_PANE_ID` and `HELGE_TERMINAL_RESUME_FILE` in each pane's environment. Any program or hook writes the recipe JSON to that path | Exact; works from hooks that have no tty; no parser change; only same-user local processes can write it; trivially testable | Local only (not over ssh); the agent needs a hook or wrapper | **Primary** |
-| B. Rules table | Data entries: match the pane's foreground process, optionally look up a session id, expand an argv template | Zero setup for the user; this is tmux-resurrect's proven model | Needs process inspection; lookups depend on each agent's file layout; guesses when no id is found | **Primary fallback** |
-| C. Shell hook command line | `preexec` emits `OSC 133;C;cmdline_url=…` (kitty's convention); the terminal stores the running command | Generic, shows what the user typed, works over ssh | Shows aliases, not real argv; re-running is not resuming; zsh only today | **Supporting**: display, and a prefilled prompt, never auto-run |
-| D. Escape sequence | A program emits an OSC that sets its recipe | Works over ssh; no file | Any printed file or remote host can plant a command; needs a new or borrowed OSC number | **Deferred**; stricter trust if added |
-| E. Per-pane restart command | User pins a command to a pane ("always run `npm run dev` here") | Simple, explicit | Manual | **Later**, same storage as A |
-| F. Agent code in the app | What cmux does | Polished per agent | Violates the requirement | **Rejected** |
+- At launch the app takes the lock on `running` and writes its pid, and
+  whether a restore is in progress. If another live process holds the lock,
+  this instance runs without state.
+- **Clean exit:** `applicationShouldTerminate` (`main.swift:573`). It is
+  reached by ⌘Q, by closing the last window (`main.swift:568`) and by a
+  system restart, shutdown or logout. It stops the writers, deletes
+  `layout.json`, `layout.previous.json` and `panes/`, then deletes `running`.
+- **Unclean exit:** `running` exists at launch and no live process holds its
+  lock. Every other way of ending leaves it: crash, SIGKILL, SIGTERM, force
+  quit, power loss, hard reset.
+- Closing a pane or window deletes that pane's files.
 
-### Rules table format
+### Writing
+
+| Write | Trigger | Where the work runs |
+| --- | --- | --- |
+| Layout | A structural change (split, close, tab, move, resize end, focus, cwd, title, colour, resume record), debounced 1 s. Nothing is written when nothing changed | Main thread gathers values it already has; encoding and I/O on a utility queue |
+| Scrollback checkpoint | The pane has new output since its last checkpoint and has been quiet for 2 s, or has had new output for 60 s | One pane at a time. Capture on the pane's session queue in the existing bounded turns, yielding to input; encoding and I/O on a utility queue |
+| Both, immediately | `NSWorkspace.willSleepNotification` | Same queues |
+
+- **Atomic replace:** write `name.tmp`, `fsync`, `rename`.
+- **Two generations:** a layout that loads is copied to
+  `layout.previous.json` before the next write replaces it.
+- **No log of PTY bytes.** The only cost on the output path is setting a
+  per-pane flag.
+- **No timers when idle.** An idle app has no pane with new output and
+  schedules nothing.
+- ⌘K needs no special case: the next checkpoint holds the cleared history.
+
+Worst-case loss after a hard reset: the last 1 s of layout changes and the
+last 60 s of output in a busy pane.
+
+If phase 2 misses its throughput criterion with whole-file rewrites, the fix
+is appending by row identity, not a setting.
+
+### Restore
+
+Decided at the top of `main.swift`, before `EarlyChild.start`:
+
+| Condition at launch | Action |
+| --- | --- |
+| No state directory (see [Location](#location)) | Normal launch |
+| `running` absent | Normal launch; leftover state is deleted |
+| `running` present, lock free | Unclean exit: restore |
+| `running` shows the previous launch died during a restore | Move the state to `quarantine/`, open one window, log one line |
+| Lock held by a live process | Normal launch without state |
+
+On a normal launch the cost is one `stat`. On a restore the early child is
+started with the first restored pane's `LaunchSpec`, so adoption
+(`Session.swift:78`) still succeeds.
+
+Per pane:
+
+1. Create the pane with its saved id, colour and split position.
+2. In `Session.start`, between `terminal_create` and the read endpoint
+   (`Session.swift:611-638`), feed the saved text into the emulator as faint
+   text (SGR 2). It does not pass through the shell and works for every shell.
+3. Append one marker row: `Restored · saved 2026-11-10 14:02`.
+4. The shell is `LaunchSpec.shell` in the saved cwd. Its output follows the
+   marker.
+5. Restored rows are ordinary history: selectable, copyable, found by ⌘F.
+6. A pane with a resume record gets a strip; see [Resume rules](#resume-rules).
+
+### Failures
+
+| Failure | Behaviour |
+| --- | --- |
+| `layout.json` missing, truncated or invalid | Use `layout.previous.json`; if that fails, normal launch and quarantine both |
+| Newer `version` than the app knows | Do not load, do not overwrite; quarantine, normal launch |
+| Older `version` | Migrate in memory; write the new version after a successful restore |
+| Scrollback checksum mismatch | The pane restores without history; the marker row says so |
+| cwd missing or not a directory | The preference starting directory, as `launchDirectory(inheriting:)` does today (`Preferences.swift:123-133`); the marker row names the saved path |
+| Screens changed | Frames are clamped to visible screens |
+| Tree does not fit the window | Existing `reconcileLayout` minimum-size logic (`main.swift:266-297`) |
+| Shell fails to launch | Existing "Unable to start the shell" alert (`main.swift:143-150`) |
+| The app dies during a restore | The next launch quarantines the state and opens one window |
+| State directory unwritable | No state for this run; one log line |
+
+## Resume rules
+
+### What a resume rule is
+
+A resume rule is one entry in a data file. It says: "a process that looks
+like *this* is the program *X*; its session id is found *here*; to bring it
+back, run *this command*." The terminal reads rules; it contains no agent
+names in Swift code. The first version ships two rules, in
+`Resources/Terminal/ResumeRules.json`:
 
 ```json
 {
@@ -243,304 +352,225 @@ One optional value per pane:
     {
       "id": "claude-code",
       "label": "Claude Code",
-      "match": { "argv0": ["claude"], "executable": ["/claude/versions/"] },
+      "match": { "argv0": "claude" },
       "session": { "json_file": "~/.claude/sessions/{pid}.json", "key": "sessionId" },
+      "session_pattern": "^[0-9a-f-]{36}$",
       "resume": ["claude", "--resume", "{session}"],
-      "fallback": ["claude", "--continue"]
+      "guess": ["claude", "--continue"],
+      "warn_argv": ["--dangerously-skip-permissions", "bypassPermissions"]
     },
     {
       "id": "codex",
       "label": "Codex",
-      "match": { "argv0": ["codex"] },
+      "match": { "argv0": "codex" },
+      "session_pattern": "^[0-9a-f-]{36}$",
       "resume": ["codex", "resume", "{session}"],
-      "fallback": ["codex", "resume", "--last"]
+      "guess": ["codex", "resume", "--last"],
+      "warn_argv": ["--dangerously-bypass-approvals-and-sandbox", "--yolo", "danger-full-access"]
     }
   ]
 }
 ```
 
-- Matchers: `argv0` basename, `executable` path substring, optional `argv` regex.
-- One lookup primitive in phase 3: `json_file` with `{pid}` and a key path.
-  More primitives are added only when a real rule needs one.
-- Template variables: `{session}`, `{cwd}`, `{argv}` (original arguments, so a
-  pack can carry launch flags across a resume).
-- `resume` is used when the lookup yields a session; otherwise `fallback`,
-  marked `exact: false`.
-- Expansion produces an argv array. The terminal never builds a shell string
-  from untrusted parts; when it types a recipe into a shell it quotes each
-  argument.
-- The Claude lookup above relies on an undocumented file. That risk stays in
-  the pack; the hook route (option A) is the stable path.
+| Field | Meaning |
+| --- | --- |
+| `match.argv0` | Basename of the foreground process's `argv[0]` |
+| `session` | Optional lookup of the session id from a file named by the process id |
+| `session_pattern` | The id must match, or it is discarded |
+| `resume` | The command when the session id is known. `{session}` is the only variable |
+| `guess` | The command when it is not: "most recent in this directory" |
+| `warn_argv` | If the original process had one of these arguments, the strip says so and nothing runs automatically |
 
-Pack hook snippet, for illustration only (installed by the user into the
-agent's own hook configuration, not by the terminal):
+How the terminal learns what runs in a pane:
+
+- **Sampling.** At each layout save, per pane: ask the PTY for its foreground
+  process group, read that process's `argv` and pid, match the rules. A pane
+  at its shell prompt matches nothing. The environment is never read.
+- **Hook file.** Each pane's shell gets `HELGE_TERMINAL_RESUME_FILE`, the
+  path of `panes/<pane-uuid>.resume`. An agent's own `SessionStart` hook
+  writes `{"rule": "<id>", "session": "<id>"}` there. The file names a rule
+  and a session id. It cannot supply a command.
+
+A resume record is offered after a restore only if the rule still matched the
+pane's foreground process at the last save. An agent that had already exited
+is not offered.
+
+### Worked example: Claude Code
+
+Helge runs `claude` in a pane whose cwd is `/Users/helge/code/terminal`. No
+hook is installed.
+
+| Step | What happens | Basis |
+| --- | --- | --- |
+| Sample | Foreground process pid 41822, `argv[0]` = `claude`. Rule `claude-code` matches | C8 |
+| Look up | `~/.claude/sessions/41822.json` gives `sessionId` = `0b6c…` | C7 |
+| Record | In `layout.json`, for that pane: `"resume": {"rule": "claude-code", "session": "0b6c…", "exact": true, "warned": false}` | |
+| Hard reset | The agent dies. Its transcript is on disk | C4 |
+| Restore | New login shell in `/Users/helge/code/terminal`. Strip: `Was running: Claude Code · Resume · Dismiss` | |
+| Click Resume | The terminal types `claude --resume 0b6c…` and Return into that shell | C1 |
+| Result | The conversation is back with the same id. A tool call that was running is not rerun. Plan or auto mode is restored; bypass mode is not, unless the user's settings default to it | C3, C9, C10, C11 |
+
+With the hook installed, the lookup step is replaced by the hook's report,
+which also follows `/clear` and forks (C5). The lookup file is undocumented
+(C7); the hook is the documented route. The hook is one command in
+`~/.claude/settings.json` under `SessionStart`:
 
 ```sh
-# SessionStart hook: read the hook JSON on stdin, declare how to resume.
 [ -n "$HELGE_TERMINAL_RESUME_FILE" ] || exit 0
-jq -c '{argv:["claude","--resume",.session_id], cwd:.cwd, label:"Claude Code"}' \
-  > "$HELGE_TERMINAL_RESUME_FILE.tmp" && mv "$HELGE_TERMINAL_RESUME_FILE.tmp" "$HELGE_TERMINAL_RESUME_FILE"
+jq -c '{rule: "claude-code", session: .session_id}' > "$HELGE_TERMINAL_RESUME_FILE.tmp" \
+  && mv "$HELGE_TERMINAL_RESUME_FILE.tmp" "$HELGE_TERMINAL_RESUME_FILE"
 ```
 
-`SessionStart` fires again on resume, clear and fork, which is when the id
-changes, so the declaration stays current.
+### Worked example: Codex
 
-### Foreground process sampling
+Helge runs `codex` in a pane whose cwd is `/Users/helge/code/terminal`.
 
-At each layout save (not on the PTY path), for each pane:
+| Step | Without a hook | With a `SessionStart` hook in `~/.codex/hooks.json` | Basis |
+| --- | --- | --- | --- |
+| Sample | `argv[0]` ends in `/codex`. Rule `codex` matches | Same | X8 |
+| Session id | None: no pid-to-session file is known | The hook writes `{"rule": "codex", "session": "7f3a…"}` | X9, X5 |
+| Record | `{"rule": "codex", "session": null, "exact": false, "warned": false}` | `{"rule": "codex", "session": "7f3a…", "exact": true, "warned": false}` | |
+| Strip after restore | `Was running: Codex · Resume most recent in this directory · Dismiss` | `Was running: Codex · Resume · Dismiss` | |
+| Click | Types `codex resume --last` | Types `codex resume 7f3a…` | X2, X1 |
+| Result | The newest Codex session in that directory. With two Codex panes in one directory, one of them gets the wrong conversation | The exact conversation | X2 |
 
-1. Ask for the foreground process group of the PTY, pick its leader.
-2. If it is the pane's shell, the pane is "at a shell": no rule recipe.
-3. Otherwise read executable path, argv and cwd, and evaluate the rules.
+The Codex hook is the same command with `rule: "codex"`. Codex skips a new
+hook until it is trusted through `/hooks` (X6). Whether a resumed Codex
+session keeps its approval and sandbox settings is unverified (X11).
 
-Cost is a few syscalls per pane per save. Environment is never read or stored.
+### What "trusted" would mean
 
-### Persisted state
+- **Who:** Helge, and only by an explicit action in the app: a
+  "Resume automatically from now on" control on a resume strip. No rule
+  ships trusted. No file, hook or program can mark a rule trusted.
+- **What:** one rule id together with a hash of that rule's content. Editing
+  the rule removes the trust.
+- **Where:** the app's `UserDefaults` domain, next to the other preferences
+  (`Preferences.swift:203-213`), as a list of rule id and hash.
+- **Revoking:** a list in Settings with a remove button per rule.
 
-| Item | Stored | Notes |
+### Click versus automatic
+
+| | Click | Automatic |
 | --- | --- | --- |
-| Window frame, screen, zoom/fullscreen | Yes | Frame is validated against current screens on restore |
-| Tab groups | Yes | Ordered window ids per group, selected tab |
-| Pane tree | Yes | Binary tree: leaf(pane id) or split(orientation, ratio, first, second). Ratio, not points |
-| Focused pane, key window | Yes | |
-| Pane id | Yes | Stable UUID; also becomes the automation id |
-| cwd | Yes | Last OSC 7 value; fallback to the foreground shell's cwd by process inspection |
-| Title | Yes | Shown until the new shell sets one |
-| Launch spec | Yes | Executable and arguments; cwd is taken from the row above |
-| Environment | **No** | Too likely to hold secrets; the new shell gets the app's environment as today |
-| Font size override | Yes, if per-pane sizes exist at implementation time | |
-| Foreground command | Yes | Executable, argv, pid, start time; and the typed command line from OSC 133;C when present |
-| Resume recipe | Yes | As above |
-| Scrollback | Yes, bounded | Primary history plus primary screen, as text. Default 10,000 rows and 2 MiB per pane, setting 0 to 50,000 rows |
-| Alternate screen | No | A full-screen program redraws itself when resumed |
-| Terminal modes, images, selection, search | No | Not meaningful for a new process |
-| Child exit state | Yes | A pane that had already finished is restored as finished, not relaunched |
+| After a restore | Each agent pane shows a strip. Nothing runs | A trusted rule with an exact session id types its command as soon as the shell shows a prompt |
+| Starting everything | Shell → Resume All: one action for every strip | No action |
+| Guesses (`exact: false`) | Offered, labelled as a guess | Never automatic; offered as a strip |
+| What Helge sees first | The restored scrollback and the strip | The agent, already running |
 
-Scrollback format: phase 2 stores plain UTF-8 logical lines (soft wraps joined),
-which is what the existing bounded copy capture produces. Styled text (SGR
-runs) is a phase 4 improvement; the file header carries an encoding field so
-both can coexist.
+### Risks of automatic resume
 
-### On-disk layout
+| Risk | Concrete case | With click | With automatic |
+| --- | --- | --- | --- |
+| A command runs without consent | The machine comes back from a hard reset and six agents start at once, while Helge is not there, on a machine that was just overloaded | Does not happen | Limited to trusted rules. Agents start one at a time. Still runs unattended |
+| A rule matches the wrong process | A script or another tool named `claude` was in the foreground | Helge sees the strip and dismisses it | The session id must exist and match `session_pattern`, so a non-agent has no record. A different tool with the same name and a UUID in the same place would run |
+| The agent returns with wide permissions | Claude Code restores `auto` mode and an active goal (C10, C12); with `defaultMode: bypassPermissions` it returns in bypass mode (C11); Codex is reported to restore full access (X11, unverified). Whether it then acts before Helge types is unverified (C13) | Helge chooses per pane, and the strip flags `warn_argv` | `warn_argv` blocks automatic resume when the original command line asked for a bypass. A mode set in the agent's settings or during the session is invisible to the terminal and is not blocked |
+| The directory has changed | The repository was moved, a worktree was removed, or the branch changed since the snapshot | Helge sees the cwd in the prompt before clicking | Automatic only when the saved cwd still exists. A changed branch or changed files are not detected. Codex asks which directory to use (X3); Claude Code resumes from anywhere (C1) |
+| The wrong conversation | Two agents in one directory, no session id | Labelled as a guess | Never automatic |
+| A planted hook file | Another process of the same user writes a `.resume` file | The file can only name a shipped rule and a session id; Helge sees the label | Same limit: it can select which session a trusted rule resumes, not which command runs |
+| A crash loop | The resumed program's output is what crashed the app | One click per crash | Nothing runs automatically when the previous run ended uncleanly within 60 s of a restore |
 
-Root: `~/Library/Application Support/<bundle id>/Sessions/`, mode 0700, or the
-directory given by a `--state-directory` launch option. Keying by bundle id
-keeps the fixture app and development builds away from the installed app.
+### The first version under each answer
 
-```
-Sessions/
-  lock                     flock + pid + process start time
-  running                  sentinel: exists while an instance runs
-  layout.json              current layout snapshot
-  layout.previous.json     last generation that loaded successfully
-  panes/<pane-uuid>.scrollback
-  panes/<pane-uuid>.resume declaration file (option A)
-  quarantine/<timestamp>/  state that failed to load or crashed a restore
-```
-
-- `layout.json`: `{ "version": 1, "saved_at", "app_build", "clean_exit", "windows": [...] }`.
-  Expected size is a few kilobytes.
-- `*.scrollback`: small header line (`version`, `encoding`, `rows`, `bytes`,
-  `captured_at`, checksum of the body) followed by the body.
-- All files 0600. The directory is excluded from backups.
-
-### Write cadence and crash safety
-
-| Write | Trigger | Bound |
+| | `click` | `auto` |
 | --- | --- | --- |
-| Layout | Structural change (split, close, tab, move, resize end, focus, cwd or title change, recipe change), debounced 1 s; nothing is written when nothing changed | Encoding and I/O on a utility queue; main thread only gathers values it already has |
-| Scrollback checkpoint | Pane is dirty (new output since its last checkpoint) and has been quiet for 2 s; or dirty for 60 s under continuous output | One pane at a time; capture runs on the pane's session queue in the existing bounded turns and yields to input; encode and write on a utility queue |
-| Flush everything | Clean quit, `NSWorkspace.willPowerOffNotification`, `willSleepNotification`, window close | Inside the existing 3 s termination window; panes not captured in time keep their last checkpoint |
+| Built in phase 3 | Rules file, sampling, hook file, strip with Resume and Dismiss, Shell → Resume All | Everything under `click`, plus: trust list in `UserDefaults`, the "automatically from now on" control, a revoke list in Settings, the wait-for-prompt gate, the one-at-a-time start, the crash-loop gate |
+| New settings | None | One list in Settings |
+| Needs shell integration | No | Yes: automatic start waits for OSC 133;B, which only the zsh integration sends |
+| After a crash with six agent panes | One menu action, or six clicks | No action |
+| Unverified claims it depends on | None for safety; C7 or C16 for exact ids | C13 and X11 decide how much an unattended agent can do |
+| Changing the answer later | Adding `auto` changes no file format | Removing it deletes code |
 
-Rules:
+### Recommendation
 
-- **Atomic replace.** Write `name.tmp`, `fsync`, `rename`. Layout additionally
-  uses `F_FULLFSYNC` on flush events only, never on the debounced path.
-- **Two generations.** A layout that loads successfully is copied to
-  `layout.previous.json` before the next write replaces it. A scrollback file
-  whose checksum fails is ignored; the pane restores without history.
-- **No journal of PTY bytes.** Logging raw output would put disk I/O on the
-  throughput path, grow without bound and record everything ever printed.
-- **No timers when idle.** An idle app has no dirty panes and schedules
-  nothing; the measured idle cost in `docs/status.md` must not move.
-- **Never on the PTY read lane.** The only cost added to output handling is
-  setting a per-pane dirty flag.
-- **Off in fixtures.** Persistence and restore are disabled whenever the app
-  is launched with `--execute` or any smoke or benchmark flag, unless
-  `--state-directory` is given.
+**`click`.** One "Resume All" brings every agent back after a crash, so the
+cost is one action per crash. Automatic resume adds a trust store, a Settings
+list and three gates, and its main risk (an agent that returns with wide
+permissions and acts unattended) rests on two claims that are not verified.
+The record format is the same either way, so `auto` can be added later
+without migration.
 
-Worst-case loss after a hard reset: layout changes from the last second,
-scrollback from the last 60 s of a busy pane, and a recipe declared in the
-last second.
+### The question
 
-### Restore
-
-Decision at launch:
-
-| Condition | Action |
-| --- | --- |
-| Launch arguments present (other than `--state-directory`) | No restore, no persistence |
-| `running` sentinel present, lock not held by a live process | Unclean exit: restore |
-| Clean exit recorded | Restore if "Restore windows at launch" is on (see open questions) |
-| Sentinel shows the previous launch died **during** restore | Do not restore; move state to `quarantine/`, open one window, show a notice with a "Try restoring again" action |
-| Another live instance holds the lock | Run without restore or persistence |
-
-Per pane:
-
-1. Create the pane with its saved id and split position.
-2. Feed the saved scrollback into the emulator **before** spawning the child,
-   so it does not depend on shell integration and works for every shell.
-3. Append one marker row: `Restored · session ended 2026-11-10 14:02 · not shut down cleanly`.
-4. Restored rows render dimmed. They are ordinary history: selectable,
-   searchable, copyable.
-5. Spawn the default shell in the saved cwd.
-6. If the pane has a valid recipe, show a strip under the pane header:
-   `Was running: Claude Code (session 0b6c…) · Resume ⏎ · Edit · Dismiss`.
-   A guess reads `Resume most recent in this directory`.
-
-Consent rules:
-
-- Nothing is run automatically by default. "Resume" types the quoted argv into
-  the fresh shell and presses return, so the result is visible, uses the
-  user's PATH and aliases, and lands in shell history.
-- "Resume all" in the Shell menu runs every offered recipe.
-- A rule can be marked trusted in settings ("resume automatically"). Trust is
-  per rule id, never global, and applies only to `exact` recipes.
-- A `command-line` recipe (option C) can only be inserted at the prompt
-  without return.
-- Recipes from a declaration file are shown with their full argv before first use.
-
-Class c (child exits while the app runs): the finished pane gains
-`Restart` (same launch spec, same cwd) and, if a recipe exists, `Resume`.
-
-### Privacy and security
-
-| Concern | Decision |
-| --- | --- |
-| Secrets in scrollback | Files are 0600 in a 0700 directory, excluded from backups. Same exposure as shell history and the agents' own transcripts, which are plaintext in the home directory |
-| Opt-outs | Global setting "Save scrollback for recovery" (off keeps layout and cwd only); per-pane "Don't save this pane"; `HELGE_TERMINAL_NO_PERSIST=1` in a pane's environment at launch |
-| Password entry | Typed passwords are not echoed, so they are not in scrollback. Commands that print secrets are |
-| Command lines | Stored for the foreground process only, not a history. The settings text says so |
-| Environment | Never stored |
-| Lifetime | A pane's files are deleted when the user closes the pane or window. Restored-and-dismissed state is deleted. Quarantine is pruned after 14 days |
-| Planted recipes | Declaration files are writable only by the user's own processes. No escape-sequence channel in the first version. Nothing auto-runs without per-rule trust |
-| Encryption | Not in the first version. kitty encrypts its logout state with a login-keychain key; doing the same here adds keychain prompts for ad-hoc-signed development builds and protects only against other users and offline disk access, which FileVault already covers. Listed as an open question |
-| Clear Screen | Command-K also drops the pane's saved scrollback at the next checkpoint, since the checkpoint mirrors live history |
-
-### Failure handling
-
-| Failure | Behaviour |
-| --- | --- |
-| `layout.json` missing, truncated or invalid | Use `layout.previous.json`; if that fails, start empty and quarantine both |
-| Unknown newer `version` | Do not load, do not overwrite; keep the file as `layout.v<N>.json` and start empty |
-| Older `version` | Migrate in memory through explicit steps; write the new version only after a successful restore |
-| Scrollback checksum mismatch | Pane restores without history; marker row says so |
-| cwd missing or not a directory | Nearest existing ancestor, else the preference starting directory; marker row names the original path |
-| Screen configuration changed | Clamp frames to visible screens; keep sizes where possible |
-| Pane tree deeper or wider than the window allows | Existing `reconcileLayout` minimum-size logic applies; ratios are clamped |
-| Recipe program not found | The shell reports it; nothing else happens |
-| Shell fails to launch | Existing "Unable to start the shell" path |
-| Restore crashes the app | Next launch quarantines the state (see table above) |
-| State directory unwritable | Persistence turns off for the run, one log line, no alert loop |
-| Limits | 32 windows, 256 panes; beyond that the newest are kept and a notice is logged |
-
-## PTY-holding helper (failure class a)
-
-What it would be: a small "session host" process that owns the PTY masters and
-the children. The app receives each master fd over a Unix socket
-(`SCM_RIGHTS`) and reads it directly, so the throughput path is unchanged. If
-the app dies, the host keeps the children; a new app instance reconnects.
-
-| | Assessment |
-| --- | --- |
-| Value | Programs survive an app crash, force quit, and **app update**. The last one matters now: releases already wait on live sessions. No value for reboot or power loss |
-| Screen state | The emulator lives in the app and dies with it. After reattach the app has only the last checkpoint. Shell panes look right after the restored history; full-screen programs need a forced redraw and can be left in a mismatched mode (mouse, keyboard protocol, alternate screen) because modes are not known exactly |
-| Output while detached | The host must either buffer (bounded, then drop or block) or stop reading (child blocks). Either is a visible behaviour to specify and test |
-| Lifecycle | New failure modes: orphaned hosts, version skew between a new app and an old host, hosts surviving uninstall, children outliving every window. "Closing the last window reaps all children" stops being true by construction |
-| Platform | Needs a second signed, notarized executable (the launcher already sets the precedent). Whether a double-forked host survives app termination under launchd is unverified. Child processes' privacy-permission attribution may change; the Downloads authorization problem in `docs/status.md` suggests this area is already fragile |
-| Complexity | Largest item in this plan: protocol, reconnection, host upgrade, and a new test matrix. iTerm2's design note shows a multi-year evolution from per-session servers to a multi-server |
-| Cheaper alternative | Run the shell inside tmux or zellij for panes that must survive (what cmux offers as `local-tmux`). Works today with zero terminal code |
-
-Recommendation: do not start it until phases 1 to 4 are in daily use. Then run
-a time-boxed spike that answers the unverified platform questions with a
-throwaway host and a fixture app. Decide after the spike. If Helge's main pain
-is updates, a narrower "hand off fds to the new app version" may be enough and
-is far smaller than a persistent host.
+**After a crash, should agents resume only when you click (per pane, or one
+"Resume All"), or automatically for rules you have marked trusted? Answer
+`click` or `auto`.**
 
 ## Roadmap
 
-| Phase | Scope | Acceptance criteria |
-| --- | --- | --- |
-| 0. Foundations | Value-type layout model derived from, and able to build, the split-view tree; stable pane ids; state directory, lock, sentinel; `--state-directory`; persistence off under smoke and benchmark flags. No user-visible change | Layout round-trips (views → model → views) for single, nested and closed-pane cases with ratios within one cell. Throughput and idle measurements unchanged. Existing suites pass |
-| 1. Layout and cwd restore | Layout saves, atomic two-generation writes, restore at launch, crash-loop guard, corrupt-state handling, missing-cwd fallback, setting to turn it off | After `kill -9` of a fixture with 3 windows, 2 tab groups and nested splits, relaunch reproduces the same tree, ratios, tab order, focus and cwds. Every corrupt-file case in the fault matrix ends in a usable window. A kill during restore does not loop |
-| 2. Scrollback | Dirty and idle gated checkpoints, flush on quit, power-off and sleep; restore into the emulator before spawn; dimmed rows and marker row; row and byte limits; per-pane and global opt-out; Command-K interaction | After `kill -9`, each pane shows its last checkpointed text, at most 60 s stale, with the marker. Restored text is searchable and copyable. With 20 panes under sustained output, whole-app throughput and input latency are within run-to-run noise of persistence off. Idle app schedules no work |
-| 3. Recipes | Pane environment variables and declaration file; foreground sampling; rules engine and bundled default rules file; resume strip, "Resume all", per-rule trust; finished-pane Restart; `OSC 133;C` command line in the zsh hook and emulator | With a fake agent: a declared recipe is offered after `kill -9` and resumes the exact session. A recipe whose owner had exited is not offered. A rule match without a session offers the fallback, labelled as a guess. Nothing runs without a click unless the rule is trusted. No agent name in `Sources/` |
-| 4. Agent pack and hardening | Rules and hook snippets for Claude Code and Codex with install notes; styled scrollback; version migration test; settings pane; documentation in `docs/usage.md` | Manual run in a disposable directory: Claude Code and Codex sessions are offered and resume the right conversation when two agents shared one cwd (hook route). A version 1 state file loads in a build that writes version 2 |
-| 5. Session host (optional) | Spike, then decision | Spike report answers: survival of the host on app death, fd hand-off, signing, permission attribution, redraw behaviour of three real full-screen programs |
+| Phase | Scope | Acceptance criteria | Blocked by |
+| --- | --- | --- | --- |
+| 0. Groundwork | Value-type layout model; stable pane and window ids; state-directory rule as a pure function. No files written, no visible change | Views → model → views reproduces single, nested and closed-pane trees with ratios within one cell. AppleScript pane ids keep their format. Startup, throughput and idle measurements unchanged. Existing suites pass | Nothing |
+| 1. Layout and cwd | `running` sentinel and lock; layout writes, two generations; restore decision before `EarlyChild.start`; restore; quarantine; cwd fallback; clean-exit deletion | After `kill -9` of a disposable instance with 3 windows, 2 tab groups and nested splits, relaunch reproduces tree, ratios, tab order, focus, colours and cwds. After a normal quit, relaunch opens one default window and the state directory is empty. Every row of the fault matrix ends in a usable window. A kill during restore does not loop. Normal-launch startup time is within run-to-run noise of phase 0 | Phase 0 |
+| 2. Scrollback | Checkpoints gated on new output and quiet; flush on sleep; seeding in `Session.start`; faint rows and marker row | After `kill -9`, each pane shows its last checkpoint, at most 60 s old, with the marker. Restored text is found by ⌘F and copies. With 20 panes under sustained output, throughput and input latency are within run-to-run noise of a run without state. An idle app schedules no work | Phase 1 |
+| 3. Resume | `ResumeRules.json` loader and matcher; foreground sampling; `HELGE_TERMINAL_RESUME_FILE`; resume strip; Shell → Resume All. With answer `auto`: the additions listed above | With a fake agent: an exact record is offered after `kill -9` and Resume runs the exact command. An agent that had exited is not offered. A match without a session is offered as a guess. Nothing runs without a click (answer `click`). No agent name in `Sources/` | Phase 1 and **the open question** |
+| 4. Agent rules | The two shipped rules checked against real agents; hook commands and install notes in `docs/usage.md`; a version-migration test | Manual run in a scratch repository: Claude Code and Codex are offered and resume the right conversation when two agents shared one directory (hook route). Claims C7, C15, C16, X9 and X10 are marked verified or the rules are changed | Phase 3 |
 
-Phases 0 to 2 fix today's loss of layout and context. Phase 3 brings the
-agents back. Each phase is independently shippable.
+Phases 0 to 2 restore layout and context. Phases 3 and 4 bring the agents
+back. Each phase ships on its own.
+
+### Phase 0 in the current code
+
+| File | Change |
+| --- | --- |
+| `Sources/Terminal/PaneLayout.swift` (new; add to the `app` group in `tools/swift-sources.json`) | `struct PaneID: Hashable, Codable` wrapping a UUID. `indirect enum PaneLayout: Equatable, Codable { case pane(PaneID); case split(vertical: Bool, ratio: Double, first: PaneLayout, second: PaneLayout) }`. `struct WindowLayout: Equatable, Codable { id, frame, root: PaneLayout, activePane }` |
+| `Sources/Terminal/Canvas.swift` | `TerminalCanvasView.init(frame:session:)` (line 92) takes a `PaneID`, default new. `automationID` (line 5) is derived from it; the accessibility identifier (line 113) keeps its format |
+| `Sources/Terminal/main.swift` | `TerminalWindow.makePane(launch:)` (line 131) takes a `PaneID`. New `var layout: WindowLayout`, read from `root` by the same recursion as `terminalMinimumSize` (lines 19-32). New `init(layout:)` that builds the tree; the split construction in `split(vertical:)` (lines 238-252) moves into a helper both use. Window `automationID` (line 54) becomes a saved id the same way |
+| `Sources/Terminal/SessionState.swift` (new) | `enum StateLocation` with one pure function from launch arguments and bundle path to a state directory or none, per [Location](#location). Parses `--state-directory` like `TerminalPreferences.launchInteger` parses its options (`Preferences.swift:159-165`) |
+| `Tests/TerminalTests/PaneLayoutTests.swift` (new; add to `tests` in `tools/swift-sources.json`) | Codec round-trip, ratio clamping, `StateLocation` table |
+| `Sources/Terminal/PaneLifecycleSmoke.swift` | One added check: views → model → views after its existing split and close sequence |
+
+Not touched in phase 0: `Session.swift`, `Preferences.swift`, `Settings.swift`.
+The view tree stays the source of truth; the model is derived from it. That
+keeps the change to `main.swift` and `Canvas.swift`, the two files that
+conflict most between branches, small.
 
 ## Test strategy
 
-Safety rules, applying to every test:
+Safety rules for every test:
 
-- Tests run only against the **fixture app** (separate bundle id) or a
-  development build started with `--state-directory` pointing at a fresh
-  temporary directory. The state directory of `no.helgesverre.terminal` is
-  never read or written by a test.
-- A test kills only the pid it started, by number. No name-based kills.
-- The child shell in a fixture uses a private `ZDOTDIR` and a temporary home
-  directory for agent files, so real `~/.claude` and `~/.codex` are untouched.
-- No test installs or modifies the installed app.
+- Tests run only against a disposable instance: the automation fixture
+  (its own bundle id) or a copied development bundle, always started with
+  `--state-directory` pointing at a new temporary directory.
+- By the [Location](#location) rule a bundle outside an Applications folder
+  has no state directory unless one is passed, so a test cannot read or write
+  the installed app's state.
+- A test signals only the pid it started. No name-based kills. The installed
+  app (`~/Applications/Helge Terminal.app`) and every instance the test did
+  not launch are never signalled, scripted, rebuilt or replaced.
+- Agent tests use a fake agent, a private `ZDOTDIR` and a temporary home.
+  Real `~/.claude` and `~/.codex` are not read or written.
+- New runners are Swift subcommands of `tools/Dev`, called from `justfile`
+  recipes. One heavy job at a time on the machine.
 
 | Level | What | How |
 | --- | --- | --- |
-| Unit | Layout codec, version migration, limits, frame clamping, rule matching, template expansion and quoting, recipe validity (owner pid), checkpoint scheduling policy | Directly compiled test programs like the existing `Tests/TerminalTests`, with an injected clock and file system root |
-| Fault matrix | Every file state a crash can leave: missing, empty, truncated at each byte boundary of a small sample, wrong checksum, stale `.tmp`, only `previous` present, newer version, unwritable directory | Table-driven loader test; each case must produce a defined outcome |
-| Crash points | Death at each step of a write | A test-only environment variable makes the writer stop at a named step (before temp write, after temp write, after sync, after rename); the harness sends SIGKILL at that point, relaunches, and checks the result is either the old or the new generation, never neither |
-| `kill -9` integration | Whole-app recovery | Fixture builds a known layout through the AppleScript dictionary, prints marker text in each pane, waits one checkpoint, is killed, relaunched, and inspected through AppleScript and accessibility |
-| Simulated power loss | Children die at the same instant as the app | SIGKILL the fixture's whole process tree at once, at random times across many iterations, including during checkpoints; assert the invariants above. This cannot test disk-cache loss |
-| Real power loss | Durability of the sync strategy | Manual, occasional: run the fixture in a disposable macOS virtual machine and force it off. Not part of CI. Never on Helge's machine |
-| Recipes | Declaration, sampling, rules, consent | A scripted fake agent that writes a session file and a declaration, records how it was relaunched, and can be told to exit before the kill |
-| Performance | No regression | Existing throughput and latency benchmarks with persistence on and off in the same run; the 60 s idle measurement with persistence on |
-| Manual | Real agents | Phase 4 checklist in a scratch repository with real Claude Code and Codex |
+| Unit | Layout codec, version migration, frame clamping, `StateLocation`, rule matching, template expansion and shell quoting, checkpoint scheduling | Directly compiled test programs in `Tests/TerminalTests`, with an injected clock and directory |
+| Fault matrix | Every file state a crash can leave: missing, empty, truncated at each byte of a small sample, wrong checksum, stale `.tmp`, only `previous` present, newer version, unwritable directory | Table-driven loader test; each row has one defined outcome |
+| Crash points | Death at each step of a write | A test-only environment variable stops the writer at a named step; the runner sends SIGKILL to that pid, relaunches, and checks the result is the old or the new generation |
+| `kill -9` | Whole-app recovery | The runner builds a known layout through the AppleScript commands (`new window`, `new tab`, `split right`, `split below`), prints marker text per pane, waits for one checkpoint, kills, relaunches, and inspects through AppleScript and accessibility |
+| Clean quit | No restore | Same layout, quit through the menu command, relaunch: one default window, empty state directory |
+| Simulated power loss | Children die with the app | SIGKILL the instance's whole process tree at random times over many iterations, including during checkpoints. Does not test disk-cache loss |
+| Resume | Sampling, hook file, rules, strip | A scripted fake agent that writes a session file and a hook file, records how it was relaunched, and can exit before the kill |
+| Performance | No regression | Existing startup, throughput and input-latency benchmarks with and without a state directory in the same run; the idle measurement with state on |
+| Manual | Real agents; real power loss | Phase 4 checklist in a scratch repository. Power loss only in a disposable virtual machine, never on Helge's machine |
 
-## Non-goals
+## Considered and not planned
 
-- Restoring a process's memory or in-flight work. An agent's interrupted tool
-  call, background shells and subagents are gone after a reboot.
-- Keeping programs alive across reboot. Nothing local can.
-- Re-running arbitrary commands automatically.
-- Restoring alternate-screen content, images, terminal modes, selections or search state.
-- Remote sessions: an ssh pane restores as a local shell in its last local cwd.
-- Using AppKit window restoration.
-- Syncing state between machines.
-- A built-in multiplexer.
-
-## Open questions for Helge
-
-1. **Restore after a normal quit?** Proposed: always after an unclean exit; after
-   Command-Q controlled by a setting, default on. Alternative: unclean exit only.
-2. **Automatic resume.** Proposed: never by default, per-rule trust available.
-   Do you want trusted rules to resume without a click from day one?
-3. **Scrollback amount.** Proposed default 10,000 rows / 2 MiB per pane. With
-   50 panes that is up to 100 MiB on disk. Higher, lower, or match the history limit?
-4. **Plain or styled scrollback first?** Plain text ships sooner; colours come in phase 4.
-5. **Encryption at rest.** Proposed: none, rely on file modes and FileVault.
-   Do you want keychain-backed encryption despite development-build prompts?
-6. **Where does the agent pack live?** Bundled default rules in this repository,
-   or a separate repository that only drops files into the rules directory?
-7. **Hook installation.** Should the pack only document the snippets, or ship a
-   command that edits `~/.claude/settings.json` and `~/.codex` hook config?
-   The second touches files the terminal does not own.
-8. **Environment variable names.** `HELGE_TERMINAL_PANE_ID` and
-   `HELGE_TERMINAL_RESUME_FILE` follow the existing prefix. Acceptable as a
-   public interface that third-party hooks will depend on?
-9. **Closed tabs.** Should a deliberately closed window be recoverable
-   ("Reopen Closed Tab"), or is deletion on close correct?
-10. **Phase 5.** Is losing sessions on app update or app crash painful enough to
-    fund the spike, or is "run tmux in the panes that matter" acceptable?
-11. **Second instance.** A development build started while the installed app
-    runs: proposed to key state by bundle id, and to run a second instance of
-    the same bundle id without persistence. Agreed?
+| Option | Why not |
+| --- | --- |
+| PTY-holding helper process (programs survive an app crash or update) | Decision 5. It is the largest item researched: a second signed executable, a reconnect protocol, version skew between app and helper, orphaned helpers, and unknown screen state after reattach because the emulator dies with the app. It does not help after a hard reset. Precedents: iTerm2's session servers, shpool |
+| Running panes inside tmux or zellij | Decision 5. What cmux offers as `local-tmux`. It needs no terminal code, so it stays available to the user without being a feature |
+| Restore after a normal quit, with a setting | Decision 1 |
+| Encryption at rest, keychain key (kitty does this) | Decision 4 |
+| Opt-outs: global, per pane, environment variable | Decision 3 |
+| Separate scrollback limit; backup exclusion; window and pane count limits | Decision 3 |
+| Styled scrollback (colours) | Plain text is what the existing capture produces. The file header has a version for adding it |
+| Recording the typed command line (`OSC 133;C` with `cmdline`) | Re-running a command is not resuming it, and it stores command lines |
+| A program declaring its own resume command, by file or escape sequence | Lets any process or printed file plant a command. The hook file names a shipped rule instead |
+| Carrying the original launch flags into the resume command | Would carry `--dangerously-skip-permissions` across a crash |
+| A command that installs hooks into `~/.claude` or `~/.codex` | Those files are not the terminal's. `docs/usage.md` gives the two commands |
+| Restart button on a finished pane; "Reopen Closed Tab" | Not recovery. Closing deletes the pane's state |
+| Agent code in the app (cmux) | Agent knowledge stays in `ResumeRules.json` |
+| AppKit window restoration | It does not cover the pane tree or scrollback |
+| Restoring remote sessions | An ssh pane restores as a local shell in its last local cwd |
