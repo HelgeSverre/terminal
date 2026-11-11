@@ -75,8 +75,23 @@ Milliseconds after a quit request, median with the range, over 5 quits
 | Apple Terminal | 113 (106–114) | 115 (109–116) |
 | iTerm2 | did not quit within 8 s | did not quit within 8 s |
 
-0.2.4 took about 3,030 ms to remove its process and Dock icon. iTerm2 quit in
-about 2 s in the earlier run and did not quit unattended in this one.
+0.2.4 took about 3,030 ms to remove its process and Dock icon.
+
+The iTerm2 row is an artefact of the first version of the tool, not of
+iTerm2. iTerm2 keeps each shell in a server process that outlives the app;
+earlier samples had been ended by signal, their sessions were restored into
+the next instance, and iTerm2 then asked before quitting. With session
+servers and the quit confirmation turned off for the disposable instance
+only, a later run (`shutdown-iterm2-fixed.json`, same build, a busier
+machine) gave:
+
+| Terminal | Window gone (ms) | Process and Dock icon gone (ms) |
+| --- | ---: | ---: |
+| This app | 34 (24–64) | 43 (30–70) |
+| Ghostty | 17 (8–19) | 34 (15–41) |
+| Kitty | 55 (54–58) | 61 (58–66) |
+| iTerm2 | 63 (50–76) | 81 (66–3,106) |
+| Apple Terminal | 108 (107–110) | 112 (108–115) |
 
 ## Input latency under output flood
 

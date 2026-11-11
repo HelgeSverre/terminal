@@ -38,7 +38,15 @@ struct Terminal {
       Terminal(name: "kitty", executable: "/Applications/kitty.app/Contents/MacOS/kitty", bare: kitty) {
         kitty + [$0, $1]
       },
-      Terminal(name: "iterm2", executable: "/Applications/iTerm.app/Contents/MacOS/iTerm2", sharesInstance: true),
+      // iTerm2 keeps each shell in a server process that outlives the app,
+      // restores those sessions into the next instance, and then asks before
+      // quitting. For a disposable instance all three are turned off on the
+      // command line, which applies to that instance only and leaves the
+      // user's preferences as they are.
+      Terminal(name: "iterm2", executable: "/Applications/iTerm.app/Contents/MacOS/iTerm2",
+               bare: ["-RunJobsInServers", "NO", "-PromptOnQuit", "NO", "-OnlyWhenMoreTabs", "NO",
+                      "-NSQuitAlwaysKeepsWindows", "NO"],
+               sharesInstance: true),
       Terminal(name: "apple_terminal",
                executable: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
                sharesInstance: true),
