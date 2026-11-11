@@ -58,14 +58,18 @@ struct NestedDividers {
 func nestedDividers(top: CGRect, right: CGRect, bottom: CGRect) throws -> NestedDividers {
   func near(_ a: CGFloat, _ b: CGFloat) -> Bool { abs(a - b) <= 1 }
   func gap(_ start: CGFloat, _ end: CGFloat) -> Bool { (0...2).contains(end - start) }
+  // The lower pane's header, when the app shows one, sits between the
+  // divider and that pane's terminal.
+  let paneHeader: CGFloat = 20
+  func stacked(_ start: CGFloat, _ end: CGFloat) -> Bool { gap(start, end) || gap(start + paneHeader, end) }
   guard [top, right, bottom].allSatisfy({ rectJSON($0).allSatisfy(\.isFinite) && $0.width > 0 && $0.height > 0 }),
     near(top.minX, bottom.minX), near(top.maxX, bottom.maxX),
     near(top.minY, right.minY), near(bottom.maxY, right.maxY),
-    gap(top.maxX, right.minX), gap(bottom.maxX, right.minX), gap(top.maxY, bottom.minY) else {
+    gap(top.maxX, right.minX), gap(bottom.maxX, right.minX), stacked(top.maxY, bottom.minY) else {
     throw Failure.invalid("Expected pane0 above pane2 on left, pane1 spanning right; actual AX adjacency differs")
   }
   return NestedDividers(outer: CGPoint(x: (top.maxX + right.minX) / 2, y: right.midY),
-    inner: CGPoint(x: top.midX, y: (top.maxY + bottom.minY) / 2))
+    inner: CGPoint(x: top.midX, y: top.maxY + min(1, bottom.minY - top.maxY) / 2))
 }
 
 struct WindowMatch {
