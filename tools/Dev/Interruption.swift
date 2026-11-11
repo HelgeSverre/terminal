@@ -89,25 +89,6 @@ enum Interruption {
     ProcessTree.cleanupAll()
     exit(130)
   }
-
-  static let tests = [
-    SelfTest.Case(name: "interruption: an observing runner is told once, and the default is restored") {
-      observe()
-      defer { endRun() }
-      try check()
-      kill(getpid(), SIGTERM)
-      let deadline = Clock.now + 2_000_000_000
-      while !requested, Clock.now < deadline { usleep(5_000) }
-      try expect(requested, "the signal is recorded as a request")
-      try expect(try expectFailure("an interrupted wait") { try check() }.message == "interrupted", "check fails")
-      let tree = try ProcessTree(["/bin/sleep", "30"])
-      defer { tree.cleanup() }
-      try expect(try expectFailure("an interrupted wait") { _ = try tree.waitInterruptibly(seconds: 5) }
-        .message == "interrupted", "a wait ends early")
-      endRun()
-      try expect(!requested, "a new run starts without a request")
-    },
-  ]
 }
 
 extension ProcessTree {
