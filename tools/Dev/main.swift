@@ -43,7 +43,6 @@ let commands = [
   ReleasePublisher.command,
   // The tool and the sources themselves.
   Sources.command,
-  SelfTest.command,
 ]
 
 func printUsage() {

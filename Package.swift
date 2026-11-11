@@ -22,6 +22,13 @@ let package = Package(
       ]),
     // The helper every PTY child is started through.
     .executableTarget(name: "TerminalLauncher", path: "Sources/TerminalLauncher"),
+    // The developer tool, built here for its tests; `just` builds the one it runs.
+    .executableTarget(
+      name: "dev", path: "tools/Dev", exclude: ["KeyEcho.c", "Stamp.c"],
+      swiftSettings: [.swiftLanguageMode(.v5)]),
+    .testTarget(
+      name: "DevTests", dependencies: ["dev"], path: "Tests/DevTests",
+      swiftSettings: [.swiftLanguageMode(.v5)]),
     .testTarget(
       name: "TerminalTests",
       dependencies: ["TerminalApp", "TerminalLauncher"],

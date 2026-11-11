@@ -10,8 +10,18 @@ enum Repository {
 
 /// The running tool, for commands that launch it again as a fixture.
 enum Tool {
-  static let executable = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
-    .standardizedFileURL.path
+  static let executable: String = {
+    let running = URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
+      .standardizedFileURL.path
+    // Under `swift test` the running program is the test runner and this code
+    // sits in the test bundle; the tool is the product built beside it.
+    var image = Dl_info()
+    guard dladdr(#dsohandle, &image) != 0, let name = image.dli_fname else { return running }
+    let path = String(cString: name)
+    guard let bundle = path.range(of: ".xctest/") else { return running }
+    return URL(fileURLWithPath: String(path[..<bundle.lowerBound]))
+      .deletingLastPathComponent().appendingPathComponent("dev").path
+  }()
 
   /// Writes an executable that runs one of this tool's subcommands. The app
   /// starts `SHELL` as a single path with `-l`, so a subcommand needs a file
