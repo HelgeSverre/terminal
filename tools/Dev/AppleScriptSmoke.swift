@@ -102,7 +102,8 @@ enum AppleScriptSmoke {
     _ = write(descriptor, line, line.count)
     close(descriptor)
     // Raw and silent, so a line longer than the canonical limit arrives whole.
-    try makeStandardInputRaw()
+    // The self-test feeds this shell through a pipe, which has no mode to set.
+    if isatty(STDIN_FILENO) != 0 { try makeStandardInputRaw() }
 
     var digest = SHA256()
     var buffer = [UInt8](repeating: 0, count: 4096)
