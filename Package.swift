@@ -1,15 +1,23 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// Builds the app's sources for the test suite: `swift test`. The app bundle
-// itself is still built by `just build`.
+// Compiles the app, its launcher and the developer tool, and builds the test
+// suites. `just build` assembles the app bundle around the compiled program.
 let bridgingHeader = Context.packageDirectory + "/Sources/Terminal/Interop/Bridge.h"
+
+// Code that only the tests reach is compiled in when the suites are built
+// (`just unit-test` sets the variable) and left out of the app.
+let testHooks: [SwiftSetting] = Context.environment["TERMINAL_TEST_HOOKS"] == nil ? [] : [
+  .define("SESSION_IO_TESTING"), .define("GLYPH_RESIDENCY_TESTING"), .define("SNAPSHOT_ABI_DIAGNOSTICS"),
+]
 
 let package = Package(
   name: "Terminal",
   platforms: [.macOS(.v15)],
   targets: [
-    .target(name: "TerminalInterop", path: "Sources/Terminal/Interop", publicHeadersPath: "."),
+    .target(
+      name: "TerminalInterop", path: "Sources/Terminal/Interop", publicHeadersPath: ".",
+      cSettings: [.unsafeFlags(["-Wall", "-Wextra", "-Werror"])]),
     .executableTarget(
       name: "TerminalApp",
       dependencies: ["TerminalInterop"],
@@ -18,10 +26,11 @@ let package = Package(
       swiftSettings: [
         .swiftLanguageMode(.v5),
         .unsafeFlags(["-import-objc-header", bridgingHeader, "-disable-bridging-pch"]),
-        .define("SESSION_IO_TESTING"), .define("GLYPH_RESIDENCY_TESTING"), .define("SNAPSHOT_ABI_DIAGNOSTICS"),
-      ]),
+      ] + testHooks),
     // The helper every PTY child is started through.
-    .executableTarget(name: "TerminalLauncher", path: "Sources/TerminalLauncher"),
+    .executableTarget(
+      name: "TerminalLauncher", path: "Sources/TerminalLauncher",
+      cSettings: [.unsafeFlags(["-Wall", "-Wextra", "-Werror"])]),
     // The developer tool, built here for its tests; `just` builds the one it runs.
     .executableTarget(
       name: "dev", path: "tools/Dev", exclude: ["KeyEcho.c", "Stamp.c"],

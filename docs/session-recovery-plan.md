@@ -513,7 +513,7 @@ back. Each phase ships on its own.
 
 | File | Change |
 | --- | --- |
-| `Sources/Terminal/PaneLayout.swift` (new; add to the `app` group in `tools/swift-sources.json`) | `struct PaneID: Hashable, Codable` wrapping a UUID. `indirect enum PaneLayout: Equatable, Codable { case pane(PaneID); case split(vertical: Bool, ratio: Double, first: PaneLayout, second: PaneLayout) }`. `struct WindowLayout: Equatable, Codable { id, frame, root: PaneLayout, activePane }` |
+| `Sources/Terminal/PaneLayout.swift` (new) | `struct PaneID: Hashable, Codable` wrapping a UUID. `indirect enum PaneLayout: Equatable, Codable { case pane(PaneID); case split(vertical: Bool, ratio: Double, first: PaneLayout, second: PaneLayout) }`. `struct WindowLayout: Equatable, Codable { id, frame, root: PaneLayout, activePane }` |
 | `Sources/Terminal/Canvas.swift` | `TerminalCanvasView.init(frame:session:)` (line 92) takes a `PaneID`, default new. `automationID` (line 5) is derived from it; the accessibility identifier (line 113) keeps its format |
 | `Sources/Terminal/main.swift` | `TerminalWindow.makePane(launch:)` (line 131) takes a `PaneID`. New `var layout: WindowLayout`, read from `root` by the same recursion as `terminalMinimumSize` (lines 19-32). New `init(layout:)` that builds the tree; the split construction in `split(vertical:)` (lines 238-252) moves into a helper both use. Window `automationID` (line 54) becomes a saved id the same way |
 | `Sources/Terminal/SessionState.swift` (new) | `enum StateLocation` with one pure function from launch arguments and bundle path to a state directory or none, per [Location](#location). Parses `--state-directory` like `TerminalPreferences.launchInteger` parses its options (`Preferences.swift:159-165`) |

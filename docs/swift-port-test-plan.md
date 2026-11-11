@@ -8,8 +8,8 @@ It is one gate, not a declaration of parity or full v1 completion.
 The mandatory `just test` workflow also runs independent document ownership,
 viewport, reflow, semantic, malformed-boundary, scheduler, prompt, graphics,
 palette, Unicode18, UTF-8 decoder, width, lowercase, input, OSC52, PTY,
-Session, clipboard, snapshot, rendering, keymap and terminfo checks. The source
-manifest at `tools/swift-sources.json` is the authoritative build/test graph.
+Session, clipboard, snapshot, rendering, keymap and terminfo checks.
+`Package.swift` is the build and test graph.
 
 Maintain these contracts when changing the emulator:
 

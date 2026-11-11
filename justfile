@@ -6,7 +6,11 @@ export TERMINAL_PROJECT_ROOT := justfile_directory()
 
 # The test suites run optimized, with testing enabled so they can reach
 # internal declarations, and one at a time: several hold process-wide state.
-swift_test := "swift test -c release -Xswiftc -enable-testing --no-parallel"
+swift_test := "TERMINAL_TEST_HOOKS=1 swift test -c release -Xswiftc -enable-testing --no-parallel --quiet --disable-xctest"
+
+# The emulator's sources, for the few programs still compiled directly.
+emulator_sources := "Sources/Terminal/Text/*.swift Sources/Terminal/Emulation/*.swift"
+spawn_object := "xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c Sources/Terminal/Interop/Spawn.c -o target/native/Spawn.o"
 
 [private]
 default:
@@ -16,32 +20,19 @@ default:
 
 # Build the development app bundle.
 [group('build')]
-@build: icons (_assemble-bundle "development")
+@build: _dev
+    target/native/dev bundle development
 
 # Build the optimized bundle used by install and release.
 [group('build')]
-@release-build: icons (_assemble-bundle "release")
+@release-build: _dev
+    target/native/dev bundle release
 
 # Remove build outputs (target/, dist/) and stray compiler module files.
 [group('build')]
 clean:
     rm -rf target dist .build
     rm -f Terminal-*.abi.json Terminal-*.swiftdoc Terminal-*.swiftmodule Terminal-*.swiftsourceinfo
-
-# Regenerate app icons from assets/AppIcon.png.
-[group('build')]
-@icons:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    ICONSET=target/native/Terminal.iconset
-    if [[ target/native/Terminal.icns -nt assets/AppIcon.png ]]; then exit 0; fi
-    mkdir -p "$ICONSET"
-    for SIZE in 16 32 128 256 512; do
-      sips -z "$SIZE" "$SIZE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}.png" >/dev/null
-      DOUBLE=$((SIZE * 2))
-      sips -z "$DOUBLE" "$DOUBLE" assets/AppIcon.png --out "$ICONSET/icon_${SIZE}x${SIZE}@2x.png" >/dev/null
-    done
-    iconutil -c icns "$ICONSET" -o target/native/Terminal.icns
 
 # ── run ───────────────────────────────────────────────────────────────
 
@@ -96,8 +87,7 @@ fmt: _dev
 
 # Verify the source graph and Swift syntax.
 [group('check')]
-lint: _dev
-    xcrun swift tools/SwiftIncrementalBuild.swift --verify
+@lint: _dev
     target/native/dev sources check
 
 # Full local gate: tests plus the GUI smokes.
@@ -112,13 +102,6 @@ verify: build
     TERMINFO="$PWD/dist/Terminal.app/Contents/Resources/terminfo" /usr/bin/tput -T helge-terminal colors | grep -qx 256
     codesign --verify --strict --deep dist/Terminal.app
 
-# Clean rebuild, then require an incremental no-op.
-[group('check')]
-swift-build-test:
-    xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swift tools/SwiftIncrementalBuild.swift --clean
-    output="$(xcrun swift tools/SwiftIncrementalBuild.swift)"; [[ "$output" == "Swift incremental no-op;"* ]]
-
 # ── test ──────────────────────────────────────────────────────────────
 
 # Run every headless test suite.
@@ -127,22 +110,22 @@ swift-build-test:
     just workflow-tests
     just _terminfo-test
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
-    xcrun swift tools/SwiftIncrementalBuild.swift --verify
     {{swift_test}} --skip DevTests --skip GlyphRasterWorkerTests --skip GlyphResidency
     just _glyph-rendering-tests
+    {{spawn_object}}
     xcrun clang -Wall -Wextra -Werror -I Sources/Terminal/Interop -c Tests/Programs/pty.c -o target/native/swift-pty-tests.o
-    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print pty) target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h {{emulator_sources}} target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
     target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
 
 # Arguments go to `swift test`: `just unit-test --filter SessionTests`.
 # Run the Swift Testing suites.
 [group('test')]
-unit-test *arguments:
+@unit-test *arguments:
     {{swift_test}} {{arguments}}
 
 # Tooling tests; no app launch or GPU.
 [group('test')]
-workflow-tests: _dev
+@workflow-tests: _dev
     mkdir -p target/native
     {{swift_test}} --filter DevTests
     target/native/dev tui-stress --prepare
@@ -331,31 +314,6 @@ release-status:
     if [[ ! -x target/native/dev || -n "$(find tools/Dev -newer target/native/dev -print -quit)" ]]; then xcrun swiftc -O "$PWD"/tools/Dev/*.swift -o target/native/dev; fi
 
 [private]
-@_assemble-bundle configuration:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    ROOT_DIR="$TERMINAL_PROJECT_ROOT"
-    BUILD_DIR="$ROOT_DIR/target/native"
-    APP_BUNDLE="$ROOT_DIR/dist/Terminal.app"
-    case "$1" in development) CONFIGURATION=development; OUTPUT_DIRECTORY=swift-incremental ;; release) CONFIGURATION=release; OUTPUT_DIRECTORY=swift-release ;; *) echo "Unknown build configuration: $1" >&2; exit 2 ;; esac
-    mkdir -p "$BUILD_DIR" "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
-    xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 Sources/TerminalLauncher/Launcher.c -o "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
-    xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c Sources/Terminal/Interop/Spawn.c -o "$BUILD_DIR/Spawn.o"
-    xcrun -sdk macosx metal -c Resources/Terminal/Terminal.metal -o "$BUILD_DIR/Terminal.air"
-    xcrun -sdk macosx metallib "$BUILD_DIR/Terminal.air" -o "$APP_BUNDLE/Contents/Resources/Terminal.metallib"
-    xcrun swift tools/SwiftIncrementalBuild.swift --verify
-    xcrun swift tools/SwiftIncrementalBuild.swift --configuration "$CONFIGURATION"
-    cp "$ROOT_DIR/target/$OUTPUT_DIRECTORY/Terminal" "$APP_BUNDLE/Contents/MacOS/Terminal"
-    cp Resources/Terminal/Info.plist "$APP_BUNDLE/Contents/Info.plist"
-    cp Resources/Terminal/Terminal.sdef "$APP_BUNDLE/Contents/Resources/Terminal.sdef"
-    /usr/bin/tic -x -o "$APP_BUNDLE/Contents/Resources/terminfo" Resources/Terminal/Terminal.terminfo
-    cp target/native/Terminal.icns "$APP_BUNDLE/Contents/Resources/Terminal.icns"
-    ditto Resources/Terminal/ShellIntegration "$APP_BUNDLE/Contents/Resources/ShellIntegration"
-    ditto assets/fonts "$APP_BUNDLE/Contents/Resources/Fonts"
-    codesign --force --sign - "$APP_BUNDLE/Contents/MacOS/TerminalLauncher"
-    codesign --force --sign - "$APP_BUNDLE"
-
-[private]
 @_native-smoke mode: _dev
     target/native/dev native-smoke "$1"
 
@@ -376,7 +334,7 @@ _glyph-rendering-tests:
       just _glyph-residency-tests
       exit 0
     fi
-    xcrun swiftc -parse-as-library $(xcrun swift tools/SwiftIncrementalBuild.swift --print metal_upload_probe) -framework Metal -o target/native/metal-upload-probe
+    xcrun swiftc -parse-as-library Tests/Programs/MetalUploadProbe.swift -framework Metal -o target/native/metal-upload-probe
     set +e
     target/native/metal-upload-probe 2>&1 | tee reports/gpu-policy/metal-upload-probe.log
     pipeline_status=("${PIPESTATUS[@]}")
@@ -393,18 +351,18 @@ _glyph-rendering-tests:
     fi
 
 [private]
-_glyph-raster-tests:
+@_glyph-raster-tests:
     {{swift_test}} --filter GlyphRasterWorkerTests
 
 [private]
-_glyph-residency-tests:
+@_glyph-residency-tests:
     {{swift_test}} --filter GlyphResidency
 
 # Standalone Metal texture upload check, as the hosted-runner policy runs it.
 [group('test')]
 metal-upload-probe:
     mkdir -p target/native
-    xcrun swiftc -parse-as-library $(xcrun swift tools/SwiftIncrementalBuild.swift --print metal_upload_probe) -framework Metal -o target/native/metal-upload-probe
+    xcrun swiftc -parse-as-library Tests/Programs/MetalUploadProbe.swift -framework Metal -o target/native/metal-upload-probe
     target/native/metal-upload-probe
 
 [private]
@@ -412,7 +370,6 @@ _terminfo-test: _terminfo-probe _dev
     target/native/dev terminfo-smoke
 
 [private]
-_terminfo-probe:
+@_terminfo-probe:
     mkdir -p target/native
-    xcrun swift tools/SwiftIncrementalBuild.swift --verify >&2
-    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h $(xcrun swift tools/SwiftIncrementalBuild.swift --print terminfo_probe) -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminfo-probe
+    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h {{emulator_sources}} Tests/Programs/TerminfoProbe.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminfo-probe

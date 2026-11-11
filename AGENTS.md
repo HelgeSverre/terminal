@@ -39,9 +39,8 @@ alone and tell Helge.
 - Name them `feat/…`, `fix/…`, `perf/…`, `docs/…` or `chore/…`.
 - Branch from `main`. Branch from another unmerged branch only when the work
   depends on it, and say so in your first commit message or to Helge.
-- Keep branches short-lived and merge early. `justfile`,
-  `tools/swift-sources.json`, `Session.swift` and `Canvas.swift` conflict
-  every time two branches sit apart for long.
+- Keep branches short-lived and merge early. `justfile`, `Session.swift`
+  and `Canvas.swift` conflict every time two branches sit apart for long.
 - Commit each verified step as you go. Uncommitted work has no protection
   from a crash or from another session.
 - Do not push experiment tags. `archive/…` branches are kept on purpose.
@@ -92,6 +91,15 @@ alone and tell Helge.
   directory under `reports/` and commit that.
 - Worktrees cost disk. Remove yours when the branch is merged or abandoned;
   `just clean` removes a checkout's build outputs.
+
+## Building
+
+`Package.swift` compiles everything: the app, its launcher, the developer
+tool's tests and the test suites. `just build` runs `swift build` through
+`dev bundle`, which then adds what a package cannot make: the icon, the
+Metal library, the terminfo database, the bundle layout and the signature.
+A new source file needs no registration; the package takes every file under
+`Sources/Terminal`.
 
 ## Tests
 
