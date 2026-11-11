@@ -143,11 +143,11 @@ struct Distribution {
     // for an app that is signed outside Xcode. Its downloader keeps the
     // entitlements it was built with.
     let updater = app.appendingPathComponent("Contents/Frameworks/Sparkle.framework")
-    let version = updater.appendingPathComponent("Versions/B")
-    _ = try run(signing + [version.appendingPathComponent("XPCServices/Installer.xpc").path])
-    _ = try run(signing + ["--preserve-metadata=entitlements", version.appendingPathComponent("XPCServices/Downloader.xpc").path])
-    _ = try run(signing + [version.appendingPathComponent("Autoupdate").path])
-    _ = try run(signing + [version.appendingPathComponent("Updater.app").path])
+    let contents = updater.appendingPathComponent("Versions/B")
+    _ = try run(signing + [contents.appendingPathComponent("XPCServices/Installer.xpc").path])
+    _ = try run(signing + ["--preserve-metadata=entitlements", contents.appendingPathComponent("XPCServices/Downloader.xpc").path])
+    _ = try run(signing + [contents.appendingPathComponent("Autoupdate").path])
+    _ = try run(signing + [contents.appendingPathComponent("Updater.app").path])
     _ = try run(signing + [updater.path])
     _ = try run(signing + [app.appendingPathComponent("Contents/MacOS/TerminalLauncher").path])
     _ = try run(signing + ["--entitlements", entitlements, app.path])
