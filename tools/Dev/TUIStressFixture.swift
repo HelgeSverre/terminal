@@ -168,8 +168,8 @@ final class TUIStressFixture {
   private func spawnWorkload() throws {
     let command = try command()
     let terminal = try PseudoTerminal()
-    // The child leads its own session with the inner PTY as controlling
-    // terminal, so a size change reaches it as SIGWINCH and its process group is its own PID.
+    // The child leads its own session, so its process group is its own PID.
+    // `applyResize` signals that group on a size change.
     let pid = try spawnChild(command, environment: childEnvironment(), directory: cwd,
                              terminal: terminal.slavePath, leadsSession: true)
     terminal.releaseSlave()
@@ -242,6 +242,11 @@ final class TUIStressFixture {
       throw Failure("invalid outer PTY geometry")
     }
     try terminal?.setSize(rows: size.rows, columns: size.columns)
+    // The kernel signals a size change only to the foreground group of a
+    // controlling terminal. A workload may not have one: Codex was seen
+    // running with none, and then never learned of a resize. Its process
+    // group is its own PID, so tell it directly; a second signal is harmless.
+    if let child { kill(-child, SIGWINCH) }
     events.record("winsize", ["rows": size.rows, "columns": size.columns, "child_pid": child.map { Int($0) } ?? NSNull()])
   }
 

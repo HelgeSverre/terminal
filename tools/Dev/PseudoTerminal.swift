@@ -35,9 +35,11 @@ func reap(_ pid: pid_t, within seconds: Double) throws -> ChildStatus? {
 /// Starts a child of this process and returns its PID. The caller reaps it.
 ///
 /// With `terminal`, the child's input, output and errors are that terminal
-/// device. With `leadsSession` it also starts a session of its own, so the
-/// terminal becomes its controlling terminal and a resize reaches it as
-/// SIGWINCH. `environment` adds to the inherited one; a nil value removes a variable.
+/// device. With `leadsSession` it also starts a session of its own, so its
+/// process group is its own PID. That does not reliably make the terminal
+/// its controlling terminal on macOS, so a caller that resizes the terminal
+/// signals the group with SIGWINCH itself. `environment` adds to the
+/// inherited one; a nil value removes a variable.
 func spawnChild(_ command: [String], environment: [String: String?] = [:], directory: String? = nil,
                 terminal: String? = nil, leadsSession: Bool = false, standardError: Int32? = nil) throws -> pid_t {
   var actions: posix_spawn_file_actions_t?
