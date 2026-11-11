@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Testing
 @testable import dev
@@ -278,6 +279,128 @@ import Testing
 
 }
 
+@Suite struct AppcastTests {
+  @Test("appcast: the feed has the release's fields and a signature that verifies") func theFeedHasTheReleasesFields() throws {
+    try withFixture { fixture in
+      let key = Curve25519.Signing.PrivateKey()
+      try fixture.prepareRelease()
+      try fixture.writePlist(publicKey: key.publicKey.rawRepresentation.base64EncodedString())
+      let result = try fixture.publisher(fixture.signing(key)).appcast(
+        metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory, now: Date(timeIntervalSince1970: 0))
+      #expect(result == .written(fixture.releaseDirectory + "/appcast.xml"), "got: \(result)")
+
+      let text = fixture.read(fixture.releaseDirectory + "/appcast.xml")
+      let zipName = "HelgeTerminal-1.2.3-arm64.zip"
+      for expected in [
+        "<title>Helge Terminal 1.2.3</title>", "<pubDate>Thu, 01 Jan 1970 00:00:00 +0000</pubDate>",
+        "<sparkle:version>42</sparkle:version>", "<sparkle:shortVersionString>1.2.3</sparkle:shortVersionString>",
+        "<sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>",
+        "<sparkle:releaseNotesLink>https://github.com/HelgeSverre/terminal/releases/tag/v1.2.3</sparkle:releaseNotesLink>",
+        "url=\"https://github.com/HelgeSverre/terminal/releases/download/v1.2.3/\(zipName)\"",
+        "length=\"3\"", "type=\"application/octet-stream\"",
+      ] {
+        #expect(text.contains(expected), "missing \(expected) in: \(text)")
+      }
+      // Ed25519 signing in CryptoKit is randomized, so the signature is checked by verifying it.
+      let signature = try #require(LinePattern("sparkle:edSignature=\"([^\"]+)\"").first(in: text)?.groups[0])
+      #expect(UpdateKey.verify(signature: signature, of: Data("zip".utf8),
+                               publicKey: key.publicKey.rawRepresentation.base64EncodedString()), "got: \(signature)")
+      #expect(!text.contains(key.rawRepresentation.base64EncodedString()), "the private key is not in the feed")
+      #expect(wellFormed(text), "got: \(text)")
+    }
+  }
+
+  @Test("appcast: values are escaped") func valuesAreEscaped() throws {
+    let element = ReleasePublisher.FeedElement("a", text: "<b>&\"'")
+    #expect(element.render() == "<a>&lt;b&gt;&amp;&quot;&apos;</a>", "got: \(element.render())")
+    let attribute = ReleasePublisher.FeedElement("e", attributes: [("k", "\"><x/>&")])
+    #expect(attribute.render() == "<e k=\"&quot;&gt;&lt;x/&gt;&amp;\"/>", "got: \(attribute.render())")
+    try withFixture { fixture in
+      let key = Curve25519.Signing.PrivateKey()
+      try fixture.prepareRelease()
+      try fixture.writePlist(publicKey: key.publicKey.rawRepresentation.base64EncodedString(), minimumSystem: "15.0 <&>")
+      try fixture.publisher(fixture.signing(key)).appcast(metadata: fixture.metadata,
+                                                           releaseDirectory: fixture.releaseDirectory)
+      let text = fixture.read(fixture.releaseDirectory + "/appcast.xml")
+      #expect(text.contains("15.0 &lt;&amp;&gt;"), "got: \(text)")
+      #expect(wellFormed(text), "got: \(text)")
+    }
+  }
+
+  @Test("appcast: a private key that does not belong to SUPublicEDKey fails before anything is written") func aMismatchFails() throws {
+    try withFixture { fixture in
+      let key = Curve25519.Signing.PrivateKey()
+      try fixture.prepareRelease()
+      try fixture.writePlist(publicKey: Curve25519.Signing.PrivateKey().publicKey.rawRepresentation.base64EncodedString())
+      let message = try #require(throws: Failure.self) {
+        try fixture.publisher(fixture.signing(key)).appcast(metadata: fixture.metadata,
+                                                             releaseDirectory: fixture.releaseDirectory)
+      }.message
+      #expect(message.contains("does not match SUPublicEDKey"), "got: \(message)")
+      #expect(!message.contains(key.rawRepresentation.base64EncodedString()), "the key is not in the message")
+      #expect(!FileManager.default.fileExists(atPath: fixture.releaseDirectory + "/appcast.xml"), "nothing is written")
+    }
+  }
+
+  @Test("appcast: without a public key and a secret the feed is skipped") func withoutBothTheFeedIsSkipped() throws {
+    try withFixture { fixture in
+      try fixture.prepareRelease()
+      let result = try fixture.publishing.appcast(metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory)
+      #expect(result == .skipped, "got: \(result)")
+      #expect(result.message.contains("not configured yet"), "got: \(result.message)")
+      #expect(!FileManager.default.fileExists(atPath: fixture.releaseDirectory + "/appcast.xml"), "nothing is written")
+    }
+  }
+
+  @Test("appcast: exactly one of the public key and the secret is a failure that names the missing one") func exactlyOneFails() throws {
+    try withFixture { fixture in
+      let key = Curve25519.Signing.PrivateKey()
+      try fixture.prepareRelease()
+      var message = try #require(throws: Failure.self) {
+        try fixture.publisher(fixture.signing(key)).appcast(metadata: fixture.metadata,
+                                                             releaseDirectory: fixture.releaseDirectory)
+      }.message
+      #expect(message.contains("no SUPublicEDKey"), "got: \(message)")
+
+      try fixture.writePlist(publicKey: key.publicKey.rawRepresentation.base64EncodedString())
+      message = try #require(throws: Failure.self) {
+        try fixture.publishing.appcast(metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory)
+      }.message
+      #expect(message.contains("SPARKLE_PRIVATE_KEY is not set"), "got: \(message)")
+      var empty = fixture.publishingEnvironment
+      empty["SPARKLE_PRIVATE_KEY"] = ""
+      #expect(throws: Failure.self) {
+        try fixture.publisher(empty).appcast(metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory)
+      }
+    }
+  }
+
+  @Test("appcast: the manifest and checksums cover appcast.xml when it exists") func theManifestCoversTheFeed() throws {
+    try withFixture { fixture in
+      let key = Curve25519.Signing.PrivateKey()
+      try fixture.prepareRelease()
+      try fixture.writePlist(publicKey: key.publicKey.rawRepresentation.base64EncodedString())
+      try fixture.publisher(fixture.signing(key)).appcast(metadata: fixture.metadata,
+                                                           releaseDirectory: fixture.releaseDirectory)
+      let assets = try fixture.publishing.manifest(metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory)
+      #expect(assets.map(\.name) == ["HelgeTerminal-1.2.3-arm64.zip", "appcast.xml"], "got: \(assets.map(\.name))")
+      let sums = fixture.read(fixture.releaseDirectory + "/SHA256SUMS")
+      #expect(sums == assets.map(\.checksumLine).joined(separator: "\n") + "\n", "got: \(sums)")
+      #expect(fixture.read(fixture.releaseDirectory + "/release-manifest.json").contains("\"appcast.xml\""))
+
+      try fixture.publish()
+      let names = fixture.gitHub.assets.compactMap { $0["name"] as? String }.sorted()
+      #expect(names == ["HelgeTerminal-1.2.3-arm64.zip", "SHA256SUMS", "appcast.xml", "release-manifest.json"],
+              "got: \(names)")
+    }
+  }
+
+  private func wellFormed(_ text: String) -> Bool {
+    let parser = XMLParser(data: Data(text.utf8))
+    return parser.parse()
+  }
+}
+
 // Tests. `FakeGitHub` stands in for `git` and `gh`; no command is run and
 // every file is inside a temporary directory.
 
@@ -393,6 +516,20 @@ private final class Fixture {
               to: root + "/Resources/Terminal/Info.plist")
   }
 
+  /// The Info.plist of a release with updates switched on.
+  func writePlist(publicKey: String, minimumSystem: String = "15.0") throws {
+    try write("""
+      <plist version="1.0"><dict><key>CFBundleShortVersionString</key><string>1.2.3</string>
+      <key>CFBundleVersion</key><string>42</string><key>LSMinimumSystemVersion</key><string>\(minimumSystem.xmlEscaped)</string>
+      <key>SUPublicEDKey</key><string>\(publicKey)</string></dict></plist>
+      """, to: root + "/Resources/Terminal/Info.plist")
+  }
+
+  /// The publishing environment with a private signing key.
+  func signing(_ key: Curve25519.Signing.PrivateKey) -> [String: String] {
+    publishingEnvironment.merging(["SPARKLE_PRIVATE_KEY": key.rawRepresentation.base64EncodedString()]) { $1 }
+  }
+
   func publisher(_ environment: [String: String]) -> ReleasePublisher.Publisher {
     ReleasePublisher.Publisher(root: root, environment: environment, runner: gitHub.call)
   }
@@ -418,4 +555,8 @@ private final class Fixture {
 
 private func withFixture(_ body: (Fixture) throws -> Void) throws {
   try withTemporaryDirectory("dev-release-publisher-") { try body(try Fixture(root: $0)) }
+}
+
+private extension String {
+  var xmlEscaped: String { ReleasePublisher.FeedElement.escape(self) }
 }

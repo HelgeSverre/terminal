@@ -5,13 +5,14 @@ import Foundation
 ///
 /// `validate` decides from the bundle version and the GitHub event whether a
 /// run may publish. `manifest` records the checksums of the built assets.
+/// `appcast` signs the ZIP for Sparkle and writes `appcast.xml` beside it.
 /// `publish` verifies metadata, checkout and files, then creates or completes
 /// the GitHub release and updates the Homebrew cask.
 enum ReleasePublisher {
   static let command = Command(
     name: "release-publisher",
-    usage: "validate --output PATH | manifest|publish --metadata PATH [--release-dir PATH]",
-    summary: "Validate a release's version and source, record its checksums, or publish it.",
+    usage: "validate --output PATH | appcast|manifest|publish --metadata PATH [--release-dir PATH]",
+    summary: "Validate a release's version and source, sign its update feed, record its checksums, or publish it.",
     run: run)
 
   static let terminalRepository = "HelgeSverre/terminal"
@@ -23,7 +24,7 @@ enum ReleasePublisher {
   private static let integrityFiles = ["release-manifest.json", "SHA256SUMS"]
 
   static func run(_ arguments: [String]) throws {
-    guard let action = arguments.first, ["validate", "manifest", "publish"].contains(action) else {
+    guard let action = arguments.first, ["validate", "appcast", "manifest", "publish"].contains(action) else {
       throw Failure.usage(command)
     }
     let options = try parseOptions(Array(arguments.dropFirst()))
@@ -35,6 +36,9 @@ enum ReleasePublisher {
     case "validate":
       guard let output = options["output"] else { throw Failure.usage(command) }
       try publisher.validate(output: output)
+    case "appcast":
+      guard let metadata = options["metadata"] else { throw Failure.usage(command) }
+      print(try publisher.appcast(metadata: metadata, releaseDirectory: releaseDirectory).message)
     case "manifest":
       guard let metadata = options["metadata"] else { throw Failure.usage(command) }
       try publisher.manifest(metadata: metadata, releaseDirectory: releaseDirectory)
@@ -160,6 +164,93 @@ enum ReleasePublisher {
       return assets
     }
 
+    /// What `appcast` did. A skipped feed is not a failure: updates are
+    /// switched on by adding the public key and the secret together.
+    enum AppcastResult: Equatable {
+      case skipped
+      case written(String)
+      var message: String {
+        switch self {
+        case .skipped: return "updates are not configured yet (no SUPublicEDKey and no SPARKLE_PRIVATE_KEY); skipping appcast.xml"
+        case .written(let path): return "wrote \(path)"
+        }
+      }
+    }
+
+    /// Signs the ZIP with the private key from `SPARKLE_PRIVATE_KEY` and writes
+    /// `appcast.xml` beside it. The key must belong to `SUPublicEDKey`, and the
+    /// signature is checked against that public key before the file is written.
+    @discardableResult
+    func appcast(metadata path: String, releaseDirectory: String, now: Date = Date()) throws -> AppcastResult {
+      let metadata = try readMetadata(path)
+      let plist = try infoPlist()
+      let publicKey = (plist["SUPublicEDKey"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      let secret = environment["SPARKLE_PRIVATE_KEY"] ?? ""
+      switch (publicKey.isEmpty, secret.isEmpty) {
+      case (true, true): return .skipped
+      case (true, false): throw Failure("SPARKLE_PRIVATE_KEY is set but Info.plist has no SUPublicEDKey")
+      case (false, true): throw Failure("Info.plist has SUPublicEDKey but SPARKLE_PRIVATE_KEY is not set")
+      case (false, false): break
+      }
+      let key = try UpdateKey.privateKey(base64: secret)
+      guard key.publicKey.rawRepresentation.base64EncodedString() == publicKey else {
+        throw Failure("SPARKLE_PRIVATE_KEY does not match SUPublicEDKey in Info.plist")
+      }
+      func field(_ name: String) throws -> String {
+        guard let value = plist[name] as? String, !value.isEmpty else { throw Failure("Info.plist has no \(name)") }
+        return value
+      }
+      let shortVersion = try field("CFBundleShortVersionString")
+      guard shortVersion == metadata.version else { throw Failure("CFBundleShortVersionString differs from metadata") }
+
+      let zipPath = releaseDirectory + "/HelgeTerminal-\(metadata.version)-arm64.zip"
+      guard isRegularFile(zipPath, followingLinks: false), let archive = FileManager.default.contents(atPath: zipPath) else {
+        throw Failure("missing release asset \((zipPath as NSString).lastPathComponent)")
+      }
+      let signature = try UpdateKey.sign(archive, with: key)
+      guard UpdateKey.verify(signature: signature, of: archive, publicKey: publicKey) else {
+        throw Failure("the update signature does not verify against SUPublicEDKey")
+      }
+      let zipName = (zipPath as NSString).lastPathComponent
+      let item = FeedElement("item", [
+        FeedElement("title", text: "Helge Terminal \(metadata.version)"),
+        FeedElement("pubDate", text: rfc822(now)),
+        FeedElement("sparkle:version", text: try field("CFBundleVersion")),
+        FeedElement("sparkle:shortVersionString", text: shortVersion),
+        FeedElement("sparkle:minimumSystemVersion", text: try field("LSMinimumSystemVersion")),
+        FeedElement("sparkle:releaseNotesLink",
+                    text: "https://github.com/\(terminalRepository)/releases/tag/\(metadata.tag)"),
+        FeedElement("enclosure", attributes: [
+          ("url", "https://github.com/\(terminalRepository)/releases/download/\(metadata.tag)/\(zipName)"),
+          ("length", String(archive.count)), ("type", "application/octet-stream"),
+          ("sparkle:edSignature", signature),
+        ]),
+      ])
+      let feed = FeedElement("rss", [FeedElement("channel", [FeedElement("title", text: "Helge Terminal"), item])],
+                             attributes: [("version", "2.0"),
+                                          ("xmlns:sparkle", "http://www.andymatuschak.org/xml-namespaces/sparkle")])
+      let output = releaseDirectory + "/appcast.xml"
+      try write("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" + feed.render() + "\n", to: output)
+      return .written(output)
+    }
+
+    private func rfc822(_ date: Date) -> String {
+      let formatter = DateFormatter()
+      formatter.locale = Locale(identifier: "en_US_POSIX")
+      formatter.timeZone = TimeZone(identifier: "UTC")
+      formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+      return formatter.string(from: date)
+    }
+
+    private func infoPlist() throws -> [String: Any] {
+      let plist = root + "/Resources/Terminal/Info.plist"
+      guard let data = FileManager.default.contents(atPath: plist),
+            let object = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] else {
+        throw Failure("cannot read \(plist)")
+      }
+      return object
+    }
+
     func publish(metadata path: String, releaseDirectory: String) throws {
       let metadata = try readMetadata(path)
       guard metadata.publish else { throw Failure("metadata does not authorize publishing") }
@@ -204,21 +295,23 @@ enum ReleasePublisher {
       return value
     }
 
-    /// The two assets a release consists of. Anything in the directory that
+    /// The assets a release consists of: the ZIP, and the update feed when there is one. Anything in the directory that
     /// is neither an asset nor a known by-product of the build is refused, so
     /// a stray file cannot be published or hide a missing one.
     private func expectedAssets(_ metadata: Metadata, _ releaseDirectory: String) throws -> [Asset] {
-      let names = assetSuffixes.map { "HelgeTerminal-\(metadata.version)-arm64.\($0)" }
+      let required = assetSuffixes.map { "HelgeTerminal-\(metadata.version)-arm64.\($0)" }
       var isDirectory: ObjCBool = false
       guard FileManager.default.fileExists(atPath: releaseDirectory, isDirectory: &isDirectory), isDirectory.boolValue,
             let actual = try? FileManager.default.contentsOfDirectory(atPath: releaseDirectory) else {
         throw Failure("missing release directory \(releaseDirectory)")
       }
+      // The update feed is an asset only when `appcast` produced it.
+      let names = required + (actual.contains("appcast.xml") ? ["appcast.xml"] : [])
       let unexpected = actual.filter { !names.contains($0) && !localReleaseOutputs.contains($0) }
       guard unexpected.isEmpty else {
         throw Failure("unexpected release output: " + unexpected.joined(separator: ", "))
       }
-      let missing = names.filter { !actual.contains($0) }
+      let missing = required.filter { !actual.contains($0) }
       guard missing.isEmpty else { throw Failure("missing release assets: " + missing.joined(separator: ", ")) }
       return try names.map { name in
         let path = releaseDirectory + "/" + name
@@ -572,6 +665,55 @@ enum ReleasePublisher {
       var info = stat()
       guard (followingLinks ? stat(path, &info) : lstat(path, &info)) == 0 else { return false }
       return info.st_mode & S_IFMT == S_IFREG
+    }
+  }
+
+  /// A small XML tree for the update feed. Text and attribute values are
+  /// escaped when it is rendered, so no value can break out of its element.
+  struct FeedElement {
+    let name: String
+    var text = ""
+    var attributes: [(String, String)] = []
+    var children: [FeedElement] = []
+
+    init(_ name: String, _ children: [FeedElement], attributes: [(String, String)] = []) {
+      self.name = name
+      self.children = children
+      self.attributes = attributes
+    }
+    init(_ name: String, text: String) {
+      self.name = name
+      self.text = text
+    }
+    init(_ name: String, attributes: [(String, String)]) {
+      self.name = name
+      self.attributes = attributes
+    }
+
+    func render(indent: String = "") -> String {
+      let attributeText = attributes.map { " \($0.0)=\"\(Self.escape($0.1))\"" }.joined()
+      if children.isEmpty {
+        return text.isEmpty && !attributes.isEmpty
+          ? "\(indent)<\(name)\(attributeText)/>"
+          : "\(indent)<\(name)\(attributeText)>\(Self.escape(text))</\(name)>"
+      }
+      let inner = children.map { $0.render(indent: indent + "  ") }.joined(separator: "\n")
+      return "\(indent)<\(name)\(attributeText)>\n\(inner)\n\(indent)</\(name)>"
+    }
+
+    static func escape(_ value: String) -> String {
+      var result = ""
+      for character in value.unicodeScalars {
+        switch character {
+        case "&": result += "&amp;"
+        case "<": result += "&lt;"
+        case ">": result += "&gt;"
+        case "\"": result += "&quot;"
+        case "'": result += "&apos;"
+        default: result.unicodeScalars.append(character)
+        }
+      }
+      return result
     }
   }
 

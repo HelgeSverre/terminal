@@ -41,6 +41,7 @@ let commands = [
   // Releases.
   ReleaseSigning.command,
   ReleasePublisher.command,
+  UpdateKey.command,
   // The app bundle, the tool and the sources themselves.
   AppBundle.command,
   Sources.command,

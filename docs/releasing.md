@@ -57,6 +57,7 @@ Repository secrets contain working copies:
 | `APPLE_NOTARY_ISSUER_ID` | API issuer ID |
 | `APPLE_TEAM_ID` | Apple developer team ID |
 | `HOMEBREW_TAP_TOKEN` | Dedicated tap token |
+| `SPARKLE_PRIVATE_KEY` | Base64 Ed25519 key that signs app updates |
 
 Back up new or changed credentials in Personal before updating these secrets.
 Read back attachments and compare them with the originals; verify the export
@@ -68,6 +69,42 @@ import files, and stores the notarization profile in that Keychain. Cleanup
 restores the runner's search list and deletes the temporary Keychain even if
 the build fails. Only the app ZIP, checksums, and release metadata are
 uploaded as workflow artifacts.
+
+## Updates
+
+Installed copies check `SUFeedURL` in `Info.plist`:
+`https://github.com/HelgeSverre/terminal/releases/latest/download/appcast.xml`.
+The release workflow writes that file with `dev release-publisher appcast`,
+after the ZIP is notarized and before the checksums are recorded. It lists the
+release's ZIP with its size and an Ed25519 signature, and is published, and
+covered by `release-manifest.json` and `SHA256SUMS`, like the ZIP. The app
+accepts an update only if the signature matches `SUPublicEDKey` in `Info.plist`.
+
+The private key is in Helge's **Personal** 1Password vault, in the item
+**Terminal Release Signing**. The repository secret `SPARKLE_PRIVATE_KEY` holds
+a working copy, and the public key is in `Info.plist`. The command refuses to
+sign unless the two belong together.
+
+Create the key once, on a private local session:
+
+```shell
+target/native/dev update-key generate --private-key-file ~/terminal-update.key
+```
+
+It prints the public key and where the private key was written, and never the
+private key. Store the file's contents in the 1Password item, read it back and
+compare, then set the secret from the file
+(`gh secret set SPARKLE_PRIVATE_KEY < ~/terminal-update.key`) and delete the
+file. Put the printed public key in `Info.plist` as `SUPublicEDKey`.
+`dev update-key public --private-key-file PATH` prints the public key again.
+
+Until both the public key and the secret exist, releases skip the appcast and
+print that updates are not configured. Having only one of them fails the
+release.
+
+Losing the private key strands every installed copy: they accept only updates
+signed by it, so they would never see a release signed with a new key. Keep the
+1Password copy safe, and never commit the key or put it in an artifact or a log.
 
 ## Build and install locally
 

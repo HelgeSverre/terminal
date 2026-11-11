@@ -80,6 +80,11 @@ jobs:
           APPLE_APPLICATION_SIGNING_IDENTITY: ${{ secrets.APPLE_APPLICATION_SIGNING_IDENTITY }}
         run: just release
 
+      - name: Sign the update feed
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: target/native/dev release-publisher appcast --metadata dist/release/release-metadata.json
+
       - name: Record artifact checksums
         run: target/native/dev release-publisher manifest --metadata dist/release/release-metadata.json
 
@@ -91,6 +96,7 @@ jobs:
           retention-days: 14
           path: |
             dist/release/HelgeTerminal-*-arm64.zip
+            dist/release/appcast.xml
             dist/release/release-metadata.json
             dist/release/release-manifest.json
             dist/release/SHA256SUMS
