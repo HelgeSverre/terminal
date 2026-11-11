@@ -198,7 +198,7 @@ measured ratios remain available for comparison with the current threshold.
 Run a quick app-level diagnostic from the main worktree with:
 
 ```shell
-just benchmark-apps /absolute/path/to/Rust.app /absolute/path/to/Swift.app reports/new-comparison
+just benchmark-apps /absolute/path/to/Baseline.app /absolute/path/to/Candidate.app reports/new-comparison
 ```
 
 The runner compiles one shared driver and launches owned app instances
@@ -219,11 +219,11 @@ For example, run two independent trials in opposite orders, using the same
 immutable bundles and a new output directory for each:
 
 ```shell
-BENCH_BYTES=16777216 BENCH_RUNS=10 BENCH_FIRST=rust just benchmark-apps /absolute/path/to/Rust.app /absolute/path/to/Swift.app reports/acceptance-rust-first
-BENCH_BYTES=16777216 BENCH_RUNS=10 BENCH_FIRST=swift just benchmark-apps /absolute/path/to/Rust.app /absolute/path/to/Swift.app reports/acceptance-swift-first
+BENCH_BYTES=16777216 BENCH_RUNS=10 BENCH_FIRST=baseline just benchmark-apps /absolute/path/to/Baseline.app /absolute/path/to/Candidate.app reports/acceptance-baseline-first
+BENCH_BYTES=16777216 BENCH_RUNS=10 BENCH_FIRST=candidate just benchmark-apps /absolute/path/to/Baseline.app /absolute/path/to/Candidate.app reports/acceptance-candidate-first
 ```
 
-`BENCH_FIRST` defaults to `rust`; each report records its actual order. Both
+`BENCH_FIRST` defaults to `baseline`; each report records its actual order. Both
 trials must clear the per-workload gate. Compile and profile outside the timing
 window, and keep the installed user session out of the test process tree.
 
