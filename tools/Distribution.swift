@@ -4,7 +4,7 @@ import AppKit
 import CryptoKit
 
 // All distribution policy lives here. Recipes express package/release/status;
-// callers do not order signing, notarization, stapling or installer validation.
+// callers do not order signing, notarization, stapling or validation.
 struct Distribution {
   enum Failure: Error, CustomStringConvertible {
     case message(String)
@@ -19,14 +19,13 @@ struct Distribution {
   struct Configuration: Decodable {
     var notaryProfile: String?
     var applicationIdentity: String?
-    var installerIdentity: String?
   }
   struct Submission: Decodable { let id: String; let status: String }
   let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
   let files = FileManager.default
   func run(_ arguments: [String]) throws -> Data {
     // EX_NOHOST can mean a ticket-service propagation delay even after the
-    // matching notarization was accepted (observed for the 0.1.1 installer).
+    // matching notarization was accepted (observed for the 0.1.1 package).
     // Validation also queries that service. Retry only these ticket operations;
     // invalid/revoked tickets and other commands remain immediately fatal.
     let ticketCommand = arguments.starts(with: ["xcrun", "stapler"])
@@ -64,7 +63,6 @@ struct Distribution {
     let env = ProcessInfo.processInfo.environment
     value.notaryProfile = env["APPLE_NOTARY_PROFILE"] ?? value.notaryProfile
     value.applicationIdentity = env["APPLE_APPLICATION_SIGNING_IDENTITY"] ?? value.applicationIdentity
-    value.installerIdentity = env["APPLE_INSTALLER_SIGNING_IDENTITY"] ?? value.installerIdentity
     return value
   }
   func identity(_ configured: String?, kind: String) throws -> String {
@@ -111,10 +109,6 @@ struct Distribution {
     }
     let config = try configuration()
     let application = try identity(config.applicationIdentity, kind: "Application")
-    let installer = try identity(config.installerIdentity, kind: "Installer")
-    guard application.components(separatedBy: "(").last == installer.components(separatedBy: "(").last else {
-      throw Failure.message("Application and installer identities must belong to the same team.")
-    }
     if operation != "package" {
       guard let profile = config.notaryProfile, !profile.isEmpty else {
         throw Failure.message("Set APPLE_NOTARY_PROFILE or notaryProfile in ~/.config/terminal/release.json.")
@@ -122,7 +116,7 @@ struct Distribution {
       _ = try run(notaryCommand(["history", "--output-format", "json"], profile: profile))
     }
     if operation == "status" {
-      print("Application: \(application)\nInstaller: \(installer)\nNotarization credentials verified.")
+      print("Application: \(application)\nNotarization credentials verified.")
       return
     }
     let source = root.appendingPathComponent("dist/Terminal.app")
@@ -159,21 +153,10 @@ struct Distribution {
       try files.removeItem(at: archive)
       _ = try run(["ditto", "-c", "-k", "--keepParent", "--sequesterRsrc", app.path, archive.path])
     }
-    let package = output.appendingPathComponent("HelgeTerminal-\(version)-arm64.pkg")
-    _ = try run(["pkgbuild", "--component", app.path, "--install-location", "/Applications",
-                 "--identifier", identifier + ".pkg", "--version", version,
-                 "--sign", installer, "--timestamp", package.path])
-    _ = try run(["pkgutil", "--check-signature", package.path])
-    if operation == "release", let profile = config.notaryProfile {
-      try notarize(package, profile: profile, label: "pkg", output: output)
-      _ = try run(["xcrun", "stapler", "staple", package.path])
-      _ = try run(["xcrun", "stapler", "validate", package.path])
-      _ = try run(["spctl", "--assess", "--type", "install", package.path])
-    }
     let installed = output.appendingPathComponent("Helge Terminal.app")
     if files.fileExists(atPath: installed.path) { try files.removeItem(at: installed) }
     try files.moveItem(at: app, to: installed)
-    print("\(operation == "release" ? "Notarized" : "Signed") app and installer: \(output.path)")
+    print("\(operation == "release" ? "Notarized" : "Signed") app: \(output.path)")
   }
   // Signatures differ between development and release. Linker UUIDs identify
   // code; hash every other payload file so stale shaders/icons/metadata cannot

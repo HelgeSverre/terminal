@@ -69,8 +69,7 @@ import Testing
 
       #expect(fixture.gitHub.release?["isDraft"] as? Bool == false, "release is published")
       let names = fixture.gitHub.assets.compactMap { $0["name"] as? String }.sorted()
-      #expect(names == ["HelgeTerminal-1.2.3-arm64.pkg", "HelgeTerminal-1.2.3-arm64.zip", "SHA256SUMS",
-                           "release-manifest.json"], "got: \(names)")
+      #expect(names == ["HelgeTerminal-1.2.3-arm64.zip", "SHA256SUMS", "release-manifest.json"], "got: \(names)")
       #expect(fixture.gitHub.caskVersion == "1.2.3", "cask is updated")
       #expect(fixture.gitHub.puts == 1, "cask is written once, got \(fixture.gitHub.puts)")
     }
@@ -113,7 +112,7 @@ import Testing
       try fixture.publish()
 
       #expect(fixture.gitHub.release?["isDraft"] as? Bool == false, "release is published")
-      #expect(fixture.gitHub.assets.count == 4, "got \(fixture.gitHub.assets.count) assets")
+      #expect(fixture.gitHub.assets.count == 3, "got \(fixture.gitHub.assets.count) assets")
       let uploads = fixture.gitHub.calls.filter { $0.command.starts(with: ["gh", "release", "upload"]) }
       #expect(uploads.count == 1 && !uploads[0].command.contains(fixture.zip), "the ZIP is not uploaded again")
     }
@@ -158,12 +157,12 @@ import Testing
       try fixture.prepareRelease()
       try FileManager.default.createDirectory(atPath: fixture.releaseDirectory + "/Helge Terminal.app",
                                               withIntermediateDirectories: false)
-      for name in ["notary-app.json", "notary-pkg.json", "release-metadata.json"] {
+      for name in ["notary-app.json", "release-metadata.json"] {
         try fixture.write("{}", to: fixture.releaseDirectory + "/" + name)
       }
       let assets = try fixture.publishing.manifest(metadata: fixture.metadata,
                                                   releaseDirectory: fixture.releaseDirectory)
-      #expect(assets.map(\.name).sorted() == ["HelgeTerminal-1.2.3-arm64.pkg", "HelgeTerminal-1.2.3-arm64.zip"],
+      #expect(assets.map(\.name).sorted() == ["HelgeTerminal-1.2.3-arm64.zip"],
                  "got: \(assets.map(\.name))")
 
       try fixture.write("", to: fixture.releaseDirectory + "/stray.txt")
@@ -178,9 +177,8 @@ import Testing
     try withFixture { fixture in
       try fixture.prepareRelease()
       let zip = try ReleasePublisher.Asset(path: fixture.zip)
-      let pkg = try ReleasePublisher.Asset(path: fixture.releaseDirectory + "/HelgeTerminal-1.2.3-arm64.pkg")
       #expect(fixture.read(fixture.releaseDirectory + "/SHA256SUMS")
-                   == "\(zip.sha256)  \(zip.name)\n\(pkg.sha256)  \(pkg.name)\n", "checksum file")
+                   == "\(zip.sha256)  \(zip.name)\n", "checksum file")
       #expect(fixture.read(fixture.releaseDirectory + "/release-manifest.json") == """
         {
           "schema": 1,
@@ -191,11 +189,6 @@ import Testing
             {
               "name": "\(zip.name)",
               "sha256": "\(zip.sha256)",
-              "bytes": 3
-            },
-            {
-              "name": "\(pkg.name)",
-              "sha256": "\(pkg.sha256)",
               "bytes": 3
             }
           ]
@@ -412,11 +405,10 @@ private final class Fixture {
     String(decoding: FileManager.default.contents(atPath: path) ?? Data(), as: UTF8.self)
   }
 
-  /// Builds the two assets, then validates and writes the manifest as the build job does.
+  /// Builds the asset, then validates and writes the manifest as the build job does.
   func prepareRelease() throws {
     try FileManager.default.createDirectory(atPath: releaseDirectory, withIntermediateDirectories: true)
     try write("zip", to: zip)
-    try write("pkg", to: releaseDirectory + "/HelgeTerminal-1.2.3-arm64.pkg")
     try publishing.validate(output: metadata)
     try publishing.manifest(metadata: metadata, releaseDirectory: releaseDirectory)
   }

@@ -17,8 +17,8 @@ enum ReleasePublisher {
   static let terminalRepository = "HelgeSverre/terminal"
   static let tapRepository = "HelgeSverre/homebrew-tap"
   static let tapCaskPath = "Casks/helge-terminal.rb"
-  static let assetSuffixes = ["zip", "pkg"]
-  static let localReleaseOutputs = ["Helge Terminal.app", "notary-app.json", "notary-pkg.json",
+  static let assetSuffixes = ["zip"]
+  static let localReleaseOutputs = ["Helge Terminal.app", "notary-app.json",
                                     "release-metadata.json", "release-manifest.json", "SHA256SUMS"]
   private static let integrityFiles = ["release-manifest.json", "SHA256SUMS"]
 

@@ -16,13 +16,10 @@ enum ReleaseSigning {
   static let requiredEnvironment = [
     "APPLE_APPLICATION_CERTIFICATE_BASE64",
     "APPLE_APPLICATION_CERTIFICATE_PASSWORD",
-    "APPLE_INSTALLER_CERTIFICATE_BASE64",
-    "APPLE_INSTALLER_CERTIFICATE_PASSWORD",
     "APPLE_NOTARY_KEY_BASE64",
     "APPLE_NOTARY_KEY_ID",
     "APPLE_NOTARY_ISSUER_ID",
     "APPLE_APPLICATION_SIGNING_IDENTITY",
-    "APPLE_INSTALLER_SIGNING_IDENTITY",
     "APPLE_TEAM_ID",
   ]
 
@@ -75,8 +72,6 @@ enum ReleaseSigning {
   struct Inputs {
     let applicationCertificate: Data
     let applicationPassword: String
-    let installerCertificate: Data
-    let installerPassword: String
     let notaryKey: Data
     let notaryKeyID: String
     let notaryIssuerID: String
@@ -119,13 +114,10 @@ enum ReleaseSigning {
         try setSearchList([keychain] + state.searchList)
 
         let applicationCertificate = try writeSecret(workDirectory, "application.p12", inputs.applicationCertificate)
-        let installerCertificate = try writeSecret(workDirectory, "installer.p12", inputs.installerCertificate)
         let notaryKey = try writeSecret(workDirectory, "notary-key.p8", inputs.notaryKey)
 
         try importCertificate(applicationCertificate, inputs.applicationPassword, keychain)
         try delete(applicationCertificate)
-        try importCertificate(installerCertificate, inputs.installerPassword, keychain)
-        try delete(installerCertificate)
         try runner.run(["security", "set-key-partition-list", "-S", "apple-tool:,apple:,codesign:", "-s",
                         "-k", keychainPassword, keychain])
         try runner.run(["xcrun", "notarytool", "store-credentials", profile,
@@ -182,8 +174,6 @@ enum ReleaseSigning {
       return Inputs(
         applicationCertificate: try decodeBase64("APPLE_APPLICATION_CERTIFICATE_BASE64"),
         applicationPassword: environment["APPLE_APPLICATION_CERTIFICATE_PASSWORD"] ?? "",
-        installerCertificate: try decodeBase64("APPLE_INSTALLER_CERTIFICATE_BASE64"),
-        installerPassword: environment["APPLE_INSTALLER_CERTIFICATE_PASSWORD"] ?? "",
         notaryKey: try decodeBase64("APPLE_NOTARY_KEY_BASE64"),
         notaryKeyID: environment["APPLE_NOTARY_KEY_ID"] ?? "",
         notaryIssuerID: environment["APPLE_NOTARY_ISSUER_ID"] ?? "")
@@ -272,7 +262,7 @@ enum ReleaseSigning {
 
     private func importCertificate(_ path: String, _ password: String, _ keychain: String) throws {
       try runner.run(["security", "import", path, "-k", keychain, "-P", password,
-                      "-T", "/usr/bin/codesign", "-T", "/usr/bin/pkgbuild", "-T", "/usr/bin/productsign"])
+                      "-T", "/usr/bin/codesign"])
     }
   }
 

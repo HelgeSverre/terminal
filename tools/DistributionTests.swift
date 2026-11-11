@@ -56,13 +56,13 @@ import Darwin
       let actualAttempts = try String(contentsOf: counter, encoding: .utf8)
       precondition(actualAttempts == String(attempts))
     }
-    let staple = ["xcrun", "stapler", "staple", "fixture.pkg"]
+    let staple = ["xcrun", "stapler", "staple", "fixture.app"]
     try scenario(status: 68, failures: 2, command: staple, attempts: 3, success: true)
     try scenario(status: 68, failures: 10, command: staple, attempts: 4, success: false)
     for status in [65, 66, 73, 77] {
       try scenario(status: status, failures: 10, command: staple, attempts: 1, success: false)
     }
-    let validate = ["xcrun", "stapler", "validate", "fixture.pkg"]
+    let validate = ["xcrun", "stapler", "validate", "fixture.app"]
     try scenario(status: 68, failures: 1, command: validate, attempts: 2, success: true)
     try scenario(status: 66, failures: 10, command: validate, attempts: 1, success: false)
     try scenario(status: 68, failures: 10,

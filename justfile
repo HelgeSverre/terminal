@@ -289,12 +289,12 @@ gallery-panes: build _dev
 
 # ── release ───────────────────────────────────────────────────────────
 
-# Build the Developer ID signed app, ZIP and PKG.
+# Build the Developer ID signed app and ZIP.
 [group('release')]
 package: release-build
     just _distribution package
 
-# Sign, notarize, staple and validate the app and PKG.
+# Sign, notarize, staple and validate the app and ZIP.
 [group('release')]
 release: release-build
     just _distribution release

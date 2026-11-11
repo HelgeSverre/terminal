@@ -45,7 +45,6 @@ import Testing
       #expect(try mode(fixture.statePath) == 0o600, "state file is private")
       #expect(try mode(workDirectory) == 0o700, "work directory is private")
       #expect(observed["application.p12"] == "application-certificate-data 600", "application certificate")
-      #expect(observed["installer.p12"] == "installer-certificate-data 600", "installer certificate")
       #expect(observed["notary-key.p8"] == "notary-key-data 600", "notary key")
       #expect(fixture.lines == ["APPLE_NOTARY_PROFILE=terminal-notary-\(fixedHex(2))",
                                    "APPLE_SIGNING_KEYCHAIN=\(keychain)"], "got: \(fixture.lines)")
@@ -62,10 +61,10 @@ import Testing
       #expect(commands.contains(["security", "list-keychains", "-d", "user", "-s", keychain,
                                     "/tmp/login.keychain-db"]), "search list gains the keychain")
       let imports = commands.filter { $0.starts(with: ["security", "import"]) }
-      #expect(imports.count == 2, "two imports")
+      #expect(imports.count == 1, "one import")
       for command in imports {
         let tools = command.indices.filter { command[$0] == "-T" }.map { command[$0 + 1] }
-        #expect(tools == ["/usr/bin/codesign", "/usr/bin/pkgbuild", "/usr/bin/productsign"], "got: \(tools)")
+        #expect(tools == ["/usr/bin/codesign"], "got: \(tools)")
       }
       #expect(commands.contains(["security", "set-key-partition-list", "-S", "apple-tool:,apple:,codesign:",
                                     "-s", "-k", fixedHex(3), keychain]), "partition list")
@@ -73,7 +72,7 @@ import Testing
       #expect(notary == ["xcrun", "notarytool", "store-credentials", "terminal-notary-\(fixedHex(2))",
                             "--key", workDirectory + "/notary-key.p8", "--key-id", "ABCDEFGHIJ",
                             "--issuer", "issuer-id", "--keychain", keychain], "got: \(notary ?? [])")
-      for name in ["notary-key.p8", "application.p12", "installer.p12"] {
+      for name in ["notary-key.p8", "application.p12"] {
         #expect(!FileManager.default.fileExists(atPath: workDirectory + "/" + name), "\(name) is deleted")
       }
     }
@@ -271,13 +270,10 @@ private final class Fixture {
       "RUNNER_TEMP": temp,
       "APPLE_APPLICATION_CERTIFICATE_BASE64": encoded("application-certificate-data"),
       "APPLE_APPLICATION_CERTIFICATE_PASSWORD": "application-password",
-      "APPLE_INSTALLER_CERTIFICATE_BASE64": encoded("installer-certificate-data"),
-      "APPLE_INSTALLER_CERTIFICATE_PASSWORD": "installer-password",
       "APPLE_NOTARY_KEY_BASE64": encoded("notary-key-data"),
       "APPLE_NOTARY_KEY_ID": "ABCDEFGHIJ",
       "APPLE_NOTARY_ISSUER_ID": "issuer-id",
       "APPLE_APPLICATION_SIGNING_IDENTITY": "Developer ID Application: Example",
-      "APPLE_INSTALLER_SIGNING_IDENTITY": "Developer ID Installer: Example",
       "APPLE_TEAM_ID": "TEAMID1234",
     ]
   }

@@ -137,7 +137,7 @@ the app.
 | `just glyph-smoke` | Nerd Font glyphs through the PTY, rasterizer, and Metal |
 | `just lint` / `just fmt` | Check source syntax / format handwritten Swift |
 | `just debug` / `just logs` | Launch LLDB / stream native logs |
-| `just release` | Sign, notarize, and package the app and installer |
+| `just release` | Sign, notarize, and package the app ZIP |
 
 The integration tests also need fish, Neovim, tmux, and fzf:
 
