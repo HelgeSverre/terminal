@@ -109,6 +109,18 @@ import AppKit
       else { controller.splitHorizontal(nil) }
     }
     controller.panes.forEach(observe)
+    // A different header color per pane, drawn at random, so the panes are
+    // easy to tell apart while the dividers move. Nothing is asserted on it.
+    for (pane, choice) in zip(controller.panes, PaneColorChoice.palette.shuffled()) {
+      TerminalPanePresentationView.enclosing(pane)?.choose(choice.color)
+    }
+  }
+
+  /// The split view whose divider sizes `pane`. A pane sits inside its
+  /// presentation view, which carries the header, and that view is what the
+  /// split arranges.
+  private static func split(holding pane: TerminalCanvasView) -> NSSplitView? {
+    (TerminalPanePresentationView.enclosing(pane) ?? pane).superview as? NSSplitView
   }
 
   private func begin() {
@@ -122,7 +134,7 @@ import AppKit
     baselineCaptured = true
     target = pane
     controller.window?.makeFirstResponder(pane)
-    guard let split = pane.superview as? NSSplitView else { return finish(timedOut: true) }
+    guard let split = Self.split(holding: pane) else { return finish(timedOut: true) }
     let extent = split.isVertical ? split.bounds.width : split.bounds.height
     let lower = max(40, min(180, extent * 0.15))
     let upper = max(lower + 20, extent - lower - split.dividerThickness)
@@ -138,7 +150,7 @@ import AppKit
   }
 
   private func moveDivider(for target: TerminalCanvasView, after epoch: UInt64) {
-    guard let split = target.superview as? NSSplitView, currentPhase != nil else {
+    guard let split = Self.split(holding: target), currentPhase != nil else {
       return finish(timedOut: true)
     }
     awaitingEpoch = epoch
