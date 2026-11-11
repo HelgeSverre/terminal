@@ -58,7 +58,9 @@ enum NativeSmoke {
     try FileManager.default.createDirectory(atPath: reportDirectory, withIntermediateDirectories: true)
     try? FileManager.default.removeItem(atPath: report)
 
-    let app = try ProcessTree([executable, mode.flag, report] + mode.extra,
+    // Behind whatever is on screen and without taking the keyboard: the
+    // smokes drive their own window and do not need the app to be active.
+    let app = try ProcessTree([executable, "--background", mode.flag, report] + mode.extra,
                               output: mode.printsReport ? .discarded : .inherited)
     var failure: Failure?
     do {

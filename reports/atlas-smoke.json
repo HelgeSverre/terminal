@@ -1,0 +1,75 @@
+{
+  "atlas_pressure" : true,
+  "failures" : [
+
+  ],
+  "marked_fixture" : {
+    "baseline_completed_submissions" : 7,
+    "baseline_submissions" : 8,
+    "cell_span" : 160,
+    "completed_submissions" : 10,
+    "has_marked_text_at_completion" : true,
+    "has_marked_text_before_assertions" : true
+  },
+  "metal" : {
+    "attachment" : "BGRA8Unorm_sRGB",
+    "command_errors" : 0,
+    "completed_submissions" : 10,
+    "dropped_quad_buffers" : 0,
+    "dropped_stale_frames" : 0,
+    "exact_glyph_fallbacks" : 0,
+    "font" : "Obel Mono",
+    "glyph_atlas" : "premultiplied linear RGBA8Unorm",
+    "glyph_residency" : {
+      "capacity_waiting" : false,
+      "denied_allocations" : 0,
+      "direct_bytes" : 278528,
+      "pending_jobs" : 0,
+      "queued_uploads" : 0,
+      "quiescent" : true,
+      "reservations" : 0,
+      "resident_bytes" : 1441792
+    },
+    "gpu_command_ms" : [
+      0.20937499357387424,
+      0.064833337091840804,
+      0.18312499742023647,
+      0.16691666678525507,
+      0.16862500342540443,
+      0.17374999879393727,
+      0.17712500994093716,
+      0.30179166060406715,
+      0.1021666539600119,
+      0.090166664449498057
+    ],
+    "in_flight_glyphs" : 1149,
+    "last_completed_glyph_revision" : 2183,
+    "last_completed_substitutes" : 0,
+    "mismatched_drawables" : 0,
+    "mismatched_presents" : 0,
+    "oversized_glyph_fallbacks" : 0,
+    "peak_atlas_pages" : 1,
+    "peak_glyph_fallback_bytes" : 0,
+    "peak_glyph_fallback_count" : 0,
+    "preparation_ms" : [
+      0.325459,
+      0.29841699999999999,
+      4.0525409999999997,
+      3.6937500000000001,
+      3.2521249999999999,
+      2.9763329999999999,
+      2.8301660000000002,
+      2.4343750000000002,
+      2.4796670000000001,
+      2.4486669999999999
+    ],
+    "submissions" : 10,
+    "substitute_glyph_fallbacks" : 1691,
+    "visible_glyph_drops" : 0
+  },
+  "note" : "A bounded symbol fixture and oversized preedit exercised the raw cat PTY, native grid, and Metal fallback paths, with successful completion of the pane's page revision. This does not capture display pixels; pixel coverage is checked separately by the shared rasterizer catalog.",
+  "passed" : true,
+  "rendered_pages" : 1,
+  "style_codepoints_verified" : 1024,
+  "unique_codepoints" : 10624
+}

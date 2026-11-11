@@ -173,7 +173,6 @@ import Darwin
     // window the same AppKit focus precondition as an interactive key route;
     // otherwise a direct executable launch can have a first responder while
     // its focus lifecycle remains false.
-    NSApp.activate(ignoringOtherApps: true)
     window.makeKeyAndOrderFront(nil)
     window.makeFirstResponder(pane)
     controller.panes.forEach { $0.updateFocus() }
@@ -454,7 +453,6 @@ import Darwin
   }
   private func testCommandNavigation() {
     guard let pane = controller.panes.first, let window = controller.window else { return }
-    NSApp.activate(ignoringOtherApps: true)
     window.makeKeyAndOrderFront(nil)
     window.makeFirstResponder(pane)
     controller.panes.forEach { $0.updateFocus() }
@@ -463,8 +461,9 @@ import Darwin
       measurements["navigation_key_window"] = window.isKeyWindow
       measurements["navigation_app_key_window"] = NSApp.keyWindow === window
       measurements["navigation_first_responder"] = window.firstResponder === pane
-      let ready = NSApp.isActive && window.isKeyWindow && NSApp.keyWindow === window
-        && window.firstResponder === pane
+      // The key goes to this window itself, so the route does not need the
+      // app to be the active one: someone may be working in another app.
+      let ready = window.firstResponder === pane
       measurements["navigation_route_ready"] = ready
       guard ready else {
         finish(timedOut: true)
@@ -489,10 +488,10 @@ import Darwin
     measurements["command_right_first_responder"] = window.firstResponder === pane
     let focused = pane.geometryReport()["focused"] as? Bool == true
     measurements["command_right_pane_focused"] = focused
-    let ready = NSApp.isActive && window.isKeyWindow && NSApp.keyWindow === window
-      && window.firstResponder === pane && focused
+    let ready = window.firstResponder === pane
     measurements["command_right_route_ready"] = ready
-    measurements["command_right_focus_interference"] = !ready
+    // Recorded, not required: whether another app had the keyboard meanwhile.
+    measurements["command_right_focus_interference"] = !(NSApp.isActive && window.isKeyWindow && focused)
     checks["command_right_route_ready"] = ready
     return ready
   }
@@ -514,6 +513,17 @@ import Darwin
     guard let menu = NSApp.mainMenu else { return false }
     return containsShortcut(in: menu)
   }
+  /// Sends a key event the way the application object would send it to its
+  /// key window: key equivalents of the window, then of the menu, then the
+  /// first responder. Going to the window directly, it also arrives while
+  /// another app is active.
+  private static func route(_ event: NSEvent, to window: NSWindow) {
+    if event.type == .keyDown {
+      if window.performKeyEquivalent(with: event) { return }
+      if NSApp.mainMenu?.performKeyEquivalent(with: event) == true { return }
+    }
+    window.sendEvent(event)
+  }
   private func deliverCommandArrow(left: Bool) {
     guard let window = controller.window else { return }
     for type: NSEvent.EventType in [.keyDown, .keyUp] {
@@ -525,7 +535,7 @@ import Darwin
         isARepeat: false, keyCode: left ? 123 : 124)
       {
         syntheticEvent = event
-        NSApp.sendEvent(event)
+        Self.route(event, to: window)
         syntheticEvent = nil
       }
     }
