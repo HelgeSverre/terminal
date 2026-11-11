@@ -322,7 +322,7 @@ enum CompareTerminalApps {
         try expect(report["order"] as? [String] == ["baseline", "candidate"], "the baseline is measured first by default")
         let refused = try expectFailure("an order by an old name") {
           _ = try Comparison(output: root + "/other", baselineApp: app, candidateApp: slow,
-                             environment: ["BENCH_FIRST": "rust"])
+                             environment: ["BENCH_FIRST": "first"])
         }
         try expect(refused.message == "BENCH_FIRST must be baseline or candidate", "got: \(refused.message)")
         try expect(try report.object("performance_gate")["passed"] as? Bool == false, "the gate is missed")

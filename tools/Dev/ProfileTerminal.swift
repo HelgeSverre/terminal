@@ -72,7 +72,7 @@ enum ProfileTerminal {
       self.app = try realPath(app)
       self.workload = workload == "all" ? nil : workload
       // A selected workload must keep running for the whole five-second
-      // sample, also when ASCII throughput approaches the Rust reference.
+      // sample, also at high ASCII throughput.
       driverBytes = self.workload == nil ? ProfileTerminal.driverBytes : 512 * 1024 * 1024
       executable = self.app + "/Contents/MacOS/Terminal"
       guard FileManager.default.isExecutableFile(atPath: executable) else { throw Failure("Missing executable in \(self.app)") }

@@ -2,8 +2,7 @@
 ///
 /// This deliberately owns wire details (including query reply spelling) so
 /// the terminal state machine only has to route OSC code/value pairs and
-/// publish snapshots. OSC 110/111 are intentionally not handled: the Rust
-/// compatibility core does not implement them.
+/// publish snapshots. OSC 110/111 are intentionally not handled.
 struct TerminalPalette {
   private struct RGB: Equatable {
     let red: UInt8

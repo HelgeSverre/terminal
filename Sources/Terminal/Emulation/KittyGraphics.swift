@@ -253,7 +253,7 @@ final class KittyGraphicsStore {
   private func inflate(_ input: Data, limit: Int) throws -> Data {
     guard !input.isEmpty, limit > 0, limit <= Self.maximumImageBytes else { throw KittyGraphicsError.invalid }
     // Compression.framework's ZLIB decoder consumes a raw DEFLATE stream on
-    // current macOS. Kitty (and Rust's `ZlibEncoder`) supplies RFC1950 framing,
+    // current macOS. Kitty supplies RFC1950 (zlib) framing,
     // so validate and strip the two-byte header/four-byte Adler trailer first.
     guard input.count >= 6, input[0] & 0x0f == 8, input[0] >> 4 <= 7,
           input[1] & 0x20 == 0,

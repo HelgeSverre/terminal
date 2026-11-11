@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalApp
 
-// The seven Rust viewport.rs scenarios, executed through the emulator ABI.
+// Seven viewport scenarios, executed through the emulator ABI.
 @Suite enum TerminalViewportOracleTests {
   static func make(_ columns: UInt32 = 8, _ rows: UInt32 = 3) -> OpaquePointer { terminal_create(columns, rows)! }
   static func feed(_ terminal: OpaquePointer, _ text: String) { let data = Data(text.utf8); _ = data.withUnsafeBytes { terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, data.count, 0) } }
@@ -54,7 +54,7 @@ import Testing
     #expect(lines(wide).first == "abcdefgh" && !(wide["following_tail"] as! Bool))
     #expect(terminal_resize(t, 4, 2)); let back = snapshot(t)!; #expect(lines(back).first == "abcd")
     terminal_view_follow_tail(t)
-    // Rust's partition after 4→8→4 is history [abcd, efgh, ijkl, 猫猫]
+    // The partition after 4→8→4 is history [abcd, efgh, ijkl, 猫猫]
     // and live [猫猫, last], so offset one selects the retained first cat row.
     scroll(t, 1)
     #expect(lines(snapshot(t)!).first == "猫猫" && !(snapshot(t)! ["following_tail"] as! Bool))

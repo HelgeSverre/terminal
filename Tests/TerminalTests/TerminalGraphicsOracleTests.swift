@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalApp
 
-// Public ABI regressions translated from terminal-core/tests/graphics.rs.
+// Public ABI regressions for kitty graphics.
 // Each case is its own test so a failure cannot hide the remaining red
 // controls. No graphics-store inspection or test-only ABI.
 @Suite enum TerminalGraphicsOracleTests {

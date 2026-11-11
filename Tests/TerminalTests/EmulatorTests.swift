@@ -434,8 +434,7 @@ import Testing
     #expect(cells(snapshot(prefixedMotion), 0)[1]["text"] as? String == "Y")
   }
   @Test static func sgrCompatibility() {
-    // Expected styles were replayed through archived Rust 9190820's public
-    // ABI. Check the normal immutable Swift publication and legacy ABI alike.
+    // Check the normal immutable publication and the legacy ABI alike.
     func style(_ foreground: UInt32 = 0, _ background: UInt32 = 0,
                _ underlineColor: UInt32 = 0, bold: Bool = false,
                conceal: Bool = false, blink: Bool = false, underline: Int = 0) -> CellStyle {
@@ -771,7 +770,7 @@ import Testing
     #expect(terminal_search_fill(evicted, evictedTask) == 3)
 
     // Raising or reapplying a scrollback limit without evicting a proven row
-    // does not change Rust's search stamp. The task remains acceptable.
+    // does not change the search stamp. The task remains acceptable.
     let unchangedLimit = terminal_create(8, 2)!
     defer { terminal_destroy(unchangedLimit) }
     feed(unchangedLimit, "target")
@@ -898,7 +897,7 @@ import Testing
   }
 
   @Test static func geometryABIContract() {
-    // Rust returns a null ABI handle for invalid creation geometry; silently
+    // Invalid creation geometry returns a null ABI handle; silently
     // clamping here would make a malformed host request look valid.
     let invalid: [(UInt32, UInt32)] = [(0, 1), (1, 0), (4_097, 1), (1, 4_097), (4_096, 257)]
     for (columns, rows) in invalid {
@@ -907,7 +906,7 @@ import Testing
         Issue.record("terminal_create accepted invalid geometry \(columns)x\(rows)"); return
       }
     }
-    // Exercise Rust's exact maximum once, releasing it before the rejection
+    // Exercise the exact maximum once, releasing it before the rejection
     // checks so the ABI contract does not retain a large fixture.
     guard let maximum = terminal_create(4_096, 256) else {
       Issue.record("terminal_create rejected valid maximum geometry"); return
@@ -919,7 +918,7 @@ import Testing
       #expect(!terminal_resize(resized, columns, rows))
     }
     #expect(viewHeader(resized)["cols"] as? Int == 8)
-    // Rust validates pixel metrics before applying either geometry or cell
+    // Pixel metrics are validated before applying either geometry or cell
     // dimensions; malformed metrics must not be normalized into a resize.
     let invalidPixels: [(UInt32, UInt32)] = [(0, 16), (16, 0), (1_025, 16), (16, 1_025)]
     for (width, height) in invalidPixels {

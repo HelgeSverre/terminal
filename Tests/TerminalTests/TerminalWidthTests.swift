@@ -3,8 +3,6 @@ import Testing
 @testable import TerminalApp
 
 /// Source-exact regressions for unicode-width 0.2.3's non-CJK string mode.
-/// Pass a development-only Rust oracle path as `--oracle /path` to compare
-/// every Unicode scalar (surrogates excluded) byte-for-byte.
 @Suite enum TerminalWidthTests {
   @Test static func sourceExactSequences() {
     let examples: [(String, Int, String)] = [
@@ -25,32 +23,5 @@ import Testing
       #expect(TerminalWidth.width(of: scalar) == TerminalWidth.width(of: String(scalar)),
               "singleton width mismatch at U+\(String(value, radix: 16))")
     }
-  }
-
-  /// Compares every scalar with the locked Rust oracle. `TERMINAL_WIDTH_ORACLE`
-  /// holds the path of the development-only oracle executable.
-  @Test(.enabled(if: ProcessInfo.processInfo.environment["TERMINAL_WIDTH_ORACLE"] != nil))
-  static func matchesRustOracle() throws {
-    try compareEveryScalar(with: ProcessInfo.processInfo.environment["TERMINAL_WIDTH_ORACLE"]!)
-  }
-
-  private static func compareEveryScalar(with executable: String) throws {
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: executable)
-    let output = Pipe()
-    process.standardOutput = output
-    try process.run()
-    let widths = output.fileHandleForReading.readDataToEndOfFile()
-    process.waitUntilExit()
-    guard process.terminationStatus == 0 else { Issue.record("Rust oracle exited \(process.terminationStatus)"); return }
-    var offset = 0
-    for value in UInt32(0)...0x10FFFF where !(0xD800...0xDFFF).contains(value) {
-      guard offset < widths.count else { Issue.record("Rust oracle ended at U+\(String(value, radix: 16))"); return }
-      let scalar = Unicode.Scalar(value)!
-      let actual = TerminalWidth.width(of: String(scalar))
-      #expect(actual == Int(widths[offset]), "scalar mismatch at U+\(String(value, radix: 16).uppercased()): Swift \(actual), Rust \(widths[offset])")
-      offset += 1
-    }
-    #expect(offset == widths.count, "Rust oracle emitted unexpected trailing data")
   }
 }

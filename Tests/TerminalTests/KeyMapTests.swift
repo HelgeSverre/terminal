@@ -261,8 +261,8 @@ private final class Capture { var data = Data() }
       return capture.data
     }
     context = "committed text overrides legacy layout text"
-    // Empty C strings mean absent metadata in the public ABI, matching the
-    // archived Rust adapter; a typed encoder can still represent present-empty.
+    // Empty C strings mean absent metadata in the public ABI; a typed encoder
+    // can still represent present-empty.
     check(physical("", logical: "a", legacy: "legacy", modifiers: 0) == Data("a".utf8))
     check(physical("æ", logical: "a", legacy: "", modifiers: 2) == Data("\u{1b}a".utf8))
     check(physical("", logical: "e\u{301}", modifiers: 0) == Data("e".utf8))

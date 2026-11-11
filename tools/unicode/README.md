@@ -1,8 +1,8 @@
 # Pinned Unicode data
 
-The generators and corpus test use only committed inputs. Rust, a Cargo cache,
-and network access are not required. Grapheme/width behavior is Unicode18;
-search lowercase deliberately retains the Rust baseline's Unicode17 policy.
+The generators and corpus test use only committed inputs; network access is
+not required. Grapheme/width behavior is Unicode18; search lowercase
+deliberately stays on Unicode17.
 
 ## Unicode18 graphemes and terminal widths
 
@@ -27,7 +27,7 @@ search lowercase deliberately retains the Rust baseline's Unicode17 policy.
 The grapheme range source is Copyright 2012–2018 The Rust Project Developers;
 the width source is Copyright 2012–2026 The Rust Project Developers. These
 derived tables are used under the upstream MIT license in `LICENSE-MIT`.
-Keep this attribution and license when removing the original Rust workspace.
+Keep this attribution and license.
 The Unicode test fixture retains its separate original notice.
 
 From the repository root, regenerate the checked-in runtime sources with:
@@ -47,21 +47,20 @@ tables and Unicode semantics are unchanged.
 
 ## Unicode17 search lowercase
 
-`rust-unicode17-lowercase.txt` contains every non-identity result of
-`char::to_lowercase()` for each of the 1,112,064 valid Unicode scalars, emitted
-by Rust `1.99.0 (b940084d7 2026-09-28)`. Its
-`char::UNICODE_VERSION` is `17.0.0`; the record file SHA-256 is
+`unicode17-lowercase.txt` contains every non-identity full lowercase mapping
+for each of the 1,112,064 valid Unicode scalars under Unicode `17.0.0`. The
+record file SHA-256 is
 `35e8335ca053474f0baa2ac0525b062468b684253a99377e84563bc5033b9cd0`.
 
 The checked-in Swift generator validates that checksum and writes
 `Sources/Terminal/Text/UnicodeLowercase.swift`. A clean clone can reproduce the runtime table
-without Rust or Foundation Unicode data:
+without Foundation Unicode data:
 
 ```shell
 xcrun swiftc -parse-as-library tools/unicode/GenerateUnicodeLowercase.swift \
   -o target/native/generate-unicode-lowercase
 target/native/generate-unicode-lowercase \
-  tools/unicode/rust-unicode17-lowercase.txt Sources/Terminal/Text/UnicodeLowercase.swift
+  tools/unicode/unicode17-lowercase.txt Sources/Terminal/Text/UnicodeLowercase.swift
 ```
 
 The exhaustive `unicode-lowercase` test regenerates the same canonical records

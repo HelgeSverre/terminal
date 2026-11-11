@@ -234,7 +234,7 @@ private final class TerminalEmulator {
     revision &+= 1
     // Geometry changes alter column coordinates. Ordinary document edits are
     // instead resolved lazily against each accepted row's revision, retaining
-    // hits through unrelated output exactly as the Rust owner does.
+    // hits through unrelated output.
     if geometry { searchHits = nil }
     if document { documentEpoch &+= 1 }
     if screen { screenEpoch &+= 1 }
@@ -1204,7 +1204,7 @@ private final class TerminalEmulator {
   private func finishString() {
     let payload = sequence; sequence = ""
     if case .osc = parser {
-      // OSC bytes are lossy UTF-8 decoded in Rust before command dispatch.
+      // OSC bytes are lossy UTF-8 decoded before command dispatch.
       let bytes = payload.unicodeScalars.map { UInt8($0.value) }
       let decoded = String(decoding: bytes, as: UTF8.self)
       guard let separator = decoded.firstIndex(of: ";") else { return }
@@ -1535,7 +1535,7 @@ private final class TerminalEmulator {
       bracketedPaste: bracketedPaste, focusReporting: focusReporting, kittyFlags: screen.keyboardFlags)
     // The C ABI's key=0 path represents committed text, not a physical key.
     // It must retain every scalar (automation, IME commits, and multi-scalar
-    // insertText: calls), matching the Rust FFI's text.as_bytes() path.
+    // insertText: calls), so it is passed through as its UTF-8 bytes.
     if key == 0 { return Data(text.utf8) }
     if key == 1 { return TerminalInputEncoder.paste(text, modes: modes) }
     if key == 2 { return TerminalInputEncoder.focus(event == 1, modes: modes) }
@@ -1831,7 +1831,7 @@ private final class TerminalEmulator {
   private func sanitizedTitle(_ value: String) -> String {
     var result = ""
     var byteCount = 0
-    // Rust `char::is_control` maps to Unicode's Cc category only. In
+    // Only Unicode's Cc category counts as control. In
     // particular, format scalars such as ZWJ and WORD JOINER remain titles.
     for scalar in value.unicodeScalars where scalar.properties.generalCategory != .control {
       let nextCount = scalar.utf8.count
@@ -1975,8 +1975,8 @@ private final class TerminalEmulator {
   private func colorJSON(_ color: UInt32) -> Any { if color >> 24 == 1 { return ["Indexed": Int(color & 255)] }; if color >> 24 == 2 { return ["Rgb": [Int((color >> 16) & 255), Int((color >> 8) & 255), Int(color & 255)]] }; return "Default" }
 }
 
-// MARK: C ABI bridge. The app still imports Bridge.h, allowing a mechanical
-// replacement of the static Rust archive while all native call sites stay stable.
+// MARK: C ABI bridge. The app imports Bridge.h, so native call sites keep one
+// stable C-shaped surface.
 
 private func core(_ pointer: OpaquePointer?) -> TerminalEmulator? { pointer.map { Unmanaged<TerminalEmulator>.fromOpaque(UnsafeMutableRawPointer($0)).takeUnretainedValue() } }
 // Internal Swift adapter: same owner-confined handle, no C callback or borrowed
@@ -2053,8 +2053,7 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
   guard let callback else { return }
   for (requestID, data) in core(pointer)?.takeClipboardRequests() ?? [] {
     if data.isEmpty {
-      // Rust's Vec::as_ptr is non-null even for an empty write. Preserve that
-      // ABI convenience for hosts whose callback validates the pointer before
+      // An empty write still passes a non-null pointer, for hosts whose callback validates the pointer before
       // observing the zero length.
       var sentinel: UInt8 = 0
       withUnsafePointer(to: &sentinel) { callback(context, requestID, $0, 0) }

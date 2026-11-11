@@ -7,8 +7,8 @@ import Testing
   private static let expectedUnicodeVersion = "17.0.0"
   private static let expectedRecordsSHA256 = "35e8335ca053474f0baa2ac0525b062468b684253a99377e84563bc5033b9cd0"
 
-  /// Unicode 17.0.0: the Rust-pinned mappings, every scalar.
-  @Test static func rustPinnedMappings() {
+  /// Unicode 17.0.0: the pinned mappings, every scalar.
+  @Test static func pinnedMappings() {
     var records = Data()
     var nonIdentity = 0
     for value in UInt32(0)...0x10FFFF {

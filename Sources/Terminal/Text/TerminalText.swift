@@ -2,7 +2,7 @@ import Foundation
 
 /// Terminal-oriented Unicode primitives with an explicit, narrow contract.
 ///
-/// The Rust baseline is pinned to Unicode 18/UAX #29 rev. 49.  This component
+/// Segmentation is pinned to Unicode 18/UAX #29 rev. 49.  This component
 /// uses generated Unicode 18 tables rather than delegating segmentation to
 /// `Character` (whose data follows the host OS).  The strict official fixture
 /// is the regression gate for this declared pin.
@@ -14,7 +14,7 @@ enum TerminalText {
     case prepend, regionalIndicator, extendedPictographic, incbConsonant, incbLinker
   }
 
-  /// Constant-space UAX #29 state.  The rule ordering mirrors the Rust core;
+  /// Constant-space UAX #29 state.  The rule ordering follows UAX #29;
   /// category coverage is intentionally exposed through `unicode18Parity`.
   struct Segmenter {
     private var previous: Category?

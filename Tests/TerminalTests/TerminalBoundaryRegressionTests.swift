@@ -126,9 +126,6 @@ import Testing
     #expect(terminal_resize(terminal, 2, 2), "narrow resize rejected")
     #expect(((try snapshot(terminal))["history_rows"] as! Int) <= 3, "reflow exceeded row retention")
   }
-  #if !RUST_BASELINE
-  // The Rust production ABI has no byte-limit setter; its internal byte-limit
-  // fixture remains separate. Do not report this Swift adapter case as shared.
   @Test static func resizeByteRetention() throws {
     let bytesTerminal = terminal_create(8, 2)!
     defer { terminal_destroy(bytesTerminal) }
@@ -181,7 +178,6 @@ import Testing
       }
     }
   }
-  #endif
   @Test static func readiness() throws {
     let terminal = terminal_create(12, 3)!
     defer { terminal_destroy(terminal) }
@@ -254,8 +250,7 @@ import Testing
       #expect((value["cursor"] as! [String: Any])["col"] as? Int == column + 2, "orphan combining cursor")
     }
   }
-  // These ingress limits describe the Swift adapter, not a shared VT grammar.
-  #if !RUST_BASELINE
+  // These ingress limits describe the emulator adapter, not a shared VT grammar.
   static func offer(_ terminal: OpaquePointer, _ bytes: Data) -> Int {
     bytes.withUnsafeBytes { terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0) }
   }
@@ -328,5 +323,4 @@ import Testing
     #expect(try ingressLine(terminal) == "X   ZZZYQ", "reply backpressure lost printable suffix")
     #expect(terminal_validate(terminal), "CSI ingress document invariants")
   }
-  #endif
 }

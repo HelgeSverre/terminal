@@ -12,7 +12,7 @@ import Testing
     let replies = palette.applyOSC(command: "4", value: "+1;#0102ff;+2;rgb:f/80/0000;3;?;4;#+f00ff;5;rgb:+f/80/0000;256;#ffffff;6")
     #expect(palette.snapshotPalette[1] == [1, 2, 255])
     #expect(palette.snapshotPalette[2] == [255, 128, 0])
-    // Rust integer parsing accepts an optional leading plus. Its rgb scaling
+    // Integer fields accept an optional leading plus. The rgb scaling
     // deliberately uses the full field length, including that plus sign.
     #expect(palette.snapshotPalette[4] == [15, 0, 255])
     #expect(palette.snapshotPalette[5] == [15, 128, 0])

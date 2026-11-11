@@ -27,11 +27,10 @@ import Foundation
         mappings.append((UInt64(source) << 32) | UInt64(targets[0]))
       }
     }
-    guard mappings.count == 1_487, mappings == mappings.sorted(), expansion == [0x0069, 0x0307] else { fatalError("incomplete Rust Unicode 17 mapping") }
+    guard mappings.count == 1_487, mappings == mappings.sorted(), expansion == [0x0069, 0x0307] else { fatalError("incomplete Unicode 17 lowercase mapping") }
     let output = """
-    // Generated from the Rust standard-library Unicode 17.0.0 lowercase oracle.
+    // Generated from the pinned Unicode 17.0.0 lowercase records.
     // Input SHA-256: \(recordsSHA256) (1,488 non-identity mappings).
-    // Rust: rustc 1.99.0 (b940084d7 2026-09-28), char::UNICODE_VERSION=(17, 0, 0).
     // Do not edit; regenerate with tools/unicode/GenerateUnicodeLowercase.swift.
     enum UnicodeLowercase {
       private static let scalarMappings: [UInt64] = [

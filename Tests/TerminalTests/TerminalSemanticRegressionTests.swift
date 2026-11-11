@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalApp
 
-// Observable a9b3c98 semantics.rs cases that are not already owned by the
+// Observable semantics cases that are not already owned by the
 // margin, viewport, reflow, prompt/clear, input, or scheduler ABI oracles.
 @Suite enum TerminalSemanticRegressionTests {
   private final class Bytes { var value = Data() }

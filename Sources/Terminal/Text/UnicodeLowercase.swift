@@ -1,6 +1,5 @@
-// Generated from the Rust standard-library Unicode 17.0.0 lowercase oracle.
+// Generated from the pinned Unicode 17.0.0 lowercase records.
 // Input SHA-256: 35e8335ca053474f0baa2ac0525b062468b684253a99377e84563bc5033b9cd0 (1,488 non-identity mappings).
-// Rust: rustc 1.99.0 (b940084d7 2026-09-28), char::UNICODE_VERSION=(17, 0, 0).
 // Do not edit; regenerate with tools/unicode/GenerateUnicodeLowercase.swift.
 enum UnicodeLowercase {
   private static let scalarMappings: [UInt64] = [

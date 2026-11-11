@@ -2,8 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalApp
 
-// Executable integration scenarios mapped one-for-one to the nine Rust margin
-// tests. These cross the C-shaped emulator seam, not a helper grid: snapshots
+// Nine executable margin integration scenarios. These cross the C-shaped emulator seam, not a helper grid: snapshots
 // therefore prove that protocol parsing mutates the canonical rich document.
 @Suite enum TerminalDocumentOracleTests {
   static func make(_ columns: UInt32 = 8, _ rows: UInt32 = 4) -> OpaquePointer {

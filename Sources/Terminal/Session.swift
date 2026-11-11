@@ -182,7 +182,7 @@ struct TerminalKeyEvent {
     baseLayout.unicodeScalars.count == 1 ? baseLayout.unicodeScalars.first!.value : 0
   }
 }
-// The PTY and Rust handle are confined to this queue. Main receives immutable decoded values.
+// The PTY and emulator handle are confined to this queue. Main receives immutable decoded values.
 final class Session: @unchecked Sendable {
   typealias SelectionCompletion = @MainActor (Result<String?, TerminalSelectionFailure>) -> Void
   typealias LinkCompletion = @MainActor (Result<URL, TerminalSelectionFailure>) -> Void
