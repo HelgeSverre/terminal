@@ -130,7 +130,10 @@ import AppKit
       markerOccurrences(promptMarker, in: snapshot) == 1,
       markerOccurrences(rightPromptMarker, in: snapshot) == 1,
       cursorImmediatelyFollowsBuffer(snapshot)
-    else { return finish(timedOut: true) }
+    // The splits have just resized every pane, and zsh may still be
+    // redrawing its prompt. A later snapshot tries again; a prompt that
+    // never settles runs into the smoke's time limit.
+    else { return }
     baselineCaptured = true
     target = pane
     controller.window?.makeFirstResponder(pane)
