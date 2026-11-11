@@ -41,7 +41,8 @@ jobs:
         with:
           path: |
             target
-          key: macos-arm64-swift-${{ hashFiles('Sources/**', 'Tests/**', 'Resources/**', 'Benchmarks/**', 'assets/**', 'tools/SwiftIncrementalBuild.swift', 'tools/swift-sources.json', 'justfile') }}
+            .build
+          key: macos-arm64-swift-${{ hashFiles('Sources/**', 'Tests/**', 'Resources/**', 'Benchmarks/**', 'assets/**', 'tools/SwiftIncrementalBuild.swift', 'tools/swift-sources.json', 'Package.swift', 'justfile') }}
       - name: Run Swift native tests
         env:
           TERMINAL_CI_GPU_POLICY: paravirtual
@@ -55,13 +56,12 @@ jobs:
         if: always()
         run: |
           mkdir -p reports/crash-reports
-          find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 -type f \( -name 'glyph-residency-tests*.ips' -o -name 'glyph-residency-tests*.crash' \) -exec cp {} reports/crash-reports/ \;
+          find "$HOME/Library/Logs/DiagnosticReports" -maxdepth 1 -type f \( -name 'swiftpm-testing-helper*.ips' -o -name 'swiftpm-testing-helper*.crash' -o -name 'xctest*.ips' -o -name 'xctest*.crash' \) -exec cp {} reports/crash-reports/ \;
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: macos-test-results
           path: |
             reports/ci-tests.txt
-            reports/session-tests.json
             reports/crash-reports
             reports/gpu-policy

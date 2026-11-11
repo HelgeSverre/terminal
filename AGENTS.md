@@ -71,8 +71,9 @@ alone and tell Helge.
   the build" and the run is void. To keep working during a long run, test a
   committed tip in a second worktree.
 - **One heavy job at a time on the machine**, across all sessions. Heavy
-  means `just test` (about 13 minutes), `just check`, a release build, a
-  fuzzer, or a benchmark. Check `uptime` first and wait if the load is high.
+  means `just test` (about 6 minutes from a clean checkout), `just check`,
+  a release build, a fuzzer, or a benchmark. Check `uptime` first and wait
+  if the load is high.
   Run parallel shards three at a time, not ten. On 2026-11-10 the full suite
   and a ten-process fuzzer together forced a hard reset.
 - **Windows and focus.** Smoke tests and benchmarks open app windows, and
@@ -86,11 +87,20 @@ alone and tell Helge.
   record the commit and the executable's hash. A bundle another session can
   rebuild is not a measurement target.
 - Test and smoke runs write their results to ignored files under `reports/`
-  (`session-tests.json`, `native-smoke.json` and the others listed in
+  (`native-smoke.json` and the others listed in
   `.gitignore`). To keep a result as evidence, copy it into a dated
   directory under `reports/` and commit that.
 - Worktrees cost disk. Remove yours when the branch is merged or abandoned;
   `just clean` removes a checkout's build outputs.
+
+## Tests
+
+Tests are Swift Testing suites in `Tests/TerminalTests`, built once by
+`Package.swift` and run by `just unit-test` (part of `just test`). Run some
+with `just unit-test --filter SuiteName`. A new test goes into a suite there,
+with `#expect` and `#require`; do not add test programs with their own
+`main`. Tests wait with `await TestEnvironment.wait`, never by spinning the
+run loop, and a suite that touches process-wide state is `.serialized`.
 
 ## Tooling
 

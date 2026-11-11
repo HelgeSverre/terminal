@@ -1,7 +1,7 @@
 # Emulator validation
 
 `native/tests/EmulatorTests.swift` is the narrow public-ABI smoke test, invoked
-by `just emulator-test`. It covers basic grid updates, SGR snapshots,
+by `just unit-test --filter EmulatorTests`. It covers basic grid updates, SGR snapshots,
 alternate-screen isolation, input bytes, paste, replies and chunked feeding.
 It is one gate, not a declaration of parity or full v1 completion.
 

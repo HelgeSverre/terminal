@@ -101,7 +101,8 @@ led to these rules.
 | Process setup | [Spawn.c](../Sources/Terminal/Interop/Spawn.c) · [Launcher.c](../Sources/TerminalLauncher/Launcher.c) |
 
 `Sources/Terminal` contains the application in one Swift compiler module.
-`Tests/TerminalTests` holds directly compiled test programs, `Resources/Terminal`
+`Tests/TerminalTests` holds the Swift Testing suites that `Package.swift`
+builds, `Tests/Programs` the few directly compiled probe and PTY programs, `Resources/Terminal`
 holds bundle inputs, and `Benchmarks/TerminalBench` holds the PTY driver.
 The small `Sources/TerminalLauncher` C executable sets up shell launches.
 `justfile` assembles the bundle; the source manifest lists canonical repository

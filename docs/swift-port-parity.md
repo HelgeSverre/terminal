@@ -69,7 +69,7 @@ linked Swift executable.
 | Binary snapshot ABI | bridge tests | Original typed borrowed callback restored; SnapshotBridge executable passes |
 
 At that early checkpoint, `just swift-core-test` passed (the current command is
-`just emulator-test`). The full native Session exercise was
+`just unit-test --filter EmulatorTests`). The full native Session exercise was
 run separately while porting; its generated report is not committed.
 
 After binary-snapshot, search, input and graphics integration, the real native
