@@ -208,7 +208,8 @@ enum Gallery {
     let files = try required("TERMINAL_GALLERY_FILES")
     let scenario = environment["TERMINAL_GALLERY_SCENARIO"] ?? "overview"
     let listing = [files, "--color=always", "--no-git", "-L", "2", cwd]
-    let diff = ["/usr/bin/git", "diff", "--color=always", "--", "src/main.swift"]
+    // Without `--no-pager` git hands a terminal's output to a pager, which waits for a key.
+    let diff = ["/usr/bin/git", "--no-pager", "diff", "--color=always", "--", "src/main.swift"]
     func write(_ text: String) { try? writeAll(STDOUT_FILENO, Data(text.utf8)) }
     func section(_ title: String) { write("\u{1B}[38;2;92;166;255m\(title)\u{1B}[0m\r\n") }
     /// Tells the runner this pane has drawn, and keeps the pane open.
