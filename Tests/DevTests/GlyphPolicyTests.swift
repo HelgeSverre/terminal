@@ -1,4 +1,6 @@
 import Foundation
+import Testing
+@testable import dev
 
 /// Tests the justfile's `_glyph-rendering-tests` recipe: when the GPU glyph
 /// gate runs, and when a hosted runner's known driver fault may skip it.
@@ -6,7 +8,7 @@ import Foundation
 /// The recipe itself is run by `just`, in a temporary directory, so its shell
 /// logic and exit status are what is tested. The compiler, the probe and the
 /// nested recipes are replaced by scripts; nothing touches Metal or a window.
-enum GlyphPolicy {
+@Suite struct GlyphPolicyTests {
   struct Scenario {
     let name: String
     /// What the stand-in upload probe prints and how it exits.
@@ -39,12 +41,16 @@ enum GlyphPolicy {
              cpuStatus: 7, expectedStatus: 7, runsGPUGate: false, writesSkip: false),
   ]
 
-  static let tests = scenarios.map { scenario in
-    SelfTest.Case(name: "glyph policy: \(scenario.name)") { try check(scenario) }
-  }
+  @Test("glyph policy: known-driver-fault") func knownDriverFault() throws { try check(Self.scenarios[0]) }
+  @Test("glyph policy: unknown-fault") func unknownFault() throws { try check(Self.scenarios[1]) }
+  @Test("glyph policy: different-error") func differentError() throws { try check(Self.scenarios[2]) }
+  @Test("glyph policy: probe-success") func probeSuccess() throws { try check(Self.scenarios[3]) }
+  @Test("glyph policy: later-driver-fault") func laterDriverFault() throws { try check(Self.scenarios[4]) }
+  @Test("glyph policy: local-default") func localDefault() throws { try check(Self.scenarios[5]) }
+  @Test("glyph policy: cpu-failure") func cpuFailure() throws { try check(Self.scenarios[6]) }
 
   /// The recipe's lines, from its name to the end of its indented body.
-  static func recipe() throws -> String {
+  func recipe() throws -> String {
     let lines = try String(contentsOfFile: Repository.path("justfile"), encoding: .utf8)
       .split(separator: "\n", omittingEmptySubsequences: false)
     guard let start = lines.firstIndex(where: { $0.hasPrefix("_glyph-rendering-tests:") }) else { throw Failure("missing glyph gate") }
@@ -52,7 +58,7 @@ enum GlyphPolicy {
     return ([lines[start]] + body).joined(separator: "\n") + "\n"
   }
 
-  private static func check(_ scenario: Scenario) throws {
+  private func check(_ scenario: Scenario) throws {
     let just = try executablePath("just")
     try withTemporaryDirectory("dev-glyph-policy-") { directory in
       try FileManager.default.createDirectory(atPath: directory + "/bin", withIntermediateDirectories: true)
@@ -91,13 +97,13 @@ enum GlyphPolicy {
                  "TERMINAL_CI_GPU_POLICY": scenario.policy, "CPU_STATUS": String(scenario.cpuStatus)],
         directory: directory)
       let calls = ((try? String(contentsOfFile: directory + "/invoked", encoding: .utf8)) ?? "").split(separator: "\n")
-      try expect(!finished.signalled && Int(finished.code) == scenario.expectedStatus,
+      #expect(!finished.signalled && Int(finished.code) == scenario.expectedStatus,
                  "status \(finished.exitStatus), expected \(scenario.expectedStatus)\n\(finished.output)")
-      try expect(calls.first == "_glyph-raster-tests", "missing CPU gate")
-      try expect(calls.contains("_glyph-residency-tests") == scenario.runsGPUGate, "wrong GPU gate")
-      try expect(FileManager.default.fileExists(atPath: result) == scenario.writesSkip, "wrong skip report")
+      #expect(calls.first == "_glyph-raster-tests", "missing CPU gate")
+      #expect(calls.contains("_glyph-residency-tests") == scenario.runsGPUGate, "wrong GPU gate")
+      #expect(FileManager.default.fileExists(atPath: result) == scenario.writesSkip, "wrong skip report")
       if scenario.writesSkip {
-        try expect(try JSONValue(parsingFile: result)["status"]?.text == "skipped", "invalid skip report")
+        #expect(try JSONValue(parsingFile: result)["status"]?.text == "skipped", "invalid skip report")
       }
     }
   }

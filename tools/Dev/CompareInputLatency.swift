@@ -135,20 +135,4 @@ enum CompareInputLatency {
       event.postToPid(pid)
     }
   }
-
-  static let tests = [
-    SelfTest.Case(name: "input latency: percentiles pick the nearest sample") {
-      let values = [5.0, 1.0, 4.0, 2.0, 3.0]
-      try expect(percentile(values, 0.5) == 3.0, "median of five")
-      try expect(percentile(values, 0.95) == 5.0, "95th percentile of five")
-      try expect(percentile([], 0.5) == nil, "no samples, no percentile")
-    },
-    SelfTest.Case(name: "screen watch: only the marker's magenta counts as the marker") {
-      try expect(ScreenWatch.isMarker(0x00ff_00ff), "pure magenta")
-      try expect(ScreenWatch.isMarker(0x00f0_30e8), "magenta after colour conversion")
-      try expect(!ScreenWatch.isMarker(0x00ff_ffff), "white")
-      try expect(!ScreenWatch.isMarker(0x00ff_0000), "red")
-      try expect(!ScreenWatch.isMarker(0x0010_1012), "a dark background")
-    },
-  ]
 }
