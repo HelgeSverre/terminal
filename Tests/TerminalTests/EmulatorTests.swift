@@ -491,7 +491,7 @@ import Testing
       // The commands that share those final bytes still work.
       #expect(observed("\u{1b}[S").rows != untouched.rows, "CSI S scrolls")
       #expect(observed("\u{1b}[?J").rows != untouched.rows, "DECSED erases")
-      #expect(observed("\u{1b}[c").replies == "\u{1b}[?62;4c", "primary device attributes")
+      #expect(observed("\u{1b}[c").replies == "\u{1b}[?62;22c", "primary device attributes")
       #expect(observed("\u{1b}[>c").replies == "\u{1b}[>1;10;0c", "secondary device attributes")
       #expect(observed("\u{1b}[?u").replies == "\u{1b}[?0u", "keyboard flags query")
       #expect(observed("\u{1b}[?69$p").replies == "\u{1b}[?69;2$y", "DECRQM for a private mode")
@@ -927,6 +927,48 @@ import Testing
     #expect(viewHeader(resized)["cols"] as? Int == 8)
   }
 
+  /// Feeds `input` to a fresh terminal and returns its text rows, replies and cursor.
+  static func observe(_ input: String, columns: UInt32 = 10, rows: UInt32 = 3)
+    -> (rows: [String], replies: String, cursor: (row: Int, column: Int)) {
+    let terminal = terminal_create(columns, rows)!
+    defer { terminal_destroy(terminal) }
+    feed(terminal, input)
+    let reply = String(decoding: replies(terminal), as: UTF8.self)
+    // Synchronized output withholds publication; such inputs check replies only.
+    let published = swiftTerminalSnapshot(terminal, scroll: 0, now: 0).snapshot
+    let text = (published?.rows ?? []).map { row in
+      String(row.cells.map(\.text).joined().reversed().drop { $0 == " " }.reversed())
+    }
+    guard published != nil, let cursor = Self.snapshot(terminal)["cursor"] as? [String: Any] else {
+      return (text, reply, (-1, -1))
+    }
+    return (text, reply, (cursor["row"] as! Int, cursor["col"] as! Int))
+  }
+  // Mode and position reports must describe the real state, and device
+  // attributes must not advertise features the terminal lacks.
+  @Test static func deviceReplies() {
+    let expected: [(String, String, String)] = [
+      ("\u{1b}[c", "\u{1b}[?62;22c", "DA1 without sixel"),
+      ("\u{1b}[3;5H\u{1b}[?6n", "\u{1b}[?3;5R", "DECXCPR keeps its marker"),
+      ("\u{1b}[3;5H\u{1b}[6n", "\u{1b}[3;5R", "CPR has no marker"),
+      ("\u{1b}[?2004$p", "\u{1b}[?2004;2$y", "DECRQM reset private mode"),
+      ("\u{1b}[?2004h\u{1b}[?2004$p", "\u{1b}[?2004;1$y", "DECRQM set private mode"),
+      ("\u{1b}[?25$p", "\u{1b}[?25;1$y", "DECRQM cursor visible"),
+      ("\u{1b}[?7l\u{1b}[?7$p", "\u{1b}[?7;2$y", "DECRQM autowrap off"),
+      ("\u{1b}[?1049h\u{1b}[?1049$p", "\u{1b}[?1049;1$y", "DECRQM alternate screen"),
+      ("\u{1b}[?1002h\u{1b}[?1000$p\u{1b}[?1002$p", "\u{1b}[?1000;2$y\u{1b}[?1002;1$y", "DECRQM mouse modes"),
+      ("\u{1b}[?2026h\u{1b}[?2026$p", "\u{1b}[?2026;1$y", "DECRQM synchronized output"),
+      ("\u{1b}[?69$p", "\u{1b}[?69;2$y", "DECRQM left/right margins"),
+      ("\u{1b}[?12345$p", "\u{1b}[?12345;0$y", "DECRQM unknown private mode"),
+      ("\u{1b}[4h\u{1b}[4$p", "\u{1b}[4;1$y", "DECRQM ANSI insert mode"),
+      ("\u{1b}[20$p", "\u{1b}[20;2$y", "DECRQM ANSI newline mode"),
+      ("\u{1b}[3$p", "\u{1b}[3;0$y", "DECRQM unknown ANSI mode"),
+    ]
+    for (input, reply, label) in expected {
+      let actual = observe(input, rows: 4).replies
+      #expect(actual == reply, "\(label): got \(actual.debugDescription)")
+    }
+  }
   @Test static func swiftCoreSmoke() {
     guard let core = terminal_create(8, 3) else { Issue.record("create"); return }
     defer { terminal_destroy(core) }

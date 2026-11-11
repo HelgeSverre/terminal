@@ -829,8 +829,8 @@ private final class TerminalEmulator {
     // Keyboard flags (set, push, pop); secondary device attributes.
     case (0x3d, nil), (0x3c, nil): return final == 0x75
     case (0x3e, nil): return final == 0x75 || final == 0x63
-    // DECSTR, DECSCA, DECSCUSR, DECRQM for a private mode.
-    case (nil, 0x21): return final == 0x70
+    // DECSTR, DECSCA, DECSCUSR, DECRQM for an ANSI or a private mode.
+    case (nil, 0x21), (nil, 0x24): return final == 0x70
     case (nil, 0x22), (nil, 0x20): return final == 0x71
     case (0x3f, 0x24): return final == 0x70
     default: return false
@@ -916,14 +916,17 @@ private final class TerminalEmulator {
         else if action == 3 { s.keyboardFlags &= ~flags }
       }
       else { originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false }
-    case 0x6e: clearsPending = false; if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = s.cursorRow + 1 - (originMode ? s.topMargin : 0); let column = s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0); replies.append(contentsOf: "\u{1b}[\(row);\(column)R".utf8) }
+    case 0x6e: clearsPending = false; if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = s.cursorRow + 1 - (originMode ? s.topMargin : 0); let column = s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0); replies.append(contentsOf: "\u{1b}[\(privateMode ? "?" : "")\(row);\(column)R".utf8) }
     // Secondary device attributes: a VT220-class terminal, firmware version
     // 10, no ROM cartridge. Primary attributes otherwise.
     case 0x63 where first == 0x3e: clearsPending = false; replies.append(contentsOf: "\u{1b}[>1;10;0c".utf8)
-    case 0x63: clearsPending = false; replies.append(contentsOf: "\u{1b}[?62;4c".utf8)
-    case 0x70 where privateMode && last == 0x24:
+    // VT220 with ANSI color. Sixel (4) is not implemented, so it is not
+    // advertised: programs that trust DA1 would send it.
+    case 0x63: clearsPending = false; replies.append(contentsOf: "\u{1b}[?62;22c".utf8)
+    case 0x70 where last == 0x24:
       clearsPending = false
-      replies.append(contentsOf: "\u{1b}[?\(params.first ?? 0);\(params.first == 69 ? (leftRightMargins ? 1 : 2) : 0)$y".utf8)
+      let mode = params.first ?? 0
+      replies.append(contentsOf: "\u{1b}[\(privateMode ? "?" : "")\(mode);\(modeReport(mode, privateMode: privateMode))$y".utf8)
     case 0x70 where last == 0x21: softReset(); changedActiveScreen = true
     case 0x71 where last == 0x22: protectedOutput = (params.first ?? 0) == 1; clearsPending = false
     case 0x71 where last == 0x20: s.cursorShape = UInt8(min(6, max(0, params.first ?? 0))); clearsPending = false
@@ -1137,6 +1140,34 @@ private final class TerminalEmulator {
       }
       i += 1
     }
+  }
+  /// DECRQM status: 1 set, 2 reset, 0 for a mode `setMode` does not implement.
+  private func modeReport(_ mode: Int, privateMode: Bool) -> Int {
+    let enabled: Bool
+    if !privateMode {
+      switch mode {
+      case 4: enabled = insertMode
+      case 20: enabled = newlineMode
+      default: return 0
+      }
+    } else {
+      switch mode {
+      case 1: enabled = applicationCursor
+      case 5: enabled = reverseVideo
+      case 6: enabled = originMode
+      case 7: enabled = autoWrap
+      case 25: enabled = screen.cursorVisible
+      case 47, 1047, 1049: enabled = usingAlternate
+      case 69: enabled = leftRightMargins
+      case 9, 1000, 1002, 1003: enabled = mouseMode == mode
+      case 1004: enabled = focusReporting
+      case 1006: enabled = sgrMouse
+      case 2004: enabled = bracketedPaste
+      case 2026: enabled = syncDeadline != nil
+      default: return 0
+      }
+    }
+    return enabled ? 1 : 2
   }
   private func setMode(_ params: [Int], enabled: Bool, privateMode: Bool) -> Bool {
     var changedActiveScreen = false

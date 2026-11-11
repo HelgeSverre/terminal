@@ -22,21 +22,9 @@ fix and regression test land.
 4. **`ESC # 8` (DECALN) prints `8`.** `ESC #` has no case. DECALN fills the
    screen with `E`, resets margins and homes the cursor.
 
-## Replies
-
-5. **DA1 advertises sixel.** `CSI c` answers `ESC[?62;4c`; `4` is sixel
-   graphics, which is not implemented. Tools that trust DA1 send sixel and
-   hit bug 1. `EmulatorTests.swift` asserts the wrong value.
-6. **DECRQM always answers 0 (not recognised).** Only mode 69 reports its
-   state. Supported modes such as 1, 6, 7, 25, 1000–1006, 1004, 1049, 2004
-   and 2026 must answer 1 (set) or 2 (reset). ANSI-mode DECRQM (`CSI 4 $ p`)
-   gets no reply at all.
-7. **DECXCPR omits the `?`.** `CSI ? 6 n` answers `ESC[1;1R`; it must be
-   `ESC[?1;1R`.
-
 ## Graphics
 
-8. **A kitty image is dropped when a non-final chunk carries base64
+5. **A kitty image is dropped when a non-final chunk carries base64
    padding.** `KittyGraphics.consume` rejects `=` in any `m=1` chunk.
    chafa ends a transmission with an empty `m=0` chunk, so its last data
    chunk is `m=1` and padded, and `chafa -f kitty` shows nothing. kitty and
@@ -44,7 +32,7 @@ fix and regression test land.
 
 ## Environment
 
-9. **`TERMINFO` is inherited from the launching terminal.** Started from a
+6. **`TERMINFO` is inherited from the launching terminal.** Started from a
    Ghostty shell, every child gets
    `TERMINFO=/Applications/Ghostty.app/Contents/Resources/terminfo` while
    `TERM=xterm-256color`. `names_another_terminal` in `Spawn.c` must drop it.
