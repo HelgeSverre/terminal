@@ -120,10 +120,25 @@ enum StartupGridSmoke {
       throw Failure("wrong owner/grid")
     }
     guard app.livePIDs.isEmpty else { throw Failure("children survived natural exit") }
+    // A size of zero means the command started before the terminal knew its pixel size.
+    let pixels = ["pixel_width", "pixel_height"].map { data[$0] as? Int ?? 0 }
+    guard pixels.allSatisfy({ $0 > 0 }) else {
+      throw Failure("\(grid.columns)x\(grid.rows) at \(grid.fontSize)pt: the driver saw a pixel size of \(pixels[0])x\(pixels[1])")
+    }
     return ["columns", "rows", "pixel_width", "pixel_height"].map { data[$0] ?? NSNull() }
   }
 
   static let tests = [
+    SelfTest.Case(name: "startup grid smoke: a pixel size of zero fails and names the case") {
+      try withFakeApp(columns: "$2", pixelWidth: 0) { bundle, report in
+        let failure = try expectFailure("no pixel size") { try run(app: bundle, reportPath: report) { _ in } }
+        try expect(failure.message == "80x24 at 8pt: the driver saw a pixel size of 0x384", "got: \(failure.message)")
+        let written = try readJSONObject(report)
+        try expect(written["passed"] as? Bool == false && written["failure"] as? String == failure.message,
+                   "the failure is recorded")
+        try expect((written["cases"] as? [[String: Any]])?.count == 1, "the failed case is recorded")
+      }
+    },
     SelfTest.Case(name: "startup grid smoke: three matching grids from a clean exit pass") {
       try withFakeApp(columns: "$2") { bundle, report in
         try run(app: bundle, reportPath: report) { _ in }
@@ -152,10 +167,11 @@ enum StartupGridSmoke {
   /// Runs `body` with a stand-in app that reports `columns`, a shell
   /// expression, as the width it saw. It lives long enough to be seen as the
   /// owner of its report.
-  private static func withFakeApp(columns: String, _ body: (String, String) throws -> Void) throws {
+  private static func withFakeApp(columns: String, pixelWidth: Int = 640,
+                                  _ body: (String, String) throws -> Void) throws {
     try withTemporaryDirectory("dev-startup-grid-") { directory in
       let script = """
-        printf '{"terminal_pid": %d, "columns": %d, "rows": %d, "pixel_width": 640, "pixel_height": 384}' \
+        printf '{"terminal_pid": %d, "columns": %d, "rows": %d, "pixel_width": \(pixelWidth), "pixel_height": 384}' \
           $$ "\(columns)" "$4" > "${11}"
         sleep 0.3
         """

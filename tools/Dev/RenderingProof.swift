@@ -26,12 +26,12 @@ enum RenderingProof {
     var executableSHA: String
     var negative: Bool
 
+    /// The options a run must be given, each with a value.
+    static let valueOptions: Set = ["--app", "--output", "--source-sha", "--executable-sha256"]
+
     init(_ options: Options) throws {
-      // The last message names an option that does not exist, as the Ruby runner's did.
-      let names = ["--app": "--app", "--output": "--output", "--source-sha": "--source-sha",
-                   "--executable-sha256": "--expected-sha"]
       func required(_ name: String) throws -> String {
-        guard let value = options.values[name] else { throw Failure("Missing \(names[name] ?? name)") }
+        guard let value = options.values[name] else { throw Failure("Missing \(name)") }
         return value
       }
       app = absolutePath(try required("--app"))
@@ -46,8 +46,7 @@ enum RenderingProof {
     // The app starts the fixture as a program of its own.
     if arguments.first == "fixture" { return try RenderingProofFixture.main(Array(arguments.dropFirst())) }
 
-    let options = try Options(arguments, flags: ["--prepare", "--negative-control"],
-                              values: ["--app", "--output", "--source-sha", "--executable-sha256"], command: command)
+    let options = try Options(arguments, flags: ["--prepare", "--negative-control"], values: Plan.valueOptions, command: command)
     guard options.positionals.isEmpty else { throw Failure.usage(command) }
     let helpers = try prepareHelpers()
     if options.flags.contains("--prepare") {
@@ -147,10 +146,7 @@ enum RenderingProof {
   /// The gates of a run as `analysis.json` records them.
   struct Verdict {
     var report: [String: Any]
-    /// Nil when no gate failed but the driver never announced its final
-    /// output, so the final gate could not be judged. The report then holds
-    /// null, as the Ruby runner wrote it, and the run fails.
-    var passed: Bool?
+    var passed: Bool
   }
 
   /// Judges the records of a run.
@@ -172,7 +168,8 @@ enum RenderingProof {
     for pane in panes {
       expected[pane] = records.paneEvents.last { ReportValue.equals($0["pane"], pane) && ReportValue.isTruthy($0["final"]) }
     }
-    var finalGate: Bool?
+    // A driver that never announced its final output leaves the final gate failed.
+    var finalGate = false
     if let final = records.inputEvents.first(where: { $0["phase"] as? String == "final_static_output" }) {
       let announced = try final.number("host_time")
       finalGate = samples.contains { sample in
@@ -229,7 +226,7 @@ enum RenderingProof {
         }
       }
     }
-    let passed: Bool?
+    let passed: Bool
     if !errors.isEmpty || !geometryChanged {
       passed = false
     } else if negative {
@@ -242,7 +239,7 @@ enum RenderingProof {
     let expectedWidth: Any = ReportValue.integer(identity["cell_width_pixels"]).map { 6 * $0 } ?? 6 * cellWidth
     return Verdict(report: [
       "expected_final_panes": Dictionary(uniqueKeysWithValues: panes.map { (String($0), nullable(expected[$0])) }),
-      "final_visible_generation_gate": nullable(finalGate),
+      "final_visible_generation_gate": finalGate,
       "native_phases": phases,
       "classifications": classifications,
       "capture_errors": errors,
@@ -252,7 +249,7 @@ enum RenderingProof {
         + " timestamps; queued callbacks may lag their image acquisition.",
       "negative_control_expected_delta_wh": [expectedWidth, 0],
       "negative_control_gate": negativeGate,
-      "passed": nullable(passed),
+      "passed": passed,
     ], passed: passed)
   }
 
@@ -391,7 +388,7 @@ enum RenderingProof {
         paneEvents: try panes.flatMap { try TUIStress.events(output + "/pane-\($0)-events.jsonl") })
       let verdict = try judge(records, identity: identity, negative: plan.negative)
       report.merge(verdict.report) { _, new in new }
-      guard verdict.passed == true else {
+      guard verdict.passed else {
         throw Failure("Proof gates did not pass; inspect preserved pixels and analysis")
       }
     }
@@ -451,6 +448,14 @@ enum RenderingProof {
   ]
 
   static let verdictTests = [
+    SelfTest.Case(name: "rendering-proof plan: a missing option is named as it is written") {
+      for missing in Plan.valueOptions.sorted() {
+        let given = Plan.valueOptions.sorted().filter { $0 != missing }.flatMap { [$0, "value"] }
+        let options = try Options(given, flags: [], values: Plan.valueOptions, command: command)
+        let message = try expectFailure("a run without \(missing)") { _ = try Plan(options) }.message
+        try expect(message == "Missing \(missing)", "got: \(message)")
+      }
+    },
     SelfTest.Case(name: "rendering-proof verdict: phases need changed geometry and frames, then the final or the negative gate") {
       let phases = ["native_outer_divider", "native_inner_divider", "native_window_resize"]
       let generation = RenderingProofFixture.finalGeneration(rows: 30, columns: 100)
@@ -514,8 +519,9 @@ enum RenderingProof {
       var unannounced = production
       unannounced.inputEvents.removeLast()
       let open = try verdict(unannounced)
-      try expect(open.passed == nil && open.report["passed"] is NSNull && open.report["final_visible_generation_gate"] is NSNull,
-                 "a run without a final announcement records null and does not pass")
+      try expect(open.passed == false && open.report["passed"] as? Bool == false
+                   && open.report["final_visible_generation_gate"] as? Bool == false,
+                 "a run without a final announcement records false for the final gate and for the run")
 
       var control = records
       control.samples.append(frame(30, "failure", widened))

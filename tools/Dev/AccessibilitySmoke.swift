@@ -69,7 +69,11 @@ enum AccessibilitySmoke {
         failure = Failure(wrapping: error)
         provenance["runner_error"] = failure?.message
       }
-      try cleanup(app, recordingIn: &provenance)
+      // A failed cleanup is the error reported, and the provenance is written all the same.
+      do { try cleanup(app, recordingIn: &provenance) } catch {
+        failure = Failure(wrapping: error)
+        provenance["cleanup_error"] = failure?.message
+      }
       try writeJSON(provenance, to: reportDirectory + "/provenance.json")
       if let failure { throw failure }
     }
@@ -223,6 +227,22 @@ enum AccessibilitySmoke {
         try expect(runs == "run\n", "the probe ran once")
       }
     },
+    SelfTest.Case(name: "accessibility smoke: provenance is written when the child cannot be inspected") {
+      // The fixture records PID 1, which this user may not ask about.
+      let script = #"for last; do :; done; exec /bin/sh -c "$(printf '%s' "$last" | sed 's/"\$\$"/1/')""#
+      try withFakeApp(script: script) { bundle, directory in
+        let failure = try expectFailure("a child that cannot be inspected") {
+          try run(bundle: bundle, reportDirectory: directory + "/reports") { probe in
+            try writeScript(#"sleep 0.4; printf '{"passed": true}' > "$6""#, to: probe)
+          }
+        }
+        try expect(failure.message.hasPrefix("cannot inspect process 1:"), "got: \(failure.message)")
+        let provenance = try readJSONObject(directory + "/reports/provenance.json")
+        try expect(provenance["controlled_child_pid"] as? Int == 1, "the child PID is recorded")
+        try expect(provenance["cleanup_error"] as? String == failure.message, "the cleanup failure is recorded")
+        try expect(provenance["cleanup_survivors"] as? [Int] == [], "the fixture's tree is ended")
+      }
+    },
     SelfTest.Case(name: "accessibility smoke: the child PID file is one shell word") {
       try expect(shellEscaped("/var/T/a-b_c.pid") == "/var/T/a-b_c.pid", "safe characters are kept")
       try expect(shellEscaped("/tmp/it's here") == #"/tmp/it\'s\ here"#, "others are escaped")
@@ -232,9 +252,10 @@ enum AccessibilitySmoke {
 
   /// Runs `body` with a signable stand-in bundle whose executable runs the
   /// fixture command, as the app's pane would.
-  private static func withFakeApp(_ body: (String, String) throws -> Void) throws {
+  private static func withFakeApp(script: String = #"for last; do :; done; exec /bin/sh -c "$last""#,
+                                  _ body: (String, String) throws -> Void) throws {
     try withTemporaryDirectory("dev-accessibility-smoke-") { directory in
-      let bundle = try fakeBundle(in: directory, script: #"for last; do :; done; exec /bin/sh -c "$last""#)
+      let bundle = try fakeBundle(in: directory, script: script)
       let information = ["CFBundleIdentifier": "test.fixture", "CFBundleExecutable": "Terminal", "CFBundlePackageType": "APPL"]
       try PropertyListSerialization.data(fromPropertyList: information, format: .xml, options: 0)
         .write(to: URL(fileURLWithPath: bundle + "/Contents/Info.plist"))

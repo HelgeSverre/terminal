@@ -621,19 +621,21 @@ enum AppleScriptSmoke {
     /// unless some process still runs from it.
     private func cleanupProcess() -> Failure? {
       var failure = cleanupOwnedProcess()
-      guard isDirectory(fixtureRoot) else { return failure }
-      do {
-        let active = try activeFixturePIDs()
-        cleanup["active_fixture_pids_after_cleanup"] = .array(active.map(JSONValue.int))
-        if active.isEmpty {
-          forgetFixturePreferences()
-          try FileManager.default.removeItem(atPath: fixtureRoot)
-        } else if failure == nil {
-          failure = Failure("Refusing to remove active fixture process(es): \(active.listed)")
+      if isDirectory(fixtureRoot) {
+        do {
+          let active = try activeFixturePIDs()
+          cleanup["active_fixture_pids_after_cleanup"] = .array(active.map(JSONValue.int))
+          if active.isEmpty {
+            forgetFixturePreferences()
+            try FileManager.default.removeItem(atPath: fixtureRoot)
+          } else if failure == nil {
+            failure = Failure("Refusing to remove active fixture process(es): \(active.listed)")
+          }
+        } catch {
+          failure = Failure(message(error))
         }
-      } catch {
-        failure = Failure(message(error))
       }
+      // Recorded with or without a fixture directory, so the report cannot pass a failed cleanup.
       if let failure { recordCleanupFailure(failure) }
       return failure
     }
@@ -724,9 +726,10 @@ enum AppleScriptSmoke {
     return String(String.UnicodeScalarView(kept)).contains("AUTOMATION_RECEIPT" + receipt)
   }
 
-  /// The text as an AppleScript string literal.
+  /// The text as an AppleScript string literal. Backslashes are doubled
+  /// first, so that the ones added before quotes are not doubled again.
   static func literal(_ value: String) -> String {
-    "\"" + value.replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    "\"" + value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
   }
 
   /// At most `outputLimit` bytes of the text, still valid UTF-8, with a note of how much was cut.
@@ -776,6 +779,21 @@ enum AppleScriptSmoke {
         try expect(report["cleanup"]?["survivors"]?.compact == "[4242]", "the survivors are recorded")
         try expect(!FileManager.default.fileExists(atPath: root + "/target/automation-fixture"), "the fixture is removed")
       }
+    },
+    SelfTest.Case(name: "applescript smoke: a cleanup failure is reported when the fixture directory is already gone") {
+      try withTemporaryDirectory("dev-applescript-gone-") { root in
+        let message = failureMessage { try MissingFixtureSession(root: root, environment: [:]).run() }
+        try expect(message?.contains("Fixture cleanup left processes: 4242") == true, "got: \(message ?? "no failure")")
+        let report = try JSONValue(parsingFile: root + "/reports/applescript-smoke.json")
+        try expect(report["passed"]?.truth == false, "the report says passed")
+        try expect(report["failure"]?.text == "Fixture cleanup left processes: 4242", "the report names the failure")
+        try expect(report["cleanup"]?["error"]?.text == "Fixture cleanup left processes: 4242", "the cleanup records it")
+      }
+    },
+    SelfTest.Case(name: "applescript smoke: a string literal escapes backslashes before quotes") {
+      try expect(literal("plain") == "\"plain\"", "plain text is quoted")
+      try expect(literal(#"a\b"c"#) == #""a\\b\"c""#, "got: \(literal(#"a\b"c"#))")
+      try expect(literal(#"ends with \"#) == #""ends with \\""#, "a final backslash does not escape the closing quote")
     },
     SelfTest.Case(name: "applescript smoke: a report failure still releases the lock and fails the run") {
       try withTemporaryDirectory("dev-applescript-report-") { root in
@@ -935,6 +953,11 @@ enum AppleScriptSmoke {
     override func exerciseDictionary() throws {}
     override func verifyCleanExit() throws {}
     override func forgetFixturePreferences() {}
+  }
+
+  /// The same, with the fixture directory never made.
+  private final class MissingFixtureSession: CleanupFailureSession {
+    override func prepareFixture() throws {}
   }
 
   private final class ReportFailureSession: CleanupFailureSession {

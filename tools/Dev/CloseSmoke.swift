@@ -68,10 +68,12 @@ enum CloseSmoke {
   /// `report` holds the app's report from the moment it has been read.
   private static func judge(_ mode: Mode, _ process: ProcessTree, _ path: String,
                             _ report: inout [String: Any]) throws {
-    guard process.wait(seconds: 10)?.succeeded == true else {
-      throw Failure("\(mode.name): app did not exit successfully")
-    }
-    report = try readJSONObject(path)
+    let exit = process.wait(seconds: 10)
+    // What the app wrote is kept also when it did not exit cleanly.
+    let written = Result { try readJSONObject(path) }
+    if case .success(let object) = written { report = object }
+    guard exit?.succeeded == true else { throw Failure("\(mode.name): app did not exit successfully") }
+    _ = try written.get()
     guard report["trigger"] as? String == mode.trigger else {
       throw Failure("\(mode.name): incorrect shutdown trigger")
     }
@@ -106,6 +108,18 @@ enum CloseSmoke {
         try expect(failure.message.contains("incorrect shutdown trigger"), "got: \(failure.message)")
         let report = try readJSONObject(reports + "/close-window-smoke.json")
         try expect(report["passed"] as? Bool == false, "report failed")
+      }
+    },
+    SelfTest.Case(name: "close smoke: the app's report is kept when the app does not exit cleanly") {
+      let script = #"printf '{"passed": true, "trigger": "last-window-close", "child_pid": 1}' > "$2"; exit 3"#
+      try withFakeApp(script) { bundle, reports in
+        let failure = try expectFailure("a failed exit") { try run(modes[0], bundle: bundle, reportDirectory: reports) }
+        try expect(failure.message == "window: app did not exit successfully", "got: \(failure.message)")
+        let report = try readJSONObject(reports + "/close-window-smoke.json")
+        try expect(report["passed"] as? Bool == false && report["runner_error"] as? String == failure.message,
+                   "the runner's verdict is recorded: \(report)")
+        try expect(report["trigger"] as? String == "last-window-close" && report["child_pid"] as? Int == 1,
+                   "the app's report is kept: \(report)")
       }
     },
     SelfTest.Case(name: "close smoke: native reports gain a pass only after both shutdown checks") {

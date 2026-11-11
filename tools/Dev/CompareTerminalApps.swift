@@ -19,7 +19,7 @@ enum CompareTerminalApps {
     var comparison = try Comparison(output: arguments[0], rustApp: arguments[1], swiftApp: arguments[2],
                                     environment: ProcessInfo.processInfo.environment)
     try comparison.run()
-    print("Completed both app benchmarks; all owned processes exited cleanly")
+    print(comparison.summary)
   }
 
   struct Comparison {
@@ -102,6 +102,19 @@ enum CompareTerminalApps {
         "passed": ratios.values.allSatisfy { $0 >= minimumSwiftToRustRatio },
       ] as [String: Any]
       result["passed"] = true
+    }
+
+    /// The line printed after a run. `passed` in the report says that both
+    /// apps were measured, not that the gate was cleared, so the line states the gate.
+    var summary: String {
+      let gate = result["performance_gate"] as? [String: Any] ?? [:]
+      let ratios = gate["observed_ratios"] as? [String: Double] ?? [:]
+      let minimum = "\(Int(minimumSwiftToRustRatio * 100))% of rust"
+      let missed = ratios.filter { $0.value < minimumSwiftToRustRatio }.sorted { $0.key < $1.key }
+        .map { "\($0.key) \(String(format: "%.1f", ($0.value * 1000).rounded(.down) / 10))%" }
+      let verdict = gate["passed"] as? Bool == true ? "passed (every workload at or above \(minimum))"
+        : "failed (below \(minimum): \(missed.joined(separator: ", ")))"
+      return "Completed both app benchmarks; all owned processes exited cleanly; performance gate \(verdict)"
     }
 
     /// Each workload's median Swift throughput as a fraction of the Rust one.
@@ -272,18 +285,7 @@ enum CompareTerminalApps {
     },
     SelfTest.Case(name: "compare terminal apps: two accepted apps give a report with the order and the gate") {
       try withFakeBundle(reportingScript) { app, root in
-        let summary: [String: Any] = ["samples": 1, "p50": 2.0, "p95": 2.0, "p99": 2.0, "max": 2.0]
-        let time = summary.mapValues { $0 as? Double == 2.0 ? 0.5 : $0 }
-        try JSONValue(sortingKeysOf: [
-          "schema": 2, "terminal": "LABEL", "terminal_pid": fixturePlaceholderPID, "columns": 100, "rows": 30,
-          "pixel_width": 800, "pixel_height": 540, "output_post_processing": true,
-          "workloads": BenchDriver.workloads.map { name -> [String: Any] in
-            ["name": name, "source_bytes_per_run": 1_048_576, "mib_per_second": summary, "elapsed_seconds": time,
-             "terminal_cpu_seconds": NSNull(),
-             "run_samples": [["run": 1, "mib_per_second": 2.0, "elapsed_seconds": 0.5,
-                              "terminal_cpu_seconds": NSNull()] as [String: Any]]]
-          },
-        ] as [String: Any]).write(to: app + "/Contents/MacOS/Terminal.report")
+        try writeDriverReport(for: app, rate: 2.0)
         var comparison = try Comparison(output: root + "/report", rustApp: app, swiftApp: app, environment: [
           "BENCH_FIRST": "swift", "BENCH_BYTES": "1048576", "BENCH_RUNS": "1"])
         try comparison.run()
@@ -297,6 +299,25 @@ enum CompareTerminalApps {
         try expect(rust["report"] as? String == "rust.json" && rust["natural_exit"] as? Bool == true, "rust is recorded")
         let text = try String(contentsOfFile: root + "/report/comparison.json", encoding: .utf8)
         try expect(text.contains("\"unicode\": 1.0"), "a ratio is written as floating point")
+        try expect(comparison.summary == "Completed both app benchmarks; all owned processes exited cleanly; "
+                     + "performance gate passed (every workload at or above 70% of rust)", "got: \(comparison.summary)")
+      }
+    },
+    SelfTest.Case(name: "compare terminal apps: a missed gate leaves the measurement passed and is stated in the summary") {
+      try withFakeBundle(reportingScript) { app, root in
+        let slow = root + "/Slow.app"
+        try writeScript(reportingScript, to: slow + "/Contents/MacOS/Terminal")
+        try writeDriverReport(for: app, rate: 2.0)
+        try writeDriverReport(for: slow, rate: 1.0)
+        var comparison = try Comparison(output: root + "/report", rustApp: app, swiftApp: slow, environment: [
+          "BENCH_BYTES": "1048576", "BENCH_RUNS": "1"])
+        try comparison.run()
+        let report = try readJSONObject(root + "/report/comparison.json")
+        try expect(report["passed"] as? Bool == true, "both apps were measured")
+        try expect(try report.object("performance_gate")["passed"] as? Bool == false, "the gate is missed")
+        let workloads = BenchDriver.workloads.sorted().map { "\($0) 50.0%" }.joined(separator: ", ")
+        try expect(comparison.summary == "Completed both app benchmarks; all owned processes exited cleanly; "
+                     + "performance gate failed (below 70% of rust: \(workloads))", "got: \(comparison.summary)")
       }
     },
   ]
@@ -311,6 +332,22 @@ enum CompareTerminalApps {
     done
     sed -e "s/\(fixturePlaceholderPID)/$$/" -e "s/LABEL/$label/" "$0.report" > "$output"
     """
+
+  /// Writes the report a fixture app answers with: one 1 MiB run of every
+  /// workload at `rate` MiB per second.
+  private static func writeDriverReport(for app: String, rate: Double) throws {
+    func summary(_ value: Double) -> [String: Any] { ["samples": 1, "p50": value, "p95": value, "p99": value, "max": value] }
+    try JSONValue(sortingKeysOf: [
+      "schema": 2, "terminal": "LABEL", "terminal_pid": fixturePlaceholderPID, "columns": 100, "rows": 30,
+      "pixel_width": 800, "pixel_height": 540, "output_post_processing": true,
+      "workloads": BenchDriver.workloads.map { name -> [String: Any] in
+        ["name": name, "source_bytes_per_run": 1_048_576, "mib_per_second": summary(rate),
+         "elapsed_seconds": summary(1 / rate), "terminal_cpu_seconds": NSNull(),
+         "run_samples": [["run": 1, "mib_per_second": rate, "elapsed_seconds": 1 / rate,
+                          "terminal_cpu_seconds": NSNull()] as [String: Any]]]
+      },
+    ] as [String: Any]).write(to: app + "/Contents/MacOS/Terminal.report")
+  }
 
   private static func observations() -> [[String: Any]] {
     [["run": 1, "mib_per_second": 2.0, "elapsed_seconds": 1.0, "terminal_cpu_seconds": 0.1],

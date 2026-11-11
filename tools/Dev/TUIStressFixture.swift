@@ -247,17 +247,30 @@ final class TUIStressFixture {
     events.record("winsize", ["rows": size.rows, "columns": size.columns, "child_pid": child.map { Int($0) } ?? NSNull()])
   }
 
+  /// Passes typed input on to the workload. End of input means the fixture's
+  /// own terminal is gone, and the fixture stops: a terminal at end of input
+  /// stays readable, and the relay would otherwise never wait again.
   private func forwardInput() throws {
-    guard let terminal, case .bytes(let bytes) = try readAvailable(STDIN_FILENO, limit: Self.readLimit) else { return }
-    try writeAll(terminal.master, bytes)
-    recordBytes("input", bytes)
+    guard let terminal else { return }
+    switch try readAvailable(STDIN_FILENO, limit: Self.readLimit) {
+    case .bytes(let bytes):
+      try writeAll(terminal.master, bytes)
+      recordBytes("input", bytes)
+    case .endOfFile: stopping = true
+    case .nothing: break
+    }
   }
 
-  /// Returns false once the inner terminal reports it is closed.
+  /// Returns false once the inner terminal reports it is closed, by an error
+  /// or by end of input: the workload has closed its end.
   private func forwardOutput() throws -> Bool {
     guard let terminal else { return false }
     do {
-      if case .bytes(let bytes) = try readAvailable(terminal.master, limit: Self.readLimit) { try emit(bytes) }
+      switch try readAvailable(terminal.master, limit: Self.readLimit) {
+      case .bytes(let bytes): try emit(bytes)
+      case .endOfFile: return false
+      case .nothing: break
+      }
       return true
     } catch let error as SystemFailure where error.code == EIO {
       return false
@@ -543,6 +556,61 @@ final class TUIStressFixture {
         }
         try expect(killed, "the lingering child is killed and reaped")
         try expectCleanReceipt(directory + "/pane-0-final.json")
+      }
+    },
+    SelfTest.Case(name: "tui-stress fixture: a child that closes its terminal ends the relay without a signal") {
+      try withFixtureDirectory { directory, environment in
+        let binary = directory + "/closed-tty-linger"
+        try writeScript("""
+          trap '' TERM HUP
+          exec <&- >&- 2>&-
+          while :; do sleep 1; done
+          """, to: binary)
+        let outer = try PseudoTerminal()
+        try outer.setSize(rows: 18, columns: 62)
+        var settings = environment
+        settings["TERMINAL_TUI_STRESS_FILES"] = binary
+        let wrapper = try spawnChild([directory + "/fixture", "-l"], environment: settings, terminal: outer.slavePath)
+        outer.releaseSlave()
+        var status: ChildStatus?
+        defer { if status == nil { kill(wrapper, SIGTERM); _ = try? reap(wrapper, within: 3) } }
+
+        // The relay ends at the inner terminal's end of input, and the child is then reaped.
+        let transcript = directory + "/pane-0-events.jsonl"
+        try waitFor(4, "the relay to end at the inner terminal's end of input") {
+          guard FileManager.default.fileExists(atPath: transcript) else { return false }
+          return try TUIStress.events(transcript).contains { $0["event"] as? String == "child_exited" }
+        }
+        kill(wrapper, SIGTERM)
+        status = try reap(wrapper, within: 3)
+        try expect(status?.succeeded == true, "the fixture ends cleanly after TERM: \(String(describing: status))")
+        try expectCleanReceipt(directory + "/pane-0-final.json")
+      }
+    },
+    SelfTest.Case(name: "tui-stress fixture: end of input on its own terminal ends the fixture") {
+      try withFixtureDirectory { directory, environment in
+        let binary = directory + "/quiet"
+        try writeScript("exec /bin/sleep 30", to: binary)
+        let outer = try PseudoTerminal()
+        try outer.setSize(rows: 18, columns: 62)
+        var settings = environment
+        settings["TERMINAL_TUI_STRESS_FILES"] = binary
+        let wrapper = try spawnChild([directory + "/fixture", "-l"], environment: settings, terminal: outer.slavePath)
+        outer.releaseSlave()
+        var status: ChildStatus?
+        defer { if status == nil { kill(wrapper, SIGTERM); _ = try? reap(wrapper, within: 3) } }
+
+        let transcript = directory + "/pane-0-events.jsonl"
+        try waitFor(4, "the relay to start") {
+          guard FileManager.default.fileExists(atPath: transcript) else { return false }
+          return try TUIStress.events(transcript).contains { $0["event"] as? String == "winsize" }
+        }
+        outer.close()
+        status = try reap(wrapper, within: 3)
+        try expect(status?.succeeded == true, "the fixture ends by itself: \(String(describing: status))")
+        let receipt = try readJSONObject(directory + "/pane-0-final.json")
+        try expect(receipt["child_alive"] as? Bool == false && receipt["failure"] is NSNull,
+                   "the child is reaped and nothing failed: \(receipt)")
       }
     },
     SelfTest.Case(name: "tui-stress fixture: Codex gets the loopback provider, a private home and a recorded final request") {
