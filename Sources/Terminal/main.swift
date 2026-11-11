@@ -567,7 +567,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func remove(_ window: TerminalWindow) { windows.removeAll { $0 === window } }
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
-    if !hasVisibleWindows { newWindow(nil) }
+    // A reopen can arrive during launch, before the first window is on
+    // screen and counted as visible. Opening another then gives two windows,
+    // so the test is whether any window exists. AppKit brings a minimised
+    // one back itself.
+    if windows.isEmpty { newWindow(nil) }
     return true
   }
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
