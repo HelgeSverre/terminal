@@ -102,10 +102,7 @@ enum AppleScriptSmoke {
     _ = write(descriptor, line, line.count)
     close(descriptor)
     // Raw and silent, so a line longer than the canonical limit arrives whole.
-    var mode = termios()
-    guard tcgetattr(STDIN_FILENO, &mode) == 0 else { throw Failure("standard input is not a terminal") }
-    cfmakeraw(&mode)
-    guard tcsetattr(STDIN_FILENO, TCSANOW, &mode) == 0 else { throw Failure("cannot make the terminal raw") }
+    try makeStandardInputRaw()
 
     var digest = SHA256()
     var buffer = [UInt8](repeating: 0, count: 4096)

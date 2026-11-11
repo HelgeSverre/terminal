@@ -101,9 +101,7 @@ final class TUIStressFixture {
   func run() throws {
     var failure: Failure?
     do {
-      guard try runInherited(["/bin/stty", "raw", "-echo"]) else {
-        throw Failure("could not configure fixture terminal")
-      }
+      try makeStandardInputRaw()
       if workload == "files" { try runFiles() } else { try runCodex() }
     } catch { failure = Failure(wrapping: error) }
     do { try terminateAndReap() } catch { failure = failure ?? Failure(wrapping: error) }

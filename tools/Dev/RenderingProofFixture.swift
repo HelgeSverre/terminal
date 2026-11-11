@@ -71,7 +71,7 @@ enum RenderingProofFixture {
     let pane = try claimPaneNumber(counter: directory + "/pane-counter")
     guard colours.indices.contains(pane) else { throw Failure("Unexpected additional fixture pane") }
     Interruption.takeOver(resize: true)
-    guard try runInherited(["/bin/stty", "raw", "-echo"]) else { throw Failure("Cannot configure fixture PTY") }
+    try makeStandardInputRaw()
     let negative = environment["TERMINAL_RENDER_PROOF_NEGATIVE"] == "1"
     let pid = Int(getpid())
 

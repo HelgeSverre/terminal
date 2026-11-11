@@ -107,6 +107,20 @@ func runInherited(_ command: [String], directory: String? = nil) throws -> Bool 
   return process.terminationReason == .exit && process.terminationStatus == 0
 }
 
+/// Puts the terminal on standard input into raw mode, without echo.
+///
+/// Done here and not by running `stty`: a fixture is its terminal's session
+/// leader, and a `stty` started from it as a separate process failed to
+/// change the mode in every real run.
+func makeStandardInputRaw() throws {
+  var mode = termios()
+  guard tcgetattr(STDIN_FILENO, &mode) == 0 else { throw Failure("standard input is not a terminal") }
+  cfmakeraw(&mode)
+  guard tcsetattr(STDIN_FILENO, TCSANOW, &mode) == 0 else {
+    throw Failure("cannot make the terminal raw: \(String(cString: strerror(errno)))")
+  }
+}
+
 private func prepare(_ command: [String], adding environment: [String: String?], directory: String?) throws -> Process {
   guard let name = command.first else { throw Failure("empty command") }
   let process = Process()
