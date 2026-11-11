@@ -33,6 +33,8 @@ let commands = [
   // Measurements and diagnoses.
   CompareStartup.command,
   CompareShutdown.command,
+  CompareVisibleStartup.command,
+  CompareInputLatency.command,
   CompareTerminals.command,
   CompareTerminalApps.command,
   ProfileTerminal.command,

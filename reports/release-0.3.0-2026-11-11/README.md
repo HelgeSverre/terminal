@@ -124,10 +124,56 @@ exited cleanly. The peak footprint of this build is 13 MB above the previous
 one; with one run each that is not explained. The earlier report gave the
 first two footprints as MiB; they are megabytes of 10⁶ bytes.
 
+## What appears on screen at startup
+
+Milliseconds after launch, median with the range, over 9 warm launches
+(`just benchmark-visible-startup`, `visible-startup.json`). The screen is
+captured while each terminal starts a login zsh whose only start-up file
+prints a block of marker colour, so the user's shell configuration is not
+part of it. A frame's time is when it was shown; the displays refresh at
+60 Hz, so each screen figure is rounded up to the next 16.7 ms.
+
+| Terminal | Window listed (ms) | Window visible (ms) | Shell output visible (ms) |
+| --- | ---: | ---: | ---: |
+| This app | 119 (103–132) | 139 (125–155) | 152 (125–160) |
+| Ghostty | 187 (151–205) | 209 (72–227) | 209 (175–272) |
+| Kitty | 505 (489–566) | 527 (356–586) | 594 (570–686) |
+| iTerm2 | 540 (518–573) | 604 (492–676) | 655 (621–704) |
+| Apple Terminal | 182 (169–211) | not reliable | not seen |
+
+Ghostty shows its window with the shell's output already in it. Three of
+Kitty's nine launches and one of iTerm2's were not seen and are left out of
+their screen figures. Apple Terminal's window was not detected reliably (it
+is listed in one place and drawn in another), so its screen figures are
+omitted.
+
+## Key to program latency
+
+Milliseconds from posting a key event to a terminal until a raw-mode program
+on its PTY reads the byte, 100 keys per case
+(`just benchmark-input-latency`, `input-latency.json`). It covers event
+delivery, the terminal's key handling and its write to the PTY; keyboard
+hardware and the display are not part of it. "Flood" is the same program
+writing text as fast as the terminal takes it. The terminals were not in
+front while measured.
+
+| Terminal | Idle p50 (ms) | Idle p95 (ms) | Flood p50 (ms) | Flood p95 (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| This app | 1.60 | 4.26 | 0.68 | 2.85 |
+| Ghostty | 1.25 | 5.02 | 0.67 | 2.33 |
+| Apple Terminal | 1.05 | 2.86 | 10.49 | 13.07 |
+| iTerm2 | 1.59 | 3.61 | 62.72 | 96.74 |
+| Kitty | not measured | not measured | not measured | not measured |
+
+Kitty dropped every key posted to it in this run; in a 20-key trial its flood
+figures were 5.7 and 10.5 ms. The idle figures are higher than the flood ones
+for this app and Ghostty because an idle app that is not in front wakes up
+more slowly than a busy one.
+
 ## Not measured
 
-Cold start, display smoothness, input-to-photon latency, and the login-shell
-start time.
+Cold start, display smoothness, input-to-photon latency, and the time to the
+user's own shell prompt.
 
 ## Control sequences with a private marker
 

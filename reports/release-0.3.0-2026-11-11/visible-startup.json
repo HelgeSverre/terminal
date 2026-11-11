@@ -1,0 +1,262 @@
+{
+  "app" : "\/Users\/helge\/.cache\/terminal-perf\/apps\/Main.app",
+  "display_refresh_note" : "a frame's time is when it was shown, so each figure is rounded up to the next refresh",
+  "load_after" : [
+    6.3600000000000003,
+    5.3399999999999999,
+    5
+  ],
+  "load_before" : [
+    5.0599999999999996,
+    4.9000000000000004,
+    4.8200000000000003
+  ],
+  "method" : "fresh instance with a login zsh whose only start-up file prints a block of marker colour, launched from its executable; the screen is captured at the display's refresh rate; the first launch of each terminal is excluded from medians",
+  "rounds" : 10,
+  "samples" : {
+    "apple_terminal" : [
+      {
+        "window_listed_ms" : 167.03870900000001
+      },
+      {
+        "window_listed_ms" : 182.48608400000001
+      },
+      {
+        "window_listed_ms" : 190.67991599999999,
+        "window_visible_ms" : 2458.2823749999998
+      },
+      {
+        "window_listed_ms" : 185.48112499999999,
+        "window_visible_ms" : 4487.7384590000001
+      },
+      {
+        "window_listed_ms" : 181.37883299999999
+      },
+      {
+        "window_listed_ms" : 176.464541,
+        "window_visible_ms" : 1375.708875
+      },
+      {
+        "window_listed_ms" : 200.19145800000001,
+        "window_visible_ms" : 4091.9522499999998
+      },
+      {
+        "window_listed_ms" : 172.33058299999999,
+        "window_visible_ms" : 203.20791700000001
+      },
+      {
+        "window_listed_ms" : 211.24825000000001
+      },
+      {
+        "window_listed_ms" : 168.74375000000001,
+        "window_visible_ms" : 3227.498
+      }
+    ],
+    "ghostty" : [
+      {
+        "shell_output_visible_ms" : 189.12870899999999,
+        "window_listed_ms" : 166.913375,
+        "window_visible_ms" : 189.12870899999999
+      },
+      {
+        "shell_output_visible_ms" : 209.79958400000001,
+        "window_listed_ms" : 185.06854200000001,
+        "window_visible_ms" : 209.79958400000001
+      },
+      {
+        "shell_output_visible_ms" : 272.08479199999999,
+        "window_listed_ms" : 200.323958,
+        "window_visible_ms" : 72.086792000000003
+      },
+      {
+        "shell_output_visible_ms" : 209.33237500000001,
+        "window_listed_ms" : 187.2045,
+        "window_visible_ms" : 209.33237500000001
+      },
+      {
+        "shell_output_visible_ms" : 211.023,
+        "window_listed_ms" : 188.46829099999999,
+        "window_visible_ms" : 211.023
+      },
+      {
+        "shell_output_visible_ms" : 227.21620899999999,
+        "window_listed_ms" : 204.611625,
+        "window_visible_ms" : 227.21620899999999
+      },
+      {
+        "shell_output_visible_ms" : 208.80416700000001,
+        "window_listed_ms" : 186.53312500000001,
+        "window_visible_ms" : 208.80416700000001
+      },
+      {
+        "shell_output_visible_ms" : 208.00470899999999,
+        "window_listed_ms" : 186.49812499999999,
+        "window_visible_ms" : 208.00470899999999
+      },
+      {
+        "shell_output_visible_ms" : 175.288917,
+        "window_listed_ms" : 151.49545800000001,
+        "window_visible_ms" : 175.288917
+      },
+      {
+        "shell_output_visible_ms" : 188.30208400000001,
+        "window_listed_ms" : 167.276917,
+        "window_visible_ms" : 188.30208400000001
+      }
+    ],
+    "iterm2" : [
+      {
+        "shell_output_visible_ms" : 739.81562499999995,
+        "window_listed_ms" : 603.11683300000004,
+        "window_visible_ms" : 623.150125
+      },
+      {
+        "shell_output_visible_ms" : 654.86075000000005,
+        "window_listed_ms" : 570.272291,
+        "window_visible_ms" : 654.86075000000005
+      },
+      {
+        "shell_output_visible_ms" : 675.41079200000001,
+        "window_listed_ms" : 549.950917,
+        "window_visible_ms" : 492.07929200000001
+      },
+      {
+        "shell_output_visible_ms" : 627.90120899999999,
+        "window_listed_ms" : 539.70541700000001,
+        "window_visible_ms" : 627.90120899999999
+      },
+      {
+        "window_listed_ms" : 572.58945800000004,
+        "window_visible_ms" : 675.82779200000004
+      },
+      {
+        "shell_output_visible_ms" : 625.47683400000005,
+        "window_listed_ms" : 534.03800000000001,
+        "window_visible_ms" : 608.81033400000001
+      },
+      {
+        "shell_output_visible_ms" : 621.06458399999997,
+        "window_listed_ms" : 518.18933400000003,
+        "window_visible_ms" : 604.39808400000004
+      },
+      {
+        "shell_output_visible_ms" : 640.722084,
+        "window_listed_ms" : 527.08712500000001,
+        "window_visible_ms" : 557.38958400000001
+      },
+      {
+        "shell_output_visible_ms" : 703.60424999999998,
+        "window_listed_ms" : 556.26374999999996,
+        "window_visible_ms" : 586.93875000000003
+      },
+      {
+        "shell_output_visible_ms" : 671.77700000000004,
+        "window_listed_ms" : 536.02608299999997,
+        "window_visible_ms" : 555.11149999999998
+      }
+    ],
+    "kitty" : [
+      {
+        "shell_output_visible_ms" : 673.60341700000004,
+        "window_listed_ms" : 560.80395799999997,
+        "window_visible_ms" : 590.27091700000005
+      },
+      {
+        "shell_output_visible_ms" : 623.670209,
+        "window_listed_ms" : 534.42624999999998,
+        "window_visible_ms" : 557.00420899999995
+      },
+      {
+        "window_listed_ms" : 514.60029199999997
+      },
+      {
+        "window_listed_ms" : 504.81145800000002
+      },
+      {
+        "window_listed_ms" : 538.33754099999999
+      },
+      {
+        "shell_output_visible_ms" : 572.489375,
+        "window_listed_ms" : 489.27920799999998,
+        "window_visible_ms" : 355.82487500000002
+      },
+      {
+        "shell_output_visible_ms" : 593.58866699999999,
+        "window_listed_ms" : 504.478208,
+        "window_visible_ms" : 526.92266700000005
+      },
+      {
+        "shell_output_visible_ms" : 686.13675000000001,
+        "window_listed_ms" : 565.94974999999999,
+        "window_visible_ms" : 586.13774999999998
+      },
+      {
+        "shell_output_visible_ms" : 570.49716699999999,
+        "window_listed_ms" : 495.91837500000003,
+        "window_visible_ms" : 520.49766699999998
+      },
+      {
+        "shell_output_visible_ms" : 577.06325000000004,
+        "window_listed_ms" : 491.63020799999998,
+        "window_visible_ms" : 510.39724999999999
+      }
+    ],
+    "terminal" : [
+      {
+        "shell_output_visible_ms" : 141.884625,
+        "window_listed_ms" : 119.75595800000001,
+        "window_visible_ms" : 141.884625
+      },
+      {
+        "shell_output_visible_ms" : 138.88666699999999,
+        "window_listed_ms" : 107.40691700000001,
+        "window_visible_ms" : 138.88666699999999
+      },
+      {
+        "shell_output_visible_ms" : 159.80604199999999,
+        "window_listed_ms" : 125.159458,
+        "window_visible_ms" : 143.13954200000001
+      },
+      {
+        "shell_output_visible_ms" : 139.25299999999999,
+        "window_listed_ms" : 119.28204100000001,
+        "window_visible_ms" : 139.25299999999999
+      },
+      {
+        "shell_output_visible_ms" : 154.74712500000001,
+        "window_listed_ms" : 132.020916,
+        "window_visible_ms" : 154.74712500000001
+      },
+      {
+        "shell_output_visible_ms" : 159.192375,
+        "window_listed_ms" : 120.752291,
+        "window_visible_ms" : 142.52587500000001
+      },
+      {
+        "shell_output_visible_ms" : 158.010459,
+        "window_listed_ms" : 122.01566699999999,
+        "window_visible_ms" : 141.34395900000001
+      },
+      {
+        "shell_output_visible_ms" : 152.34450000000001,
+        "window_listed_ms" : 112.01075,
+        "window_visible_ms" : 135.678
+      },
+      {
+        "shell_output_visible_ms" : 125.037042,
+        "window_listed_ms" : 102.846125,
+        "window_visible_ms" : 125.037042
+      },
+      {
+        "shell_output_visible_ms" : 144.66162499999999,
+        "window_listed_ms" : 103.64491599999999,
+        "window_visible_ms" : 127.995125
+      }
+    ]
+  },
+  "skipped" : {
+
+  },
+  "system" : "Version 15.6 (Build 24G84)",
+  "unit" : "milliseconds after launch"
+}

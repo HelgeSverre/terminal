@@ -22,7 +22,7 @@ enum SelfTest {
     RenderingProof.tests, RenderingProofFixture.tests, Gallery.tests, GlyphPolicy.tests,
     CompareTerminals.tests, CompareTerminalApps.tests, ProfileTerminal.tests, DiagnoseStream.tests,
     CompareEmulators.tests, CompareCSIDispatch.tests, CompareSwiftRows.tests,
-    ReleaseSigning.tests, ReleasePublisher.tests, Sources.tests,
+    ReleaseSigning.tests, ReleasePublisher.tests, Sources.tests, CompareInputLatency.tests,
   ].flatMap { $0 }
 
   static func run(_ arguments: [String]) throws {

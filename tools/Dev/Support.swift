@@ -81,9 +81,13 @@ final class OwnedProcess {
   private let process = Process()
   let launchedAt: UInt64
 
-  init(executable: String, arguments: [String]) throws {
+  /// Launches the executable. `environment` adds to the inherited one.
+  init(executable: String, arguments: [String], environment: [String: String] = [:]) throws {
     process.executableURL = URL(fileURLWithPath: executable)
     process.arguments = arguments
+    if !environment.isEmpty {
+      process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, added in added }
+    }
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle.nullDevice
     launchedAt = Clock.now
@@ -91,9 +95,11 @@ final class OwnedProcess {
   }
   var pid: pid_t { process.processIdentifier }
   var isRunning: Bool { process.isRunning }
-  var hasWindow: Bool {
-    ScreenWindow.all().contains { $0.pid == pid && $0.width >= 100 && $0.height >= 100 }
+  /// The process's window, once it has one of a usable size on screen.
+  var window: ScreenWindow? {
+    ScreenWindow.all().first { $0.pid == pid && $0.width >= 100 && $0.height >= 100 }
   }
+  var hasWindow: Bool { window != nil }
 
   /// When the process first has a window on screen, or nil if `deadline`
   /// passes or it exits first. The window appeared between two looks about a
@@ -107,14 +113,39 @@ final class OwnedProcess {
     return nil
   }
 
-  /// Asks the process to quit, and kills it if it has not within two seconds.
+  /// Asks the process to quit, and kills it if it has not within two
+  /// seconds. Shells and helpers it started are ended too: a terminal killed
+  /// outright does not always take them along.
   func stop() {
-    guard process.isRunning else { return }
-    process.terminate()
-    let deadline = Clock.now + 2_000_000_000
-    while process.isRunning, Clock.now < deadline { usleep(20_000) }
-    if process.isRunning { kill(pid, SIGKILL) }
-    process.waitUntilExit()
+    let children = descendants()
+    if process.isRunning {
+      process.terminate()
+      let deadline = Clock.now + 2_000_000_000
+      while process.isRunning, Clock.now < deadline { usleep(20_000) }
+      if process.isRunning { kill(pid, SIGKILL) }
+      process.waitUntilExit()
+    }
+    let alive = { children.filter { kill($0, 0) == 0 || errno == EPERM } }
+    for child in alive() { kill(child, SIGHUP) }
+    let deadline = Clock.now + 500_000_000
+    while !alive().isEmpty, Clock.now < deadline { usleep(20_000) }
+    for child in alive() { kill(child, SIGKILL) }
+  }
+
+  /// Every process below this one now, parents before children.
+  private func descendants() -> [pid_t] {
+    guard let listing = try? runCommand(["/bin/ps", "-axo", "pid=,ppid="]) else { return [] }
+    var childrenOf: [pid_t: [pid_t]] = [:]
+    for line in listing.output.split(separator: "\n") {
+      let fields = line.split(separator: " ", omittingEmptySubsequences: true)
+      guard fields.count == 2, let child = pid_t(fields[0]), let parent = pid_t(fields[1]) else { continue }
+      childrenOf[parent, default: []].append(child)
+    }
+    var found: [pid_t] = [], frontier = [pid]
+    while let parent = frontier.popLast() {
+      for child in childrenOf[parent] ?? [] { found.append(child); frontier.append(child) }
+    }
+    return found
   }
 }
 
@@ -134,8 +165,12 @@ func isRunning(executable: String) -> Bool {
 /// An ordinary window that is on screen now.
 struct ScreenWindow {
   let pid: pid_t
+  /// Position of the top-left corner in global display points.
+  let x: Double
+  let y: Double
   let width: Double
   let height: Double
+  var frame: CGRect { CGRect(x: x, y: y, width: width, height: height) }
 
   static func all() -> [ScreenWindow] {
     let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
@@ -145,8 +180,8 @@ struct ScreenWindow {
       guard (entry[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
             let pid = (entry[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
             let bounds = entry[kCGWindowBounds as String] as? [String: Any] else { return nil }
-      return ScreenWindow(pid: pid, width: (bounds["Width"] as? NSNumber)?.doubleValue ?? 0,
-                          height: (bounds["Height"] as? NSNumber)?.doubleValue ?? 0)
+      func number(_ key: String) -> Double { (bounds[key] as? NSNumber)?.doubleValue ?? 0 }
+      return ScreenWindow(pid: pid, x: number("X"), y: number("Y"), width: number("Width"), height: number("Height"))
     }
   }
 }
@@ -184,19 +219,22 @@ extension Array where Element == Double {
   var median: Double? { isEmpty ? nil : sorted()[count / 2] }
 }
 
-/// Prints one row per terminal: the median of each column's values with their range.
+/// Prints one row per terminal. A column with several values shows their
+/// median and range; a column with one value shows that value.
 enum Table {
   static func print(rows: [String], skipped: [String: String],
-                    columns: [(title: String, values: (String) -> [Double])]) {
+                    columns: [(title: String, values: (String) -> [Double])], decimals: Int = 0) {
+    let width = max(22, (columns.map(\.title.count).max() ?? 0) + 3)
     func cell(_ text: String, _ width: Int) -> String { text.padding(toLength: width, withPad: " ", startingAt: 0) }
-    Swift.print(cell("terminal", 16) + columns.map { cell($0.title, 22) }.joined())
+    func number(_ value: Double) -> String { String(format: "%.\(decimals)f", value) }
+    Swift.print(cell("terminal", 16) + columns.map { cell($0.title, width) }.joined())
     for name in rows {
       let cells = columns.map { column -> String in
         let values = column.values(name)
         guard let median = values.median, let low = values.min(), let high = values.max() else { return "-" }
-        return String(format: "%.0f (%.0f-%.0f)", median, low, high)
+        return values.count == 1 ? number(median) : "\(number(median)) (\(number(low))-\(number(high)))"
       }
-      Swift.print(cell(name, 16) + cells.map { cell($0, 22) }.joined())
+      Swift.print(cell(name, 16) + cells.map { cell($0, width) }.joined())
     }
     for (name, reason) in skipped.sorted(by: { $0.key < $1.key }) { Swift.print("\(name): skipped (\(reason))") }
   }

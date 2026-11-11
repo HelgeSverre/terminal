@@ -250,7 +250,12 @@ and the current criterion are recorded in the
 
 `just benchmark-startup` and `just benchmark-shutdown` compare launch and quit
 times with Ghostty, Kitty, iTerm2 and Apple Terminal, launching a disposable
-instance of each per sample; the
+instance of each per sample. `just benchmark-visible-startup` watches the
+screen for the window and for the shell's first output, and needs Screen
+Recording permission for the app the command runs in.
+`just benchmark-input-latency` posts keys to each terminal and times their
+arrival at a program inside it, idle and under an output flood, and needs
+Accessibility permission. The
 [report](../reports/startup-shutdown-2026-11-10/README.md) describes what each
 column measures. They are commands of the Swift developer tool in `tools/Dev`,
 where new runners go.

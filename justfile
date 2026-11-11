@@ -550,6 +550,16 @@ gallery-panes: build _dev
 @benchmark-startup output="reports/startup-comparison" rounds="10": release-build _dev
     target/native/dev compare-startup dist/Terminal.app "$1" "$2"
 
+# Compare launch to a visible window and to the shell's first output on screen.
+[group('bench')]
+@benchmark-visible-startup output="reports/visible-startup-comparison" rounds="10": release-build _dev
+    target/native/dev compare-visible-startup dist/Terminal.app "$1" "$2"
+
+# Compare key-to-program latency, idle and under an output flood.
+[group('bench')]
+@benchmark-input-latency output="reports/input-latency-comparison" keys="100": release-build _dev
+    target/native/dev compare-input-latency dist/Terminal.app "$1" "$2"
+
 # Compare quit time with Ghostty, Kitty, iTerm2 and Apple Terminal.
 [group('bench')]
 @benchmark-shutdown output="reports/shutdown-comparison" rounds="5": release-build _dev
