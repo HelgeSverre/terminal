@@ -45,6 +45,8 @@
     "Sources/Terminal/SelectionSmoke.swift",
     "Sources/Terminal/EditingSmoke.swift",
     "Sources/Terminal/ResizeSmoke.swift",
+    "Sources/Terminal/IntenseResizeSmoke.swift",
+    "Sources/Terminal/SmokeStream.swift",
     "Sources/Terminal/PaneLifecycleSmoke.swift",
     "Sources/Terminal/TabNavigation.swift",
     "Sources/Terminal/main.swift",

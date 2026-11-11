@@ -33,6 +33,8 @@ enum NativeSmoke {
          extra: ["--atlas-pressure-smoke", "--atlas-fallback-budget-smoke"] + glyphGrid),
     Mode(name: "idle", report: "native-idle", flag: "--self-test", seconds: 90, extra: ["--idle-test"]),
     Mode(name: "resize", report: "resize-smoke", flag: "--resize-smoke", seconds: 90, printsReport: true),
+    Mode(name: "intense-resize", report: "intense-resize-smoke", flag: "--intense-resize-smoke", seconds: 75,
+         printsReport: true),
   ]
 
   static func run(_ arguments: [String]) throws {

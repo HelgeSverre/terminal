@@ -65,6 +65,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     initialLaunch = launch
     diagnosticSplitLaunch =
       CommandLine.arguments.contains("--resize-smoke") || paneLifecycleSmokeReportPath() != nil
+        || CommandLine.arguments.contains(IntenseResizeSmokeTest.flag)
       ? launch : nil
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 1000, height: 680),
@@ -414,6 +415,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   static func firstLaunch() -> LaunchSpec? {
     let arguments = CommandLine.arguments
     if paneLifecycleSmokeReportPath() != nil || arguments.contains("--resize-smoke")
+      || arguments.contains(IntenseResizeSmokeTest.flag)
       || arguments.contains("--glyph-smoke") || arguments.contains("--execute") { return nil }
     return .shell
   }
@@ -441,6 +443,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let launch = LaunchSpec(
         executable: "/bin/zsh", arguments: ["/bin/zsh", "-i"], cwd: shell.cwd, launcher: shell.launcher)
       let window = TerminalWindow(launch: launch)
+      windows.append(window)
+      window.showWindow(nil)
+      window.window?.makeKeyAndOrderFront(nil)
+    } else if CommandLine.arguments.contains(IntenseResizeSmokeTest.flag) {
+      IntenseResizeSmokeTest.seedNextStream(0)
+      let window = TerminalWindow(launch: IntenseResizeSmokeTest.launch(from: .shell))
       windows.append(window)
       window.showWindow(nil)
       window.window?.makeKeyAndOrderFront(nil)
@@ -510,6 +518,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       CommandLine.arguments.count > index + 1, let window = windows.first
     {
       ResizeSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
+    }
+    if let index = CommandLine.arguments.firstIndex(of: IntenseResizeSmokeTest.flag),
+      CommandLine.arguments.count > index + 1, let window = windows.first
+    {
+      IntenseResizeSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
     }
     if let path = selectionSmokeReportPath(), let window = windows.first {
       SelectionSmokeTest.start(window: window, path: path)
@@ -663,6 +676,7 @@ if let index = catalogArguments.firstIndex(of: "--font-catalog"),
     exit(report["passed"] as? Bool == true ? 0 : 1)
   } catch { fputs("Font catalog failed: \(error)\n", stderr); exit(1) }
 }
+SmokeStream.runIfRequested()
 // Children are told which version of this terminal they run in.
 terminal_set_program_version(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
 if let launch = AppDelegate.firstLaunch() {

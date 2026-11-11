@@ -17,7 +17,9 @@
 /reports/glyph-smoke.json
 /reports/native-idle.json
 /reports/resize-smoke.json
+/reports/intense-resize-smoke.json
 /reports/close-window-smoke.json
 /reports/close-shortcut-smoke.json
 /reports/accessibility-attributed/external-ax.json
 /reports/accessibility-attributed/provenance.json
+/reports/selection-smoke.json

@@ -103,7 +103,7 @@ lint: _dev
 
 # Full local gate: tests plus the GUI smokes.
 [group('check')]
-check: test smoke pane-lifecycle-smoke startup-grid-smoke close-smoke selection-smoke resize-smoke
+check: test smoke pane-lifecycle-smoke startup-grid-smoke close-smoke selection-smoke resize-smoke intense-resize-smoke
 
 # Validate the bundle plist, terminfo and signature.
 [group('check')]
@@ -326,6 +326,11 @@ startup-grid-smoke: build _dev
 [group('smoke')]
 resize-smoke: build _dev
     target/native/dev native-smoke resize
+
+# Seeded divider and window resizes, in both directions, over streaming panes.
+[group('smoke')]
+intense-resize-smoke: build _dev
+    target/native/dev native-smoke intense-resize
 
 # Closing the last window must exit the app and its children.
 [group('smoke')]

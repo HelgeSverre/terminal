@@ -425,6 +425,16 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       1, Int(ceil(("M" as NSString).size(withAttributes: [.font: font]).width * scale)))
     cellHeight = max(1, Int(ceil((font.ascender - font.descender + 3) * scale)))
   }
+  /// The grid the view's bounds hold at the current font, or nil while the
+  /// view is too small to hold one.
+  var gridForBounds: (columns: Int, rows: Int)? {
+    guard bounds.width > 16, bounds.height > 16, cellWidth > 0, cellHeight > 0 else { return nil }
+    return (
+      max(1, min(4096, Int((bounds.width * scale - CGFloat(2 * insetPixels)) / CGFloat(cellWidth)))),
+      max(1, min(4096, Int((bounds.height * scale - CGFloat(2 * insetPixels)) / CGFloat(cellHeight))))
+    )
+  }
+
   private func updateGeometry() {
     guard bounds.width > 16, bounds.height > 16 else { return }
     updateMetrics()
@@ -432,10 +442,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       layer.contentsScale = scale
       layer.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
     }
-    let cols = max(
-      1, min(4096, Int((bounds.width * scale - CGFloat(2 * insetPixels)) / CGFloat(cellWidth))))
-    let rows = max(
-      1, min(4096, Int((bounds.height * scale - CGFloat(2 * insetPixels)) / CGFloat(cellHeight))))
+    guard let (cols, rows) = gridForBounds else { return }
     rendering?.prewarm(cellWidth: cellWidth, cellHeight: cellHeight, fontSize: fontPoints * scale)
     session.resize(cols: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
     positionSelectionNotice()
