@@ -1,8 +1,10 @@
 import Foundation
+import Testing
+@testable import TerminalApp
 
 // Observable a9b3c98 semantics.rs cases that are not already owned by the
 // margin, viewport, reflow, prompt/clear, input, or scheduler ABI oracles.
-@main enum TerminalSemanticRegressionTests {
+@Suite enum TerminalSemanticRegressionTests {
   private final class Bytes { var value = Data() }
   private static let collect: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void = { context, bytes, count in
     guard let context, let bytes, count > 0 else { return }
@@ -15,9 +17,10 @@ import Foundation
       let used: Int = data.withUnsafeBytes { buffer in
         terminal_feed(terminal, offset < data.count ? buffer.bindMemory(to: UInt8.self).baseAddress!.advanced(by: offset) : nil, data.count - offset, now)
       }
-      precondition(used > 0 || terminal_has_work(terminal) || offset == data.count)
+      #expect(used > 0 || terminal_has_work(terminal) || offset == data.count)
+      if used <= 0 && !terminal_has_work(terminal) && offset != data.count { return }
       offset += used
-      precondition(terminal_validate(terminal))
+      #expect(terminal_validate(terminal))
     }
   }
   static func feed(_ terminal: OpaquePointer, _ text: String, now: UInt64 = 0) { feed(terminal, Data(text.utf8), now: now) }
@@ -46,7 +49,7 @@ import Foundation
     return text.withCString { textPointer in
       (associated ?? "").withCString { associatedPointer in
         (legacy ?? "").withCString { legacyPointer in
-          precondition(terminal_input_with_metadata(
+          #expect(terminal_input_with_metadata(
             terminal, textPointer, key, modifiers, event,
             associated == nil ? nil : associatedPointer, legacy == nil ? nil : legacyPointer,
             shifted, baseLayout, Unmanaged.passUnretained(capture).toOpaque(), collect))
@@ -56,7 +59,7 @@ import Foundation
     }
   }
 
-  static func deferredWrapLFAndUTF8() {
+  @Test static func deferredWrapLFAndUTF8() {
     for (input, expected, row, column, pending) in [
       ("abcd", "abcd", 0, 3, true), ("abcde", "e", 1, 1, false),
       ("abcd\rZ", "Zbcd", 0, 1, false), ("abcd\u{8}Z", "abZd", 0, 3, false),
@@ -64,56 +67,56 @@ import Foundation
     ] {
       let terminal = make(4, 2); defer { terminal_destroy(terminal) }; feed(terminal, input)
       let value = snapshot(terminal), cursor = value["cursor"] as! [String: Any]
-      guard line(value, row).contains(expected) else { fatalError("deferred-wrap \(input.debugDescription): \(line(value, row).debugDescription)") }
-      precondition(cursor["row"] as! Int == row && cursor["col"] as! Int == column && cursor["pending_wrap"] as! Bool == pending)
+      guard line(value, row).contains(expected) else { Issue.record("deferred-wrap \(input.debugDescription): \(line(value, row).debugDescription)"); return }
+      #expect(cursor["row"] as! Int == row && cursor["col"] as! Int == column && cursor["pending_wrap"] as! Bool == pending)
     }
-    let lf = make(); defer { terminal_destroy(lf) }; feed(lf, "abc\nX"); precondition(line(snapshot(lf), 1).hasPrefix("   X"))
-    let c1 = make(20, 2); defer { terminal_destroy(c1) }; feed(c1, "a\u{009b}31mb"); precondition(line(snapshot(c1), 0).hasPrefix("a31mb"))
+    let lf = make(); defer { terminal_destroy(lf) }; feed(lf, "abc\nX"); #expect(line(snapshot(lf), 1).hasPrefix("   X"))
+    let c1 = make(20, 2); defer { terminal_destroy(c1) }; feed(c1, "a\u{009b}31mb"); #expect(line(snapshot(c1), 0).hasPrefix("a31mb"))
   }
 
-  static func renditionSaveEraseAndOverflow() {
+  @Test static func renditionSaveEraseAndOverflow() {
     let combining = make(); defer { terminal_destroy(combining) }
     feed(combining, "a\u{1b}[31m\u{301}b"); let combined = snapshot(combining)
-    precondition(cell(combined, 0, 0)["text"] as? String == "a\u{301}")
-    precondition((cell(combined, 0, 0)["style"] as! [String: Any])["foreground"] as? String == "Default")
-    precondition((cell(combined, 0, 1)["style"] as! [String: Any])["foreground"] as? [String: Int] == ["Indexed": 1])
+    #expect(cell(combined, 0, 0)["text"] as? String == "a\u{301}")
+    #expect((cell(combined, 0, 0)["style"] as! [String: Any])["foreground"] as? String == "Default")
+    #expect((cell(combined, 0, 1)["style"] as! [String: Any])["foreground"] as? [String: Int] == ["Indexed": 1])
     let saved = make(4, 2); defer { terminal_destroy(saved) }
     feed(saved, "\u{1b}[31mabcd\u{1b}7\u{1b}[0m\rX\u{1b}8e")
-    precondition(line(snapshot(saved), 0).hasPrefix("Xbcd") && (cell(snapshot(saved), 1, 0)["style"] as! [String: Any])["foreground"] as? [String: Int] == ["Indexed": 1])
+    #expect(line(snapshot(saved), 0).hasPrefix("Xbcd") && (cell(snapshot(saved), 1, 0)["style"] as! [String: Any])["foreground"] as? [String: Int] == ["Indexed": 1])
     for code in ["38;2;12;34;56", "38:2::12:34:56", "38:2:12:34:56"] {
       let colors = make(); defer { terminal_destroy(colors) }
       feed(colors, "\u{1b}[\(code)mX")
-      precondition((cell(snapshot(colors), 0, 0)["style"] as! [String: Any])["foreground"] as? [String: [Int]] == ["Rgb": [12, 34, 56]])
+      #expect((cell(snapshot(colors), 0, 0)["style"] as! [String: Any])["foreground"] as? [String: [Int]] == ["Rgb": [12, 34, 56]])
     }
     let overflow = make(); defer { terminal_destroy(overflow) }
-    feed(overflow, "abc\u{1b}[4294967296DZ"); precondition(line(snapshot(overflow), 0).hasPrefix("abcZ"))
+    feed(overflow, "abc\u{1b}[4294967296DZ"); #expect(line(snapshot(overflow), 0).hasPrefix("abcZ"))
     let protected = make(); defer { terminal_destroy(protected) }
-    feed(protected, "\u{1b}[1\"q猫\u{1b}[0\"qabc\u{1b}[?2J"); precondition(line(snapshot(protected), 0).hasPrefix("猫"))
+    feed(protected, "\u{1b}[1\"q猫\u{1b}[0\"qabc\u{1b}[?2J"); #expect(line(snapshot(protected), 0).hasPrefix("猫"))
   }
 
-  static func alternateAndStringSafety() {
+  @Test static func alternateAndStringSafety() {
     let alternate = make(); defer { terminal_destroy(alternate) }
     feed(alternate, "abc\u{1b}[31m\u{1b}[?1049hALT\u{1b}[?1049h!\u{1b}[?1049lZ")
-    precondition(line(snapshot(alternate), 0).hasPrefix("abcZ"))
+    #expect(line(snapshot(alternate), 0).hasPrefix("abcZ"))
     feed(alternate, "\u{1b}[?1049hA\r\nB\r\nC\u{1b}[?1049l")
-    precondition(snapshot(alternate)["history_rows"] as! Int == 0)
+    #expect(snapshot(alternate)["history_rows"] as! Int == 0)
     let strings = make(); defer { terminal_destroy(strings) }
-    feed(strings, Data("a\u{1b}_foo\u{1b}[2Jbar\u{7}oops\u{1b}\\b".utf8)); precondition(line(snapshot(strings), 0).hasPrefix("ab"))
-    feed(strings, Data("\u{1b}]2;bad\u{18}b\u{1b}]2;good\u{1b}\\".utf8)); precondition(snapshot(strings)["title"] as? String == "good")
+    feed(strings, Data("a\u{1b}_foo\u{1b}[2Jbar\u{7}oops\u{1b}\\b".utf8)); #expect(line(snapshot(strings), 0).hasPrefix("ab"))
+    feed(strings, Data("\u{1b}]2;bad\u{18}b\u{1b}]2;good\u{1b}\\".utf8)); #expect(snapshot(strings)["title"] as? String == "good")
   }
 
-  static func cursorAppearanceAndClippedWideRepair() {
+  @Test static func cursorAppearanceAndClippedWideRepair() {
     let terminal = make(); defer { terminal_destroy(terminal) }
     feed(terminal, "abc\u{1b}7\u{1b}[?25l\u{1b}[5 q\u{1b}8")
     let cursor = snapshot(terminal)["cursor"] as! [String: Any]
-    precondition(cursor["visible"] as? Bool == false && cursor["shape"] as? Int == 5)
+    #expect(cursor["visible"] as? Bool == false && cursor["shape"] as? Int == 5)
     let clipped = make(1, 2); defer { terminal_destroy(clipped) }
-    feed(clipped, "猫"); precondition(terminal_resize(clipped, 4, 2))
+    feed(clipped, "猫"); #expect(terminal_resize(clipped, 4, 2))
     let repaired = cell(snapshot(clipped), 0, 0)
-    precondition(repaired["kind"] as? String == "Lead2" && ((repaired["flags"] as! Int) & 1) == 0)
+    #expect(repaired["kind"] as? String == "Lead2" && ((repaired["flags"] as! Int) & 1) == 0)
   }
 
-  static func eraseCharactersAndLineRelativeCursorMotion() {
+  @Test static func eraseCharactersAndLineRelativeCursorMotion() {
     // ECH is deliberately checked at the emulator boundary: prompt redraws
     // commonly use it after moving onto a wide glyph, where a text-only test
     // could miss an orphaned continuation cell.
@@ -121,33 +124,33 @@ import Foundation
       let terminal = make(8, 2); defer { terminal_destroy(terminal) }
       feed(terminal, "A猫BC\u{1b}[1;2H\(sequence)")
       let value = snapshot(terminal), cursor = value["cursor"] as! [String: Any]
-      precondition(cell(value, 0, 0)["text"] as? String == "A")
-      precondition(cell(value, 0, 1)["kind"] as? String == "Empty")
-      precondition(cell(value, 0, 2)["kind"] as? String == "Empty")
-      precondition(cell(value, 0, 3)["text"] as? String == "B")
-      precondition(cursor["row"] as? Int == 0 && cursor["col"] as? Int == 1)
+      #expect(cell(value, 0, 0)["text"] as? String == "A")
+      #expect(cell(value, 0, 1)["kind"] as? String == "Empty")
+      #expect(cell(value, 0, 2)["kind"] as? String == "Empty")
+      #expect(cell(value, 0, 3)["text"] as? String == "B")
+      #expect(cursor["row"] as? Int == 0 && cursor["col"] as? Int == 1)
     }
     let continuation = make(8, 2); defer { terminal_destroy(continuation) }
     feed(continuation, "A猫BC\u{1b}[1;3H\u{1b}[2X")
     let continuationValue = snapshot(continuation)
-    precondition((1...3).allSatisfy { cell(continuationValue, 0, $0)["kind"] as? String == "Empty" })
-    precondition(cell(continuationValue, 0, 4)["text"] as? String == "C")
-    precondition(terminal_resize(continuation, 10, 2))
+    #expect((1...3).allSatisfy { cell(continuationValue, 0, $0)["kind"] as? String == "Empty" })
+    #expect(cell(continuationValue, 0, 4)["text"] as? String == "C")
+    #expect(terminal_resize(continuation, 10, 2))
     let reflowed = snapshot(continuation)
-    precondition((1...3).allSatisfy { cell(reflowed, 0, $0)["kind"] as? String == "Empty" })
-    precondition(cell(reflowed, 0, 4)["text"] as? String == "C" && terminal_validate(continuation))
+    #expect((1...3).allSatisfy { cell(reflowed, 0, $0)["kind"] as? String == "Empty" })
+    #expect(cell(reflowed, 0, 4)["text"] as? String == "C" && terminal_validate(continuation))
 
     let clamped = make(8, 2); defer { terminal_destroy(clamped) }
     feed(clamped, "abcdef\u{1b}[1;5H\u{1b}[999X")
     let clampedValue = snapshot(clamped)
-    precondition(line(clampedValue, 0).hasPrefix("abcd    "))
-    precondition((clampedValue["cursor"] as! [String: Any])["col"] as? Int == 4)
+    #expect(line(clampedValue, 0).hasPrefix("abcd    "))
+    #expect((clampedValue["cursor"] as! [String: Any])["col"] as? Int == 4)
 
     let deferredWrap = make(4, 2); defer { terminal_destroy(deferredWrap) }
     feed(deferredWrap, "abcd\u{1b}[X")
     let deferredValue = snapshot(deferredWrap), deferredCursor = deferredValue["cursor"] as! [String: Any]
-    precondition(cell(deferredValue, 0, 3)["kind"] as? String == "Empty")
-    precondition(deferredCursor["row"] as? Int == 0 && deferredCursor["col"] as? Int == 3
+    #expect(cell(deferredValue, 0, 3)["kind"] as? String == "Empty")
+    #expect(deferredCursor["row"] as? Int == 0 && deferredCursor["col"] as? Int == 3
       && deferredCursor["pending_wrap"] as? Bool == false)
 
     let styled = make(8, 2); defer { terminal_destroy(styled) }
@@ -155,9 +158,9 @@ import Foundation
     let styledValue = snapshot(styled)
     for column in 2...3 {
       let cellStyle = cell(styledValue, 0, column)["style"] as! [String: Any]
-      precondition(cell(styledValue, 0, column)["kind"] as? String == "Empty")
-      precondition(cellStyle["foreground"] as? String == "Default")
-      precondition(cellStyle["background"] as? [String: Int] == ["Indexed": 4])
+      #expect(cell(styledValue, 0, column)["kind"] as? String == "Empty")
+      #expect(cellStyle["foreground"] as? String == "Default")
+      #expect(cellStyle["background"] as? [String: Int] == ["Indexed": 4])
     }
 
     // Splitting anywhere in the cursor/edit sequence is equivalent to feeding
@@ -168,19 +171,19 @@ import Foundation
     for split in 0...fixture.count {
       let terminal = make(8, 2); defer { terminal_destroy(terminal) }
       feed(terminal, Data(fixture.prefix(split))); feed(terminal, Data(fixture.suffix(fixture.count - split)))
-      precondition(expected.isEqual(stable(snapshot(terminal))))
+      #expect(expected.isEqual(stable(snapshot(terminal))))
     }
 
     let vertical = make(8, 4); defer { terminal_destroy(vertical) }
     feed(vertical, "\u{1b}[2;5H\u{1b}[E")
     var cursor = snapshot(vertical)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 2 && cursor["col"] as? Int == 0)
+    #expect(cursor["row"] as? Int == 2 && cursor["col"] as? Int == 0)
     feed(vertical, "\u{1b}[0F")
     cursor = snapshot(vertical)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 0)
+    #expect(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 0)
     feed(vertical, "\u{1b}[999F")
     cursor = snapshot(vertical)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 0 && cursor["col"] as? Int == 0)
+    #expect(cursor["row"] as? Int == 0 && cursor["col"] as? Int == 0)
 
     // CNL/CPL share CUD/CUU's region-aware bounds, then apply CR's margin
     // policy. They must neither scroll nor leap over a scrolling margin when
@@ -188,47 +191,47 @@ import Foundation
     let margins = make(8, 5); defer { terminal_destroy(margins) }
     feed(margins, "\u{1b}[2;4r\u{1b}[?69h\u{1b}[3;6s\u{1b}[2;4H\u{1b}[99E")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 2)
+    #expect(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 2)
     feed(margins, "\u{1b}[99F")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 2)
+    #expect(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 2)
     feed(margins, "\u{1b}[?6h\u{1b}[99E")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 2)
+    #expect(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 2)
     feed(margins, "\u{1b}[99F")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 2)
+    #expect(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 2)
 
     // CUU/CUD use those same bounds without applying CR. Check each direction
     // from both sides of the region while DECOM is disabled.
     feed(margins, "\u{1b}[?6l")
     feed(margins, "\u{1b}[2;4H\u{1b}[99B")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 3)
+    #expect(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 3)
     feed(margins, "\u{1b}[99A")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 3)
+    #expect(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 3)
     feed(margins, "\u{1b}[5;4H\u{1b}[99B")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 4 && cursor["col"] as? Int == 3)
+    #expect(cursor["row"] as? Int == 4 && cursor["col"] as? Int == 3)
     feed(margins, "\u{1b}[5;4H\u{1b}[99A")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 3)
+    #expect(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 3)
     feed(margins, "\u{1b}[1;4H\u{1b}[99B")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 3)
+    #expect(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 3)
     feed(margins, "\u{1b}[1;4H\u{1b}[99A")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 0 && cursor["col"] as? Int == 3)
+    #expect(cursor["row"] as? Int == 0 && cursor["col"] as? Int == 3)
     feed(margins, "\u{1b}[?6h\u{1b}[99B")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 2)
+    #expect(cursor["row"] as? Int == 3 && cursor["col"] as? Int == 2)
     feed(margins, "\u{1b}[99A")
     cursor = snapshot(margins)["cursor"] as! [String: Any]
-    precondition(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 2)
+    #expect(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 2)
   }
 
-  static func decCharsetPartitionsAndHistoryBounds() {
+  @Test static func decCharsetPartitionsAndHistoryBounds() {
     let source = "_`abcdefghijklmnopqrstuvwxyz{|}~"
     let expected = "\u{a0}◆▒␉␌␍␊°±␤␋┘┐┌└┼⎺⎻─⎼⎽├┤┴┬│≤≥π≠£·"
     for designation in ["\u{1b}(0", "\u{1b})0\u{0e}"] {
@@ -237,22 +240,22 @@ import Foundation
         let terminal = make(64, 2); defer { terminal_destroy(terminal) }
         feed(terminal, bytes.prefix(split)); feed(terminal, bytes.suffix(bytes.count - split))
         let cells = ((snapshot(terminal)["rows"] as! [[String: Any]])[0]["cells"] as! [[String: Any]])
-        precondition(cells[0..<32].map { $0["text"] as! String }.joined() == expected)
-        precondition(cells[32..<64].map { $0["text"] as! String }.joined() == source)
+        #expect(cells[0..<32].map { $0["text"] as! String }.joined() == expected)
+        #expect(cells[32..<64].map { $0["text"] as! String }.joined() == source)
       }
     }
     let history = make(4, 2); defer { terminal_destroy(history) }
     terminal_set_history_limit(history, 3); feed(history, "a\r\nb\r\nc\r\nd\r\ne\r\nf")
-    precondition(snapshot(history)["history_rows"] as! Int == 3)
+    #expect(snapshot(history)["history_rows"] as! Int == 3)
     terminal_set_history_byte_limit(history, 1)
-    precondition(snapshot(history)["history_rows"] as! Int == 0)
+    #expect(snapshot(history)["history_rows"] as! Int == 0)
   }
 
-  static func utf8EOFEditingAndResetSemantics() {
+  @Test static func utf8EOFEditingAndResetSemantics() {
     for bytes in [[UInt8](arrayLiteral: 0xe0, 0x80, 0x80), [0xed, 0xa0, 0x80], [0xf4, 0x90, 0x80, 0x80], [0xc2, 0x41, 0xf0, 0x9f]] {
       let terminal = make(40, 2); defer { terminal_destroy(terminal) }; feed(terminal, Data(bytes)); terminal_finish(terminal)
       let rendered = line(snapshot(terminal), 0).trimmingCharacters(in: .whitespaces)
-      guard rendered == String(decoding: bytes, as: UTF8.self) else { fatalError("utf8 \(bytes): \(rendered.debugDescription) != \(String(decoding: bytes, as: UTF8.self).debugDescription)") }
+      guard rendered == String(decoding: bytes, as: UTF8.self) else { Issue.record("utf8 \(bytes): \(rendered.debugDescription) != \(String(decoding: bytes, as: UTF8.self).debugDescription)"); return }
     }
     for (bytes, expected) in [([UInt8](arrayLiteral: 0xf0, 0x41), "�A"), ([0xe0, 0x80], "��"), ([0xe1, 0x80, 0x41], "�A")] {
       let whole = make(40, 2); defer { terminal_destroy(whole) }; feed(whole, Data(bytes)); terminal_finish(whole)
@@ -261,33 +264,33 @@ import Foundation
       terminal_finish(chunked)
       let wholeText = line(snapshot(whole), 0).trimmingCharacters(in: .whitespaces)
       let chunkedText = line(snapshot(chunked), 0).trimmingCharacters(in: .whitespaces)
-      precondition(wholeText == expected && chunkedText == expected)
+      #expect(wholeText == expected && chunkedText == expected)
     }
     let eof = make(); defer { terminal_destroy(eof) }
-    feed(eof, "a\u{1b}[12;"); terminal_finish(eof); precondition(line(snapshot(eof), 0).hasPrefix("a"))
+    feed(eof, "a\u{1b}[12;"); terminal_finish(eof); #expect(line(snapshot(eof), 0).hasPrefix("a"))
     let edit = make(4, 3); defer { terminal_destroy(edit) }
-    feed(edit, "abcdef\u{1b}[1;2HZ"); precondition(((snapshot(edit)["rows"] as! [[String: Any]])[0]["soft_wrapped"] as! Bool))
+    feed(edit, "abcdef\u{1b}[1;2HZ"); #expect(((snapshot(edit)["rows"] as! [[String: Any]])[0]["soft_wrapped"] as! Bool))
     let reset = make(); defer { terminal_destroy(reset) }
     feed(reset, "\u{1b}[?25l\u{1b}[?1049h\u{1b}[5 q\u{1b}c\u{1b}[?47h")
     let cursor = snapshot(reset)["cursor"] as! [String: Any]
-    precondition(cursor["visible"] as? Bool == true && cursor["shape"] as? Int == 0)
+    #expect(cursor["visible"] as? Bool == true && cursor["shape"] as? Int == 0)
   }
 
-  static func displayClusterAndMalformedOSC() {
+  @Test static func displayClusterAndMalformedOSC() {
     let display = make(4, 2); defer { terminal_destroy(display) }
     feed(display, "ab\u{1b}[S\u{301}")
-    precondition(cell(snapshot(display), 0, 2)["text"] as? String == "\u{301}")
+    #expect(cell(snapshot(display), 0, 2)["text"] as? String == "\u{301}")
     let osc = make(); defer { terminal_destroy(osc) }
-    feed(osc, "\u{1b}]10;#aéabc\u{1b}\\X"); precondition(line(snapshot(osc), 0).hasPrefix("X"))
+    feed(osc, "\u{1b}]10;#aéabc\u{1b}\\X"); #expect(line(snapshot(osc), 0).hasPrefix("X"))
     let ed = make(4, 2); defer { terminal_destroy(ed) }
     feed(ed, "a\r\nb\r\nc"); let before = snapshot(ed)["history_rows"] as! Int
-    feed(ed, "\u{1b}[2J"); precondition(snapshot(ed)["history_rows"] as! Int == before)
-    feed(ed, "\u{1b}[3J"); precondition(snapshot(ed)["history_rows"] as! Int == 0)
+    feed(ed, "\u{1b}[2J"); #expect(snapshot(ed)["history_rows"] as! Int == before)
+    feed(ed, "\u{1b}[3J"); #expect(snapshot(ed)["history_rows"] as! Int == 0)
     let edge = make(4, 2); defer { terminal_destroy(edge) }
-    feed(edge, "abc猫"); precondition(cell(snapshot(edge), 0, 3)["kind"] as? String == "WrapSpacer")
+    feed(edge, "abc猫"); #expect(cell(snapshot(edge), 0, 3)["kind"] as? String == "WrapSpacer")
   }
 
-  static func bytePartitionsAgree() {
+  @Test static func bytePartitionsAgree() {
     let fixtures = [
       "a\u{1b}[38:2::12:34:56m猫👩🏽‍💻e\u{301}\u{1b}]8;;https://example.com\u{1b}\\X\u{1b}]8;;\u{1b}\\\u{1b}[6n",
       "abcd\u{1b}[?1049hhello\u{1b}[?1049h!\u{1b}[?1049lZ",
@@ -301,88 +304,88 @@ import Foundation
       for split in 0...bytes.count {
         let terminal = make(8, 4); defer { terminal_destroy(terminal) }
         feed(terminal, Data(bytes.prefix(split))); feed(terminal, Data(bytes.suffix(bytes.count - split)))
-        precondition(expected.isEqual(stable(snapshot(terminal))))
+        #expect(expected.isEqual(stable(snapshot(terminal))))
       }
       let terminal = make(8, 4); defer { terminal_destroy(terminal) }
       for byte in bytes { feed(terminal, Data([byte])) }
-      precondition(expected.isEqual(stable(snapshot(terminal))))
+      #expect(expected.isEqual(stable(snapshot(terminal))))
     }
   }
 
-  static func clustersAndDiscardBound() {
+  @Test static func clustersAndDiscardBound() {
     for text in ["👩🏽‍💻", "🇳🇴", "e\u{301}", "가", "猫"] {
       let terminal = make(); defer { terminal_destroy(terminal) }; feed(terminal, text)
-      precondition(cell(snapshot(terminal), 0, 0)["text"] as? String == text)
+      #expect(cell(snapshot(terminal), 0, 0)["text"] as? String == text)
     }
     let strings = make(); defer { terminal_destroy(strings) }
     var payload = Data("a\u{1b}]2;".utf8)
     payload.append(Data(repeating: UInt8(ascii: "x"), count: 70_000))
     payload.append(Data("\u{1b}[2J\u{1b}\\b".utf8))
     feed(strings, payload)
-    guard line(snapshot(strings), 0).hasPrefix("ab") else { fatalError("discard \(line(snapshot(strings), 0).debugDescription)") }
+    guard line(snapshot(strings), 0).hasPrefix("ab") else { Issue.record("discard \(line(snapshot(strings), 0).debugDescription)"); return }
     let bel = make(); defer { terminal_destroy(bel) }
     var oversizedBEL = Data("a\u{1b}]2;".utf8)
     oversizedBEL.append(Data(repeating: UInt8(ascii: "x"), count: 70_000))
     oversizedBEL.append(Data("\u{7}b".utf8))
     feed(bel, oversizedBEL)
-    precondition(line(snapshot(bel), 0).hasPrefix("ab"))
+    #expect(line(snapshot(bel), 0).hasPrefix("ab"))
   }
 
-  static func viewportStaysAnchoredWithoutEviction() {
+  @Test static func viewportStaysAnchoredWithoutEviction() {
     let terminal = make(4, 2); defer { terminal_destroy(terminal) }
     feed(terminal, "a\r\nb\r\nc\r\nd")
     terminal_view_scroll(terminal, 1)
     feed(terminal, "\r\ne")
     let value = snapshot(terminal)
-    precondition(line(value, 0).hasPrefix("b") && line(value, 1).hasPrefix("c"))
+    #expect(line(value, 0).hasPrefix("b") && line(value, 1).hasPrefix("c"))
   }
 
-  static func cappedGraphemeKeepsIncrementalBoundaryState() {
+  @Test static func cappedGraphemeKeepsIncrementalBoundaryState() {
     let terminal = make(); defer { terminal_destroy(terminal) }
     feed(terminal, "👩" + String(repeating: "\u{301}", count: 100) + "\u{200d}👩X")
     let value = snapshot(terminal)
-    precondition(cell(value, 0, 2)["text"] as? String == "X")
-    precondition((cell(value, 0, 0)["text"] as! String).unicodeScalars.count == 64)
-    precondition(((cell(value, 0, 0)["flags"] as! Int) & 4) != 0)
+    #expect(cell(value, 0, 2)["text"] as? String == "X")
+    #expect((cell(value, 0, 0)["text"] as! String).unicodeScalars.count == 64)
+    #expect(((cell(value, 0, 0)["flags"] as! Int) & 4) != 0)
     let exactCap = make(); defer { terminal_destroy(exactCap) }
     feed(exactCap, "👩" + String(repeating: "\u{301}", count: 62) + "\u{200d}👩X")
     let exact = snapshot(exactCap)
-    precondition((cell(exact, 0, 0)["text"] as! String).unicodeScalars.count == 64)
-    precondition(((cell(exact, 0, 0)["flags"] as! Int) & 4) != 0 && cell(exact, 0, 2)["text"] as? String == "X")
+    #expect((cell(exact, 0, 0)["text"] as! String).unicodeScalars.count == 64)
+    #expect(((cell(exact, 0, 0)["flags"] as! Int) & 4) != 0 && cell(exact, 0, 2)["text"] as? String == "X")
     let nonEmoji = make(); defer { terminal_destroy(nonEmoji) }
     feed(nonEmoji, "a\u{200d}👩X")
     let separated = snapshot(nonEmoji)
-    precondition(cell(separated, 0, 0)["text"] as? String == "a\u{200d}")
-    precondition(cell(separated, 0, 1)["kind"] as? String == "Lead2" && cell(separated, 0, 3)["text"] as? String == "X")
+    #expect(cell(separated, 0, 0)["text"] as? String == "a\u{200d}")
+    #expect(cell(separated, 0, 1)["kind"] as? String == "Lead2" && cell(separated, 0, 3)["text"] as? String == "X")
   }
 
-  static func physicalKeyMetadataUsesABI() {
+  @Test static func physicalKeyMetadataUsesABI() {
     let compatibility = make(); defer { terminal_destroy(compatibility) }
-    precondition(input(compatibility, text: "", key: 57_442).isEmpty)
-    precondition(input(compatibility, text: "", key: 10, modifiers: 64 | 128) == Data("\u{1b}[A".utf8))
+    #expect(input(compatibility, text: "", key: 57_442).isEmpty)
+    #expect(input(compatibility, text: "", key: 10, modifiers: 64 | 128) == Data("\u{1b}[A".utf8))
 
     let enhanced = make(); defer { terminal_destroy(enhanced) }
     feed(enhanced, "\u{1b}[=31u")
-    precondition(input(enhanced, text: "с", key: 200, modifiers: 4, associated: "с", baseLayout: 99) == Data("\u{1b}[1089::99;5:1u".utf8))
-    precondition(input(enhanced, text: "=", key: 200, modifiers: 1, associated: "+", shifted: 43, baseLayout: 61) == Data("\u{1b}[61:43:61;2:1;43u".utf8))
-    precondition(input(enhanced, text: "x", key: 200, associated: "") == Data("\u{1b}[120;1:1u".utf8))
-    precondition(input(enhanced, text: "", key: 57_442, modifiers: 4 | 64) == Data("\u{1b}[57442;69:1u".utf8))
-    precondition(input(enhanced, text: "", key: 57_442, modifiers: 64, event: 2) == Data("\u{1b}[57442;65:3u".utf8))
-    precondition(input(enhanced, text: "", key: 57_358, modifiers: 64) == Data("\u{1b}[57358;65:1u".utf8))
+    #expect(input(enhanced, text: "с", key: 200, modifiers: 4, associated: "с", baseLayout: 99) == Data("\u{1b}[1089::99;5:1u".utf8))
+    #expect(input(enhanced, text: "=", key: 200, modifiers: 1, associated: "+", shifted: 43, baseLayout: 61) == Data("\u{1b}[61:43:61;2:1;43u".utf8))
+    #expect(input(enhanced, text: "x", key: 200, associated: "") == Data("\u{1b}[120;1:1u".utf8))
+    #expect(input(enhanced, text: "", key: 57_442, modifiers: 4 | 64) == Data("\u{1b}[57442;69:1u".utf8))
+    #expect(input(enhanced, text: "", key: 57_442, modifiers: 64, event: 2) == Data("\u{1b}[57442;65:3u".utf8))
+    #expect(input(enhanced, text: "", key: 57_358, modifiers: 64) == Data("\u{1b}[57358;65:1u".utf8))
 
     let legacy = make(); defer { terminal_destroy(legacy) }
-    precondition(input(legacy, text: "a", key: 200, modifiers: 1, associated: "A") == Data("A".utf8))
-    precondition(input(legacy, text: "1", key: 200, modifiers: 1, associated: "!") == Data("!".utf8))
-    precondition(input(legacy, text: "a", key: 200, associated: "æ") == Data("æ".utf8))
-    precondition(input(legacy, text: "å", key: 200, modifiers: 64, associated: "Å") == Data("Å".utf8))
-    precondition(input(legacy, text: "1", key: 200, modifiers: 1 | 8, associated: "!") == Data("\u{1b}[49;10u".utf8))
-    precondition(input(legacy, text: "c", key: 200, modifiers: 4, associated: "ç") == Data([3]))
-    precondition(input(legacy, text: "a", key: 200, modifiers: 2, associated: "æ") == Data("\u{1b}a".utf8))
-    precondition(input(legacy, text: "1", key: 200, modifiers: 1 | 2, associated: "¡", legacy: "!", shifted: 33) == Data("\u{1b}!".utf8))
-    precondition(input(legacy, text: "a", key: 200, modifiers: 2 | 64, associated: "å", legacy: "A") == Data("\u{1b}A".utf8))
+    #expect(input(legacy, text: "a", key: 200, modifiers: 1, associated: "A") == Data("A".utf8))
+    #expect(input(legacy, text: "1", key: 200, modifiers: 1, associated: "!") == Data("!".utf8))
+    #expect(input(legacy, text: "a", key: 200, associated: "æ") == Data("æ".utf8))
+    #expect(input(legacy, text: "å", key: 200, modifiers: 64, associated: "Å") == Data("Å".utf8))
+    #expect(input(legacy, text: "1", key: 200, modifiers: 1 | 8, associated: "!") == Data("\u{1b}[49;10u".utf8))
+    #expect(input(legacy, text: "c", key: 200, modifiers: 4, associated: "ç") == Data([3]))
+    #expect(input(legacy, text: "a", key: 200, modifiers: 2, associated: "æ") == Data("\u{1b}a".utf8))
+    #expect(input(legacy, text: "1", key: 200, modifiers: 1 | 2, associated: "¡", legacy: "!", shifted: 33) == Data("\u{1b}!".utf8))
+    #expect(input(legacy, text: "a", key: 200, modifiers: 2 | 64, associated: "å", legacy: "A") == Data("\u{1b}A".utf8))
   }
 
-  static func cursorRestoreOrphansDefaultIgnorable() {
+  @Test static func cursorRestoreOrphansDefaultIgnorable() {
     let terminal = make(); defer { terminal_destroy(terminal) }
     // CSI u intentionally does not reset Core's cluster boundary. It leaves
     // the segmenter after B while restoring the cursor before A, so FE0F is a
@@ -391,18 +394,18 @@ import Foundation
     // cursor rather than silently dropped, then X follows it.
     feed(terminal, "\u{1b}[sA\r\nB\u{1b}[u\u{fe0f}\u{301}X")
     let value = snapshot(terminal)
-    precondition(cell(value, 0, 0)["text"] as? String == "\u{301}")
-    precondition(cell(value, 0, 1)["text"] as? String == "X")
-    precondition(cell(value, 1, 0)["text"] as? String == "B")
+    #expect(cell(value, 0, 0)["text"] as? String == "\u{301}")
+    #expect(cell(value, 0, 1)["text"] as? String == "X")
+    #expect(cell(value, 1, 0)["text"] as? String == "B")
   }
 
-  static func snapshotsAreImmutableAndIngressIsPartitionIndependent() {
+  @Test static func snapshotsAreImmutableAndIngressIsPartitionIndependent() {
     let immutable = make(); defer { terminal_destroy(immutable) }
     feed(immutable, "abc")
     let before = snapshot(immutable)
     feed(immutable, "\rX")
-    precondition(line(before, 0).hasPrefix("abc"))
-    precondition(line(snapshot(immutable), 0).hasPrefix("Xbc"))
+    #expect(line(before, 0).hasPrefix("abc"))
+    #expect(line(snapshot(immutable), 0).hasPrefix("Xbc"))
 
     for fixture in [
       "abcd\u{1b}[31me fghi\r\n0123456789012345",
@@ -412,47 +415,33 @@ import Foundation
       let bulk = make(4, 3); defer { terminal_destroy(bulk) }; feed(bulk, fixture)
       let scalar = make(4, 3); defer { terminal_destroy(scalar) }
       for character in fixture { feed(scalar, String(character)) }
-      precondition((stable(snapshot(bulk)) as! NSDictionary).isEqual(stable(snapshot(scalar))))
+      #expect((stable(snapshot(bulk)) as! NSDictionary).isEqual(stable(snapshot(scalar))))
     }
   }
 
-  static func randomPartitionsRetainInvariants() {
+  @Test static func randomPartitionsRetainInvariants() {
     var seed: UInt64 = 0x55aa
     var bytes = Data(); bytes.reserveCapacity(20_000)
     for _ in 0..<20_000 { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; bytes.append(UInt8(truncatingIfNeeded: seed)) }
     let baseline = make(40, 10); defer { terminal_destroy(baseline) }; feed(baseline, bytes); terminal_finish(baseline)
     let expected = stable(snapshot(baseline)) as! NSDictionary
     let terminal = make(40, 10); defer { terminal_destroy(terminal) }
-    for offset in stride(from: 0, to: bytes.count, by: 37) { feed(terminal, Data(bytes[offset..<min(bytes.count, offset + 37)])); precondition(terminal_validate(terminal)) }
+    for offset in stride(from: 0, to: bytes.count, by: 37) { feed(terminal, Data(bytes[offset..<min(bytes.count, offset + 37)])); #expect(terminal_validate(terminal)) }
     terminal_finish(terminal)
-    precondition(expected.isEqual(stable(snapshot(terminal))))
+    #expect(expected.isEqual(stable(snapshot(terminal))))
   }
 
-  static func repRetainsOriginalClusterAttributesAfterExtension() {
+  @Test static func repRetainsOriginalClusterAttributesAfterExtension() {
     let terminal = make(); defer { terminal_destroy(terminal) }
     feed(terminal, "\u{1b}]8;;https://one.example\u{1b}\\\u{1b}[31m\u{1b}[1\"qA\u{1b}[32m\u{301}\u{1b}[2b")
     let value = snapshot(terminal)
     for column in 0...2 {
       let value = cell(value, 0, column)
-      precondition(value["text"] as? String == "A\u{301}")
-      precondition((value["style"] as! [String: Any])["foreground"] as? [String: Int] == ["Indexed": 1])
-      precondition(value["link"] as? String == "https://one.example")
-      precondition(((value["flags"] as! Int) & 2) != 0)
+      #expect(value["text"] as? String == "A\u{301}")
+      #expect((value["style"] as! [String: Any])["foreground"] as? [String: Int] == ["Indexed": 1])
+      #expect(value["link"] as? String == "https://one.example")
+      #expect(((value["flags"] as! Int) & 2) != 0)
     }
   }
 
-  static func main() {
-    deferredWrapLFAndUTF8(); renditionSaveEraseAndOverflow(); alternateAndStringSafety(); cursorAppearanceAndClippedWideRepair()
-    decCharsetPartitionsAndHistoryBounds(); utf8EOFEditingAndResetSemantics(); displayClusterAndMalformedOSC(); eraseCharactersAndLineRelativeCursorMotion()
-    bytePartitionsAgree()
-    clustersAndDiscardBound()
-    viewportStaysAnchoredWithoutEviction()
-    cappedGraphemeKeepsIncrementalBoundaryState()
-    physicalKeyMetadataUsesABI()
-    cursorRestoreOrphansDefaultIgnorable()
-    snapshotsAreImmutableAndIngressIsPartitionIndependent()
-    randomPartitionsRetainInvariants()
-    repRetainsOriginalClusterAttributesAfterExtension()
-    print("PASS Terminal semantic regression oracle: wrap, UTF-8, rendition, alternates, strings, cursor, wide repair, ECH")
-  }
 }
