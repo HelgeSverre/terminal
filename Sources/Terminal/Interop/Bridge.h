@@ -52,6 +52,7 @@ void terminal_search_clear(Terminal *);
 void terminal_finish(Terminal *);
 typedef struct {int master;int status;int pid;int error;} TerminalProcess;
 TerminalProcess terminal_spawn_args(const char *,const char *,const char *,uint16_t,uint16_t,char *const []);
+void terminal_set_program_version(const char *);
 bool terminal_validate(Terminal *);
 bool terminal_has_work(Terminal *);
 void terminal_set_history_limit(Terminal *,uint32_t);

@@ -51,11 +51,27 @@ static char *default_language(void){
     if(asprintf(&entry,"LANG=%s",selected)<0){errno=ENOMEM;return NULL;}
     return entry;
 }
+// The version children see in TERM_PROGRAM_VERSION, as "TERM_PROGRAM_VERSION=x".
+static char program_version[64];
+void terminal_set_program_version(const char *version){
+    if(!version||!*version||snprintf(program_version,sizeof program_version,"TERM_PROGRAM_VERSION=%s",version)>=(int)sizeof program_version)
+        program_version[0]=0;
+}
+// Whether a variable identifies the terminal a process runs in. This app may
+// itself have been started from another terminal; its children run in this
+// one, so what that terminal said about itself must not reach them. Programs
+// choose features by these variables.
+static int names_another_terminal(const char *value){
+    static const char *const prefixes[]={"TERM_PROGRAM_VERSION=","TERM_SESSION_ID=","LC_TERMINAL=","LC_TERMINAL_VERSION=",
+        "GHOSTTY_","KITTY_","ITERM_","WEZTERM_","ALACRITTY_","KONSOLE_","VTE_VERSION=","WT_SESSION=","WT_PROFILE_ID=","TMUX=","TMUX_PANE="};
+    for(size_t i=0;i<sizeof prefixes/sizeof *prefixes;i++)if(!strncmp(value,prefixes[i],strlen(prefixes[i])))return 1;
+    return 0;
+}
 // Only normal interactive zsh launches are wrapped. Explicit commands keep
 // their original startup semantics. The signed bundle owns the integration.
 static int make_environment(const char *launcher,const char *executable,char *const argv[],size_t argc,SpawnEnvironment *out){
     size_t count=0;while(environ[count])count++;
-    out->values=calloc(count+8,sizeof(char *));if(!out->values)return ENOMEM;
+    out->values=calloc(count+9,sizeof(char *));if(!out->values)return ENOMEM;
     const char *name=strrchr(executable,'/');name=name?name+1:executable;
     const char *parent=strrchr(launcher,'/');
     int wrap=!strcmp(name,"zsh")&&(argc==1||(argc==2&&!strcmp(argv[1],"-l")))&&parent;
@@ -73,10 +89,12 @@ static int make_environment(const char *launcher,const char *executable,char *co
         const char *value=environ[i];
         if(!strncmp(value,"LANG=",5))continue;
         if(!strncmp(value,"VK_",3)||!strncmp(value,"TERM=",5)||!strncmp(value,"COLORTERM=",10)||!strncmp(value,"TERM_PROGRAM=",13))continue;
+        if(names_another_terminal(value))continue;
         if(wrap&&(!strncmp(value,"ZDOTDIR=",8)||!strncmp(value,"HELGE_TERMINAL_",15)))continue;
         out->values[n++]=environ[i];
     }
     out->values[n++]="TERM=xterm-256color";out->values[n++]="COLORTERM=truecolor";out->values[n++]="TERM_PROGRAM=HelgeTerminal";
+    if(program_version[0])out->values[n++]=program_version;
     out->values[n++]=(char *)language;
     if(wrap){
         const char *original=getenv("ZDOTDIR");

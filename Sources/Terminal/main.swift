@@ -659,6 +659,8 @@ if let index = catalogArguments.firstIndex(of: "--font-catalog"),
     exit(report["passed"] as? Bool == true ? 0 : 1)
   } catch { fputs("Font catalog failed: \(error)\n", stderr); exit(1) }
 }
+// Children are told which version of this terminal they run in.
+terminal_set_program_version(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
 if let launch = AppDelegate.firstLaunch() {
   let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096)
   let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096)
