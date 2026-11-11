@@ -140,9 +140,13 @@ struct Distribution {
     defer { try? files.removeItem(at: stage) }
     let app = stage.appendingPathComponent("Helge Terminal.app")
     _ = try run(["ditto", source.path, app.path])
-    for path in [app.appendingPathComponent("Contents/MacOS/TerminalLauncher"), app] {
-      _ = try run(["codesign", "--force", "--options", "runtime", "--timestamp", "--sign", application, path.path])
-    }
+    // The hardened runtime refuses a protected resource to the app, and so
+    // to every program run inside it, unless the app is entitled to ask.
+    // macOS still asks the user each time; these only make asking possible.
+    let entitlements = root.appendingPathComponent("Resources/Terminal/Terminal.entitlements").path
+    let signing = ["codesign", "--force", "--options", "runtime", "--timestamp", "--sign", application]
+    _ = try run(signing + [app.appendingPathComponent("Contents/MacOS/TerminalLauncher").path])
+    _ = try run(signing + ["--entitlements", entitlements, app.path])
     _ = try run(["codesign", "--verify", "--strict", "--deep", app.path])
     let archive = output.appendingPathComponent("HelgeTerminal-\(version)-arm64.zip")
     if files.fileExists(atPath: archive.path) { try files.removeItem(at: archive) }

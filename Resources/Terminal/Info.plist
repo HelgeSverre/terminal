@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
 	<key>CFBundleDisplayName</key>
 	<string>Helge Terminal</string>
 	<key>CFBundleExecutable</key>
@@ -10,28 +12,68 @@
 	<string>Terminal.icns</string>
 	<key>CFBundleIdentifier</key>
 	<string>no.helgesverre.terminal</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>Terminal</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>0.3.1</string>
+	<key>CFBundleSupportedPlatforms</key>
+	<array>
+		<string>MacOSX</string>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>13</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>A program running in Helge Terminal wants to control another app.</string>
 	<key>NSAppleScriptEnabled</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>A program running in Helge Terminal wants to use Bluetooth.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>A program running in Helge Terminal wants to access your calendars.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>A program running in Helge Terminal wants to use the camera.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>A program running in Helge Terminal wants to access your contacts.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>A program running in Helge Terminal wants to access files on your Desktop.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>A program running in Helge Terminal wants to access files in Documents.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
-	<string>Commands you run in Terminal may read and write files in Downloads.</string>
+	<string>A program running in Helge Terminal wants to access files in Downloads.</string>
+	<key>NSFileProviderDomainUsageDescription</key>
+	<string>A program running in Helge Terminal wants to access files managed by a file provider.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Helge Sverre.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>A program running in Helge Terminal wants to reach devices on your local network.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>A program running in Helge Terminal wants to use your location.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>A program running in Helge Terminal wants to use the microphone.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>A program running in Helge Terminal wants to access files on a network volume.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>A program running in Helge Terminal wants to access your photo library.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>A program running in Helge Terminal wants to access your reminders.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>A program running in Helge Terminal wants to access files on a removable volume.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>A program running in Helge Terminal wants to use speech recognition.</string>
+	<key>NSSystemAdministrationUsageDescription</key>
+	<string>A program running in Helge Terminal wants to administer this computer.</string>
 	<key>OSAScriptingDefinition</key>
 	<string>Terminal.sdef</string>
 </dict>
