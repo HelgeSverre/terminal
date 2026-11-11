@@ -169,3 +169,10 @@ The bundle identifier is `no.helgesverre.terminal`.
 | [Terminal compatibility](docs/terminfo.md) | Bundled capabilities and parser coverage |
 | [Clipboard protocol](docs/osc52-clipboard.md) | OSC 52 behavior and policy |
 | [Fonts](assets/fonts/README.md) | Font sources and licenses |
+
+## License
+
+The code is released under the [MIT License](LICENSE). The bundled fonts and
+the code derived from other projects keep their own licenses; see
+[Fonts](assets/fonts/README.md) and the
+[third-party notices](Resources/Terminal/THIRD_PARTY_NOTICES.md).
