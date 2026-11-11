@@ -1,22 +1,22 @@
 import Foundation
 
-/// Compares PTY throughput of two builds of the app: the Rust reference and
-/// the Swift app.
+/// Compares PTY throughput of two builds of the app: a baseline and a
+/// candidate, which must reach a set fraction of the baseline's throughput.
 ///
 /// Both bundles are launched from their executables into independent, owned
 /// processes. Each runs the same PTY driver and must exit by itself with all
 /// its children reaped.
 enum CompareTerminalApps {
   static let command = Command(
-    name: "compare-terminal-apps", usage: "REPORT_DIRECTORY RUST_APP SWIFT_APP",
+    name: "compare-terminal-apps", usage: "REPORT_DIRECTORY BASELINE_APP CANDIDATE_APP",
     summary: "Measure PTY throughput of two app bundles with one driver (BENCH_FIRST, BENCH_BYTES, BENCH_RUNS).",
     run: run)
 
-  static let minimumSwiftToRustRatio = 0.7
+  static let minimumCandidateToBaselineRatio = 0.7
 
   static func run(_ arguments: [String]) throws {
     guard arguments.count == 3 else { throw Failure.usage(command) }
-    var comparison = try Comparison(output: arguments[0], rustApp: arguments[1], swiftApp: arguments[2],
+    var comparison = try Comparison(output: arguments[0], baselineApp: arguments[1], candidateApp: arguments[2],
                                     environment: ProcessInfo.processInfo.environment)
     try comparison.run()
     print(comparison.summary)
@@ -41,9 +41,9 @@ enum CompareTerminalApps {
     }
 
     /// Checks the arguments and settings before anything is launched or written.
-    init(output: String, rustApp: String, swiftApp: String, environment: [String: String]) throws {
-      let first = environment["BENCH_FIRST"] ?? "rust"
-      guard ["rust", "swift"].contains(first) else { throw Failure("BENCH_FIRST must be rust or swift") }
+    init(output: String, baselineApp: String, candidateApp: String, environment: [String: String]) throws {
+      let first = environment["BENCH_FIRST"] ?? "baseline"
+      guard ["baseline", "candidate"].contains(first) else { throw Failure("BENCH_FIRST must be baseline or candidate") }
       guard let bytes = Int(environment["BENCH_BYTES"] ?? "2097152"), (1...1_073_741_824).contains(bytes) else {
         throw Failure("BENCH_BYTES must be between 1 and 1 GiB")
       }
@@ -51,7 +51,7 @@ enum CompareTerminalApps {
         throw Failure("BENCH_RUNS must be between 1 and 100")
       }
       self.init(output: absolutePath(output), bytes: bytes, runs: runs)
-      let bundles = [("rust", try realPath(rustApp)), ("swift", try realPath(swiftApp))]
+      let bundles = [("baseline", try realPath(baselineApp)), ("candidate", try realPath(candidateApp))]
       apps = bundles.filter { $0.0 == first } + bundles.filter { $0.0 != first }
       let contents = try? FileManager.default.contentsOfDirectory(atPath: self.output)
       if FileManager.default.fileExists(atPath: self.output), contents?.isEmpty != true {
@@ -92,14 +92,18 @@ enum CompareTerminalApps {
       result["driver_sha256"] = try sha256(ofFile: driver)
       result["driver_source_sha256"] = try sha256(ofFile: BenchDriver.source)
       for (label, bundle) in apps { try measure(label, bundle) }
-      guard let rust = reports["rust"], let swift = reports["swift"] else { throw Failure("key not found: \"rust\"") }
+      guard let baseline = reports["baseline"], let candidate = reports["candidate"] else {
+        throw Failure("key not found: \"baseline\"")
+      }
       let layout = ["columns", "rows", "pixel_width", "pixel_height", "output_post_processing"]
-      guard layout.allSatisfy({ ReportValue.same(rust[$0], swift[$0]) }) else { throw Failure("App PTY layouts differ") }
-      let ratios = try Self.ratios(swift: swift, rust: rust)
+      guard layout.allSatisfy({ ReportValue.same(baseline[$0], candidate[$0]) }) else {
+        throw Failure("App PTY layouts differ")
+      }
+      let ratios = try Self.ratios(candidate: candidate, baseline: baseline)
       // The gate is recorded for the reader; a ratio below it does not fail the run.
       result["performance_gate"] = [
-        "minimum_swift_to_rust_ratio": minimumSwiftToRustRatio, "observed_ratios": ratios,
-        "passed": ratios.values.allSatisfy { $0 >= minimumSwiftToRustRatio },
+        "minimum_candidate_to_baseline_ratio": minimumCandidateToBaselineRatio, "observed_ratios": ratios,
+        "passed": ratios.values.allSatisfy { $0 >= minimumCandidateToBaselineRatio },
       ] as [String: Any]
       result["passed"] = true
     }
@@ -109,26 +113,26 @@ enum CompareTerminalApps {
     var summary: String {
       let gate = result["performance_gate"] as? [String: Any] ?? [:]
       let ratios = gate["observed_ratios"] as? [String: Double] ?? [:]
-      let minimum = "\(Int(minimumSwiftToRustRatio * 100))% of rust"
-      let missed = ratios.filter { $0.value < minimumSwiftToRustRatio }.sorted { $0.key < $1.key }
+      let minimum = "\(Int(minimumCandidateToBaselineRatio * 100))% of baseline"
+      let missed = ratios.filter { $0.value < minimumCandidateToBaselineRatio }.sorted { $0.key < $1.key }
         .map { "\($0.key) \(String(format: "%.1f", ($0.value * 1000).rounded(.down) / 10))%" }
       let verdict = gate["passed"] as? Bool == true ? "passed (every workload at or above \(minimum))"
         : "failed (below \(minimum): \(missed.joined(separator: ", ")))"
       return "Completed both app benchmarks; all owned processes exited cleanly; performance gate \(verdict)"
     }
 
-    /// Each workload's median Swift throughput as a fraction of the Rust one.
-    private static func ratios(swift: [String: Any], rust: [String: Any]) throws -> [String: Double] {
+    /// Each workload's median candidate throughput as a fraction of the baseline's.
+    private static func ratios(candidate: [String: Any], baseline: [String: Any]) throws -> [String: Double] {
       func medians(_ report: [String: Any]) throws -> [(String, Double)] {
         try report.objects("workloads").map { item in
           guard let name = try item.fetch("name") as? String else { throw Failure("\"name\" is not a string") }
           return (name, try item.object("mib_per_second").number("p50"))
         }
       }
-      let rustMedians = Dictionary(try medians(rust)) { _, last in last }
+      let baselineMedians = Dictionary(try medians(baseline)) { _, last in last }
       var ratios: [String: Double] = [:]
-      for (name, median) in try medians(swift) {
-        guard let reference = rustMedians[name] else { throw Failure("key not found: \"\(name)\"") }
+      for (name, median) in try medians(candidate) {
+        guard let reference = baselineMedians[name] else { throw Failure("key not found: \"\(name)\"") }
         ratios[name] = median / reference
       }
       return ratios
@@ -245,9 +249,9 @@ enum CompareTerminalApps {
       try withFakeBundle(failingDriverScript("fixture driver failed")) { app, root in
         var comparison = Comparison(output: root, bytes: 2 * 1_048_576, runs: 3)
         comparison.driver = "/unused-driver"
-        let message = try expectFailure("driver failure") { try comparison.measure("swift", app) }.message
+        let message = try expectFailure("driver failure") { try comparison.measure("candidate", app) }.message
         try expect(message == "fixture driver failed", "got: \(message)")
-        let record = comparison.records["swift"] ?? [:]
+        let record = comparison.records["candidate"] ?? [:]
         try expect(record["natural_exit"] as? Bool == false, "exit is not natural")
         try expect((record["cleanup_survivors"] as? [Int]) == [], "nothing survives")
       }
@@ -286,21 +290,22 @@ enum CompareTerminalApps {
     SelfTest.Case(name: "compare terminal apps: two accepted apps give a report with the order and the gate") {
       try withFakeBundle(reportingScript) { app, root in
         try writeDriverReport(for: app, rate: 2.0)
-        var comparison = try Comparison(output: root + "/report", rustApp: app, swiftApp: app, environment: [
-          "BENCH_FIRST": "swift", "BENCH_BYTES": "1048576", "BENCH_RUNS": "1"])
+        var comparison = try Comparison(output: root + "/report", baselineApp: app, candidateApp: app, environment: [
+          "BENCH_FIRST": "candidate", "BENCH_BYTES": "1048576", "BENCH_RUNS": "1"])
         try comparison.run()
         let report = try readJSONObject(root + "/report/comparison.json")
         try expect(report["passed"] as? Bool == true, "comparison passed")
-        try expect(report["order"] as? [String] == ["swift", "rust"], "order follows BENCH_FIRST")
+        try expect(report["order"] as? [String] == ["candidate", "baseline"], "order follows BENCH_FIRST")
         let gate = try report.object("performance_gate")
         try expect(gate["passed"] as? Bool == true, "gate passed")
         try expect(try gate.object("observed_ratios").number("unicode") == 1, "ratio is one")
-        let rust = try report.object("apps").object("rust")
-        try expect(rust["report"] as? String == "rust.json" && rust["natural_exit"] as? Bool == true, "rust is recorded")
+        let baseline = try report.object("apps").object("baseline")
+        try expect(baseline["report"] as? String == "baseline.json" && baseline["natural_exit"] as? Bool == true,
+                   "the baseline is recorded")
         let text = try String(contentsOfFile: root + "/report/comparison.json", encoding: .utf8)
         try expect(text.contains("\"unicode\": 1.0"), "a ratio is written as floating point")
         try expect(comparison.summary == "Completed both app benchmarks; all owned processes exited cleanly; "
-                     + "performance gate passed (every workload at or above 70% of rust)", "got: \(comparison.summary)")
+                     + "performance gate passed (every workload at or above 70% of baseline)", "got: \(comparison.summary)")
       }
     },
     SelfTest.Case(name: "compare terminal apps: a missed gate leaves the measurement passed and is stated in the summary") {
@@ -309,15 +314,21 @@ enum CompareTerminalApps {
         try writeScript(reportingScript, to: slow + "/Contents/MacOS/Terminal")
         try writeDriverReport(for: app, rate: 2.0)
         try writeDriverReport(for: slow, rate: 1.0)
-        var comparison = try Comparison(output: root + "/report", rustApp: app, swiftApp: slow, environment: [
+        var comparison = try Comparison(output: root + "/report", baselineApp: app, candidateApp: slow, environment: [
           "BENCH_BYTES": "1048576", "BENCH_RUNS": "1"])
         try comparison.run()
         let report = try readJSONObject(root + "/report/comparison.json")
         try expect(report["passed"] as? Bool == true, "both apps were measured")
+        try expect(report["order"] as? [String] == ["baseline", "candidate"], "the baseline is measured first by default")
+        let refused = try expectFailure("an order by an old name") {
+          _ = try Comparison(output: root + "/other", baselineApp: app, candidateApp: slow,
+                             environment: ["BENCH_FIRST": "rust"])
+        }
+        try expect(refused.message == "BENCH_FIRST must be baseline or candidate", "got: \(refused.message)")
         try expect(try report.object("performance_gate")["passed"] as? Bool == false, "the gate is missed")
         let workloads = BenchDriver.workloads.sorted().map { "\($0) 50.0%" }.joined(separator: ", ")
         try expect(comparison.summary == "Completed both app benchmarks; all owned processes exited cleanly; "
-                     + "performance gate failed (below 70% of rust: \(workloads))", "got: \(comparison.summary)")
+                     + "performance gate failed (below 70% of baseline: \(workloads))", "got: \(comparison.summary)")
       }
     },
   ]
