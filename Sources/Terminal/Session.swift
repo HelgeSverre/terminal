@@ -93,6 +93,20 @@ enum EarlyChild {
   }
 }
 
+/// How a session's child ended, for deciding what becomes of its pane.
+struct SessionEnd {
+  let exitedCleanly: Bool
+  /// From the start of the session, not of the child: a shell started ahead
+  /// of the app is adopted later.
+  let seconds: Double
+  let ranLoginShell: Bool
+
+  /// A shell that was left, by `exit` or end of input, takes its pane with
+  /// it. One that fails as it starts stays, so what it printed can be read;
+  /// so does any other command, whose output is the point of running it.
+  var closesPane: Bool { ranLoginShell && (exitedCleanly || seconds >= 1) }
+}
+
 struct LaunchSpec: Equatable {
   let executable: String
   let arguments: [String]
@@ -267,6 +281,8 @@ final class Session: @unchecked Sendable {
     case eof, idle
   }
   private let launchSpec: LaunchSpec?
+  private var exitStatus: Int32 = 0
+  private var startedNanoseconds = DispatchTime.now().uptimeNanoseconds
   private var ingress = SessionEventQueue<Event>()
   private var queuedOutput: Int { ingress.outputBytes }
   // The broker owns read admission and immutable transfer; terminal state stays on queue.
@@ -332,6 +348,8 @@ final class Session: @unchecked Sendable {
   private let clipboardSessionID = UUID()
   var onSnapshot: (@MainActor (TerminalSnapshot) -> Void)?
   var onStatus: (@MainActor (String) -> Void)?
+  /// Called once, when the child has exited and its last output is parsed.
+  var onEnd: (@MainActor (SessionEnd) -> Void)?
   var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
   private var onClipboardClosed: (@MainActor (UUID) -> Void)?
   init(launch: LaunchSpec? = nil) {
@@ -633,6 +651,7 @@ final class Session: @unchecked Sendable {
     }
     master = child.master
     pid = child.pid
+    startedNanoseconds = DispatchTime.now().uptimeNanoseconds
     LiveChildren.started()
     let lifetime = PTYDescriptorLifetime(descriptor: master, sources: 2)
     descriptorLifetime = lifetime
@@ -678,6 +697,19 @@ final class Session: @unchecked Sendable {
     reap()
     publish()
   }
+  /// The child is gone and everything it wrote is on screen.
+  private func finish() {
+    report("Session finished")
+    // WIFEXITED and a zero WEXITSTATUS.
+    let clean = exitStatus & 0x7f == 0 && (exitStatus >> 8) & 0xff == 0
+    let seconds = Double(DispatchTime.now().uptimeNanoseconds &- startedNanoseconds) / 1e9
+    let shell = LaunchSpec.shell
+    let spec = launchSpec ?? shell
+    let end = SessionEnd(
+      exitedCleanly: clean, seconds: seconds,
+      ranLoginShell: spec.executable == shell.executable && spec.arguments == shell.arguments)
+    DispatchQueue.main.async { [weak self] in self?.onEnd?(end) }
+  }
   private func reap() {
     guard !reaped, pid > 0 else { return }
     var status: Int32 = 0
@@ -687,8 +719,9 @@ final class Session: @unchecked Sendable {
       LiveChildren.ended()
       process?.cancel()
       process = nil
+      exitStatus = status
       report("Process exited (status \(status)); draining output")
-      if parserEnded { report("Session finished") }
+      if parserEnded { finish() }
     }
   }
   private func enqueue(_ event: Event) {
@@ -947,7 +980,7 @@ final class Session: @unchecked Sendable {
     case .eof:
       parserEnded = true
       terminal_finish(core)
-      report(reaped ? "Session finished" : "PTY ended; waiting for process exit")
+      if reaped { finish() } else { report("PTY ended; waiting for process exit") }
     case .idle: break
     }
     if complete {

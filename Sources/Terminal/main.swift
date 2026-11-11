@@ -189,6 +189,10 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       self.closePane(nil)
     }
     panePresentations[ObjectIdentifier(pane)] = presentation
+    pane.session.onEnd = { [weak self, weak pane] end in
+      guard let self, let pane, end.closesPane, self.panes.contains(where: { $0 === pane }) else { return }
+      self.close(pane)
+    }
     return pane
   }
 
@@ -297,12 +301,22 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     split.arrangedSubviews.forEach(reconcileSplit)
   }
   @objc func closePane(_ sender: Any?) {
-    guard panes.count > 1, let pane = focusedPane,
-      let presentation = panePresentation(for: pane), let split = presentation.superview as? NSSplitView
-    else {
+    guard panes.count > 1, let pane = focusedPane else {
       window?.performClose(sender)
       return
     }
+    close(pane)
+  }
+  /// Closes `pane`, and the window with it when it is the only one.
+  private func close(_ pane: TerminalCanvasView) {
+    guard panes.count > 1,
+      let presentation = panePresentation(for: pane), let split = presentation.superview as? NSSplitView
+    else {
+      window?.close()
+      return
+    }
+    // A shell can end in a pane that is not the active one; focus then stays put.
+    let wasActive = activePane === pane || activePane == nil
     pane.session.close()
     pane.detachRenderingSurface()
     panes.removeAll { $0 === pane }
@@ -319,9 +333,10 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       survivor.autoresizingMask = [.width, .height]
       if root === split { root = survivor }
     }
-    selectActivePane(panes.last)
+    let next = wasActive ? panes.last : activePane
+    selectActivePane(next)
     reconcileLayout()
-    window?.makeFirstResponder(panes.last)
+    window?.makeFirstResponder(next)
     panes.forEach { $0.updateFocus() }
   }
   func windowDidChangeOcclusionState(_ notification: Notification) {
