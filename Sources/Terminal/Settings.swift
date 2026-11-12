@@ -7,17 +7,20 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   private let historyRows = SettingsTextField(value: "")
   private let startingDirectory = SettingsTextField(value: "")
   private let wordCharacters = SettingsTextField(value: "")
-  private let option = NSButton(
+  private let option = SettingsCheckbox(
     checkboxWithTitle: "Option key sends Escape", target: nil, action: nil)
-  private let followTail = NSButton(
+  private let followTail = SettingsCheckbox(
     checkboxWithTitle: "Scroll to bottom when typing", target: nil, action: nil)
-  private let showPaneTitles = NSButton(
+  private let showPaneTitles = SettingsCheckbox(
     checkboxWithTitle: "Show pane titles when split", target: nil, action: nil)
   private let inactivePaneDim = SettingsSegmentedControl(
     labels: PaneInactiveDim.allCases.map(\.label), trackingMode: .selectOne, target: nil, action: nil)
   private let defaultPaneColor = PaneColorPaletteView(padding: 0)
   private let error = NSTextField(wrappingLabelWithString: "")
   private let apply = SettingsActionButton(title: "Apply", primary: true, target: nil, action: nil)
+  private let cancel = SettingsActionButton(title: "Cancel", target: nil, action: nil)
+  /// The last validation message read out, so each new one is announced once.
+  private var announcedError = ""
   private let onApply: (TerminalPreferences) -> Void
   init(onApply: @escaping (TerminalPreferences) -> Void) {
     self.onApply = onApply
@@ -102,6 +105,10 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       let subtitle = label(section.subtitle, size: 12, color: TerminalTheme.Settings.muted)
       pane.addArrangedSubview(subtitle)
       pane.setCustomSpacing(16, after: subtitle)
+      pane.setAccessibilityElement(true)
+      pane.setAccessibilityRole(.group)
+      pane.setAccessibilityLabel(section.title)
+      renderedKeyViews = []
       for field in section.fields {
         let row = render(field)
         pane.addArrangedSubview(row)
@@ -115,13 +122,15 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
         pane.topAnchor.constraint(equalTo: main.topAnchor, constant: 20),
       ])
       panes.append(pane)
+      sectionKeyViews.append(renderedKeyViews)
     }
     sidebar.addArrangedSubview(NSView())
     error.font = .systemFont(ofSize: 12)
     error.textColor = TerminalTheme.color(TerminalTheme.danger)
     error.setAccessibilityLabel("Settings validation")
     error.setAccessibilityIdentifier("no.helgesverre.terminal.settings.validation")
-    let cancel = SettingsActionButton(title: "Cancel", target: self, action: #selector(Self.cancel(_:)))
+    cancel.target = self
+    cancel.action = #selector(Self.cancel(_:))
     cancel.setAccessibilityIdentifier("no.helgesverre.terminal.settings.cancel")
     cancel.keyEquivalent = "\u{1b}"
     apply.setAccessibilityIdentifier("no.helgesverre.terminal.settings.apply")
@@ -146,7 +155,6 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       pane.bottomAnchor.constraint(lessThanOrEqualTo: error.topAnchor, constant: -16).isActive = true
     }
     showSection(0)
-    window.initialFirstResponder = navigation.first
     window.center()
   }
   // Controls are the draft: created once, retained while panes are hidden, and read
@@ -167,6 +175,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       view.setAccessibilityIdentifier("no.helgesverre.terminal.settings.\(id)")
       view.setAccessibilityLabel(accessibilityLabel)
       view.toolTip = hint
+      view.setAccessibilityHelp(hint)
       if let width { view.widthAnchor.constraint(equalToConstant: width).isActive = true }
     }
   }
@@ -181,6 +190,9 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   }
   private var navigation: [SettingsNavigationButton] = []
   private var panes: [NSStackView] = []
+  /// Each section's focusable controls in Tab order, collected by render().
+  private var sectionKeyViews: [[NSView]] = []
+  private var renderedKeyViews: [NSView] = []
   private lazy var sections: [Section] = [
     Section(id: "general", icon: "folder", title: "General", subtitle: "Startup and default directory.", fields: [
       .text("Startup directory", "Folder to open on launch", startingDirectory,
@@ -244,14 +256,20 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
         let group = NSStackView(views: [input, button])
         group.spacing = 8
         control = group
-      } else { control = input }
+        renderedKeyViews += [input, button]
+      } else {
+        control = input
+        renderedKeyViews.append(input)
+      }
     case let .number(name, hint, input, presentation, suffix):
       title = name; helper = hint
       if let number = input as? FontSizeInput {
         presentation.apply(to: number.textField)
+        renderedKeyViews.append(number.textField)
       } else if let text = input as? NSTextField {
         configure(text, presentation: presentation)
         text.alignment = .right
+        renderedKeyViews.append(text)
       }
       let group = NSStackView(views: [input, label(suffix, size: 13, color: TerminalTheme.Settings.muted)])
       group.spacing = 8
@@ -261,6 +279,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       input.title = ""
       input.contentTintColor = TerminalTheme.color(TerminalTheme.Settings.text)
       presentation.apply(to: input)
+      renderedKeyViews.append(input)
     case let .segment(name, input, presentation):
       title = name; control = input
       presentation.apply(to: input)
@@ -270,11 +289,13 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       input.selectedSegmentBezelColor = TerminalTheme.color(TerminalTheme.Settings.text)
       for index in 0..<input.segmentCount { input.setWidth(48, forSegment: index) }
       input.heightAnchor.constraint(equalToConstant: 32).isActive = true
+      renderedKeyViews.append(input)
     case let .palette(name, hint, input, presentation):
       title = name; helper = hint; control = input
       presentation.apply(to: input)
       input.setAccessibilityElement(true)
       input.setAccessibilityRole(.group)
+      renderedKeyViews.append(input)
     case let .readOnly(name, input):
       title = name; control = input
       input.font = .systemFont(ofSize: 14)
@@ -330,6 +351,20 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       navigation[item].state = item == index ? .on : .off
       navigation[item].setAccessibilityValue(NSNumber(value: item == index))
     }
+    linkKeyViews(section: index)
+  }
+  /// Tab order for the shown section: the selected section in the sidebar,
+  /// its controls top to bottom, Cancel, Apply, and round again; Shift-Tab
+  /// walks it backwards. The sidebar is one stop, like a radio group: only
+  /// the selected section takes focus, and Up and Down change it. Built per
+  /// section so hidden controls are never in the loop.
+  private func linkKeyViews(section index: Int) {
+    let views: [NSView] = navigation + sectionKeyViews[index] + [cancel, apply]
+    for (view, next) in zip(views, views.dropFirst() + views.prefix(1)) {
+      let exit = (view as? PaneColorPaletteView)?.lastKeyView ?? view
+      exit.nextKeyView = (next as? PaneColorPaletteView)?.firstKeyView ?? next
+    }
+    window?.initialFirstResponder = navigation[index]
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   func reload() {
@@ -370,9 +405,17 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       _ = try value()
       apply.isEnabled = true
       error.stringValue = ""
+      announcedError = ""
     } catch {
       apply.isEnabled = false
-      self.error.stringValue = error.localizedDescription
+      let message = error.localizedDescription
+      self.error.stringValue = message
+      // The message replaces text away from the focused field; say it once.
+      guard message != announcedError else { return }
+      announcedError = message
+      NSAccessibility.post(element: self.error, notification: .announcementRequested, userInfo: [
+        .announcement: message, .priority: NSAccessibilityPriorityLevel.high.rawValue,
+      ])
     }
   }
   @objc private func cancel(_ sender: Any?) { close() }
@@ -459,6 +502,13 @@ private final class FontSizeInput: NSStackView, NSTextFieldDelegate {
   }
 }
 
+// Controls in Settings take Tab focus whatever the system's Keyboard
+// Navigation setting: the window is a form, and Tab is how a form is used.
+private final class SettingsCheckbox: NSButton {
+  override var acceptsFirstResponder: Bool { isEnabled }
+  override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
+}
+
 // Native buttons retain standard AX actions and keyboard activation; only their
 // fill and typography are drawn here to avoid the system accent in this surface.
 private class SettingsActionButton: NSButton {
@@ -475,6 +525,8 @@ private class SettingsActionButton: NSButton {
     setButtonType(.momentaryPushIn)
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
+  override var acceptsFirstResponder: Bool { isEnabled }
+  override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
   override var intrinsicContentSize: NSSize {
     NSSize(width: max(68, (title as NSString).size(withAttributes: [.font: font!]).width + 28), height: 30)
   }
@@ -510,6 +562,9 @@ private final class SettingsNavigationButton: NSButton {
     focusRingType = .exterior
   }
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
+  override var acceptsFirstResponder: Bool { true }
+  /// One Tab stop for the sidebar: the selected section.
+  override var canBecomeKeyView: Bool { state == .on && !isHiddenOrHasHiddenAncestor }
   override func accessibilityPerformPress() -> Bool {
     guard isEnabled else { return false }
     performClick(nil)
@@ -606,6 +661,20 @@ private final class SettingsTextFieldCell: NSTextFieldCell {
 // Keep NSSegmentedControl's native tracking, keyboard and AX radio children.
 // Drawing the segments avoids appearance-dependent system accent substitution.
 private final class SettingsSegmentedControl: NSSegmentedControl {
+  override var acceptsFirstResponder: Bool { isEnabled }
+  override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
+  /// Left and Right choose the neighboring segment, stopping at the ends.
+  /// AppKit's own segment keys need Keyboard Navigation, and its focused
+  /// segment is not drawn here; the selection is.
+  override func keyDown(with event: NSEvent) {
+    let step = event.keyCode == 123 ? -1 : event.keyCode == 124 ? 1 : 0
+    guard step != 0, segmentCount > 0 else { return super.keyDown(with: event) }
+    let next = min(segmentCount - 1, max(0, selectedSegment + step))
+    guard next != selectedSegment else { return }
+    selectedSegment = next
+    sendAction(action, to: target)
+    needsDisplay = true
+  }
   override func draw(_ dirtyRect: NSRect) {
     let shape = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 8, yRadius: 8)
     TerminalTheme.color(TerminalTheme.Settings.surface).setFill()

@@ -169,9 +169,15 @@ final class PaneColorPaletteView: NSView, NSTextFieldDelegate {
     setFrameSize(fittingSize)
   }
 
+  /// Where Tab enters the palette from the view before it: the grid. Only
+  /// the grid's stop takes focus, so AppKit skips on to it.
+  var firstKeyView: NSView { swatches.first ?? hexInput }
+  /// The palette's last key view, whose `nextKeyView` continues the host's loop.
+  var lastKeyView: NSView { hexInput }
+
   /// For a palette that is the whole window, as in the popover: Tab from the
   /// hex field returns to the grid.
-  func closeKeyViewLoop() { hexInput.nextKeyView = swatches.first }
+  func closeKeyViewLoop() { lastKeyView.nextKeyView = firstKeyView }
 
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
 

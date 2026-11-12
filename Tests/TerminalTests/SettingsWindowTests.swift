@@ -100,4 +100,91 @@ import Testing
     #expect(palette.selected == .standard, "Cancel must discard the unsaved default color")
     settings.close()
   }
+
+  /// Tab and Shift-Tab cycle through the shown section only: its sidebar
+  /// entry, its controls in order, Cancel and Apply. Buttons, checkboxes and
+  /// the segmented control take part whatever the Keyboard Navigation setting.
+  @Test func settingsKeyboardOrder() throws {
+    _ = NSApplication.shared
+    defer { UserDefaults.standard.removeVolatileDomain(forName: UserDefaults.argumentDomain) }
+    UserDefaults.standard.setVolatileDomain([
+      "fontSize": 14, "historyRows": 50000, "optionSendsEscape": false,
+      "followTailOnInput": true, "startingDirectory": NSHomeDirectory(),
+      "selectionWordCharacters": "_-/.:~", "showPaneTitles": true, "inactivePaneDim": 5,
+    ], forName: UserDefaults.argumentDomain)
+    let settings = TerminalSettingsWindow { _ in }
+    settings.present()
+    defer { settings.close() }
+    let window = try #require(settings.window)
+    func descendants(_ view: NSView) -> [NSView] { [view] + view.subviews.flatMap(descendants) }
+    let views = descendants(window.contentView!)
+    let prefix = "no.helgesverre.terminal."
+    func view(_ id: String) -> NSView { views.first { $0.accessibilityIdentifier() == prefix + id }! }
+    // What has focus, by identifier; a field being edited answers for its field editor.
+    func focused() -> String {
+      var responder = window.firstResponder as? NSView
+      if let editor = responder as? NSTextView, editor.isFieldEditor { responder = editor.delegate as? NSView }
+      return responder.map { $0.accessibilityIdentifier().replacingOccurrences(of: prefix, with: "") } ?? "nothing"
+    }
+    func tab(backward: Bool = false) {
+      if let editor = window.firstResponder as? NSTextView, editor.isFieldEditor {
+        backward ? editor.insertBacktab(nil) : editor.insertTab(nil)
+      } else {
+        backward ? window.selectPreviousKeyView(nil) : window.selectNextKeyView(nil)
+      }
+    }
+    func walk(_ count: Int, backward: Bool = false) -> [String] {
+      (0..<count).map { _ in tab(backward: backward); return focused() }
+    }
+    let orders: [String: [String]] = [
+      "general": ["settings.starting-directory", "settings.choose-directory"],
+      "text": ["settings.font-size", "settings.word-characters"],
+      "scrollback": ["settings.scrollback-rows", "settings.follow-tail-on-input"],
+      "panes": ["settings.show-pane-titles", "settings.inactive-pane-dim", "pane.color.onyx", "pane.color.hex"],
+      "keyboard": ["settings.option-sends-escape"],
+    ]
+    for section in ["general", "text", "scrollback", "panes", "keyboard"] {
+      let button = view("settings.section." + section)
+      #expect((button as! NSButton).accessibilityPerformPress())
+      #expect(window.makeFirstResponder(button))
+      let loop = ["settings.section." + section] + orders[section]! + ["settings.cancel", "settings.apply"]
+      let forward = Array(loop.dropFirst()) + [loop[0]]
+      #expect(walk(loop.count) == forward, "Tab order in \(section)")
+      #expect(walk(loop.count, backward: true) == Array(loop.reversed()),
+        "Shift-Tab order in \(section)")
+    }
+    // The sidebar is one stop: Up and Down change the section and keep focus there.
+    #expect(focused() == "settings.section.keyboard")
+    let up = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+      windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "",
+      isARepeat: false, keyCode: 126)!
+    window.firstResponder?.keyDown(with: up)
+    #expect(focused() == "settings.section.panes")
+    #expect(walk(1) == ["settings.show-pane-titles"], "Tab follows the newly selected section")
+    // Space toggles a focused checkbox.
+    let checkbox = view("settings.show-pane-titles") as! NSButton
+    let before = checkbox.state
+    let space = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+      windowNumber: window.windowNumber, context: nil, characters: " ", charactersIgnoringModifiers: " ",
+      isARepeat: false, keyCode: 49)!
+    window.firstResponder?.keyDown(with: space)
+    #expect(checkbox.state != before, "Space did not toggle the focused checkbox")
+    // Left and Right choose a dimming level on the focused segmented control.
+    let dim = view("settings.inactive-pane-dim") as! NSSegmentedControl
+    #expect(window.makeFirstResponder(dim))
+    func arrow(_ keyCode: UInt16) {
+      dim.keyDown(with: NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+        windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "",
+        isARepeat: false, keyCode: keyCode)!)
+    }
+    let start = dim.selectedSegment
+    arrow(124)
+    #expect(dim.selectedSegment == start + 1)
+    arrow(123)
+    #expect(dim.selectedSegment == start)
+    for _ in 0..<dim.segmentCount { arrow(123) }
+    #expect(dim.selectedSegment == 0, "Left stops at the first level")
+    // Hints are exposed to VoiceOver as help, not only as tooltips.
+    #expect(view("settings.font-size").accessibilityHelp() == "8–40 pt. Use Up and Down to adjust by one point.")
+  }
 }
