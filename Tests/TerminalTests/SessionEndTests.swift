@@ -32,4 +32,14 @@ import Testing
     _ = await TestEnvironment.wait(seconds: 0.3) { false }
     #expect(ends == 1)
   }
+
+  /// A background job that keeps the terminal open must not keep the pane
+  /// after the shell itself has exited.
+  @Test func theEndArrivesWhileABackgroundJobHoldsTheTerminal() async {
+    let session = Session(launch: TestEnvironment.shell("sleep 30 & printf SESSION_END_READY; exit 0"))
+    defer { session.close() }
+    var end: SessionEnd?
+    session.onEnd = { end = $0 }
+    #expect(await TestEnvironment.wait(seconds: 3) { end != nil }, "no end while a background job holds the PTY")
+  }
 }
