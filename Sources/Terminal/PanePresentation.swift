@@ -37,7 +37,7 @@ final class TerminalPanePresentationView: NSView {
     addSubview(findBar)
     addSubview(header)
     header.onSelect = { [weak self] in self?.onSelect?() }
-    header.onChooseColor = { [weak self] in self?.showColorPopover() }
+    header.onChooseColor = { [weak self] point in self?.showColorPopover(at: point) }
     header.onClose = { [weak self] in self?.onClose?() }
     colorPopover.onChoose = { [weak self] color in self?.choose(color) }
     colorPopover.onCommit = { [weak self] in self?.onSelect?() }
@@ -145,9 +145,9 @@ final class TerminalPanePresentationView: NSView {
     header.configure(title: title, color: color)
   }
 
-  private func showColorPopover() {
+  private func showColorPopover(at point: NSPoint) {
     onSelect?()
-    colorPopover.present(from: header, selected: color)
+    colorPopover.present(from: header, at: point.x, selected: color)
   }
 
 }
@@ -157,7 +157,8 @@ private final class PaneHeaderView: NSView {
   private let closeButton = NSButton(title: "", target: nil, action: nil)
   private var color = PaneChromeColor.standard
   var onSelect: (() -> Void)?
-  var onChooseColor: (() -> Void)?
+  /// Called with the right-click location, in header coordinates.
+  var onChooseColor: ((NSPoint) -> Void)?
   var onClose: (() -> Void)?
 
   override init(frame frameRect: NSRect) {
@@ -219,7 +220,7 @@ private final class PaneHeaderView: NSView {
 
   override func rightMouseDown(with event: NSEvent) {
     onSelect?()
-    onChooseColor?()
+    onChooseColor?(convert(event.locationInWindow, from: nil))
   }
 
   /// Middle (scroll-wheel) click closes the pane, like a browser tab. It
@@ -255,9 +256,12 @@ private final class PaneColorPopover {
     popover.contentSize = palette.frame.size
   }
 
-  func present(from view: NSView, selected: PaneChromeColor) {
+  /// Opens below `view`, with the arrow at `x` (the click) rather than the center.
+  func present(from view: NSView, at x: CGFloat, selected: PaneChromeColor) {
     palette.selected = selected
-    popover.show(relativeTo: view.bounds, of: view, preferredEdge: .maxY)
+    let x = min(max(x, view.bounds.minX), view.bounds.maxX - 1)
+    let anchor = NSRect(x: x, y: view.bounds.minY, width: 1, height: view.bounds.height)
+    popover.show(relativeTo: anchor, of: view, preferredEdge: .maxY)
   }
 
   func dismiss() {
