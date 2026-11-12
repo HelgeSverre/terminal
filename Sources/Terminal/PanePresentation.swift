@@ -20,6 +20,8 @@ final class TerminalPanePresentationView: NSView {
   private var defaultColor = PaneChromeColor.standard
   var color: PaneChromeColor { chosenColor ?? defaultColor }
   private let colorPopover = PaneColorPopover()
+  /// The pane's own color when the popover opened; Escape puts it back.
+  private var colorBeforePopover: PaneChromeColor?
 
   var onSelect: (() -> Void)?
   var onClose: (() -> Void)?
@@ -41,6 +43,7 @@ final class TerminalPanePresentationView: NSView {
     header.onClose = { [weak self] in self?.onClose?() }
     colorPopover.onChoose = { [weak self] color in self?.choose(color) }
     colorPopover.onCommit = { [weak self] in self?.onSelect?() }
+    colorPopover.onCancel = { [weak self] in self?.restoreColorBeforePopover() }
     updateHeader()
   }
 
@@ -77,7 +80,9 @@ final class TerminalPanePresentationView: NSView {
     isActive = active
     self.inactiveDim = inactiveDim
     header.isHidden = !showHeader
-    if !showHeader { colorPopover.dismiss() }
+    // Only a header that goes away takes its anchored popover with it; one
+    // opened from the keyboard on a single pane is anchored to the canvas.
+    if changed && !showHeader { colorPopover.dismiss() }
     guard presentationChanged else { return }
     updateHeader()
     if changed {
@@ -137,6 +142,18 @@ final class TerminalPanePresentationView: NSView {
     updateHeader()
   }
 
+  /// Makes this pane follow the default color preference again.
+  func resetColor() {
+    guard chosenColor != nil else { return }
+    chosenColor = nil
+    updateHeader()
+  }
+
+  private func restoreColorBeforePopover() {
+    chosenColor = colorBeforePopover
+    updateHeader()
+  }
+
   private func updateHeader() {
     let fullOpacity = isActive || isHovered
     let alpha = fullOpacity ? 1 : inactiveDim.alpha
@@ -145,9 +162,21 @@ final class TerminalPanePresentationView: NSView {
     header.configure(title: title, color: color)
   }
 
-  private func showColorPopover(at point: NSPoint) {
+  /// Opens the color popover with keyboard focus on the current color. It
+  /// points at `point` (header coordinates) after a right-click, and at the
+  /// header's center when opened from the menu. Without a header it hangs
+  /// from the top of the canvas.
+  func showColorPopover(at point: NSPoint? = nil) {
     onSelect?()
-    colorPopover.present(from: header, at: point.x, selected: color)
+    colorBeforePopover = chosenColor
+    if header.isHidden {
+      let anchor = NSRect(x: canvas.bounds.midX, y: canvas.bounds.minY, width: 1, height: 1)
+      colorPopover.present(from: canvas, anchor: anchor, selected: color)
+    } else {
+      let x = min(max(point?.x ?? header.bounds.midX, header.bounds.minX), header.bounds.maxX - 1)
+      let anchor = NSRect(x: x, y: header.bounds.minY, width: 1, height: header.bounds.height)
+      colorPopover.present(from: header, anchor: anchor, selected: color)
+    }
   }
 
 }
@@ -157,8 +186,9 @@ private final class PaneHeaderView: NSView {
   private let closeButton = NSButton(title: "", target: nil, action: nil)
   private var color = PaneChromeColor.standard
   var onSelect: (() -> Void)?
-  /// Called with the right-click location, in header coordinates.
-  var onChooseColor: ((NSPoint) -> Void)?
+  /// Called with the right-click location in header coordinates, or nil
+  /// when opened through accessibility.
+  var onChooseColor: ((NSPoint?) -> Void)?
   var onClose: (() -> Void)?
 
   override init(frame frameRect: NSRect) {
@@ -180,6 +210,27 @@ private final class PaneHeaderView: NSView {
     closeButton.setAccessibilityIdentifier("no.helgesverre.terminal.pane.close")
     closeButton.toolTip = "Close pane"
     addSubview(closeButton)
+    setAccessibilityElement(true)
+    setAccessibilityRole(.group)
+    setAccessibilityLabel("Pane header")
+    setAccessibilityIdentifier("no.helgesverre.terminal.pane.header")
+    setAccessibilityCustomActions([
+      NSAccessibilityCustomAction(name: "Choose Pane Color") { [weak self] in
+        self?.onChooseColor?(nil)
+        return self?.onChooseColor != nil
+      },
+      NSAccessibilityCustomAction(name: "Close Pane") { [weak self] in
+        self?.onClose?()
+        return self?.onClose != nil
+      },
+    ])
+  }
+
+  /// VoiceOver's "show menu" (VO-Shift-M) opens the color popover, as a right-click does.
+  override func accessibilityPerformShowMenu() -> Bool {
+    guard let onChooseColor else { return false }
+    onChooseColor(nil)
+    return true
   }
 
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
@@ -189,6 +240,7 @@ private final class PaneHeaderView: NSView {
     guard titleField.stringValue != title || self.color != color else { return }
     self.color = color
     titleField.stringValue = title
+    setAccessibilityValue(title)
     titleField.textColor = color.readableForeground
     closeButton.contentTintColor = color.readableForeground.withAlphaComponent(0.72)
     needsDisplay = true
@@ -239,7 +291,10 @@ private final class PaneColorPopover {
   private let popover = NSPopover()
   private let palette = PaneColorPaletteView()
   var onChoose: ((PaneChromeColor) -> Void)?
+  /// A color was kept, or Escape undid the preview; focus goes back to the pane.
   var onCommit: (() -> Void)?
+  /// Escape: put back the color the pane had when the popover opened.
+  var onCancel: (() -> Void)?
 
   init() {
     popover.behavior = .transient
@@ -251,17 +306,25 @@ private final class PaneColorPopover {
       popover.close()
       onCommit?()
     }
+    palette.onCancel = { [weak self] in
+      guard let self else { return }
+      onCancel?()
+      popover.close()
+      onCommit?()
+    }
+    palette.closeKeyViewLoop()
     popover.contentViewController = NSViewController()
     popover.contentViewController?.view = palette
     popover.contentSize = palette.frame.size
   }
 
-  /// Opens below `view`, with the arrow at `x` (the click) rather than the center.
-  func present(from view: NSView, at x: CGFloat, selected: PaneChromeColor) {
+  /// Opens below `anchor` in `view` and moves keyboard focus into the grid.
+  func present(from view: NSView, anchor: NSRect, selected: PaneChromeColor) {
     palette.selected = selected
-    let x = min(max(x, view.bounds.minX), view.bounds.maxX - 1)
-    let anchor = NSRect(x: x, y: view.bounds.minY, width: 1, height: view.bounds.height)
     popover.show(relativeTo: anchor, of: view, preferredEdge: .maxY)
+    guard let window = palette.window else { return }
+    window.makeKey()
+    palette.focusSelection()
   }
 
   func dismiss() {

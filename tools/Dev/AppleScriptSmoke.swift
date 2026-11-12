@@ -375,6 +375,19 @@ enum AppleScriptSmoke {
       let focused = try runScript(app + "focus pane pane id \(literal(pane))", name: "focus named pane")
       guard focused == pane else { throw Failure("focus pane returned a different pane: \(focused.debugDescription)") }
 
+      let defaultColor = try runScript(app + "read pane color from pane \(literal(pane))", name: "read default pane color")
+      let recolored = try runScript(app + "apply pane color \"OCEAN\" to pane \(literal(rightPane))", name: "apply pane color")
+      guard recolored == rightPane else { throw Failure("apply pane color returned a different pane: \(recolored.debugDescription)") }
+      let ocean = try runScript(app + "read pane color from pane \(literal(rightPane))", name: "read pane color")
+      guard ocean == "#2E6376" else { throw Failure("read pane color did not return Ocean: \(ocean.debugDescription)") }
+      try expectFailure(app + "apply pane color \"chartreuse\" to pane \(literal(rightPane))", -1700,
+                        "An unknown pane color was accepted.", name: "reject unknown pane color")
+      try runScript(app + "apply pane color \"default\" to pane \(literal(rightPane))", name: "reset pane color")
+      let reset = try runScript(app + "read pane color from pane \(literal(rightPane))", name: "read reset pane color")
+      guard reset == defaultColor else {
+        throw Failure("apply pane color default did not restore \(defaultColor): \(reset.debugDescription)")
+      }
+
       try expectFailure(app + "read screen max characters 0", -1700,
                         "A zero screen read limit was accepted.", name: "reject zero read limit")
       try expectFailure(app + "read screen max characters 262145", -1700,
@@ -400,13 +413,16 @@ enum AppleScriptSmoke {
 
       let configured = try runScript(
         app + "configure preferences font size 15.0 scrollback rows 1000 "
-          + "option sends escape true follows tail on input false starting directory \"/tmp\" word characters \"@_/-@\"",
+          + "option sends escape true follows tail on input false starting directory \"/tmp\" word characters \"@_/-@\" default pane color \"teal\"",
         name: "configure preferences")
       guard configured.contains("15") else {
         throw Failure("configure preferences did not return the saved font size: \(configured.debugDescription)")
       }
       guard configured.contains("word characters -/@_") else {
         throw Failure("configure preferences did not return canonical word characters: \(configured.debugDescription)")
+      }
+      guard configured.contains("default pane color #2B6A65") else {
+        throw Failure("configure preferences did not return the default pane color: \(configured.debugDescription)")
       }
       let cleared = try runScript(app + "clear screen", name: "clear screen")
       guard cleared == pane else { throw Failure("clear screen returned a different pane: \(cleared.debugDescription)") }

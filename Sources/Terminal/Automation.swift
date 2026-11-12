@@ -111,6 +111,37 @@ final class TerminalFocusPaneCommand: TerminalScriptCommand {
   }
 }
 
+@objc(TerminalApplyPaneColorCommand)
+final class TerminalApplyPaneColorCommand: TerminalScriptCommand {
+  override func performDefaultImplementation() -> Any? {
+    guard let text = directParameter as? String else {
+      return fail("apply pane color requires a color.", number: -1700)
+    }
+    let followsDefault = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "default"
+    let color = PaneColorChoice.resolve(text)
+    guard followsDefault || color != nil else {
+      return fail("pane color must be #RRGGBB, a palette color name, or default.", number: -1700)
+    }
+    guard let pane = pane() else { return nil }
+    guard let presentation = TerminalPanePresentationView.enclosing(pane) else {
+      return fail("The requested terminal pane is closed or does not exist.")
+    }
+    if let color { presentation.choose(color) } else { presentation.resetColor() }
+    return TerminalAutomation.paneID(pane)
+  }
+}
+
+@objc(TerminalReadPaneColorCommand)
+final class TerminalReadPaneColorCommand: TerminalScriptCommand {
+  override func performDefaultImplementation() -> Any? {
+    guard let pane = pane() else { return nil }
+    guard let presentation = TerminalPanePresentationView.enclosing(pane) else {
+      return fail("The requested terminal pane is closed or does not exist.")
+    }
+    return presentation.color.hex
+  }
+}
+
 private func split(_ command: TerminalScriptCommand, vertical: Bool) -> Any? {
   guard let pane = command.pane(), let window = pane.window?.windowController as? TerminalWindow else {
     return nil
@@ -208,14 +239,21 @@ final class TerminalConfigurePreferencesCommand: TerminalScriptCommand {
       let selectionWordCharacters = text(
         "SelectionWordCharacters", fallback: current.selectionWordProfile.punctuation)
     else { return nil }
+    var defaultPaneColor = current.defaultPaneColor
+    if let value = arguments["DefaultPaneColor"] {
+      guard let text = value as? String, let color = PaneColorChoice.resolve(text) else {
+        return fail("default pane color must be #RRGGBB or a palette color name.", number: -1700)
+      }
+      defaultPaneColor = color
+    }
     do {
       let preferences = try TerminalPreferences.edited(
         fontSize: fontSize, historyRows: historyRows, optionSendsEscape: optionSendsEscape,
         followTailOnInput: followTailOnInput, startingDirectory: startingDirectory,
         selectionWordCharacters: selectionWordCharacters, showPaneTitles: current.showPaneTitles,
-        inactivePaneDim: current.inactivePaneDim, defaultPaneColor: current.defaultPaneColor)
+        inactivePaneDim: current.inactivePaneDim, defaultPaneColor: defaultPaneColor)
       delegate.applyPreferences(preferences)
-      return "font size \(String(format: "%.15g", Double(preferences.fontSize))), scrollback rows \(preferences.historyRows), starting directory \(preferences.startingDirectory), word characters \(preferences.selectionWordProfile.punctuation)"
+      return "font size \(String(format: "%.15g", Double(preferences.fontSize))), scrollback rows \(preferences.historyRows), starting directory \(preferences.startingDirectory), word characters \(preferences.selectionWordProfile.punctuation), default pane color \(preferences.defaultPaneColor.hex)"
     } catch {
       return fail(error.localizedDescription, number: -1700)
     }

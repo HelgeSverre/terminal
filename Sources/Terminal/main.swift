@@ -308,6 +308,11 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     }
     close(pane)
   }
+  /// Shell > Pane Color…: the header's color popover, opened from the keyboard.
+  @objc func choosePaneColor(_ sender: Any?) {
+    guard let pane = focusedPane else { return }
+    panePresentation(for: pane)?.showColorPopover()
+  }
   /// Closes `pane`, and the window with it when it is the only one.
   private func close(_ pane: TerminalCanvasView) {
     guard panes.count > 1,
@@ -666,6 +671,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     item(
       shell, "Split Below", #selector(TerminalWindow.splitHorizontal(_:)), "d", [.command, .shift])
     item(shell, "Close Pane", #selector(TerminalWindow.closePane(_:)), "w")
+    shell.addItem(.separator())
+    item(shell, "Pane Color…", #selector(TerminalWindow.choosePaneColor(_:)), "", [])
     let edit = submenu("Edit")
     item(edit, "Copy", #selector(TerminalCanvasView.copy(_:)), "c")
     item(edit, "Paste", #selector(TerminalCanvasView.paste(_:)), "v")

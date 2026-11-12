@@ -6,7 +6,7 @@ import Testing
 @Suite(.serialized) @MainActor struct SettingsWindowTests {
   /// Semantic navigation, raw invalid drafts, hidden validation, nonfinite
   /// recovery, bounds, atomic Apply, Cancel and no persistence.
-  @Test func settingsWindowFlow() {
+  @Test func settingsWindowFlow() throws {
     _ = NSApplication.shared
     defer { UserDefaults.standard.removeVolatileDomain(forName: UserDefaults.argumentDomain) }
     UserDefaults.standard.setVolatileDomain([
@@ -75,6 +75,11 @@ import Testing
     #expect(!palette.isHiddenOrHasHiddenAncestor && content.bounds.contains(paletteFrame),
       "Default color palette clipped or hidden: \(paletteFrame)")
     #expect(palette.selected == .standard)
+    // Tab visits the grid once, on its stop, then the hex field.
+    #expect(palette.focusSelection())
+    settings.window!.selectNextKeyView(nil)
+    let hexEditor = try #require(settings.window!.firstResponder as? NSTextView)
+    #expect((hexEditor.delegate as? NSView)?.accessibilityIdentifier() == "no.helgesverre.terminal.pane.color.hex")
     let graphite = descendants(palette).first {
       $0.accessibilityIdentifier() == "no.helgesverre.terminal.pane.color.graphite"
     } as! NSButton

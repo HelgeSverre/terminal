@@ -132,7 +132,7 @@ import Testing
     // the grid plus its padding: no slack beside or below the swatches.
     let colorPalette = PaneColorPaletteView()
     colorPalette.layoutSubtreeIfNeeded()
-    let swatches = colorPalette.subviews.flatMap(\.subviews).flatMap(\.subviews).compactMap { $0 as? NSButton }
+    let swatches = colorPalette.swatches
     #expect(swatches.count == 18 && swatches.count % PaneColorPaletteView.columns == 0)
     #expect(swatches.allSatisfy { $0.frame.size == NSSize(width: 24, height: 24) })
     let paletteWidth: CGFloat = 198 // 6 swatches of 24, 5 gaps of 6, 12 padding each side
@@ -141,7 +141,8 @@ import Testing
     let swatchLeft: CGFloat = swatchEdges.map(\.minX).min() ?? 0
     let swatchRight: CGFloat = swatchEdges.map(\.maxX).max() ?? 0
     #expect(swatchLeft == 12 && swatchRight == paletteWidth - 12)
-    guard let colorHex = colorPalette.subviews.flatMap(\.subviews).flatMap(\.subviews)
+    func descendants(_ view: NSView) -> [NSView] { view.subviews + view.subviews.flatMap(descendants) }
+    guard let colorHex = descendants(colorPalette)
       .first(where: { $0.accessibilityIdentifier() == "no.helgesverre.terminal.pane.color.hex" })
     else { Issue.record("palette lacks its hex field"); return }
     let hexEdges = colorPalette.convert(colorHex.bounds, from: colorHex)
@@ -155,15 +156,22 @@ import Testing
     // The palette tracks its choice: a picked swatch or a valid typed hex.
     #expect(colorPalette.selected?.hex == "#26272B"
       && (colorHex as? NSTextField)?.stringValue == "#26272B")
-    #expect(swatches[1].accessibilityValue() as? String == "selected"
-      && swatches[0].accessibilityValue() as? String == "")
+    #expect(swatches[1].accessibilityValue() as? NSNumber == true
+      && swatches[0].accessibilityValue() as? NSNumber == false)
     colorPalette.selected = .standard
     #expect((colorHex as? NSTextField)?.stringValue == "#18191C"
-      && swatches[0].accessibilityValue() as? String == "selected")
+      && swatches[0].accessibilityValue() as? NSNumber == true)
     #expect(PaneChromeColor(hex: "#f08")?.hex == "#FF0088")
     #expect(PaneChromeColor(hex: " #2c6a65 ")?.hex == "#2C6A65")
     for invalidHex in ["2C6A65", "#12", "#1234", "#00112233", "#GG0011"] {
       #expect(PaneChromeColor(hex: invalidHex) == nil, "accepted invalid pane color \(invalidHex)")
+    }
+    // Automation names a color by palette name in any case, or by hex.
+    #expect(PaneColorChoice.resolve("Ocean")?.hex == "#2E6376")
+    #expect(PaneColorChoice.resolve(" tEAL ")?.hex == "#2B6A65")
+    #expect(PaneColorChoice.resolve("#abc")?.hex == "#AABBCC")
+    for unknown in ["chartreuse", "", "default", "2E6376"] {
+      #expect(PaneColorChoice.resolve(unknown) == nil, "resolved \(unknown.debugDescription)")
     }
     #expect(PaneChromeColor(hex: "#101010")?.readableForeground == .white)
     #expect(PaneChromeColor(hex: "#F0F0F0")?.readableForeground == .black)
@@ -204,6 +212,20 @@ import Testing
     panePresentation.onClose = { closed += 1 }
     close.performClick(nil)
     #expect(closed == 1)
+    // VoiceOver reaches the header's right-click and middle-click as named actions.
+    let header = try #require(panePresentation.subviews.first {
+      $0.accessibilityIdentifier() == "no.helgesverre.terminal.pane.header"
+    })
+    #expect(header.isAccessibilityElement() && header.accessibilityRole() == .group)
+    let actions = header.accessibilityCustomActions() ?? []
+    #expect(actions.map(\.name) == ["Choose Pane Color", "Close Pane"])
+    var closedByAction = 0
+    panePresentation.onClose = { closedByAction += 1 }
+    #expect(actions.last?.handler?() == true && closedByAction == 1)
+    panePresentation.onClose = { closed += 1 }
+    // Automation can hand a pane back to the default color.
+    panePresentation.resetColor()
+    #expect(panePresentation.color == .standard)
     // The find bar docks over the first rows of the canvas. It never takes
     // height from the grid, so opening it cannot reflow the terminal.
     let findBar = panePresentation.findBar

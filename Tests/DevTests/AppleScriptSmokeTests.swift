@@ -10,6 +10,18 @@ import Testing
     #expect(dictionary.range(of: parameter, options: .regularExpression) != nil, "the word characters parameter is missing")
   }
 
+  @Test("applescript smoke: the dictionary exposes pane colors") func theDictionaryExposesPaneColors() throws {
+    let dictionary = try String(contentsOfFile: Repository.path("Resources/Terminal/Terminal.sdef"), encoding: .utf8)
+    for pattern in [
+      "(?s)<command name=\"apply pane color\" code=\"HTermapc\".*<cocoa class=\"TerminalApplyPaneColorCommand\"/>",
+      "(?s)<command name=\"read pane color\" code=\"HTermrpc\".*<cocoa class=\"TerminalReadPaneColorCommand\"/>",
+      "<parameter name=\"default pane color\" code=\"Hdpc\" type=\"text\" optional=\"yes\".*"
+        + "<cocoa key=\"DefaultPaneColor\"/></parameter>",
+    ] {
+      #expect(dictionary.range(of: pattern, options: .regularExpression) != nil, "missing: \(pattern)")
+    }
+  }
+
   @Test("applescript smoke: a bounded command that times out is ended and reaped") func aBoundedCommandThatTimesOut() throws {
     let timeout = try #require(throws: AppleScriptSmoke.CommandTimeout.self) {
       _ = try AppleScriptSmoke.capture(["/bin/sleep", "30"], timeout: 0.1)
@@ -146,8 +158,8 @@ import Testing
       let session = try fakeDictionarySession(root: root, pane: "no.helgesverre.terminal.pane.")
       try session.exerciseDictionary()
       let names = session.commands.compactMap { $0["name"]?.text }
-      #expect(names.count == 28 && names.first == "get fixture name" && names.last == "quit fixture", "commands: \(names)")
-      #expect(names.contains("hide fixture") && names.filter { $0.hasPrefix("reject") }.count == 6, "commands: \(names)")
+      #expect(names.count == 34 && names.first == "get fixture name" && names.last == "quit fixture", "commands: \(names)")
+      #expect(names.contains("hide fixture") && names.filter { $0.hasPrefix("reject") }.count == 7, "commands: \(names)")
       #expect(session.childPIDs.count == 5, "every pane's program is recorded")
       #expect(session.commands.allSatisfy { $0["timed_out"]?.truth == false }, "nothing timed out")
     }
@@ -187,6 +199,11 @@ private func fakeDictionarySession(root: String, pane: String) throws -> AppleSc
       *"pane.missing\\"") refuse -1728 ;;
       *"to focus pane"|*"focus pane pane id"*|*"send text"*|*"to clear screen") echo "\(pane)A1" ;;
       *"to new window") echo "\(pane)B2" ;;
+      *"chartreuse"*) refuse -1700 ;;
+      *"apply pane color \\"OCEAN\\""*) touch "$0.ocean"; echo "\(pane)C3" ;;
+      *"apply pane color \\"default\\""*) rm -f "$0.ocean"; echo "\(pane)C3" ;;
+      *"read pane color"*"C3"*) if [ -e "$0.ocean" ]; then echo "#2E6376"; else echo "#18191C"; fi ;;
+      *"read pane color"*) echo "#18191C" ;;
       *"split right"*) echo "\(pane)C3" ;;
       *"split below"*) echo "\(pane)D4" ;;
       *"to new tab") echo "\(pane)E5" ;;
@@ -195,7 +212,7 @@ private func fakeDictionarySession(root: String, pane: String) throws -> AppleSc
         if [ -e "$0.closed" ]; then echo "\(pane)A1"; else echo "\(pane)A1, \(pane)B2, \(pane)C3, \(pane)D4, \(pane)E5"; fi ;;
       *"max characters 0"|*"max characters 262145"|*"font size 7.0"|*"/does/not/exist\\""|*"\\"not valid\\"") refuse -1700 ;;
       *"max characters 2048") echo "AUTOMATION_RECEIPT \(sha256(of: Data(AppleScriptSmoke.largeCommittedText.utf8)))" ;;
-      *"configure preferences"*) echo "font size 15, word characters -/@_" ;;
+      *"configure preferences"*) echo "font size 15, word characters -/@_, default pane color #2B6A65" ;;
     esac
     """, to: session.osascript)
   return session

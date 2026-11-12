@@ -80,6 +80,15 @@ struct PaneColorChoice: Equatable {
     .init(name: "Violet", color: .init(hex: "#554F7A")!),
     .init(name: "Indigo", color: .init(hex: "#45547C")!),
   ]
+
+  /// A palette name in any case (`"ocean"`) or a hex color (`"#2E6376"`).
+  static func resolve(_ text: String) -> PaneChromeColor? {
+    let name = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let choice = palette.first(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+      return choice.color
+    }
+    return PaneChromeColor(hex: name)
+  }
 }
 
 struct TerminalPreferences {

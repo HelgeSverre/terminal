@@ -24,6 +24,17 @@
       <parameter name="pane id" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
       <result type="text" description="The focused pane identifier."/>
     </command>
+    <command name="apply pane color" code="HTermapc" description="Give a pane its own header color, or make it follow the default pane color again.">
+      <cocoa class="TerminalApplyPaneColorCommand"/>
+      <direct-parameter type="text" description="A hex color such as &quot;#2E6376&quot;, a palette color name such as &quot;ocean&quot;, or &quot;default&quot;."/>
+      <parameter name="to pane" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
+      <result type="text" description="The recolored pane identifier."/>
+    </command>
+    <command name="read pane color" code="HTermrpc" description="Read the header color a pane shows, as #RRGGBB.">
+      <cocoa class="TerminalReadPaneColorCommand"/>
+      <parameter name="from pane" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
+      <result type="text" description="The pane's header color as #RRGGBB."/>
+    </command>
     <command name="split right" code="HTermsrt" description="Split a pane to the right and return the new pane identifier.">
       <cocoa class="TerminalSplitRightCommand"/>
       <parameter name="pane id" code="HpID" type="text" optional="yes" description="A stable pane identifier. The focused pane is used when omitted."><cocoa key="PaneID"/></parameter>
@@ -63,6 +74,7 @@
       <parameter name="follows tail on input" code="Hfol" type="boolean" optional="yes"><cocoa key="FollowTailOnInput"/></parameter>
       <parameter name="starting directory" code="Hdir" type="text" optional="yes"><cocoa key="StartingDirectory"/></parameter>
       <parameter name="word characters" code="Hwrd" type="text" optional="yes" description="Extra non-whitespace, non-control Unicode scalars treated as word characters for terminal selection."><cocoa key="SelectionWordCharacters"/></parameter>
+      <parameter name="default pane color" code="Hdpc" type="text" optional="yes" description="The header color of panes without their own: a hex color or a palette color name."><cocoa key="DefaultPaneColor"/></parameter>
       <result type="text" description="A summary of the saved preferences."/>
     </command>
   </suite>
