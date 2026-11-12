@@ -148,10 +148,11 @@ Implemented and locally exercised:
 
 Current automated evidence:
 
-- Whole-app throughput is 219 / 252 / 201 / 142 MiB/s on short ASCII, long
-  ASCII, truecolor and mixed Unicode, against Ghostty's 280 / 288 / 201 / 186
-  in the same run: 78%, 87%, 100% and 76%. ASCII is limited by the PTY reader
-  and mixed Unicode by multi-scalar clusters; neither gap is closed. See the
+- Whole-app throughput is 241 / 283 / 205 / 142 MiB/s on short ASCII, long
+  ASCII, truecolor and mixed Unicode, against Ghostty's 293 / 330 / 201 / 187
+  in the same run: 82%, 86%, 102% and 76%. ASCII is limited by the PTY reader
+  and by drawing, mixed Unicode by the parser; neither gap is closed. See the
+  [reader batch report](../reports/reader-batches-2026-11-12/README.md), the
   [0.3.0 measurements](../reports/release-0.3.0-2026-11-11/README.md) and the
   [cluster and reader report](../reports/unicode-clusters-2026-11-10/README.md). The earlier
   [direct text path report](../reports/direct-text-path-2026-11-10/README.md)

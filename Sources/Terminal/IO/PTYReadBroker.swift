@@ -5,7 +5,16 @@ import Foundation
 /// All semantic queue submissions must use submit, including submissions made
 /// from the owner itself. Owner callbacks never run under the admission lock.
 final class PTYReadBroker: @unchecked Sendable {
-  static let readQuantum = 65_536
+  // Every delivery that finds the owner idle wakes it, and a wake costs the
+  // reader about 20 microseconds in which the child's output waits. A flood
+  // of plain text fills a slab faster than the owner parses one, so the slab
+  // size sets how often that happens. Slabs of 64 KiB instead of 16 raised
+  // whole-app throughput by a fifth on plain text; larger ones add little.
+  // See reports/reader-batches-2026-11-12.
+  static let slabSize = 65_536
+  // Credit for two slabs: the reader fills one while the owner parses the
+  // other. With credit for one, the reader waits for the parser.
+  static let readQuantum = 2 * slabSize
   private final class Batch {
     var data = Data()
     var sealed = false
@@ -20,7 +29,8 @@ final class PTYReadBroker: @unchecked Sendable {
   private let byteLimit: Int
   private let nodeLimit: Int
   private let slabSize: Int
-  private var slab: [UInt8]
+  // Not initialized, so a session that reads little touches little of it.
+  private let slab: UnsafeMutableRawBufferPointer
   private var tail: Batch?
   private var bytes = 0
   private var nodes = 0
@@ -37,14 +47,15 @@ final class PTYReadBroker: @unchecked Sendable {
   private var statistics = Statistics()
 
   init(owner: DispatchQueue, byteLimit: Int = PTYReadBroker.readQuantum,
-       nodeLimit: Int = 256, slabSize: Int = 16_384, diagnostics: Bool = false,
+       nodeLimit: Int = 256, slabSize: Int = PTYReadBroker.slabSize, diagnostics: Bool = false,
        deliver: @escaping (Data) -> Void, ended: @escaping (Int32) -> Void) {
     precondition(byteLimit > 0 && nodeLimit > 0 && slabSize > 0)
     self.owner = owner; self.byteLimit = byteLimit; self.nodeLimit = nodeLimit
-    self.slabSize = slabSize; slab = Array(repeating: 0, count: slabSize)
+    self.slabSize = slabSize; slab = .allocate(byteCount: slabSize, alignment: 16)
     self.deliver = deliver; self.ended = ended
     self.diagnostics = diagnostics
   }
+  deinit { slab.deallocate() }
   func submit(_ operation: @escaping () -> Void) {
     lock.lock()
     tail?.sealed = true; tail = nil
@@ -67,9 +78,7 @@ final class PTYReadBroker: @unchecked Sendable {
     guard amount > 0 else { lock.unlock(); return .creditExhausted }
     if diagnostics { statistics.readCalls += 1 }
     lock.unlock()
-    let (count, error) = slab.withUnsafeMutableBytes {
-      read(UnsafeMutableRawBufferPointer(rebasing: $0[..<amount]))
-    }
+    let (count, error) = read(UnsafeMutableRawBufferPointer(rebasing: slab[..<amount]))
     precondition(count <= amount)
     lock.lock(); defer { lock.unlock() }
     if count > 0 {
@@ -87,7 +96,7 @@ final class PTYReadBroker: @unchecked Sendable {
           deliver(data)
         }
       }
-      slab.withUnsafeBytes { batch.data.append($0.bindMemory(to: UInt8.self).baseAddress!, count: count) }
+      batch.data.append(slab.baseAddress!.assumingMemoryBound(to: UInt8.self), count: count)
       bytes += count
       if diagnostics { statistics.queuedBytesHighWater = max(statistics.queuedBytesHighWater, bytes) }
       statistics.bytesRead += UInt64(count)

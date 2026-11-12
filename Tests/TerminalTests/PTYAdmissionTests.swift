@@ -12,7 +12,7 @@ import Testing
 
   /// Exact bounded queued-ahead bytes and the control barrier.
   @Test(arguments: [true, false]) static func boundedQueuedAhead(useDefault: Bool) {
-    let cap = useDefault ? 65_536 : 8192
+    let cap = useDefault ? PTYReadBroker.readQuantum : 8192
     let owner = DispatchQueue(label: "ahead-test")
     let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
     owner.async { entered.signal(); release.wait() }; entered.wait()
