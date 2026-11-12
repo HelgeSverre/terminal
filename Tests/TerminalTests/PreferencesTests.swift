@@ -4,7 +4,7 @@ import Testing
 @testable import TerminalApp
 
 /// Serialized as a precaution: preferences persist through UserDefaults. The
-/// tests use a private suite and never touch the user's standard defaults.
+/// tests use defaults held in memory and never touch the user's own.
 @Suite(.serialized) @MainActor enum PreferencesTests {
   static func edited(_ path: String, size: String = "14", history: String = "50000",
               words: String = TerminalSelectionWordProfile.standard.punctuation,
@@ -91,9 +91,7 @@ import Testing
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Terminal settings \(UUID().uuidString)")
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
     defer { try? FileManager.default.removeItem(at: folder) }
-    let suite = "no.helgesverre.terminal.preferences-tests.\(UUID().uuidString)"
-    let isolatedDefaults = UserDefaults(suiteName: suite)!
-    defer { isolatedDefaults.removePersistentDomain(forName: suite) }
+    let isolatedDefaults = MemoryDefaults()
     #expect(TerminalPreferences.load(from: isolatedDefaults).showPaneTitles)
     #expect(TerminalPreferences.load(from: isolatedDefaults).inactivePaneDim == .five)
     // Panes start in the darkest palette color until the preference says otherwise.

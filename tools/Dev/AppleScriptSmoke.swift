@@ -643,8 +643,10 @@ enum AppleScriptSmoke {
     }
 
     /// Removes the preferences the fixture saved under its own bundle identifier.
+    /// Deleting the domain leaves an empty file behind, so the file goes too.
     func forgetFixturePreferences() {
       _ = quiet(["/usr/bin/defaults", "delete", fixtureBundleID])
+      try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/Library/Preferences/\(fixtureBundleID).plist")
     }
 
     private func cleanupOwnedProcess() -> Failure? {

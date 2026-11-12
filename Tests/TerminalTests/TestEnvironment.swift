@@ -30,3 +30,16 @@ enum TestEnvironment {
     return condition()
   }
 }
+
+/// Defaults that live in memory. A real suite, even one removed again, leaves
+/// a file in `~/Library/Preferences`: the preferences daemon writes an empty
+/// one back some seconds after the test deletes it.
+final class MemoryDefaults: UserDefaults {
+  private var values: [String: Any] = [:]
+
+  init() { super.init(suiteName: nil)! }
+
+  override func object(forKey key: String) -> Any? { values[key] }
+  override func set(_ value: Any?, forKey key: String) { values[key] = value }
+  override func removeObject(forKey key: String) { values[key] = nil }
+}
