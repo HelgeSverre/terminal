@@ -4,9 +4,6 @@
 ![macOS 15+](https://img.shields.io/badge/macOS-15%2B-111113)
 ![Apple Silicon](https://img.shields.io/badge/Apple-Silicon-facc15)
 ![Swift and Metal](https://img.shields.io/badge/Swift-Metal-222326)
-[![Terminal2Shell: patched*](https://img.shields.io/badge/Terminal2Shell-patched*-7c9877)](https://terminal2shell.com/)
-
-<sub>*Mitigation: close the window. Reopening reintroduces the vulnerability.</sub>
 
 A macOS terminal with Swift emulation, AppKit windows, and Metal rendering.
 Split panes, run terminal applications, and display Kitty graphics in a minimal
