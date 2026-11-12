@@ -13,54 +13,54 @@ branch each is on, and whether something is already uncommitted where you are
 about to work. Changes you did not make belong to someone else: leave them
 alone and tell Helge.
 
-## Where to work
+## Where the work goes
 
-- **Main checkout** (`/Users/helge/code/terminal`): for small things only. A
-  doc fix, a one-file change, something committed within minutes. It stays on
-  `main`. Never run `git switch`, `git checkout <branch>`, `git checkout -b`,
-  `git stash` or `git reset` there: every other session in that checkout moves
-  with you.
-- **Everything else gets its own worktree.** Anything that needs a build and
-  test cycle, takes more than a few minutes, or runs beside other work:
+**Commit to `main` and push.** That is the default for almost everything:
+fixes, features, tests, tooling, documentation. Commit each verified step and
+push it. Do not open a branch because the work "needs a build" or "might take
+a while"; Helge does not want to see branches for ordinary work.
+
+A branch is the exception. Make one only when:
+
+- Helge asks for a branch or a pull request, or
+- the work stays broken for more than a day and must be shared before it
+  works.
+
+When there is one: name it `feat/…`, `fix/…`, `perf/…`, `docs/…` or
+`chore/…`, rebase onto `main` and fast-forward when it is done, then delete
+it locally and on the remote in the same step. `archive/…` branches are kept
+on purpose.
+
+Before you push to `main`: the tests that cover the change pass, and
+`just test` passes for anything beyond a small, self-contained change. Pull
+with `git pull --rebase` first if `main` has moved. Never force-push `main`.
+Tags and releases happen only on request. See Release credentials below.
+
+## Checkouts
+
+- **Main checkout** (`/Users/helge/code/terminal`): stays on `main`. Edit and
+  commit here when the change needs no build. Never run `git switch`,
+  `git checkout <branch>`, `git checkout -b`, `git stash` or `git reset`
+  there: every other session in that checkout moves with you.
+- **A second checkout to build and test in**, when the main checkout is in
+  use or the work needs a build and test cycle. It is a scratch copy of
+  `main`, not a branch:
 
   ```shell
-  git worktree add ../terminal-<topic> -b <kind>/<topic> main
+  git worktree add --detach ../terminal-<topic> main
+  # work, test, commit, then:
+  git pull --rebase origin main && git push origin HEAD:main
   ```
 
-  Put worktrees beside the repository (`~/code/terminal-<topic>`). Codex's own
+  Put it beside the repository (`~/code/terminal-<topic>`). Codex's own
   `~/.codex/worktrees/` is fine too. Never under `/tmp` or `/private/tmp`: a
-  reboot erases them.
+  reboot erases them. Remove it when the work is pushed, and run
+  `git worktree prune`.
 - **One writer per checkout.** Do not edit, build or test in a checkout
   another session is using. Do not `stash`, `restore`, `checkout --` or
   `reset` files you did not change.
-
-## Branches
-
-- Name them `feat/…`, `fix/…`, `perf/…`, `docs/…` or `chore/…`.
-- Branch from `main`. Branch from another unmerged branch only when the work
-  depends on it, and say so in your first commit message or to Helge.
-- Keep branches short-lived and merge early. `justfile`, `Session.swift`
-  and `Canvas.swift` conflict every time two branches sit apart for long.
 - Commit each verified step as you go. Uncommitted work has no protection
   from a crash or from another session.
-- Do not push experiment tags. `archive/…` branches are kept on purpose.
-
-## Merging
-
-- A branch merges into `main` when `just test` passes on its tip and Helge
-  has agreed to the merge, or asked for it. Rebase onto `main` first and
-  fast-forward, so history stays linear.
-- **Merging and cleaning up are one step.** After the merge: delete the
-  branch locally and on the remote, remove its worktree, and run
-  `git worktree prune`. Do not leave it for later.
-- **Small work may go straight to `main`** and be pushed: documentation, a
-  self-contained fix with its tests passing, or anything Helge asks to have
-  on `main`. If you are unsure whether it is small, it is not.
-- Push a feature branch when Helge asks, or when it needs a draft pull
-  request for him to test.
-- Never force-push `main`. Use `--force-with-lease`, and only on a branch
-  that is yours alone.
-- Tags and releases happen only on request. See Release credentials below.
 
 ## Builds, tests and the machine
 
@@ -89,7 +89,7 @@ alone and tell Helge.
   (`native-smoke.json` and the others listed in
   `.gitignore`). To keep a result as evidence, copy it into a dated
   directory under `reports/` and commit that.
-- Worktrees cost disk. Remove yours when the branch is merged or abandoned;
+- Worktrees cost disk. Remove yours when the work is pushed or abandoned;
   `just clean` removes a checkout's build outputs.
 
 ## Building
@@ -120,7 +120,7 @@ time.
 
 ## When you finish
 
-Say which branch and worktree the work is on, whether it is pushed, which
+Say which commit the work is at and whether it is pushed to `main`, which
 tests ran and at which commit, and what is still uncommitted or unverified.
 
 # Release credentials
