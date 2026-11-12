@@ -120,12 +120,36 @@ way and waits longer; the app and the child run on performance cores
 throughout. What makes the child slower to refill while the pipeline runs,
 beyond the owner's wakes, was not found.
 
+## One buffer per frame
+
+Sampling a foreground flood showed the render queue busy 41% of the time,
+over half of that creating Metal buffers: the renderer made a buffer for
+every list of quads in every frame, and one for each directly drawn glyph,
+and the GPU's completion queue then freed them. Every quad of a frame now
+goes into one buffer, taken from a few that are kept and returned when the
+GPU has finished the frame.
+
+Foreground, both builds with the larger slabs, three interleaved rounds
+(`frame-buffer/`). CPU is the app's processor time per MiB of output, median
+of 30 samples.
+
+| Workload | MiB/s before | MiB/s after | CPU before (ms/MiB) | CPU after (ms/MiB) | CPU change |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Short ASCII lines | 243.1 | 253.3 | 10.63 | 7.68 | −28% |
+| Long ASCII lines | 280.5 | 281.2 | 8.34 | 7.09 | −15% |
+| ANSI truecolor | 204.6 | 205.2 | 10.87 | 10.09 | −7% |
+| Mixed Unicode | 145.0 | 147.3 | 13.02 | 11.76 | −10% |
+
+In a second sample the render queue was busy 33% of the time and the
+completion queue idle. `just test` and `just smoke` pass, and the panes
+gallery screenshot draws as before. The comparison with Ghostty above was
+run before this change.
+
 ## What is left
 
-- **The foreground penalty.** Drawing costs the changed build 13% on short
-  ASCII (287 to 248). During a foreground flood the render queue is busy 41%
-  of the time, much of it in Metal's buffer allocator
-  (`MTLRangeAllocatorGetMaxFreeSize`). Not yet looked into.
+- **The foreground penalty.** Drawing costs the build with larger slabs 13%
+  on short ASCII (287 to 248). Part of it is addressed below; the rest was
+  not looked into.
 - **Mixed Unicode, 76% of Ghostty**, bound by the parser as before.
 - Not measured here: the SQL motion stress, resize under flood, memory.
 

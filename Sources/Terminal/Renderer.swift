@@ -200,6 +200,30 @@ final class TerminalRendering: @unchecked Sendable {
   private var italicFont: CTFont
   private var boldItalicFont: CTFont
   private var submissions: UInt64 = 0
+  // Quad storage for frames, on the render queue. Creating a Metal buffer
+  // costs far more than filling one: with a buffer per quad list per frame,
+  // creation was over half of the time spent drawing during a flood.
+  private var idleQuadBuffers: [MTLBuffer] = []
+  private static let idleQuadBufferLimit = 8
+
+  private func takeQuadBuffer(bytes: Int) -> MTLBuffer? {
+    guard bytes > 0 else { return nil }
+    if let index = idleQuadBuffers.firstIndex(where: { $0.length >= bytes }) {
+      return idleQuadBuffers.remove(at: index)
+    }
+    // None is large enough: the new one replaces the smallest.
+    if let smallest = idleQuadBuffers.indices.min(by: { idleQuadBuffers[$0].length < idleQuadBuffers[$1].length }) {
+      idleQuadBuffers.remove(at: smallest)
+    }
+    // Rounded up so that a frame with a few more quads fits the same buffer.
+    let granule = 256 * 1024
+    return device.makeBuffer(length: (bytes + granule - 1) / granule * granule, options: .storageModeShared)
+  }
+
+  private func returnQuadBuffer(_ buffer: MTLBuffer) {
+    guard idleQuadBuffers.count < Self.idleQuadBufferLimit else { return }
+    idleQuadBuffers.append(buffer)
+  }
   init() throws {
     guard let gpu = MTLCreateSystemDefaultDevice(), let commands = gpu.makeCommandQueue() else {
       throw RendererError.noDevice
@@ -903,19 +927,29 @@ final class TerminalRendering: @unchecked Sendable {
     encoder.setRenderPipelineState(pipeline)
     var extent = SIMD2<Float>(Float(drawableWidth), Float(drawableHeight))
     encoder.setVertexBytes(&extent, length: MemoryLayout<SIMD2<Float>>.stride, index: 1)
+    // Every quad of the frame goes into one buffer, taken from the frame
+    // buffers and returned when the GPU has finished the frame. Each image is
+    // drawn in exactly one of the three image passes.
+    let frameQuadCount =
+      backgrounds.count + textQuads.count + textGlyphQuads.reduce(0) { $0 + $1.count }
+      + textDirectGlyphQuads.count + overlayQuads.count + overlayGlyphQuads.reduce(0) { $0 + $1.count }
+      + overlayDirectGlyphQuads.count + snap.images.count
+    let frameQuads = takeQuadBuffer(bytes: MemoryLayout<Quad>.stride * frameQuadCount)
+    var frameQuadOffset = 0
     func drawQuads(_ items: [Quad], texture: MTLTexture, state: MTLRenderPipelineState) {
       guard !items.isEmpty else { return }
-      guard let buffer = device.makeBuffer(
-        bytes: items, length: MemoryLayout<Quad>.stride * items.count, options: .storageModeShared
-      ) else {
+      let length = MemoryLayout<Quad>.stride * items.count
+      guard let frameQuads, frameQuadOffset + length <= frameQuads.length else {
         RendererMetrics.recordQuadBufferDrop(items.count)
         return
       }
+      items.withUnsafeBytes { (frameQuads.contents() + frameQuadOffset).copyMemory(from: $0.baseAddress!, byteCount: length) }
       encoder.setRenderPipelineState(state)
-      encoder.setVertexBuffer(buffer, offset: 0, index: 0)
+      encoder.setVertexBuffer(frameQuads, offset: frameQuadOffset, index: 0)
       encoder.setFragmentTexture(texture, index: 0)
       encoder.drawPrimitives(
         type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: items.count)
+      frameQuadOffset += length
     }
     func drawImages(_ accepts: (Int) -> Bool) {
       let clipWidth = min(drawableWidth - request.inset, snap.cols * request.cellWidth)
@@ -972,8 +1006,9 @@ final class TerminalRendering: @unchecked Sendable {
     glyphResidency.submitted()
     RendererMetrics.recordResidency(glyphResidency.diagnostics())
     residencySubmitted = true
-    command.addCompletedHandler { [weak self, retiredFallbackIDs, surface] command in
+    command.addCompletedHandler { [weak self, retiredFallbackIDs, surface, frameQuads] command in
       self?.executor.async {
+        if let frameQuads { self?.returnQuadBuffer(frameQuads) }
         RendererMetrics.completeGlyphFrame(revision: completedRevision)
         retiredFallbackIDs.forEach { self?.glyphResidency.releaseLegacyTexture($0) }
         self?.glyphResidency.completedSubmission()
