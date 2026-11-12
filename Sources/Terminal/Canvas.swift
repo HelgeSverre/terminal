@@ -38,6 +38,7 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   private var markedSelection = NSRange(location: 0, length: 0)
   private var cellWidth = 9
   private var cellHeight = 19
+  private var scrollAccumulator = ScrollAccumulator()
   private var fontPoints: CGFloat = 14
   private var focused = false
   private var tracking: NSTrackingArea?
@@ -793,13 +794,14 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   override func scrollWheel(with event: NSEvent) {
     guard let value = snapshot else { return }
+    let lines = scrollAccumulator.lines(for: event, lineHeight: CGFloat(cellHeight) / scale)
+    guard lines != 0 else { return }
     if value.modes.mouse != 0 && !event.modifierFlags.contains(.shift) {
-      for _ in 0..<min(10, max(1, Int(abs(event.scrollingDeltaY)))) {
-        _ = reportMouse(event, button: event.scrollingDeltaY > 0 ? 64 : 65, release: false)
+      for _ in 0..<abs(lines) {
+        _ = reportMouse(event, button: lines > 0 ? 64 : 65, release: false)
       }
     } else {
-      let amount = Int(event.scrollingDeltaY / (event.hasPreciseScrollingDeltas ? 3 : 1))
-      session.scroll(amount)
+      session.scroll(lines)
     }
   }
   @objc func copy(_ sender: Any?) {
