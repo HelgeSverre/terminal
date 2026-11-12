@@ -6,7 +6,7 @@ The terminal supports a deliberately narrow OSC 52 surface:
   pasteboard. Accepted decoded payloads are capped at 1 MiB, with at most four outstanding
   requests per session. Only valid UTF-8 is accepted for the text pasteboard.
 - Writes are allowed without asking, in every pane. This is a personal
-  terminal; an Allow / Deny sheet for every write was removed on 2026-11-12.
+  terminal; an Allow / Deny sheet for every write was removed in 0.4.2.
   `ClipboardAccess` is the only object that writes `NSPasteboard`.
 - Selection `c` is the only supported target. Primary, secondary, select, and
   cut-buffer targets are not aliased to the general pasteboard.
