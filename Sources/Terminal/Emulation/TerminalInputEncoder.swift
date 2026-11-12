@@ -124,9 +124,14 @@ enum TerminalInputEncoder {
     if event == .release && ((plainText && flags & 8 == 0) || (protectedLegacy && flags & 8 == 0)) {
       return Data()
     }
+    // Disambiguate keeps legacy bytes for Enter, Tab and Backspace only
+    // when no modifier is held, so `reset` still works after a crash. With
+    // Shift they are reported (Shift-Enter is `CSI 13 ; 2 u`), as in kitty
+    // and Ghostty; Claude Code and editors rely on that for a newline.
     let enhanced = flags & 8 != 0
       || (!protectedLegacy && flags & 2 != 0 && !plainText)
-      || (flags & 1 != 0 && (modifiers.control || modifiers.option || isEscapeOrKeypad(key)))
+      || (flags & 1 != 0 && (modifiers.control || modifiers.option || isEscapeOrKeypad(key)
+        || (protectedLegacy && modifiers.shift)))
       || modifiers.command
     if enhanced { return kitty(key, modifiers: modifiers, event: event, flags: flags, metadata: metadata) }
     if event == .release { return Data() }

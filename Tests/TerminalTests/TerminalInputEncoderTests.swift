@@ -38,6 +38,23 @@ import Testing
 
   }
 
+  /// Disambiguate (flag 1) reports Shift with Enter, Tab and Backspace, and
+  /// leaves them unmodified as legacy bytes. Without the protocol, Shift-Enter
+  /// is a carriage return as in xterm.
+  @Test static func kittyDisambiguateReportsShiftedLegacyKeys() {
+    let shift = Encoder.Modifiers(shift: true)
+    #expect(Encoder.key(.enter, modifiers: shift, modes: Encoder.Modes()) == Data([13]))
+    for flags: UInt32 in [1, 5] {
+      let modes = Encoder.Modes(kittyFlags: flags)
+      #expect(Encoder.key(.enter, modifiers: shift, modes: modes) == bytes("\u{1b}[13;2u"), "flags \(flags)")
+      #expect(Encoder.key(.tab, modifiers: shift, modes: modes) == bytes("\u{1b}[9;2u"), "flags \(flags)")
+      #expect(Encoder.key(.backspace, modifiers: shift, modes: modes) == bytes("\u{1b}[127;2u"), "flags \(flags)")
+      #expect(Encoder.key(.enter, modes: modes) == Data([13]), "plain Enter stays legacy")
+      #expect(Encoder.key(.tab, modes: modes) == bytes("\t"))
+      #expect(Encoder.key(.backspace, modes: modes) == Data([127]))
+    }
+  }
+
   @Test static func kittyEvents() {
     // Kitty report-events: ordinary release is suppressed unless the mode asks
     // for it; functional repeat is encoded with the press/repeat/release tag.
