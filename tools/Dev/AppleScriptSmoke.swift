@@ -301,7 +301,9 @@ enum AppleScriptSmoke {
         try runQuietly(["/usr/libexec/PlistBuddy", "-c", "Set :\(key) \(value)", plist])
       }
       try writeFixtureShell()
-      try runQuietly(["/usr/bin/codesign", "--force", "--options", "runtime", "--sign", signingIdentity ?? "", fixture])
+      // --deep re-signs the embedded Sparkle.framework too: under the hardened
+      // runtime dyld refuses a framework whose Team ID differs from the app's.
+      try runQuietly(["/usr/bin/codesign", "--force", "--deep", "--options", "runtime", "--sign", signingIdentity ?? "", fixture])
       fixtureSignature = try codeSignature(fixture)
       sourceSignature = try codeSignature(source)
       sourceSHA256 = try sha256(ofFile: source + "/Contents/MacOS/Terminal")
