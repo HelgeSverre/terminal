@@ -91,8 +91,8 @@ import Testing
   }
 
   /// Everything the access object decides without a PTY: the private
-  /// pasteboard is preserved, one allowed write lands once, prompts are rate
-  /// limited, a denial latches the session, queued and stale requests are
+  /// pasteboard is preserved, one allowed write lands once, a second write
+  /// right after it is decided too, a denial latches the session, queued and stale requests are
   /// denied, resolution is one-shot, overflow is denied, cancelling dismisses
   /// the active prompt, a late decision cannot write, and the next queued
   /// request completes. The blocks share one access object and clock.
@@ -104,11 +104,10 @@ import Testing
     #expect(pasteboard.data(forType: .string) == original, "private pasteboard must be preserved")
     var decisions: [(ClipboardAccessDecision) -> Void] = []
     var dismissals = 0
-    var now: TimeInterval = 0
     let access = ClipboardAccess(pasteboard: pasteboard, decide: { _, _, completion in
       decisions.append(completion)
       return { dismissals += 1 }
-    }, clock: { now })
+    })
     func takeDecision(_ context: String) -> ((ClipboardAccessDecision) -> Void)? {
       guard !decisions.isEmpty else {
         Issue.record("missing clipboard decision for \(context)")
@@ -123,10 +122,11 @@ import Testing
     takeDecision("allowed")?(.allow)
     #expect(pasteboard.data(forType: .string) == Data("allowed fixture".utf8))
     #expect(allowed.completions == [true])
-    // prompt_rate_limited
-    access.request(allowed.request(data: Data("too soon".utf8)), from: nil)
-    #expect(decisions.isEmpty && allowed.completions == [true, false], "prompts must be rate limited")
-    now += 1
+    // back_to_back_write_is_decided
+    access.request(allowed.request(data: Data("right after".utf8)), from: nil)
+    takeDecision("back to back")?(.allow)
+    #expect(pasteboard.data(forType: .string) == Data("right after".utf8))
+    #expect(allowed.completions == [true, true], "a quick second write must not be dropped")
 
     // denial_latches_session
     let denied = WriteFixture()
@@ -134,23 +134,19 @@ import Testing
     takeDecision("denied")?(.deny)
     access.request(denied.request(data: Data("denied again".utf8)), from: nil)
     #expect(decisions.isEmpty && denied.completions == [false, false], "a denial must latch the session")
-    #expect(pasteboard.data(forType: .string) == Data("allowed fixture".utf8))
-    now += 1
+    #expect(pasteboard.data(forType: .string) == Data("right after".utf8))
 
     // queued_same_session_denied
     let queuedSameSession = WriteFixture()
     access.request(queuedSameSession.request(data: Data("first same-session".utf8)), from: nil)
-    now += 1
     access.request(queuedSameSession.request(data: Data("second same-session".utf8)), from: nil)
     takeDecision("same-session")?(.deny)
     #expect(decisions.isEmpty && queuedSameSession.completions == [false, false])
-    now += 1
 
     // stale_queue_denied
     let liveBeforeStale = WriteFixture()
     let staleQueued = WriteFixture()
     access.request(liveBeforeStale.request(data: Data("live first".utf8)), from: nil)
-    now += 1
     access.request(staleQueued.request(data: Data("stale queued".utf8)), from: nil)
     staleQueued.live = false
     takeDecision("live before stale")?(.allow)
@@ -170,7 +166,6 @@ import Testing
     oneShotRequest.resolve(true) { oneShotResults.append($0) }
     #expect(oneShot.completions == [false] && oneShotResults == [false])
 
-    now += 1
     // overflow_denied
     let queued = (0..<ClipboardAccess.maximumPending + 1).map { _ in WriteFixture() }
     let queuedRequests = queued.map { $0.request() }
@@ -188,6 +183,22 @@ import Testing
     // next_queued_completes
     #expect(queued[1].completions == [true])
     while let decision = decisions.popLast() { decision(.deny) }
+  }
+
+  /// The default decision allows every write without a prompt, also when
+  /// there is no window to show one on, and writes from several panes in a row.
+  @Test static func defaultAllowsEveryWriteWithoutAsking() {
+    let pasteboard = pasteboard("default")
+    let access = ClipboardAccess(pasteboard: pasteboard)
+    let panes = [WriteFixture(), WriteFixture(), WriteFixture()]
+    for (index, pane) in panes.enumerated() {
+      for write in 0..<2 {
+        let text = "pane \(index) write \(write)"
+        access.request(pane.request(data: Data(text.utf8)), from: nil)
+        #expect(pasteboard.data(forType: .string) == Data(text.utf8), "\(text) did not land")
+      }
+      #expect(pane.completions == [true, true])
+    }
   }
 
   @Test static func ptyWriteReachesPrivatePasteboard() async {

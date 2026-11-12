@@ -124,10 +124,9 @@ Implemented and locally exercised:
 - Native AppleScript dictionary with stable pane identifiers, bounded screen reads,
   input, splits/windows/tabs and validated preference changes. The disposable
   automation fixture verifies targeting while Settings is active and child cleanup.
-- Policy-controlled OSC 52 text clipboard writes through a native Allow/Deny
-  sheet, bounded requests and a one-second prompt cooldown. Reads return an empty
-  denial reply without consulting the pasteboard. Late decisions after close/EOF
-  cannot write, and denial suppresses subsequent prompts for that session.
+- OSC 52 text clipboard writes, allowed without a prompt, with bounded requests.
+  Reads return an empty denial reply without consulting the pasteboard. Writes
+  that resolve after close/EOF cannot write.
   Base64 decoding streams with constant carry, fallible output growth, decoded
   and encoded caps, strict padding checks and bounded parser callback spans.
   A full outstanding-request queue discards payloads without allocating decoded data.

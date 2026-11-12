@@ -119,7 +119,7 @@ compatibility choice and the bundled capability description.
 
 Kitty direct graphics accepts bounded RGB, RGBA, and PNG uploads, including
 zlib compression, chunking, placement, layering, and common deletion actions.
-OSC 52 clipboard writes require native permission and have payload limits;
+OSC 52 clipboard writes are allowed without asking and have payload limits;
 clipboard reads are denied. See the [clipboard policy](osc52-clipboard.md).
 
 Accessibility exposes pane text, ranges, selections, and link actions.

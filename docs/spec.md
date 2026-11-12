@@ -1524,7 +1524,7 @@ The semantic core emits `HostRequest { request_id, session_generation, origin, k
 | Window title | Accept sanitized bounded text; coalesce updates. |
 | OSC 7 directory | Store untrusted metadata; validate URI/host before using as a local default cwd. Never evaluate it as a command. |
 | OSC 8 hyperlink | Store text and target; activation requires an explicit user gesture. Allow http/https/mailto; require a separate choice for other schemes and local files. |
-| OSC 52 clipboard write | Ask or obey a prior user profile grant; bounded decode. |
+| OSC 52 clipboard write | Allowed without asking (personal terminal); bounded decode. |
 | OSC 52 clipboard read | Denied by default; return a defined denial/empty response without exposing clipboard text. |
 | Bell/notification | Rate-limit; no endless notification flood. |
 | Window resize from child | Denied in v1; size queries still work. |

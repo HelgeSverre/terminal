@@ -4,9 +4,10 @@ enum ClipboardAccessDecision {
   case allow, deny
 }
 
-// This is deliberately the only native owner of OSC 52 policy, prompting and
-// pasteboard writes. It does not persist a grant or expose a general-purpose
-// permission system.
+// The only native owner of OSC 52 policy and pasteboard writes. Programs may
+// write the clipboard without asking: this is a personal terminal, and a
+// prompt per write (or per pane) only got in the way. `decide` stays as a
+// seam so tests can hold or deny a request.
 final class ClipboardAccess {
   typealias DecisionHandler = (
     ClipboardWriteRequest, NSWindow?, @escaping (ClipboardAccessDecision) -> Void
@@ -24,34 +25,26 @@ final class ClipboardAccess {
     }
   }
   static let maximumPending = 4
-  private static let promptInterval: TimeInterval = 1
   private let pasteboard: NSPasteboard
   private let decide: DecisionHandler
-  private let clock: () -> TimeInterval
   private var queued: [Pending] = []
   private var active: Pending?
-  private var lastPromptAt: [UUID: TimeInterval] = [:]
   private var deniedSessions = Set<UUID>()
   /// Every accepted writer receives a monotonically newer permit. This is the
   /// single ordering point for OSC 52 decisions and explicit user copies.
   private var latestWritePermit: UInt64 = 0
 
   init(
-    pasteboard: NSPasteboard = .general, decide: @escaping DecisionHandler = ClipboardAccess.prompt,
-    clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    pasteboard: NSPasteboard = .general, decide: @escaping DecisionHandler = ClipboardAccess.allow
   ) {
     precondition(Thread.isMainThread)
     self.pasteboard = pasteboard
     self.decide = decide
-    self.clock = clock
   }
 
   func request(_ request: ClipboardWriteRequest, from window: NSWindow?) {
     precondition(Thread.isMainThread)
-    let now = clock()
-    guard request.isLive, !deniedSessions.contains(request.sessionID),
-      lastPromptAt[request.sessionID].map({ now - $0 >= Self.promptInterval }) ?? true
-    else {
+    guard request.isLive, !deniedSessions.contains(request.sessionID) else {
       request.resolve(false) { _ in }
       return
     }
@@ -64,7 +57,6 @@ final class ClipboardAccess {
       request.resolve(false) { _ in }
       return
     }
-    lastPromptAt[request.sessionID] = now
     queued.append(Pending(request, window: window))
     presentNext()
   }
@@ -106,7 +98,6 @@ final class ClipboardAccess {
       active.request.resolve(false) { _ in }
       presentNext()
     }
-    lastPromptAt[sessionID] = nil
     deniedSessions.remove(sessionID)
   }
 
@@ -157,25 +148,11 @@ final class ClipboardAccess {
     _ = pasteboard.setData(data, forType: .string)
   }
 
-  private static func prompt(
+  /// The default decision: every write is allowed, at once and without a prompt.
+  static func allow(
     request: ClipboardWriteRequest, window: NSWindow?, completion: @escaping (ClipboardAccessDecision) -> Void
   ) -> (() -> Void)? {
-    guard let window else {
-      completion(.deny)
-      return nil
-    }
-    let alert = NSAlert()
-    alert.messageText = "Allow terminal clipboard write?"
-    alert.informativeText = "A program in this terminal wants to write \(request.data.count) bytes to the clipboard."
-    alert.addButton(withTitle: "Allow")
-    alert.addButton(withTitle: "Deny")
-    alert.beginSheetModal(for: window) { response in
-      completion(response == .alertFirstButtonReturn ? .allow : .deny)
-    }
-    return {
-      if let parent = alert.window.sheetParent {
-        parent.endSheet(alert.window, returnCode: .cancel)
-      }
-    }
+    completion(.allow)
+    return nil
   }
 }
