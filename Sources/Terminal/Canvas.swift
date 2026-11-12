@@ -572,6 +572,15 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
       interpretKeyEvents([event])
     }
   }
+  /// ⌘Z, ⇧⌘Z and ⌘X belong to the Edit menu's text items, which would take
+  /// them even while disabled. Typed into the terminal they go to its program.
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    guard window?.firstResponder === self, TerminalEditMenu.isTextOnlyKey(event) else {
+      return super.performKeyEquivalent(with: event)
+    }
+    keyDown(with: event)
+    return true
+  }
   override func keyUp(with event: NSEvent) {
     guard let delivered = terminalKeys.removeValue(forKey: event.keyCode) else { return }
     session.input(TerminalKeyEvent(
@@ -797,6 +806,11 @@ final class TerminalCanvasView: NSView, NSTextInputClient {
     guard let value = snapshot, value.selection.phase != .none,
       let delegate = NSApp.delegate as? AppDelegate else { return }
     delegate.clipboardAccess.copy(from: session, selectionRevision: value.selection.revision)
+  }
+  /// Copy is offered only when there is a selection to copy.
+  @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    guard item.action == #selector(copy(_:)) else { return true }
+    return snapshot.map { $0.selection.phase != .none } ?? false
   }
   @objc func cancelPaste(_ sender: Any?) { session.cancelPaste() }
   @objc func clearScreen(_ sender: Any?) {
