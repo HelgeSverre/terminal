@@ -28,6 +28,33 @@ import Testing
     #expect(icon.fonts.allSatisfy { !$0.hasPrefix("Menlo") }, "\(icon.fonts)")
   }
 
+  /// The fonts that come with the package resolve by name without being
+  /// installed, each with a bold face.
+  @Test func theBundledFamiliesAreThere() {
+    #expect(TerminalFonts.bundledFamilies == ["Obel Mono", "JetBrains Mono", "Fira Code", "Hack", "IBM Plex Mono"])
+    let fonts = TerminalResources.bundle.resourceURL!.appendingPathComponent("Fonts")
+    for entry in TerminalFont.featured {
+      for file in entry.files {
+        let url = fonts.appendingPathComponent(entry.directory).appendingPathComponent(file)
+        #expect(FileManager.default.fileExists(atPath: url.path), "\(file)")
+      }
+      #expect(family(TerminalFont.core(size: 14, family: entry.family)) == entry.family)
+      let bold = TerminalFont.core(size: 14, bold: true, family: entry.family)
+      #expect(family(bold) == entry.family && CTFontGetSymbolicTraits(bold).contains(.traitBold), "\(entry.family)")
+      #expect((TerminalFont.core(size: 14, family: entry.family) as NSFont).isFixedPitch, "\(entry.family)")
+    }
+    // Fira Code has no italic; its italic text is upright, in the family.
+    #expect(family(TerminalFont.core(size: 14, italic: true, family: "Fira Code")) == "Fira Code")
+  }
+
+  @Test func theInstalledFamiliesAreFixedPitchAndNotTheBundledOnes() {
+    let installed = TerminalFonts.installedFamilies()
+    #expect(installed.contains("Menlo") && installed.contains("Monaco"))
+    #expect(!installed.contains("Helvetica"))
+    #expect(Set(installed).isDisjoint(with: TerminalFonts.bundledFamilies))
+    #expect(installed == installed.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending })
+  }
+
   @Test func onlyPunctuationJoinsLigatures() {
     for text in ["-", ">", "=", "!", "|", ":", ".", "/", "*", "&", "~", "\\"] {
       #expect(TerminalFont.joinsLigatures(text), "\(text)")

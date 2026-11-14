@@ -254,8 +254,11 @@ itself, and a terminal reset returns to the host's choice.
 
 ### Font
 
-`fontFamily` names an installed fixed-pitch family, such as `"Menlo"` or
-`"Monaco"`; the grid is measured from it. Left nil, or naming a family the
+`fontFamily` names a fixed-pitch family; the grid is measured from it.
+`TerminalFonts.bundledFamilies` lists the ones that come with the package
+and need not be installed: Obel Mono (the default), JetBrains Mono, Fira
+Code, Hack and IBM Plex Mono. `TerminalFonts.installedFamilies()` lists the
+fixed-pitch families on the Mac, such as `"Menlo"`, for a font menu. Left nil, or naming a family the
 Mac does not have, it gives the bundled Obel Mono. A family without a bold
 or italic face draws its regular one. Icons the family lacks come from the
 bundled symbols font. Views with different families share one renderer.
@@ -263,9 +266,8 @@ bundled symbols font. Views with different families share one renderer.
 ### Ligatures
 
 `configuration.ligatures`, off unless set, joins runs of punctuation when
-the font has ligatures for them: `->`, `=>`, `!=`, `===`, `|>`. The bundled
-Obel Mono has none, so name a `fontFamily` that does, such as
-`"JetBrains Mono"` or `"Cascadia Code"`. A run is at most eight cells, ends
+the font has ligatures for them: `->`, `=>`, `!=`, `===`, `|>`. Of the
+bundled families, JetBrains Mono and Fira Code have them. A run is at most eight cells, ends
 where the style changes, and keeps the width of its cells; letters and
 digits are never joined.
 
@@ -341,7 +343,8 @@ and `.close` beneath it. A host may replace them with
 
 ## Resources
 
-`TerminalUI` carries Obel Mono, Symbols Nerd Font Mono and the Metal shader
+`TerminalUI` carries its fonts (7.4 MB: the five bundled families and
+Symbols Nerd Font Mono) and the Metal shader
 source as package resources, so an embedding app adds nothing to its bundle
 for them. The shader source is compiled when `TerminalRendering` is created; its initializer throws
 `TerminalRendering.RendererError` (`.noDevice`, `.noShaders`, `.noMemory`).

@@ -20,12 +20,32 @@ package enum TerminalFont {
     }
     return result
   }()
+  /// The families shipped beside the default one, by directory and files.
+  /// Fira Code has no italic faces; its italic text is drawn upright.
+  package static let featured: [(family: String, directory: String, files: [String])] = [
+    ("JetBrains Mono", "jetbrains-mono", ["Regular", "Bold", "Italic", "BoldItalic"].map { "JetBrainsMono-\($0).ttf" }),
+    ("Fira Code", "fira-code", ["Regular", "Bold"].map { "FiraCode-\($0).ttf" }),
+    ("Hack", "hack", ["Regular", "Bold", "Italic", "BoldItalic"].map { "Hack-\($0).ttf" }),
+    ("IBM Plex Mono", "ibm-plex-mono", ["Regular", "Bold", "Italic", "BoldItalic"].map { "IBMPlexMono-\($0).ttf" }),
+  ]
+  /// Registers the featured families with this process, once. They are then
+  /// found by name like any installed family, without being installed.
+  private static let registersFeatured: Void = {
+    guard let root = TerminalResources.bundle.resourceURL?.appendingPathComponent("Fonts") else { return }
+    for entry in featured {
+      for file in entry.files {
+        let url = root.appendingPathComponent(entry.directory).appendingPathComponent(file)
+        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+      }
+    }
+  }()
   package static func appKit(size: CGFloat, family: String? = nil) -> NSFont {
     core(size: size, family: family) as NSFont
   }
   /// The face of an installed family, or nil when the Mac has no such
   /// family. A family without the bold or italic face gives its regular one.
   private static func installed(_ name: String, size: CGFloat, bold: Bool, italic: Bool) -> CTFont? {
+    _ = registersFeatured
     let descriptor = CTFontDescriptorCreateWithAttributes([kCTFontFamilyNameAttribute: name] as CFDictionary)
     let regular = CTFontCreateWithFontDescriptor(descriptor, size, nil)
     guard (CTFontCopyFamilyName(regular) as String).caseInsensitiveCompare(name) == .orderedSame else { return nil }

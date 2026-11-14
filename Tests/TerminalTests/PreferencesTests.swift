@@ -89,6 +89,26 @@ import Testing
     #expect(value.launchDirectory == home) // A saved folder may disappear later.
   }
 
+  @Test static func theFontFamilyAndLigaturesRoundTrip() {
+    let defaults = MemoryDefaults()
+    let fresh = TerminalPreferences.load(from: defaults)
+    #expect(fresh.fontFamily == nil && !fresh.ligatures)
+    #expect(fresh.view.fontFamily == nil && !fresh.view.ligatures)
+    var chosen = fresh
+    chosen.fontFamily = "JetBrains Mono"
+    chosen.ligatures = true
+    chosen.save(to: defaults)
+    let loaded = TerminalPreferences.load(from: defaults)
+    #expect(loaded.fontFamily == "JetBrains Mono" && loaded.ligatures)
+    #expect(loaded.view.fontFamily == "JetBrains Mono" && loaded.view.ligatures)
+    // Back to the default removes the key.
+    var reset = loaded
+    reset.fontFamily = nil
+    reset.save(to: defaults)
+    #expect(defaults.object(forKey: "fontFamily") == nil)
+    #expect(TerminalPreferences.load(from: defaults).fontFamily == nil)
+  }
+
   /// The text layout is a stored choice with no control in Settings.
   @Test static func theTextLayoutIsReadFromDefaults() {
     let defaults = MemoryDefaults()

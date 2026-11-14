@@ -4,7 +4,9 @@ import TerminalUI
 // A separate native utility window keeps the terminal usable while editing settings.
 final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   private let fontSize = FontSizeInput()
-  private let familyName = NSTextField(labelWithString: "Obel Mono")
+  private let fontFamily = SettingsPopUpButton(frame: .zero, pullsDown: false)
+  private let ligatures = SettingsCheckbox(
+    checkboxWithTitle: "Join ligatures", target: nil, action: nil)
   private let historyRows = SettingsTextField(value: "")
   private let startingDirectory = SettingsTextField(value: "")
   private let wordCharacters = SettingsTextField(value: "")
@@ -185,7 +187,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     case number(String, String?, NSView, Presentation, suffix: String)
     case check(String, NSButton, Presentation)
     case segment(String, NSSegmentedControl, Presentation)
-    case readOnly(String, NSTextField)
+    case popup(String, String?, NSPopUpButton, Presentation)
     case palette(String, String?, PaneColorPaletteView, Presentation)
     case note(String)
   }
@@ -202,10 +204,14 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       .note("Leave blank to use your home directory. Existing shells keep their current directory."),
     ]),
     Section(id: "text", icon: "textformat", title: "Text", subtitle: "Font and word selection.", fields: [
-      .readOnly("Font", familyName),
+      .popup("Font", "Featured fonts come with the app", fontFamily,
+        Presentation(id: "font-family", accessibilityLabel: "Font family", width: 220)),
       .number("Size", nil, fontSize,
         Presentation(id: "font-size", accessibilityLabel: "Font size in points",
           hint: "8–40 pt. Use Up and Down to adjust by one point.", width: 76), suffix: "pt"),
+      .check("Join ligatures", ligatures,
+        Presentation(id: "ligatures", accessibilityLabel: "Join ligatures",
+          hint: "Draws -> and != joined in fonts that have ligatures, such as JetBrains Mono and Fira Code.")),
       .text("Word characters", "Extra characters treated as word characters", wordCharacters,
         Presentation(id: "word-characters", accessibilityLabel: "Extra word characters",
           hint: "Additional characters included when selecting words. Blank uses Unicode word boundaries.", width: 180), chooseDirectory: false),
@@ -297,10 +303,13 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       input.setAccessibilityElement(true)
       input.setAccessibilityRole(.group)
       renderedKeyViews.append(input)
-    case let .readOnly(name, input):
-      title = name; control = input
-      input.font = .systemFont(ofSize: 14)
-      input.textColor = TerminalTheme.color(TerminalTheme.Settings.text)
+    case let .popup(name, hint, input, presentation):
+      title = name; helper = hint; control = input
+      presentation.apply(to: input)
+      input.font = .systemFont(ofSize: 13)
+      input.target = self
+      input.action = #selector(popupChanged(_:))
+      renderedKeyViews.append(input)
     case let .note(text):
       title = ""
       control = label(text, size: 12, color: TerminalTheme.Settings.muted)
@@ -372,7 +381,8 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     window?.endEditing(for: nil)
     let prefs = TerminalPreferences.load()
     fontSize.stringValue = String(format: "%g", Double(prefs.fontSize))
-    familyName.stringValue = TerminalFont.appKit(size: prefs.fontSize).familyName ?? "Menlo"
+    loadFontFamilies(selecting: prefs.fontFamily)
+    ligatures.state = prefs.ligatures ? .on : .off
     historyRows.stringValue = String(prefs.historyRows)
     option.state = prefs.optionSendsEscape ? .on : .off
     followTail.state = prefs.followTailOnInput ? .on : .off
@@ -399,7 +409,34 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       startingDirectory: startingDirectory.stringValue,
       selectionWordCharacters: wordCharacters.stringValue,
       showPaneTitles: showPaneTitles.state == .on,
-      inactivePaneDim: dim, defaultPaneColor: defaultPaneColor.selected ?? .standard)
+      inactivePaneDim: dim, defaultPaneColor: defaultPaneColor.selected ?? .standard,
+      fontFamily: .some(fontFamily.selectedItem?.representedObject as? String),
+      ligatures: ligatures.state == .on)
+  }
+  @objc private func popupChanged(_ sender: Any?) { validate() }
+  /// Fills the font menu: the default, the fonts that come with the app,
+  /// then the fixed-pitch families installed on this Mac. A stored family
+  /// that is gone falls back to the default.
+  private func loadFontFamilies(selecting family: String?) {
+    fontFamily.removeAllItems()
+    // The heading over the installed fonts stays disabled.
+    fontFamily.autoenablesItems = false
+    func add(_ title: String, family: String?) {
+      fontFamily.addItem(withTitle: title)
+      fontFamily.lastItem?.representedObject = family
+    }
+    add(TerminalFonts.defaultFamily, family: nil)
+    for name in TerminalFonts.bundledFamilies.dropFirst() { add(name, family: name) }
+    let installed = TerminalFonts.installedFamilies()
+    if !installed.isEmpty {
+      fontFamily.menu?.addItem(.separator())
+      let heading = NSMenuItem(title: "Installed on this Mac", action: nil, keyEquivalent: "")
+      heading.isEnabled = false
+      fontFamily.menu?.addItem(heading)
+      for name in installed { add(name, family: name) }
+    }
+    let index = fontFamily.itemArray.firstIndex { ($0.representedObject as? String) == family && family != nil }
+    fontFamily.selectItem(at: index ?? 0)
   }
   private func validate() {
     do {
@@ -505,6 +542,11 @@ private final class FontSizeInput: NSStackView, NSTextFieldDelegate {
 
 // Controls in Settings take Tab focus whatever the system's Keyboard
 // Navigation setting: the window is a form, and Tab is how a form is used.
+private final class SettingsPopUpButton: NSPopUpButton {
+  override var acceptsFirstResponder: Bool { isEnabled }
+  override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
+}
+
 private final class SettingsCheckbox: NSButton {
   override var acceptsFirstResponder: Bool { isEnabled }
   override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }

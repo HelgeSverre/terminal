@@ -122,6 +122,9 @@ is not part of the library by design.
   `ClipboardAccess(writingTo:deciding:)` asks the host about each OSC 52
   write. `session.paste`, `contentInset` and chrome colored from the scheme
   followed.
+- **Bundled fonts:** JetBrains Mono, Fira Code, Hack and IBM Plex Mono come
+  with the package; `TerminalFonts` lists them and the installed families.
+  The app's Settings has a font menu and a ligatures checkbox.
 - **Ligatures:** `TerminalViewConfiguration.ligatures` shapes runs of
   punctuation as one glyph. Verified by reading back frames in JetBrains
   Mono with the setting off and on.

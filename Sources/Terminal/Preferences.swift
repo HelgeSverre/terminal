@@ -110,6 +110,10 @@ struct TerminalPreferences {
   /// Settings yet: `defaults write no.helgesverre.terminal graphemeClustering
   /// -bool false`. See "Shell line editing after emoji sequences" in BUGS.md.
   var graphemeClustering = true
+  /// The font family, or nil for the bundled default.
+  var fontFamily: String?
+  /// Whether runs of punctuation are joined when the font has ligatures.
+  var ligatures = false
   enum ValidationError: LocalizedError {
     case font, history, directory, wordCharacters
     var errorDescription: String? {
@@ -154,7 +158,10 @@ struct TerminalPreferences {
     return path.hasPrefix(Self.home + "/") ? "~" + path.dropFirst(Self.home.count) : startingDirectory
   }
   var view: TerminalViewConfiguration {
-    TerminalViewConfiguration(fontSize: fontSize, optionSendsEscape: optionSendsEscape, session: session)
+    var value = TerminalViewConfiguration(
+      fontSize: fontSize, fontFamily: fontFamily, optionSendsEscape: optionSendsEscape, session: session)
+    value.ligatures = ligatures
+    return value
   }
   var session: TerminalSessionConfiguration {
     var value = TerminalSessionConfiguration(historyRows: historyRows, followTailOnInput: followTailOnInput,
@@ -166,7 +173,8 @@ struct TerminalPreferences {
                      followTailOnInput: Bool, startingDirectory: String,
                      selectionWordCharacters: String, showPaneTitles: Bool,
                      inactivePaneDim: PaneInactiveDim,
-                     defaultPaneColor: PaneChromeColor) throws -> Self {
+                     defaultPaneColor: PaneChromeColor,
+                     fontFamily: String?? = nil, ligatures: Bool? = nil) throws -> Self {
     guard let font = Double(fontSize), font.isFinite, (8...40).contains(font) else { throw ValidationError.font }
     guard let rows = Int(historyRows), (0...50_000).contains(rows) else { throw ValidationError.history }
     guard let directory = Self.directory(startingDirectory) else { throw ValidationError.directory }
@@ -178,6 +186,9 @@ struct TerminalPreferences {
                 inactivePaneDim: inactivePaneDim, defaultPaneColor: defaultPaneColor)
     // Settings has no control for it, so an edit keeps what is stored.
     value.graphemeClustering = (UserDefaults.standard.object(forKey: "graphemeClustering") as? Bool) != false
+    // An edit that does not name the font keeps the stored one.
+    value.fontFamily = fontFamily ?? UserDefaults.standard.string(forKey: "fontFamily")
+    value.ligatures = ligatures ?? UserDefaults.standard.bool(forKey: "ligatures")
     return value
   }
   // Transient launch options never modify saved preferences, nor inspect child argv.
@@ -224,6 +235,8 @@ struct TerminalPreferences {
       defaultPaneColor: defaults.string(forKey: "defaultPaneColor")
         .flatMap { PaneChromeColor(hex: $0) } ?? .standard)
     loaded.graphemeClustering = (defaults.object(forKey: "graphemeClustering") as? Bool) != false
+    loaded.fontFamily = (defaults.object(forKey: "fontFamily") as? String).flatMap { $0.isEmpty ? nil : $0 }
+    loaded.ligatures = (defaults.object(forKey: "ligatures") as? Bool) == true
     return loaded
   }
   func save() { save(to: .standard) }
@@ -237,6 +250,8 @@ struct TerminalPreferences {
     d.set(showPaneTitles, forKey: "showPaneTitles")
     d.set(inactivePaneDim.rawValue, forKey: "inactivePaneDim")
     d.set(defaultPaneColor.hex, forKey: "defaultPaneColor")
+    if let fontFamily { d.set(fontFamily, forKey: "fontFamily") } else { d.removeObject(forKey: "fontFamily") }
+    d.set(ligatures, forKey: "ligatures")
     // Written only when chosen, so the default can still change.
     if !graphemeClustering || d.object(forKey: "graphemeClustering") != nil {
       d.set(graphemeClustering, forKey: "graphemeClustering")

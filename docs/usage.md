@@ -95,8 +95,12 @@ files into a pane pastes their quoted paths.
 
 ## Text and settings
 
-Obel Mono is bundled in regular, bold, and italic faces. Symbols Nerd Font Mono
-supplies missing icon glyphs. Sources and licenses are in the
+Settings > Text has a font menu. Obel Mono is the default; JetBrains Mono,
+Fira Code, Hack and IBM Plex Mono also come with the app, and the fixed-pitch
+fonts installed on the Mac are listed under them. Symbols Nerd Font Mono
+supplies missing icon glyphs for every font. "Join ligatures" draws `->`,
+`!=` and the like joined in fonts that have ligatures (JetBrains Mono and
+Fira Code among the bundled ones). Sources and licenses are in the
 [font directory](../Sources/TerminalUI/Resources/Fonts/README.md).
 
 The font-size number field accepts 8–40 pt. Use its stepper or press Up/Down to
