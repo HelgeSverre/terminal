@@ -106,9 +106,8 @@ struct TerminalPreferences {
   /// Header color of every pane that has not been given its own.
   let defaultPaneColor: PaneChromeColor
   /// Whether an emoji sequence takes the cells of one character (mode 2027
-  /// set) or each code point takes its own, as zsh counts. No control in
-  /// Settings yet: `defaults write no.helgesverre.terminal graphemeClustering
-  /// -bool false`. See "Shell line editing after emoji sequences" in BUGS.md.
+  /// set) or each code point takes its own, as zsh counts. See "Shell line
+  /// editing after emoji sequences" in BUGS.md.
   var graphemeClustering = true
   /// The font family, or nil for the bundled default.
   var fontFamily: String?
@@ -174,7 +173,8 @@ struct TerminalPreferences {
                      selectionWordCharacters: String, showPaneTitles: Bool,
                      inactivePaneDim: PaneInactiveDim,
                      defaultPaneColor: PaneChromeColor,
-                     fontFamily: String?? = nil, ligatures: Bool? = nil) throws -> Self {
+                     fontFamily: String?? = nil, ligatures: Bool? = nil,
+                     graphemeClustering: Bool? = nil) throws -> Self {
     guard let font = Double(fontSize), font.isFinite, (8...40).contains(font) else { throw ValidationError.font }
     guard let rows = Int(historyRows), (0...50_000).contains(rows) else { throw ValidationError.history }
     guard let directory = Self.directory(startingDirectory) else { throw ValidationError.directory }
@@ -184,9 +184,9 @@ struct TerminalPreferences {
                 followTailOnInput: followTailOnInput, startingDirectory: directory,
                 selectionWordProfile: profile, showPaneTitles: showPaneTitles,
                 inactivePaneDim: inactivePaneDim, defaultPaneColor: defaultPaneColor)
-    // Settings has no control for it, so an edit keeps what is stored.
-    value.graphemeClustering = (UserDefaults.standard.object(forKey: "graphemeClustering") as? Bool) != false
-    // An edit that does not name the font keeps the stored one.
+    // An edit that does not name these keeps what is stored.
+    value.graphemeClustering = graphemeClustering
+      ?? ((UserDefaults.standard.object(forKey: "graphemeClustering") as? Bool) != false)
     value.fontFamily = fontFamily ?? UserDefaults.standard.string(forKey: "fontFamily")
     value.ligatures = ligatures ?? UserDefaults.standard.bool(forKey: "ligatures")
     return value

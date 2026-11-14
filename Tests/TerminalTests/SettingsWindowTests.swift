@@ -73,6 +73,12 @@ import Testing
     // The font menu: the default, the fonts that come with the app, then
     // what the Mac has, under a heading that cannot be chosen.
     let families = find("font-family", as: NSPopUpButton.self)
+    // The section has grown; its last row must still be inside the window.
+    content.layoutSubtreeIfNeeded()
+    let words = find("word-characters", as: NSTextField.self)
+    let wordsFrame = content.convert(words.bounds, from: words)
+    #expect(!words.isHiddenOrHasHiddenAncestor && content.bounds.contains(wordsFrame),
+      "Word characters clipped or hidden: \(wordsFrame) in \(content.bounds)")
     #expect(families.itemTitles.prefix(5) == ["Obel Mono", "JetBrains Mono", "Fira Code", "Hack", "IBM Plex Mono"])
     #expect(families.indexOfSelectedItem == 0, "no stored family selects the default")
     let heading = try #require(families.item(withTitle: "Installed on this Mac"))
@@ -82,6 +88,9 @@ import Testing
     let joins = find("ligatures", as: NSButton.self)
     #expect(joins.state == .off)
     joins.performClick(nil)
+    let emoji = find("join-emoji", as: NSButton.self)
+    #expect(emoji.state == .on, "clusters unless chosen otherwise")
+    emoji.performClick(nil)
     // The Panes section offers the pane palette for the default header color.
     select("panes")
     content.layoutSubtreeIfNeeded()
@@ -104,6 +113,7 @@ import Testing
     #expect(applied.count == 1 && applied[0].fontSize == 18 && applied[0].historyRows == 0)
     #expect(applied[0].defaultPaneColor.hex == "#26272B")
     #expect(applied[0].fontFamily == "JetBrains Mono" && applied[0].ligatures)
+    #expect(!applied[0].graphemeClustering && !applied[0].view.session.graphemeClustering)
     #expect(applied[0].view.fontFamily == "JetBrains Mono" && applied[0].view.ligatures)
     #expect(UserDefaults.standard.string(forKey: "defaultPaneColor") == nil)
     #expect(applied[0].startingDirectory == NSHomeDirectory())
@@ -155,7 +165,8 @@ import Testing
     }
     let orders: [String: [String]] = [
       "general": ["settings.starting-directory", "settings.choose-directory"],
-      "text": ["settings.font-family", "settings.font-size", "settings.ligatures", "settings.word-characters"],
+      "text": ["settings.font-family", "settings.font-size", "settings.ligatures", "settings.join-emoji",
+        "settings.word-characters"],
       "scrollback": ["settings.scrollback-rows", "settings.follow-tail-on-input"],
       "panes": ["settings.show-pane-titles", "settings.inactive-pane-dim", "pane.color.onyx", "pane.color.hex"],
       "keyboard": ["settings.option-sends-escape"],

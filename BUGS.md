@@ -28,13 +28,10 @@ its own cells and one without joins the cell before, which is zsh's count;
 the emoji is then drawn in pieces (woman, skin tone, laptop). A program
 switches with `CSI ? 2027 h` and `l`; zsh does not.
 
-The app starts sessions in the layout stored under `graphemeClustering`,
-which has no control in Settings:
-
-```shell
-defaults write no.helgesverre.terminal graphemeClustering -bool false
-```
+The app's choice is Settings > Text > "Join emoji sequences", on unless
+turned off. Turning it off gives the layout by code point.
 
 `ShellWidthTests` runs the edit in a real zsh in both layouts: by code point
 the line is right, and by cluster zsh still overwrites its prompt. The
-default is unchanged, so this entry stays open until a default is chosen.
+default stays clustering by decision (2026-11-14): such emoji on a zsh
+command line are rare, and the other layout draws them in parts everywhere.

@@ -100,7 +100,9 @@ Fira Code, Hack and IBM Plex Mono also come with the app, and the fixed-pitch
 fonts installed on the Mac are listed under them. Symbols Nerd Font Mono
 supplies missing icon glyphs for every font. "Join ligatures" draws `->`,
 `!=` and the like joined in fonts that have ligatures (JetBrains Mono and
-Fira Code among the bundled ones). Sources and licenses are in the
+Fira Code among the bundled ones). "Join emoji sequences" is on by default;
+turn it off if zsh overwrites its prompt while you edit a line holding an
+emoji with a skin tone, a flag or a joined emoji. Sources and licenses are in the
 [font directory](../Sources/TerminalUI/Resources/Fonts/README.md).
 
 The font-size number field accepts 8–40 pt. Use its stepper or press Up/Down to

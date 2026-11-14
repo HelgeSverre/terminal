@@ -7,6 +7,8 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   private let fontFamily = SettingsPopUpButton(frame: .zero, pullsDown: false)
   private let ligatures = SettingsCheckbox(
     checkboxWithTitle: "Join ligatures", target: nil, action: nil)
+  private let joinEmoji = SettingsCheckbox(
+    checkboxWithTitle: "Join emoji sequences", target: nil, action: nil)
   private let historyRows = SettingsTextField(value: "")
   private let startingDirectory = SettingsTextField(value: "")
   private let wordCharacters = SettingsTextField(value: "")
@@ -212,6 +214,10 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       .check("Join ligatures", ligatures,
         Presentation(id: "ligatures", accessibilityLabel: "Join ligatures",
           hint: "Draws -> and != joined in fonts that have ligatures, such as JetBrains Mono and Fira Code.")),
+      .check("Join emoji sequences", joinEmoji,
+        Presentation(id: "join-emoji", accessibilityLabel: "Join emoji sequences",
+          hint: "On: an emoji with a skin tone, a flag or a joined emoji is one character. Off: each part takes its own cells, as zsh counts them, so editing a command line that holds one stays correct. Applies to new output.")),
+      .note("Turn \"Join emoji sequences\" off if zsh overwrites its prompt while you edit a line with such an emoji; they are then drawn in parts."),
       .text("Word characters", "Extra characters treated as word characters", wordCharacters,
         Presentation(id: "word-characters", accessibilityLabel: "Extra word characters",
           hint: "Additional characters included when selecting words. Blank uses Unicode word boundaries.", width: 180), chooseDirectory: false),
@@ -383,6 +389,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     fontSize.stringValue = String(format: "%g", Double(prefs.fontSize))
     loadFontFamilies(selecting: prefs.fontFamily)
     ligatures.state = prefs.ligatures ? .on : .off
+    joinEmoji.state = prefs.graphemeClustering ? .on : .off
     historyRows.stringValue = String(prefs.historyRows)
     option.state = prefs.optionSendsEscape ? .on : .off
     followTail.state = prefs.followTailOnInput ? .on : .off
@@ -411,7 +418,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       showPaneTitles: showPaneTitles.state == .on,
       inactivePaneDim: dim, defaultPaneColor: defaultPaneColor.selected ?? .standard,
       fontFamily: .some(fontFamily.selectedItem?.representedObject as? String),
-      ligatures: ligatures.state == .on)
+      ligatures: ligatures.state == .on, graphemeClustering: joinEmoji.state == .on)
   }
   @objc private func popupChanged(_ sender: Any?) { validate() }
   /// Fills the font menu: the default, the fonts that come with the app,
