@@ -3,24 +3,31 @@
 The repository is a Swift package. Besides the app, it builds three libraries
 that another macOS app can use to show a terminal: a view, the session behind
 it, and the emulator behind that. [`Examples/Embedding`](../Examples/Embedding)
-is a complete app of 60 lines that does so.
+holds two complete apps that do so, both written in the Swift 6 language
+mode:
+
+| Example | Shows |
+| --- | --- |
+| `EmbeddingExample` | A window with a login shell, an Edit menu and a find bar |
+| `ReplayExample` | A window with no process: a `TerminalTransport` plays a file of terminal output into it |
 
 ```shell
 cd Examples/Embedding
 swift build && swift build --product TerminalLauncher
 .build/debug/EmbeddingExample
+.build/debug/ReplayExample            # or with a file of recorded output
 ```
 
-The public interface is small and new. It can change between releases until
-the package has a 1.0 tag. What exists today is one terminal view running one
-child process; [what is missing](#what-is-missing) lists the rest.
+The public interface is new. It can change between releases until the
+package has a 1.0 tag; [what is missing](#what-is-missing) lists what it does
+not cover.
 
 ## Requirements
 
 | | |
 | --- | --- |
 | Platform | macOS 15 or later, AppKit |
-| Swift tools | 6.0 |
+| Swift tools | 6.0. A host may use the Swift 5 or the Swift 6 language mode; the libraries themselves are compiled in Swift 5 mode. |
 | Graphics | A Metal device |
 | Sandbox | The app must be allowed to start child processes. A sandboxed app can show the view but cannot usefully run a login shell. |
 
