@@ -1,11 +1,11 @@
 import AppKit
 import QuartzCore
-import TerminalCore
-import TerminalSession
+import TerminalEngine
+import TerminalHost
 
 public final class TerminalCanvasView: NSView, NSTextInputClient {
   package let automationID = UUID().uuidString
-  public let session: Session
+  public let session: TerminalSession
   private let rendering: TerminalRendering?
   private let clipboard: ClipboardAccess?
   private var configuration: TerminalViewConfiguration
@@ -98,7 +98,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   public override func makeBackingLayer() -> CALayer { CAMetalLayer() }
   /// Without `rendering` the view draws nothing; without `clipboard` it
   /// refuses clipboard writes and copies nothing.
-  public init(frame: NSRect, session: Session, rendering: TerminalRendering?, clipboard: ClipboardAccess?,
+  public init(frame: NSRect, session: TerminalSession, rendering: TerminalRendering?, clipboard: ClipboardAccess?,
        configuration: TerminalViewConfiguration) {
     self.session = session
     self.rendering = rendering

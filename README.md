@@ -108,10 +108,10 @@ flowchart LR
 | [Window and pane tree](Sources/Terminal/main.swift) | Windows, tabs, splits, focus, and minimum sizes |
 | [Pane presentation](Sources/Terminal/PanePresentation.swift) | Pane headers, colors, and inactive dimming |
 | [Pane color palette](Sources/Terminal/PaneColorPalette.swift) | Swatch grid and hex entry shared by the pane popover and Settings |
-| [Canvas](Sources/TerminalView/Canvas.swift) | Native input, selection, geometry, and accessibility |
-| [Session](Sources/TerminalSession/Session.swift) | Child process, PTY transport, ordering, and snapshot publication |
-| [Emulation](Sources/TerminalCore/Emulation) | VT parsing, screens, history, reflow, and graphics state |
-| [Rendering](Sources/TerminalView/Renderer.swift) | Drawable scheduling, glyph residency, and Metal commands |
+| [Canvas](Sources/TerminalUI/Canvas.swift) | Native input, selection, geometry, and accessibility |
+| [Session](Sources/TerminalHost/TerminalSession.swift) | Child process, PTY transport, ordering, and snapshot publication |
+| [Emulation](Sources/TerminalEngine/Emulation) | VT parsing, screens, history, reflow, and graphics state |
+| [Rendering](Sources/TerminalUI/Renderer.swift) | Drawable scheduling, glyph residency, and Metal commands |
 
 Panes share the renderer service and glyph budget. CoreText rasterizes glyphs;
 Metal draws cells and images. A small C launcher handles process setup. The
@@ -168,11 +168,11 @@ The bundle identifier is `no.helgesverre.terminal`.
 | [Swift cutover](docs/swift-cutover.md) | Paired Rust/Swift measurements and the archived Rust snapshot |
 | [Terminal compatibility](docs/terminfo.md) | Bundled capabilities and parser coverage |
 | [Clipboard protocol](docs/osc52-clipboard.md) | OSC 52 behavior and policy |
-| [Fonts](Sources/TerminalView/Resources/Fonts/README.md) | Font sources and licenses |
+| [Fonts](Sources/TerminalUI/Resources/Fonts/README.md) | Font sources and licenses |
 
 ## License
 
 The code is released under the [MIT License](LICENSE). The bundled fonts and
 the code derived from other projects keep their own licenses; see
-[Fonts](Sources/TerminalView/Resources/Fonts/README.md) and the
+[Fonts](Sources/TerminalUI/Resources/Fonts/README.md) and the
 [third-party notices](Resources/Terminal/THIRD_PARTY_NOTICES.md).

@@ -1,8 +1,8 @@
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 @Suite struct UpdatesTests {
   /// Only a released copy started the ordinary way looks for updates.

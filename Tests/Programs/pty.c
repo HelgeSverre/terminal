@@ -29,7 +29,7 @@ static void run_locale(const char *lang,const char *all,const char *ctype,const 
     if(ctype)assert(setenv("LC_CTYPE",ctype,1)==0);else assert(unsetenv("LC_CTYPE")==0);
     char *before_lang=saved_locale("LANG"),*before_all=saved_locale("LC_ALL"),*before_ctype=saved_locale("LC_CTYPE");
     const char *script="lang_count=$(env | awk -F= '$1==\"LANG\"{n++} END{print n+0}'); codeset=$(/usr/bin/locale charmap); printf 'LOCALE LANG=<%s> LC_ALL=<%s> LC_CTYPE=<%s> LC_ALL_SET=%s LC_CTYPE_SET=%s LANG_COUNT=%s CODESET=%s' \"${LANG-}\" \"${LC_ALL-}\" \"${LC_CTYPE-}\" \"${LC_ALL+x}\" \"${LC_CTYPE+x}\" \"$lang_count\" \"$codeset\"";
-    char *argv[]={"/bin/sh","-c",(char *)script,NULL};TerminalProcess p=terminal_spawn_args(launcher,"/bin/sh","/tmp",80,24,argv);assert(p.error==0);
+    char *argv[]={"/bin/sh","-c",(char *)script,NULL};TerminalProcess p=helge_terminal_spawn_args(launcher,"/bin/sh","/tmp",80,24,argv);assert(p.error==0);
     char output[4096];size_t used=0;int eof=0,status_eof=0,reaped=0,outcome=0;unsigned char status[16];size_t status_used=0;double deadline=now()+10;
     while((!eof||!status_eof||!reaped)&&now()<deadline){
         struct pollfd fds[2]={{p.master,POLLIN,0},{p.status,POLLIN,0}};poll(fds,2,20);
@@ -54,13 +54,13 @@ static void run_locale(const char *lang,const char *all,const char *ctype,const 
 }
 static void run(const char *executable,const char *cwd,const char *script,int expected_error,const char *expected_text){
     char *argv[]={(char *)executable,"-c",(char *)script,NULL};
-    TerminalProcess p=terminal_spawn_args(launcher,executable,cwd,123,37,argv);assert(p.error==0);
-    Terminal *core=terminal_create(123,37);assert(core);
+    TerminalProcess p=helge_terminal_spawn_args(launcher,executable,cwd,123,37,argv);assert(p.error==0);
+    Terminal *core=helge_terminal_create(123,37);assert(core);
     char output[300000];size_t used=0;unsigned char status[16];size_t status_used=0;int eof=0,status_eof=0,reaped=0,outcome=0;
     double deadline=now()+10;
     while((!eof||!status_eof||!reaped)&&now()<deadline){
         struct pollfd fds[2]={{p.master,POLLIN,0},{p.status,POLLIN,0}};poll(fds,2,20);
-        if(!eof){ssize_t n=read(p.master,output+used,sizeof(output)-used-1);if(n>0){size_t parsed=0;while(parsed<(size_t)n||terminal_has_work(core)){parsed+=terminal_feed(core,(const uint8_t *)output+used+parsed,(size_t)n-parsed,0);terminal_replies(core,&p.master,reply);}assert(terminal_validate(core));used+=n;}else if(n==0||(n<0&&errno==EIO))eof=1;else assert(errno==EAGAIN||errno==EINTR);}
+        if(!eof){ssize_t n=read(p.master,output+used,sizeof(output)-used-1);if(n>0){size_t parsed=0;while(parsed<(size_t)n||helge_terminal_has_work(core)){parsed+=helge_terminal_feed(core,(const uint8_t *)output+used+parsed,(size_t)n-parsed,0);helge_terminal_replies(core,&p.master,reply);}assert(helge_terminal_validate(core));used+=n;}else if(n==0||(n<0&&errno==EIO))eof=1;else assert(errno==EAGAIN||errno==EINTR);}
         if(!status_eof){ssize_t n=read(p.status,status+status_used,sizeof(status)-status_used);if(n>0)status_used+=n;else if(n==0)status_eof=1;else assert(errno==EAGAIN||errno==EINTR);}
         if(!reaped){int result=waitpid(p.pid,&outcome,WNOHANG);assert(result>=0);if(result==p.pid)reaped=1;}
     }
@@ -69,9 +69,9 @@ static void run(const char *executable,const char *cwd,const char *script,int ex
     assert(eof&&status_eof&&reaped);output[used]=0;
     if(expected_error){assert(status_used==8);int error;memcpy(&error,status+4,4);assert(error==expected_error);}
     else{assert(status_used==0);if(!WIFEXITED(outcome)||WEXITSTATUS(outcome)!=0)fprintf(stderr,"child failed (%d): %s\n",outcome,output);assert(WIFEXITED(outcome)&&WEXITSTATUS(outcome)==0);assert(strstr(output,expected_text));}
-    terminal_finish(core);assert(terminal_validate(core));
-    if(!expected_error){TerminalSearch *search=terminal_search_create(core,(const uint8_t *)expected_text,strlen(expected_text));assert(search);uint32_t phase;while((phase=terminal_search_fill(core,search))==0||phase==1){terminal_search_step(search);}assert(phase==2);assert(terminal_search_accept(core,search)==5);terminal_search_destroy(search);}
-    terminal_destroy(core);
+    helge_terminal_finish(core);assert(helge_terminal_validate(core));
+    if(!expected_error){TerminalSearch *search=helge_terminal_search_create(core,(const uint8_t *)expected_text,strlen(expected_text));assert(search);uint32_t phase;while((phase=helge_terminal_search_fill(core,search))==0||phase==1){helge_terminal_search_step(search);}assert(phase==2);assert(helge_terminal_search_accept(core,search)==5);helge_terminal_search_destroy(search);}
+    helge_terminal_destroy(core);
     printf("PASS PTY: %s (%zu bytes, child reaped, final output drained)\n",expected_text,used);
 }
 int main(int argc,char **argv){assert(argc==2);snprintf(launcher,sizeof launcher,"%s",argv[1]);
@@ -100,9 +100,9 @@ int main(int argc,char **argv){assert(argc==2);snprintf(launcher,sizeof launcher
     setenv("UNRELATED_VARIABLE","kept",1);
     run("/bin/sh","/tmp","test -z \"${TERM_PROGRAM_VERSION+x}${GHOSTTY_RESOURCES_DIR+x}${KITTY_WINDOW_ID+x}${ITERM_SESSION_ID+x}${TMUX+x}${TERMINFO+x}\""
         " && test \"$TERM_PROGRAM\" = HelgeTerminal && test \"$UNRELATED_VARIABLE\" = kept && printf 'FOREIGN_GONE'",0,"FOREIGN_GONE");
-    terminal_set_program_version("1.2.3");
+    helge_terminal_set_program_version("1.2.3");
     run("/bin/sh","/tmp","test \"$TERM_PROGRAM_VERSION\" = 1.2.3 && printf 'VERSION_OK'",0,"VERSION_OK");
-    terminal_set_program_version(NULL);
+    helge_terminal_set_program_version(NULL);
     run("/bin/sh","/tmp","/bin/bash --noprofile --norc -i -c 'printf BASH_CORPUS_OK'",0,"BASH_CORPUS_OK");
     run("/bin/sh","/tmp","fish --no-config -c 'printf FISH_CORPUS_OK'",0,"FISH_CORPUS_OK");
     run("/bin/sh","/tmp","nvim --clean -n -u NONE -c 'call setline(1, \"猫 NVIM corpus\")' -c redraw -c 'qa!' && printf NVIM_CORPUS_OK",0,"NVIM_CORPUS_OK");

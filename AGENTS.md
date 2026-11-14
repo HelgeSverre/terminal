@@ -102,8 +102,8 @@ A new source file needs no registration; each target takes every file under
 its directory.
 
 The sources are four Swift targets, each importing the ones before it:
-`TerminalCore` (emulator and text), `TerminalSession` (PTY session),
-`TerminalView` (AppKit view and Metal renderer) and `TerminalApp` in
+`TerminalEngine` (emulator and text), `TerminalHost` (PTY session),
+`TerminalUI` (AppKit view and Metal renderer) and `TerminalApp` in
 `Sources/Terminal` (windows, panes, settings, automation, smoke tests). Put
 new code in the lowest target that can hold it; the three library targets
 must not read preferences, the app delegate or `Bundle.main`. A declaration

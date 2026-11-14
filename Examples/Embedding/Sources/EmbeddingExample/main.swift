@@ -1,6 +1,6 @@
 import AppKit
-import TerminalSession
-import TerminalView
+import TerminalHost
+import TerminalUI
 
 /// One window holding one terminal that runs the login shell.
 final class Host: NSObject, NSApplicationDelegate {
@@ -15,7 +15,7 @@ final class Host: NSObject, NSApplicationDelegate {
     // The child is started through the launcher, which this example expects
     // beside its own executable: `swift build --product TerminalLauncher`.
     let launcher = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("TerminalLauncher").path
-    let session = Session(
+    let session = TerminalSession(
       launch: .loginShell(cwd: NSHomeDirectory(), launcher: launcher), startsAtFirstGrid: true)
     let view = TerminalCanvasView(
       frame: .zero, session: session, rendering: rendering, clipboard: clipboard,

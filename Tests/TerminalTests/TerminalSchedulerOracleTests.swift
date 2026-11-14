@@ -1,10 +1,10 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 // ABI-level scheduling and invariant checks copied from the production semantic
 // contract. These deliberately never reach into TerminalEmulator directly.
@@ -15,7 +15,7 @@ import TerminalInterop
     Unmanaged<Bytes>.fromOpaque(context).takeUnretainedValue().value.append(bytes, count: count)
   }
   static func feed(_ terminal: OpaquePointer, _ bytes: Data, now: UInt64 = 0) -> Int {
-    bytes.withUnsafeBytes { terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, now) }
+    bytes.withUnsafeBytes { helge_terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, now) }
   }
   static func feed(_ terminal: OpaquePointer, _ text: String, now: UInt64 = 0) { _ = feed(terminal, Data(text.utf8), now: now) }
   static func snapshot(_ terminal: OpaquePointer, now: UInt64 = 0) -> [String: Any]? {
@@ -25,47 +25,47 @@ import TerminalInterop
     (value["rows"] as! [[String: Any]]).flatMap { $0["cells"] as! [[String: Any]] }.map { $0["text"] as! String }.joined()
   }
   static func replies(_ terminal: OpaquePointer) -> Data {
-    let box = Bytes(); terminal_replies(terminal, Unmanaged.passUnretained(box).toOpaque(), collect); return box.value
+    let box = Bytes(); helge_terminal_replies(terminal, Unmanaged.passUnretained(box).toOpaque(), collect); return box.value
   }
   static func input(_ terminal: OpaquePointer, text: String = "", key: UInt32) -> Data {
     let box = Bytes()
     #expect(text.withCString {
-      terminal_input(terminal, $0, key, 0, 0, Unmanaged.passUnretained(box).toOpaque(), collect)
+      helge_terminal_input(terminal, $0, key, 0, 0, Unmanaged.passUnretained(box).toOpaque(), collect)
     })
     return box.value
   }
 
   @Test static func resumableREPDoesNotOvertakeSuffix() {
-    let terminal = terminal_create(80, 24)!; defer { terminal_destroy(terminal) }
+    let terminal = helge_terminal_create(80, 24)!; defer { helge_terminal_destroy(terminal) }
     let bytes = Data("X\u{1b}[10000bY".utf8)
     let consumed = feed(terminal, bytes)
-    #expect(consumed < bytes.count && terminal_has_work(terminal))
+    #expect(consumed < bytes.count && helge_terminal_has_work(terminal))
     // An empty ABI turn must make bounded REP progress. Only after it drains
     // may the caller replay the unconsumed suffix containing Y.
-    while terminal_has_work(terminal) {
-      #expect(terminal_feed(terminal, nil, 0, 1) == 0)
-      #expect(terminal_validate(terminal))
+    while helge_terminal_has_work(terminal) {
+      #expect(helge_terminal_feed(terminal, nil, 0, 1) == 0)
+      #expect(helge_terminal_validate(terminal))
     }
     _ = bytes.withUnsafeBytes {
-      terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress!.advanced(by: consumed), bytes.count - consumed, 1)
+      helge_terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress!.advanced(by: consumed), bytes.count - consumed, 1)
     }
     let value = snapshot(terminal)!
     #expect(text(value).contains("Y"))
-    #expect(terminal_validate(terminal))
+    #expect(helge_terminal_validate(terminal))
   }
 
   @Test static func synchronizedOutputUsesABIClockDeadline() {
-    let terminal = terminal_create(8, 2)!; defer { terminal_destroy(terminal) }
+    let terminal = helge_terminal_create(8, 2)!; defer { helge_terminal_destroy(terminal) }
     feed(terminal, "a\u{1b}[?2026hX\u{1b}[6n", now: 0)
     #expect(snapshot(terminal, now: 0) == nil && !replies(terminal).isEmpty)
     feed(terminal, "\u{1b}[?2026hY", now: 100)
     #expect(snapshot(terminal, now: 149) == nil)
     let released = snapshot(terminal, now: 150)!
-    #expect(text(released).contains("aXY") && terminal_validate(terminal))
+    #expect(text(released).contains("aXY") && helge_terminal_validate(terminal))
   }
 
   @Test static func keyboardFlagsAreScreenLocal() {
-    let terminal = terminal_create(8, 2)!; defer { terminal_destroy(terminal) }
+    let terminal = helge_terminal_create(8, 2)!; defer { helge_terminal_destroy(terminal) }
     feed(terminal, "\u{1b}[>3u\u{1b}[?1049h\u{1b}[>8u\u{1b}[?u")
     #expect(replies(terminal) == Data("\u{1b}[?8u".utf8))
     feed(terminal, "\u{1b}[?1049l\u{1b}[?u")
@@ -75,7 +75,7 @@ import TerminalInterop
   }
 
   @Test static func protocolModesAndTabs() {
-    let terminal = terminal_create(16, 2)!; defer { terminal_destroy(terminal) }
+    let terminal = helge_terminal_create(16, 2)!; defer { helge_terminal_destroy(terminal) }
     feed(terminal, "\u{1b}[?9h\u{1b}[?1002h\u{1b}[?1006h")
     var modes = snapshot(terminal)!["modes"] as! [String: Any]
     #expect(modes["mouse"] as? Int == 1002 && modes["sgr_mouse"] as? Bool == true)
@@ -91,7 +91,7 @@ import TerminalInterop
     #expect(replies(terminal) == Data("\u{1b}[?6u".utf8))
     feed(terminal, "\u{1b}[?1049h\u{1b}[>8u\u{1b}[?u\u{1b}[?1049l\u{1b}[?u")
     #expect(replies(terminal) == Data("\u{1b}[?8u\u{1b}[?6u".utf8))
-    #expect(terminal_resize(terminal, 24, 2))
+    #expect(helge_terminal_resize(terminal, 24, 2))
     feed(terminal, "\u{1b}[?u")
     #expect(replies(terminal) == Data("\u{1b}[?6u".utf8))
 
@@ -101,7 +101,7 @@ import TerminalInterop
     feed(terminal, "\u{1b}[3g\u{1b}[1;4H\u{1b}H\u{1b}[1;1H\t")
     #expect((snapshot(terminal)!["cursor"] as! [String: Any])["col"] as? Int == 3)
     feed(terminal, "\u{1b}[0g")
-    #expect(terminal_resize(terminal, 32, 2))
+    #expect(helge_terminal_resize(terminal, 32, 2))
     feed(terminal, "\u{1b}[1;1H\t")
     #expect((snapshot(terminal)!["cursor"] as! [String: Any])["col"] as? Int == 31)
 
@@ -137,20 +137,20 @@ import TerminalInterop
     let resetCell = (snapshot(terminal)!["rows"] as! [[String: Any]]).flatMap { $0["cells"] as! [[String: Any]] }.first { $0["text"] as? String == "Z" }!
     #expect(resetCell["link"] is NSNull)
 
-    let repeated = terminal_create(8, 2)!; defer { terminal_destroy(repeated) }
-    #expect(terminal_feed(repeated, nil, 0, 0) == 0)
+    let repeated = helge_terminal_create(8, 2)!; defer { helge_terminal_destroy(repeated) }
+    #expect(helge_terminal_feed(repeated, nil, 0, 0) == 0)
     let suffix = Data("X\u{1b}c\u{1b}[2bZ".utf8)
     #expect(feed(repeated, suffix) == suffix.count)
     var turns = 0
-    while terminal_has_work(repeated) {
+    while helge_terminal_has_work(repeated) {
       turns += 1; #expect(turns <= 2)
-      _ = terminal_feed(repeated, nil, 0, 0)
+      _ = helge_terminal_feed(repeated, nil, 0, 0)
     }
     #expect(text(snapshot(repeated)!).contains("Z") && !text(snapshot(repeated)!).contains("X"))
   }
 
   @Test static func oscPaletteTitleAndLinkUseABIState() {
-    let terminal = terminal_create(16, 2)!; defer { terminal_destroy(terminal) }
+    let terminal = helge_terminal_create(16, 2)!; defer { helge_terminal_destroy(terminal) }
     feed(terminal, "\u{1b}]4;1;#010203;2;?\u{1b}\\\u{1b}]10;#112233\u{7}\u{1b}]11;#445566\u{7}")
     var value = snapshot(terminal)!
     #expect((value["palette"] as! [[Int]])[1] == [1, 2, 3])
@@ -182,7 +182,7 @@ import TerminalInterop
   }
 
   @Test static func replyPressurePreservesUnconsumedInput() {
-    let terminal = terminal_create(8, 2)!; defer { terminal_destroy(terminal) }
+    let terminal = helge_terminal_create(8, 2)!; defer { helge_terminal_destroy(terminal) }
     let requests = Data((String(repeating: "\u{1b}[5n", count: 10_000) + "Z").utf8)
     let accepted = feed(terminal, requests)
     #expect(accepted == 32_768)
@@ -193,6 +193,6 @@ import TerminalInterop
     #expect(first == Data(String(repeating: "\u{1b}[0n", count: 8192).utf8))
     #expect(feed(terminal, suffix) == suffix.count)
     #expect(replies(terminal) == Data(String(repeating: "\u{1b}[0n", count: 1808).utf8))
-    #expect(text(snapshot(terminal)!).contains("Z") && terminal_validate(terminal))
+    #expect(text(snapshot(terminal)!).contains("Z") && helge_terminal_validate(terminal))
   }
 }

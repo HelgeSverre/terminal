@@ -1,8 +1,8 @@
 import Foundation
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 /// Where the tests find what the package built beside them.
 enum TestEnvironment {

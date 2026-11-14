@@ -1,9 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 @Suite struct PTYReadEndpointTests {
   final class Fixture: @unchecked Sendable {

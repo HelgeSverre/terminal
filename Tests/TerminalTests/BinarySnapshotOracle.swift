@@ -1,10 +1,10 @@
 // Independent C ABI adapter retained as a test oracle for direct Swift snapshots.
 import Foundation
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 // Row/cell data crosses as length-delimited typed views. Only small window/image
 // metadata uses JSON. All views are copied on the owner before the callback returns.
@@ -45,13 +45,13 @@ enum BinarySnapshotOracle {
   }
   static func read(_ core: OpaquePointer?, scroll: Int, now: UInt64) -> Result {
     let capture = Capture()
-    _ = terminal_snapshot_binary(
+    _ = helge_terminal_snapshot_binary(
       core, scroll, now, Unmanaged.passUnretained(capture).toOpaque(), receive)
     return Result(snapshot: capture.snapshot, error: capture.error)
   }
   static func readView(_ core: OpaquePointer?, now: UInt64) -> Result {
     let capture = Capture()
-    _ = terminal_view_snapshot_binary(
+    _ = helge_terminal_view_snapshot_binary(
       core, now, Unmanaged.passUnretained(capture).toOpaque(), receive)
     return Result(snapshot: capture.snapshot, error: capture.error)
   }

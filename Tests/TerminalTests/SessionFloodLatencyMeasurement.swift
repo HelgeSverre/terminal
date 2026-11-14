@@ -1,9 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 /// Not a check: prints how long typed input takes to reach a program, idle
 /// and while that program floods the terminal with output. The time runs
@@ -28,7 +28,7 @@ import Testing
     try #require(compiler.terminationStatus == 0, "KeyEcho.c did not compile")
 
     let log = directory.appendingPathComponent("log").path
-    let session = Session(launch: LaunchSpec(
+    let session = TerminalSession(launch: LaunchSpec(
       executable: echo, arguments: [echo, log, mode], cwd: "/tmp", launcher: TestEnvironment.launcher))
     defer { session.close() }
     func marks(_ label: String) -> [UInt64] {

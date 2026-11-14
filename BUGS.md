@@ -22,6 +22,7 @@ zsh-autosuggestions suggestion, zsh's cursor moves land to the left of where
 it intends, and its next redraw overwrites the prompt: typing `a`, `s`,
 Backspace, Backspace, `ls` left `asls` at column 0.
 
-The emulator has no mode that lays text out by code point width, and does not
-implement mode 2027, through which a program states which layout it expects.
+The emulator has no mode that lays text out by code point width. It answers a
+query for mode 2027 with "permanently set", so a program that asks learns
+which layout is in use; zsh does not ask.
 A recorded byte stream that reproduces the overwrite is not in the tree yet.

@@ -36,7 +36,7 @@ enum AppBundle {
     try Console.step("Icon, shader and terminfo") {
       try icon(into: scratch + "/Terminal.icns")
       let intermediate = scratch + "/Terminal.air"
-      try Console.quietly(["xcrun", "-sdk", "macosx", "metal", "-c", Repository.path("Sources/TerminalView/Resources/Terminal.metal"),
+      try Console.quietly(["xcrun", "-sdk", "macosx", "metal", "-c", Repository.path("Sources/TerminalUI/Resources/Terminal.metal"),
                            "-o", intermediate])
       try Console.quietly(["xcrun", "-sdk", "macosx", "metallib", intermediate, "-o", resources + "/Terminal.metallib"])
       try Console.quietly(["/usr/bin/tic", "-x", "-o", resources + "/terminfo",
@@ -50,7 +50,7 @@ enum AppBundle {
       try replace(resources + "/Terminal.icns", with: scratch + "/Terminal.icns")
       try Console.quietly(["/usr/bin/ditto", Repository.path("Resources/Terminal/ShellIntegration"),
                            resources + "/ShellIntegration"])
-      try Console.quietly(["/usr/bin/ditto", Repository.path("Sources/TerminalView/Resources/Fonts"), resources + "/Fonts"])
+      try Console.quietly(["/usr/bin/ditto", Repository.path("Sources/TerminalUI/Resources/Fonts"), resources + "/Fonts"])
       try embedUpdater(into: frameworks)
       // Ad hoc: a local build is signed for this machine only.
       try Console.quietly(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", frameworks + "/Sparkle.framework"])
@@ -115,7 +115,7 @@ enum AppBundle {
   }
 
   /// The package's library targets, each before the ones that import it.
-  static let libraryModules = ["TerminalCore", "TerminalSession", "TerminalView"]
+  static let libraryModules = ["TerminalEngine", "TerminalHost", "TerminalUI"]
 
   private static func swiftSources(in directory: String) throws -> [String] {
     let root = Repository.path(directory)

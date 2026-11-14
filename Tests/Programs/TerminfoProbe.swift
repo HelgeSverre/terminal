@@ -12,31 +12,31 @@ import TerminalInterop
   static func main() throws {
     let args = Array(CommandLine.arguments.dropFirst())
     guard args.count == 2, let columns = UInt32(args[0]), let rows = UInt32(args[1]),
-      let terminal = terminal_create(columns, rows)
+      let terminal = helge_terminal_create(columns, rows)
     else {
       FileHandle.standardError.write(Data("Usage: terminfo-probe COLUMNS ROWS (valid terminal geometry)\n".utf8))
       exit(2)
     }
-    defer { terminal_destroy(terminal) }
+    defer { helge_terminal_destroy(terminal) }
     while let data = try FileHandle.standardInput.read(upToCount: 65_536), !data.isEmpty {
       data.withUnsafeBytes { raw in
         let bytes = raw.bindMemory(to: UInt8.self)
         var offset = 0
-        while offset < bytes.count || terminal_has_work(terminal) {
-          let used = terminal_feed(terminal, bytes.baseAddress!.advanced(by: offset), bytes.count - offset, 0)
+        while offset < bytes.count || helge_terminal_has_work(terminal) {
+          let used = helge_terminal_feed(terminal, bytes.baseAddress!.advanced(by: offset), bytes.count - offset, 0)
           precondition(used <= bytes.count - offset, "feed consumed beyond input")
           offset += used
-          terminal_replies(terminal, nil, replies)
+          helge_terminal_replies(terminal, nil, replies)
         }
       }
     }
-    terminal_finish(terminal)
-    terminal_replies(terminal, nil, replies)
-    guard let json = terminal_snapshot(terminal, 0, 0) else {
+    helge_terminal_finish(terminal)
+    helge_terminal_replies(terminal, nil, replies)
+    guard let json = helge_terminal_snapshot(terminal, 0, 0) else {
       FileHandle.standardError.write(Data("Snapshot publication rejected\n".utf8))
       exit(1)
     }
-    defer { terminal_string_free(json) }
+    defer { helge_terminal_string_free(json) }
     FileHandle.standardOutput.write(Data(String(cString: json).utf8))
     FileHandle.standardOutput.write(Data([10]))
   }

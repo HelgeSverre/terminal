@@ -1,10 +1,10 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 // ABI regressions at resource/transport boundaries, independent of private
 // parser, screen and grapheme representations. Each case is its own test, so a
@@ -17,18 +17,18 @@ import TerminalInterop
   static func feed(_ terminal: OpaquePointer, _ bytes: Data) throws {
     var offset = 0
     var turns = 0
-    while offset < bytes.count || terminal_has_work(terminal) {
+    while offset < bytes.count || helge_terminal_has_work(terminal) {
       let offered = min(65_536, bytes.count - offset)
       let consumed = bytes.withUnsafeBytes { buffer in
-        terminal_feed(terminal, offered == 0 ? nil : buffer.bindMemory(to: UInt8.self).baseAddress!.advanced(by: offset), offered, 0)
+        helge_terminal_feed(terminal, offered == 0 ? nil : buffer.bindMemory(to: UInt8.self).baseAddress!.advanced(by: offset), offered, 0)
       }
       try #require(consumed >= 0 && consumed <= offered, "invalid ingress consumption")
-      try #require(consumed > 0 || terminal_has_work(terminal) || offset == bytes.count, "ingress stalled")
+      try #require(consumed > 0 || helge_terminal_has_work(terminal) || offset == bytes.count, "ingress stalled")
       offset += consumed
       turns += 1
       try #require(turns < 100_000, "work did not yield progress")
     }
-    #expect(terminal_validate(terminal), "document invariants")
+    #expect(helge_terminal_validate(terminal), "document invariants")
   }
   static func feed(_ terminal: OpaquePointer, _ text: String) throws { try feed(terminal, Data(text.utf8)) }
   private final class Capture {
@@ -58,7 +58,7 @@ import TerminalInterop
   }
   static func snapshot(_ terminal: OpaquePointer) throws -> [String: Any] {
     let capture = Capture()
-    guard terminal_view_snapshot_binary(terminal, 0, Unmanaged.passUnretained(capture).toOpaque(), receive),
+    guard helge_terminal_view_snapshot_binary(terminal, 0, Unmanaged.passUnretained(capture).toOpaque(), receive),
       let result = capture.value else { throw Failure("missing owner-view snapshot") }
     return result
   }
@@ -79,11 +79,11 @@ import TerminalInterop
     for bytes in cases {
       let expected = String(decoding: bytes, as: UTF8.self)
       for split in 0...bytes.count {
-        let terminal = terminal_create(40, 2)!
-        defer { terminal_destroy(terminal) }
+        let terminal = helge_terminal_create(40, 2)!
+        defer { helge_terminal_destroy(terminal) }
         try feed(terminal, Data(bytes.prefix(split)))
         try feed(terminal, Data(bytes.suffix(bytes.count - split)))
-        terminal_finish(terminal)
+        helge_terminal_finish(terminal)
         let actual = lines(try snapshot(terminal))[0]
         #expect(actual == expected, "UTF8 \(bytes) split\(split): \(actual.debugDescription) != \(expected.debugDescription)")
       }
@@ -93,8 +93,8 @@ import TerminalInterop
     for (prefix, terminator) in [("\u{1b}]2;", "\u{7}"), ("\u{1b}]2;", "\u{1b}\\"), ("\u{1b}_", "\u{1b}\\")] {
       for size in 65_533...65_537 {
         for splitTerminator in [false, true] {
-          let terminal = terminal_create(8, 2)!
-          defer { terminal_destroy(terminal) }
+          let terminal = helge_terminal_create(8, 2)!
+          defer { helge_terminal_destroy(terminal) }
           let payload = "A" + prefix + String(repeating: "x", count: size)
           if splitTerminator {
             try feed(terminal, payload)
@@ -109,11 +109,11 @@ import TerminalInterop
     }
   }
   @Test static func survivingAnchor() throws {
-    let terminal = terminal_create(8, 3)!
-    defer { terminal_destroy(terminal) }
-    terminal_set_history_limit(terminal, 5)
+    let terminal = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(terminal) }
+    helge_terminal_set_history_limit(terminal, 5)
     try feed(terminal, (0...8).map(String.init).joined(separator: "\r\n"))
-    terminal_view_scroll(terminal, 3)
+    helge_terminal_view_scroll(terminal, 3)
     let before = try snapshot(terminal)
     #expect(lines(before) == ["3", "4", "5"], "viewport fixture")
     try feed(terminal, "\r\n9") // Evicts 1; the viewport begins at retained row 3.
@@ -123,77 +123,77 @@ import TerminalInterop
     #expect(after["following_tail"] as? Bool == false, "viewport unexpectedly follows tail")
   }
   @Test static func resizeRetention() throws {
-    let terminal = terminal_create(8, 2)!
-    defer { terminal_destroy(terminal) }
-    terminal_set_history_limit(terminal, 3)
+    let terminal = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(terminal) }
+    helge_terminal_set_history_limit(terminal, 3)
     try feed(terminal, "abcdefghijklmnop\r\nqrstuvwxyz\r\nlast")
-    #expect(terminal_resize(terminal, 2, 2), "narrow resize rejected")
+    #expect(helge_terminal_resize(terminal, 2, 2), "narrow resize rejected")
     #expect(((try snapshot(terminal))["history_rows"] as! Int) <= 3, "reflow exceeded row retention")
   }
   @Test static func resizeByteRetention() throws {
-    let bytesTerminal = terminal_create(8, 2)!
-    defer { terminal_destroy(bytesTerminal) }
+    let bytesTerminal = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(bytesTerminal) }
     try feed(bytesTerminal, "a\r\nb\r\nc\r\nd")
-    let limit = terminal_history_bytes(bytesTerminal)
+    let limit = helge_terminal_history_bytes(bytesTerminal)
     #expect(limit > 0, "history byte fixture")
-    terminal_set_history_byte_limit(bytesTerminal, limit)
-    #expect(terminal_resize(bytesTerminal, 32, 2), "wide resize rejected")
-    #expect(terminal_history_bytes(bytesTerminal) <= limit, "reflow exceeded byte retention")
+    helge_terminal_set_history_byte_limit(bytesTerminal, limit)
+    #expect(helge_terminal_resize(bytesTerminal, 32, 2), "wide resize rejected")
+    #expect(helge_terminal_history_bytes(bytesTerminal) <= limit, "reflow exceeded byte retention")
   }
   @Test static func historyStorageCharge() throws {
-    let wide = terminal_create(80, 1)!
-    defer { terminal_destroy(wide) }
+    let wide = helge_terminal_create(80, 1)!
+    defer { helge_terminal_destroy(wide) }
     // A retained row cannot cost less than its fixed cell slots, even when
     // almost every cell is blank. Keep the budget below that lower bound.
     let belowCellStorage = UInt64(80 * MemoryLayout<TerminalCell>.stride - 1)
-    terminal_set_history_byte_limit(wide, belowCellStorage)
+    helge_terminal_set_history_byte_limit(wide, belowCellStorage)
     try feed(wide, "A\r\nB\r\nC")
     #expect((try snapshot(wide))["history_rows"] as? Int == 0, "history budget omitted fixed cell storage")
-    #expect(terminal_history_bytes(wide) == 0, "evicted cell storage remained charged")
+    #expect(helge_terminal_history_bytes(wide) == 0, "evicted cell storage remained charged")
 
-    let linked = terminal_create(4, 1)!
-    defer { terminal_destroy(linked) }
-    terminal_set_history_byte_limit(linked, 1_024)
+    let linked = helge_terminal_create(4, 1)!
+    defer { helge_terminal_destroy(linked) }
+    helge_terminal_set_history_byte_limit(linked, 1_024)
     let url = "https://example.test/" + String(repeating: "x", count: 4_096)
     try feed(linked, "\u{1b}]8;;\(url)\u{7}A\u{1b}]8;;\u{7}\r\nB")
     #expect((try snapshot(linked))["history_rows"] as? Int == 0, "history budget omitted hyperlink content")
-    #expect(terminal_history_bytes(linked) == 0, "evicted hyperlink remained charged")
+    #expect(helge_terminal_history_bytes(linked) == 0, "evicted hyperlink remained charged")
   }
   @Test static func historyByteThresholds() throws {
     // Non-round widths exercise the old rich-array capacity rounding. Exact
     // admission must retain one row at the charge, and evict at charge - 1.
     for width: UInt32 in [3, 7, 17] {
-      let measured = terminal_create(width, 1)!
-      defer { terminal_destroy(measured) }
+      let measured = helge_terminal_create(width, 1)!
+      defer { helge_terminal_destroy(measured) }
       try feed(measured, "A\r\nB")
-      let charge = terminal_history_bytes(measured)
+      let charge = helge_terminal_history_bytes(measured)
       #expect(try charge > 0 && (try snapshot(measured))["history_rows"] as? Int == 1,
                  "history threshold fixture width \(width)")
       for delta: Int64 in [-1, 0, 1] {
-        let terminal = terminal_create(width, 1)!
-        defer { terminal_destroy(terminal) }
-        terminal_set_history_byte_limit(terminal, UInt64(Int64(charge) + delta))
+        let terminal = helge_terminal_create(width, 1)!
+        defer { helge_terminal_destroy(terminal) }
+        helge_terminal_set_history_byte_limit(terminal, UInt64(Int64(charge) + delta))
         try feed(terminal, "A\r\nB")
         let retained = delta >= 0
         #expect(((try snapshot(terminal))["history_rows"] as? Int == (retained ? 1 : 0)),
                    "history threshold \(delta) width \(width)")
-        #expect(terminal_history_bytes(terminal) == (retained ? charge : 0),
+        #expect(helge_terminal_history_bytes(terminal) == (retained ? charge : 0),
                    "history byte threshold \(delta) width \(width)")
       }
     }
   }
   @Test static func readiness() throws {
-    let terminal = terminal_create(12, 3)!
-    defer { terminal_destroy(terminal) }
+    let terminal = helge_terminal_create(12, 3)!
+    defer { helge_terminal_destroy(terminal) }
     try feed(terminal, "\u{1b}]133;A\u{7}> \u{1b}]133;B\u{7}")
     for width: UInt32 in [5, 16, 8] {
-      #expect(terminal_resize(terminal, width, 3), "prompt resize")
+      #expect(helge_terminal_resize(terminal, width, 3), "prompt resize")
       #expect((try snapshot(terminal))["input_ready"] as? Bool == true, "reflow lost input readiness")
     }
   }
   @Test static func cappedClusters() throws {
-    let terminal = terminal_create(12, 2)!
-    defer { terminal_destroy(terminal) }
+    let terminal = helge_terminal_create(12, 2)!
+    defer { helge_terminal_destroy(terminal) }
     try feed(terminal, "A" + String(repeating: "\u{301}", count: 64) + "\u{200d}👩")
     let first = cells(try snapshot(terminal))
     #expect(first[1]["text"] as? String == "👩", "capped non-emoji ZWJ swallowed new pictograph")
@@ -205,8 +205,8 @@ import TerminalInterop
   }
   @Test static func segmenterIntegration() throws {
     for cluster in ["\u{1100}\u{1161}\u{11a8}", "क्‍ष", "\u{600}A", "क\u{903}"] {
-      let terminal = terminal_create(16, 2)!
-      defer { terminal_destroy(terminal) }
+      let terminal = helge_terminal_create(16, 2)!
+      defer { helge_terminal_destroy(terminal) }
       for scalar in cluster.unicodeScalars { try feed(terminal, String(scalar)) }
       let output = cells(try snapshot(terminal))
       #expect(output[0]["text"] as? String == cluster, "segmenter not used by emulator for \(cluster.debugDescription)")
@@ -215,8 +215,8 @@ import TerminalInterop
     }
   }
   @Test static func continuationWidth() throws {
-    let terminal = terminal_create(16, 2)!
-    defer { terminal_destroy(terminal) }
+    let terminal = helge_terminal_create(16, 2)!
+    defer { helge_terminal_destroy(terminal) }
     try feed(terminal, "\u{600}猫")
     let joined = try snapshot(terminal)
     let output = cells(joined)
@@ -228,8 +228,8 @@ import TerminalInterop
   }
   @Test static func repeatClusters() throws {
     for (cluster, width) in [("e\u{301}", 1), ("🇳🇴", 2), ("\u{1100}\u{1161}\u{11a8}", 2)] {
-      let terminal = terminal_create(20, 2)!
-      defer { terminal_destroy(terminal) }
+      let terminal = helge_terminal_create(20, 2)!
+      defer { helge_terminal_destroy(terminal) }
       try feed(terminal, cluster + "\u{1b}[2b")
       let value = try snapshot(terminal)
       let output = cells(value)
@@ -244,8 +244,8 @@ import TerminalInterop
       ("A\n", 1, 1), ("A\t", 0, 8), ("A\u{1b}[H", 0, 0),
       ("A\u{1b}[?1049h", 0, 0)
     ] {
-      let terminal = terminal_create(20, 3)!
-      defer { terminal_destroy(terminal) }
+      let terminal = helge_terminal_create(20, 3)!
+      defer { helge_terminal_destroy(terminal) }
       try feed(terminal, prefix + "\u{301}X")
       let value = try snapshot(terminal)
       let output = cells(value, row: row)
@@ -256,7 +256,7 @@ import TerminalInterop
   }
   // These ingress limits describe the emulator adapter, not a shared VT grammar.
   static func offer(_ terminal: OpaquePointer, _ bytes: Data) -> Int {
-    bytes.withUnsafeBytes { terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0) }
+    bytes.withUnsafeBytes { helge_terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0) }
   }
   private final class ReplyCapture { var bytes = Data() }
   private static let receiveReply: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void = { context, bytes, count in
@@ -266,7 +266,7 @@ import TerminalInterop
   }
   static func drainReplies(_ terminal: OpaquePointer) -> Data {
     let capture = ReplyCapture()
-    terminal_replies(terminal, Unmanaged.passUnretained(capture).toOpaque(), receiveReply)
+    helge_terminal_replies(terminal, Unmanaged.passUnretained(capture).toOpaque(), receiveReply)
     return capture.bytes
   }
   static func ingressLine(_ terminal: OpaquePointer) throws -> String {
@@ -293,8 +293,8 @@ import TerminalInterop
     for (index, fixture) in fixtures.enumerated() {
       let input = Data("X\u{1b}[".utf8) + fixture.0 + Data("CZ".utf8)
       for split in [0, 3, input.count - 3, input.count - 2, input.count - 1, input.count] {
-        let terminal = terminal_create(12, 2)!
-        defer { terminal_destroy(terminal) }
+        let terminal = helge_terminal_create(12, 2)!
+        defer { helge_terminal_destroy(terminal) }
         try feed(terminal, Data(input.prefix(split)))
         try feed(terminal, Data(input.dropFirst(split)))
         #expect(try ingressLine(terminal) == fixture.1, "CSI budget fixture\(index), split\(split)")
@@ -302,8 +302,8 @@ import TerminalInterop
     }
   }
   @Test static func csiIngressYields() throws {
-    let terminal = terminal_create(20, 2)!
-    defer { terminal_destroy(terminal) }
+    let terminal = helge_terminal_create(20, 2)!
+    defer { helge_terminal_destroy(terminal) }
     let packet = Data("X".utf8) + Data(repeating: 0, count: 65_532) + Data("\u{1b}[3CZ".utf8)
     #expect(offer(terminal, packet) == 65_536, "CSI ignored offer bound")
     #expect(lines(try snapshot(terminal))[0] == "X", "CSI suffix admitted before next offer")
@@ -325,6 +325,6 @@ import TerminalInterop
     #expect(offer(terminal, suffix) == query.count + 1, "drained reply suffix consumption")
     #expect(drainReplies(terminal) == reply, "replayed query count")
     #expect(try ingressLine(terminal) == "X   ZZZYQ", "reply backpressure lost printable suffix")
-    #expect(terminal_validate(terminal), "CSI ingress document invariants")
+    #expect(helge_terminal_validate(terminal), "CSI ingress document invariants")
   }
 }

@@ -1,5 +1,5 @@
 import Foundation
-import TerminalCore
+import TerminalEngine
 import TerminalInterop
 
 private final class ImageCapture { var data: Data? }
@@ -182,7 +182,7 @@ public struct LaunchSpec: Equatable {
     }
     return argv.withUnsafeMutableBufferPointer { argv in
       extra.withUnsafeMutableBufferPointer { extra in
-        terminal_spawn_environment(
+        helge_terminal_spawn_environment(
           launcher, executable, cwd, UInt16(columns), UInt16(rows), argv.baseAddress, extra.baseAddress)
       }
     }
@@ -267,7 +267,7 @@ package struct TerminalKeyEvent {
   }
 }
 // The PTY and emulator handle are confined to this queue. Main receives immutable decoded values.
-public final class Session: @unchecked Sendable {
+public final class TerminalSession: @unchecked Sendable {
   typealias SelectionCompletion = @MainActor (Result<String?, TerminalSelectionFailure>) -> Void
   package typealias LinkCompletion = @MainActor (Result<URL, TerminalSelectionFailure>) -> Void
   private final class SelectionDelivery {
@@ -391,7 +391,7 @@ public final class Session: @unchecked Sendable {
   /// The size the view last asked for, kept so a resize refused for want of
   /// reflow budget can be asked for again.
   private var wantedGrid: (cols: Int, rows: Int, cellWidth: Int, cellHeight: Int)?
-  private var resizeRetryDelay = Session.firstResizeRetryDelay
+  private var resizeRetryDelay = TerminalSession.firstResizeRetryDelay
   private static let firstResizeRetryDelay = 16
   private var selectionPending = false
   private var linkPending = false
@@ -440,7 +440,7 @@ public final class Session: @unchecked Sendable {
   /// Claims the session for a view. A second view on the same session would
   /// take the first one's snapshots, so it is a programming error.
   @MainActor package func attachView() {
-    precondition(!hasView, "A Session serves one TerminalCanvasView")
+    precondition(!hasView, "A TerminalSession serves one TerminalCanvasView")
     hasView = true
   }
   /// Called once, when the child has exited and its last output is parsed.
@@ -477,7 +477,7 @@ public final class Session: @unchecked Sendable {
     writer?.cancel()
     statusReader?.cancel()
     process?.cancel()
-    if let core { terminal_destroy(core) }
+    if let core { helge_terminal_destroy(core) }
     if pid > 0, !reaped { Self.endAbandonedChild(pid) }
   }
   /// Hangs up a child whose session is gone, kills it after two seconds if
@@ -526,20 +526,20 @@ public final class Session: @unchecked Sendable {
         self.handle = handle
         self.generation = generation
       }
-      deinit { terminal_search_destroy(handle) }
+      deinit { helge_terminal_search_destroy(handle) }
     }
     private struct Request {
       let query: String
       let completion: SearchCompletion
       var retries = 0
     }
-    private weak var session: Session?
+    private weak var session: TerminalSession?
     private var generation: UInt64 = 0
     private var request: Request?
     private var job: Job?
     private var working = false
     private var scheduled = false
-    init(session: Session) { self.session = session }
+    init(session: TerminalSession) { self.session = session }
     func start(_ query: String, completion: @escaping SearchCompletion) {
       cancel()
       request = Request(query: query, completion: completion)
@@ -566,18 +566,18 @@ public final class Session: @unchecked Sendable {
         }
         let bytes = Array(request.query.utf8)
         let handle = bytes.withUnsafeBufferPointer {
-          terminal_search_create(core, $0.baseAddress, $0.count)
+          helge_terminal_search_create(core, $0.baseAddress, $0.count)
         }
         guard let handle else { finish(.invalidQuery); return }
         job = Job(handle, generation: generation)
       }
       guard let job else { return }
-      let status = terminal_search_fill(core, job.handle)
+      let status = helge_terminal_search_fill(core, job.handle)
       if status == 0 {
         working = true
         let owner = session.readBroker!
         Self.worker.async { [weak self, job] in
-          _ = terminal_search_step(job.handle)
+          _ = helge_terminal_search_step(job.handle)
           owner.submit { [weak self, job] in
             guard let self else { return }
             working = false
@@ -586,7 +586,7 @@ public final class Session: @unchecked Sendable {
           }
         }
       } else if status == 2 {
-        let accepted = terminal_search_accept(core, job.handle)
+        let accepted = helge_terminal_search_accept(core, job.handle)
         if accepted == 3 { retryOrFinish() }
         else { finish(accepted == 5 ? .found : .missing) }
       } else if status == 3 { retryOrFinish() }
@@ -612,7 +612,7 @@ public final class Session: @unchecked Sendable {
     var index: UInt32 = 0
     var total: UInt32 = 0
     var capped = false
-    guard let core, terminal_search_position(core, &index, &total, &capped) else { return nil }
+    guard let core, helge_terminal_search_position(core, &index, &total, &capped) else { return nil }
     return HistorySearchPosition(index: Int(index), total: Int(total), capped: capped)
   }
   private func report(_ text: String) {
@@ -783,7 +783,7 @@ public final class Session: @unchecked Sendable {
     return accepting && !interactionClosed
   }
   private func start() {
-    guard terminal_abi_version() == 1, let handle = terminal_create(80, 24) else {
+    guard helge_terminal_abi_version() == 1, let handle = helge_terminal_create(80, 24) else {
       return fail(.engineUnavailable, "Core initialization failed")
     }
     core = handle
@@ -936,7 +936,7 @@ public final class Session: @unchecked Sendable {
       }
       let feedStarted = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
       let used = bytes.withUnsafeBytes {
-        terminal_feed(
+        helge_terminal_feed(
           core, $0.bindMemory(to: UInt8.self).baseAddress! + offset, bytes.count - offset, Self.now)
       }
       if streamStatistics != nil {
@@ -950,7 +950,7 @@ public final class Session: @unchecked Sendable {
       if used > 0 { lastParseNs = DispatchTime.now().uptimeNanoseconds }
       drainReplies()
       drainClipboardWrites()
-      if offset + used < bytes.count || terminal_has_work(core) {
+      if offset + used < bytes.count || helge_terminal_has_work(core) {
         // The partially consumed output lease remains at the ingress head.
         complete = false
       }
@@ -964,7 +964,7 @@ public final class Session: @unchecked Sendable {
       guard writeBytes + text.utf8.count + 256 <= 3 * 1024 * 1024 else { return }
       collectingPaste = key == 1
       let writesBefore = writeID
-      let accepted = terminal_input(
+      let accepted = helge_terminal_input(
         core, text, key, modifiers, event, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
       collectingPaste = false
       release(cost)
@@ -976,7 +976,7 @@ public final class Session: @unchecked Sendable {
       if accepted && writeID != writesBefore && key != 2 && event != 2, let core {
         clearSelectionForAcceptedInput(core)
       }
-      if accepted && key != 2 && event != 2 && configuration.followTailOnInput { terminal_view_follow_tail(core) }
+      if accepted && key != 2 && event != 2 && configuration.followTailOnInput { helge_terminal_view_follow_tail(core) }
     case .keyInput(let input, let cost):
       if writeEnded {
         release(cost)
@@ -990,7 +990,7 @@ public final class Session: @unchecked Sendable {
       }
       guard writeBytes <= 3 * 1024 * 1024 - wireBytes else { return }
       let writesBefore = writeID
-      let accepted = terminal_input_with_metadata(
+      let accepted = helge_terminal_input_with_metadata(
         core, input.adapterText, input.key, input.modifiers, input.event,
         input.text, input.legacyText, input.shiftedScalar, input.baseLayoutScalar,
         Unmanaged.passUnretained(self).toOpaque(), Self.collect)
@@ -1000,10 +1000,10 @@ public final class Session: @unchecked Sendable {
         clearSelectionForAcceptedInput(core)
       }
       if accepted && input.isKeyAction && configuration.followTailOnInput {
-        terminal_view_follow_tail(core)
+        helge_terminal_view_follow_tail(core)
       }
     case .clipboardDecision(let requestID, let allowed, let completion):
-      let accepted = acceptingClipboardRequests && terminal_complete_clipboard_request(core, requestID)
+      let accepted = acceptingClipboardRequests && helge_terminal_complete_clipboard_request(core, requestID)
       DispatchQueue.main.async { completion(accepted && allowed) }
     case .raw(let bytes, let cost):
       guard writeBytes + bytes.count <= 3 * 1024 * 1024 else { return }
@@ -1015,7 +1015,7 @@ public final class Session: @unchecked Sendable {
       writeID += 1
       if !writeEnded { writes.append(WriteTransaction(id: writeID, data: bytes, kind: .ordinary)) }
       if !bytes.isEmpty, let core { clearSelectionForAcceptedInput(core) }
-      if configuration.followTailOnInput { terminal_view_follow_tail(core) }
+      if configuration.followTailOnInput { helge_terminal_view_follow_tail(core) }
       release(cost)
     case .resize(let cols, let rows, let cw, let ch, let began):
       if !began && queuedResizeCount > 1 {
@@ -1118,27 +1118,27 @@ public final class Session: @unchecked Sendable {
       }
     case .configure(let value):
       configuration = value
-      terminal_set_history_limit(core, UInt32(value.historyRows))
+      helge_terminal_set_history_limit(core, UInt32(value.historyRows))
       // Configuration is semantic FIFO state: a later word gesture observes
       // this profile, while an already captured gesture keeps its own value.
       if let core {
         _ = TerminalSelectionBridge.begin(core: core, action: .wordProfile(value.selectionWordProfile))
       }
-    case .scroll(let delta): terminal_view_scroll(core, Int64(delta))
+    case .scroll(let delta): helge_terminal_view_scroll(core, Int64(delta))
     case .find(let query, let completion): historySearch.start(query, completion: completion)
     case .searchAdvance: historySearch.advance()
     case .searchNavigate(let older, let completion):
       var index: UInt32 = 0
       var total: UInt32 = 0
       var capped = false
-      let moved = terminal_search_navigate(core, older, &index, &total, &capped)
+      let moved = helge_terminal_search_navigate(core, older, &index, &total, &capped)
       let position = moved ? HistorySearchPosition(index: Int(index), total: Int(total), capped: capped) : nil
       DispatchQueue.main.async { completion(position) }
     case .searchClear:
       historySearch.cancel()
-      terminal_search_clear(core)
+      helge_terminal_search_clear(core)
     case .clearDisplay:
-      let action = terminal_clear_display(core)
+      let action = helge_terminal_clear_display(core)
       if action != 0 { historySearch.cancel() }
       if action == 2 && !writeEnded {
         writeID += 1
@@ -1149,7 +1149,7 @@ public final class Session: @unchecked Sendable {
       DispatchQueue.main.async { completion(delay) }
     case .eof:
       parserEnded = true
-      terminal_finish(core)
+      helge_terminal_finish(core)
       if reaped { finish() } else { report("PTY ended; waiting for process exit") }
     case .idle: break
     }
@@ -1185,7 +1185,7 @@ public final class Session: @unchecked Sendable {
     @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void = {
       context, bytes, count in
       guard let context, let bytes, count > 0 else { return }
-      let owner = Unmanaged<Session>.fromOpaque(context).takeUnretainedValue()
+      let owner = Unmanaged<TerminalSession>.fromOpaque(context).takeUnretainedValue()
       guard !owner.writeEnded else { return }
       owner.writeID += 1
       let data = Data(bytes: bytes, count: count)
@@ -1196,11 +1196,11 @@ public final class Session: @unchecked Sendable {
             ? .paste(bracketed: data.starts(with: Data("\u{1b}[200~".utf8))) : .ordinary))
     }
   private func drainReplies() {
-    terminal_replies(core, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
+    helge_terminal_replies(core, Unmanaged.passUnretained(self).toOpaque(), Self.collect)
   }
   private static let collectClipboard: ClipboardCallback = { context, requestID, bytes, count in
     guard let context, let bytes, count >= 0 else { return }
-    let owner = Unmanaged<Session>.fromOpaque(context).takeUnretainedValue()
+    let owner = Unmanaged<TerminalSession>.fromOpaque(context).takeUnretainedValue()
     let request = ClipboardWriteRequest(
       sessionID: owner.clipboardSessionID, data: Data(bytes: bytes, count: count),
       live: { [weak owner] in owner?.acceptingClipboardRequests == true },
@@ -1217,7 +1217,7 @@ public final class Session: @unchecked Sendable {
       else { request.resolve(false) { _ in } }
     }
   }
-  private func drainClipboardWrites() { terminal_take_clipboard_requests(core, Unmanaged.passUnretained(self).toOpaque(), Self.collectClipboard) }
+  private func drainClipboardWrites() { helge_terminal_take_clipboard_requests(core, Unmanaged.passUnretained(self).toOpaque(), Self.collectClipboard) }
   package func setClipboardClosedHandler(_ handler: @escaping @MainActor (UUID) -> Void) {
     readBroker.submit { [weak self] in
       guard let self else { return }
@@ -1362,7 +1362,7 @@ public final class Session: @unchecked Sendable {
         ? Double(lastParseNs - firstReadNs) / 1_000_000_000 : 0
       var stats: [String: Any] = [
         "bytes_read": bytesRead, "bytes_parsed": bytesParsed, "queued_output_bytes": queuedOutput,
-        "history_bytes": terminal_history_bytes(core), "stream_seconds": elapsed,
+        "history_bytes": helge_terminal_history_bytes(core), "stream_seconds": elapsed,
         "parsed_mib_per_second": elapsed > 0 ? Double(bytesParsed) / 1_048_576 / elapsed : 0,
         "child_reaped": reaped, "read_ended": readEnded, "parser_ended": parserEnded,
         "child_pid": pid,
@@ -1574,7 +1574,7 @@ public final class Session: @unchecked Sendable {
     imageCache = imageCache.filter { visibleKeys.contains($0.key) }
     for image in snapshot.images where imageCache[image.key] == nil {
       let capture = ImageCapture()
-      let success = terminal_image_rgba(
+      let success = helge_terminal_image_rgba(
         core, image.image, image.generation, Unmanaged.passUnretained(capture).toOpaque(),
         Self.copyImage)
       if success, let data = capture.data { imageCache[image.key] = ImagePixels(data) }
@@ -1648,7 +1648,7 @@ public final class Session: @unchecked Sendable {
       endWrite()
       statusReader?.cancel()
       if let core {
-        terminal_destroy(core)
+        helge_terminal_destroy(core)
         self.core = nil
       }
       reap()

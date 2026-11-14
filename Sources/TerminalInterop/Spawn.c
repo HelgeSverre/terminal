@@ -53,7 +53,7 @@ static char *default_language(void){
 }
 // The version children see in TERM_PROGRAM_VERSION, as "TERM_PROGRAM_VERSION=x".
 static char program_version[64];
-void terminal_set_program_version(const char *version){
+void helge_terminal_set_program_version(const char *version){
     if(!version||!*version||snprintf(program_version,sizeof program_version,"TERM_PROGRAM_VERSION=%s",version)>=(int)sizeof program_version)
         program_version[0]=0;
 }
@@ -114,10 +114,10 @@ static int make_environment(const char *launcher,const char *executable,char *co
     out->values[n]=NULL;
     return 0;
 }
-TerminalProcess terminal_spawn_args(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[]){
-    return terminal_spawn_environment(launcher,executable,cwd,cols,rows,target_argv,NULL);
+TerminalProcess helge_terminal_spawn_args(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[]){
+    return helge_terminal_spawn_environment(launcher,executable,cwd,cols,rows,target_argv,NULL);
 }
-TerminalProcess terminal_spawn_environment(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[],char *const extra_environment[]){
+TerminalProcess helge_terminal_spawn_environment(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[],char *const extra_environment[]){
     TerminalProcess out={-1,-1,-1,0};int master=-1,slave=-1,p[2]={-1,-1};
     struct winsize size={.ws_row=rows,.ws_col=cols};
     if(openpty(&master,&slave,NULL,NULL,&size)<0){out.error=errno;return out;}

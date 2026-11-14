@@ -2,24 +2,24 @@ import Darwin
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 /// Reflow semantics of the document and the resize bridge. Serialized: several
 /// tests fill or inspect the process-wide reflow reservation ledger.
 @Suite(.serialized) enum TerminalReflowSemanticTests {
-  static func feed(_ t: OpaquePointer, _ text: String) { let d = Data(text.utf8); _ = d.withUnsafeBytes { terminal_feed(t, $0.bindMemory(to: UInt8.self).baseAddress, d.count, 0) } }
+  static func feed(_ t: OpaquePointer, _ text: String) { let d = Data(text.utf8); _ = d.withUnsafeBytes { helge_terminal_feed(t, $0.bindMemory(to: UInt8.self).baseAddress, d.count, 0) } }
   static func snapshot(_ t: OpaquePointer) -> [String: Any] { TerminalSnapshotTestSupport.ownerSnapshot(t)! }
   static func text(_ s: [String: Any]) -> String { (s["rows"] as! [[String: Any]]).map { ($0["cells"] as! [[String: Any]]).map { $0["text"] as! String }.joined() }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines) }
   @Test static func inactivePrimaryAndRichRoundtrip() {
-    let inactive = terminal_create(8, 3)!; defer { terminal_destroy(inactive) }
-    feed(inactive, "abcdef\u{1b}7\u{1b}[?1049h猫猫"); #expect(terminal_resize(inactive, 4, 4)); feed(inactive, "\u{1b}[?1049l")
+    let inactive = helge_terminal_create(8, 3)!; defer { helge_terminal_destroy(inactive) }
+    feed(inactive, "abcdef\u{1b}7\u{1b}[?1049h猫猫"); #expect(helge_terminal_resize(inactive, 4, 4)); feed(inactive, "\u{1b}[?1049l")
     let cursor = snapshot(inactive)["cursor"] as! [String: Any]
     #expect(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 2)
-    let roundtrip = terminal_create(8, 4)!; defer { terminal_destroy(roundtrip) }
-    feed(roundtrip, "abcd猫efghij   "); let before = text(snapshot(roundtrip)); #expect(terminal_resize(roundtrip, 4, 8)); #expect(terminal_resize(roundtrip, 8, 4)); let after = text(snapshot(roundtrip))
+    let roundtrip = helge_terminal_create(8, 4)!; defer { helge_terminal_destroy(roundtrip) }
+    feed(roundtrip, "abcd猫efghij   "); let before = text(snapshot(roundtrip)); #expect(helge_terminal_resize(roundtrip, 4, 8)); #expect(helge_terminal_resize(roundtrip, 8, 4)); let after = text(snapshot(roundtrip))
     #expect(after == before, "reflow roundtrip mismatch: before=\(before.debugDescription) after=\(after.debugDescription)")
   }
 
@@ -102,7 +102,7 @@ import TerminalInterop
   }
 
   @Test static func bridgeCoherence() {
-    let core = terminal_create(80, 24)!; defer { terminal_destroy(core) }
+    let core = helge_terminal_create(80, 24)!; defer { helge_terminal_destroy(core) }
     feed(core, String(repeating: "abcdefghij\r\n", count: 500))
     let before = snapshot(core)
     guard case .pending = TerminalResizeBridge.begin(core: core, columns: 40, rows: 30, cellWidth: 9, cellHeight: 17) else { Issue.record("unexpected result"); return }
@@ -120,17 +120,17 @@ import TerminalInterop
   }
 
   @Test static func cursorWindowAndAlternateCoordinates() {
-    let core = terminal_create(4, 3)!; defer { terminal_destroy(core) }
+    let core = helge_terminal_create(4, 3)!; defer { helge_terminal_destroy(core) }
     feed(core, "1111\u{1b}[2;1H2222\u{1b}[3;1H3333\u{1b}[1;2H")
-    #expect(terminal_resize(core, 2, 2))
+    #expect(helge_terminal_resize(core, 2, 2))
     #expect(text(snapshot(core)) == "11\n11", "width reflow must choose the old screen-start window containing the cursor, cropping excess rows below it")
     feed(core, "\u{1b}[?1049h\u{1b}[1;1HA\u{1b}[2;1HB")
-    #expect(terminal_resize(core, 3, 1))
+    #expect(helge_terminal_resize(core, 3, 1))
     #expect(text(snapshot(core)) == "A", "alternate resize must preserve top-left coordinates")
 
-    let saved = terminal_create(4, 3)!; defer { terminal_destroy(saved) }
+    let saved = helge_terminal_create(4, 3)!; defer { helge_terminal_destroy(saved) }
     feed(saved, "abcd\u{1b}7\u{1b}[2;1H")
-    #expect(terminal_resize(saved, 2, 4))
+    #expect(helge_terminal_resize(saved, 2, 4))
     feed(saved, "\u{1b}8")
     let cursor = snapshot(saved)["cursor"] as! [String: Any]
     #expect(cursor["row"] as? Int == 1 && cursor["col"] as? Int == 1 && cursor["pending_wrap"] as? Bool == true,
@@ -141,13 +141,13 @@ import TerminalInterop
 
   @Test static func pressureEvictsBeforeReplanning() {
     DocumentReflowTransaction.drainRetirementForTesting()
-    let core = terminal_create(1_024, 2)!; defer { terminal_destroy(core) }
+    let core = helge_terminal_create(1_024, 2)!; defer { helge_terminal_destroy(core) }
     // A single shared link keeps this fixture physically small, while the
     // conservative per-cell resource charge exercises real admission pressure.
     let link = "https://example.test/" + String(repeating: "a", count: 8_000)
     feed(core, "\u{1b}]8;;\(link)\u{1b}\\" + String(repeating: String(repeating: "x", count: 1_000) + "\r\n", count: 9))
     let retained = swiftTerminalSnapshot(core, scroll: nil, now: 0).snapshot!
-    let beforeBytes = terminal_history_bytes(core)
+    let beforeBytes = helge_terminal_history_bytes(core)
     #expect(beforeBytes > 50 * 1024 * 1024 && retained.history_rows > 1)
     var progress = TerminalResizeBridge.begin(core: core, columns: 1_000, rows: 2, cellWidth: 8, cellHeight: 16)
     var turns = 0
@@ -157,7 +157,7 @@ import TerminalInterop
       if turns.isMultiple(of: 100) { Thread.sleep(forTimeInterval: 0.001) }
     }
     guard case .committed(let geometry) = progress else { Issue.record("history pressure should replan a feasible active grid: \(progress)"); return }
-    #expect(geometry.columns == 1_000 && terminal_history_bytes(core) < beforeBytes)
+    #expect(geometry.columns == 1_000 && helge_terminal_history_bytes(core) < beforeBytes)
     #expect(retained.cols == 1_024 && retained.rows.count == 2)
     DocumentReflowTransaction.drainRetirementForTesting()
     #expect(ReflowReservationLedger.shared.reservedBytes == 0)
@@ -168,7 +168,7 @@ import TerminalInterop
     var first = ReflowReservationLedger.shared.reserve(96 * 1024 * 1024)
     var second = ReflowReservationLedger.shared.reserve(32 * 1024 * 1024)
     #expect(first != nil && second != nil)
-    let core = terminal_create(80, 24)!
+    let core = helge_terminal_create(80, 24)!
     var progress = TerminalResizeBridge.begin(core: core, columns: 40, rows: 24, cellWidth: 8, cellHeight: 16)
     for _ in 0..<100 {
       guard case .pending = progress else { break }
@@ -186,7 +186,7 @@ import TerminalInterop
       _ = TerminalResizeBridge.advance(core: core)
       if ReflowReservationLedger.shared.reservedBytes > 0 { break }
     }
-    terminal_destroy(core)
+    helge_terminal_destroy(core)
     DocumentReflowTransaction.drainRetirementForTesting()
     #expect(ReflowReservationLedger.shared.reservedBytes == 0)
     #expect(snapshot.cols == 80 && snapshot.rows.count == 24)
@@ -351,26 +351,26 @@ import TerminalInterop
   @Test static func reservationPrecedesCaptureAndSurvivesCancellation() {
     DocumentReflowTransaction.drainRetirementForTesting()
     DocumentReflowTransaction.withRetirementPausedForTesting {
-      let core = terminal_create(80, 24)!
+      let core = helge_terminal_create(80, 24)!
       guard case .pending = TerminalResizeBridge.begin(core: core, columns: 40, rows: 24, cellWidth: 8, cellHeight: 16) else { Issue.record("unexpected result"); return }
       let reserved = ReflowReservationLedger.shared.reservedBytes
       #expect(reserved > 0, "input must be charged before the first advance")
-      terminal_destroy(core)
+      helge_terminal_destroy(core)
       #expect(ReflowReservationLedger.shared.reservedBytes == reserved,
                    "destroy may not credit captured input while retirement is blocked")
     }
     DocumentReflowTransaction.drainRetirementForTesting()
     #expect(ReflowReservationLedger.shared.reservedBytes == 0)
 
-    let core = terminal_create(1_024, 2)!; defer { terminal_destroy(core) }
+    let core = helge_terminal_create(1_024, 2)!; defer { helge_terminal_destroy(core) }
     let link = "https://example.test/" + String(repeating: "a", count: 8_000)
     feed(core, "\u{1b}]8;;\(link)\u{1b}\\" + String(repeating: String(repeating: "x", count: 1_000) + "\r\n", count: 9))
-    let before = terminal_history_bytes(core)
+    let before = helge_terminal_history_bytes(core)
     DocumentReflowTransaction.withRetirementPausedForTesting {
       _ = TerminalResizeBridge.begin(core: core, columns: 1_000, rows: 2, cellWidth: 8, cellHeight: 16)
       _ = TerminalResizeBridge.advance(core: core) // initial pressure, without capturing input
       _ = TerminalResizeBridge.advance(core: core) // a bounded eviction packet
-      #expect(terminal_history_bytes(core) < before)
+      #expect(helge_terminal_history_bytes(core) < before)
       let reserved = ReflowReservationLedger.shared.reservedBytes
       #expect(reserved > 0)
       TerminalResizeBridge.cancel(core: core)
@@ -384,7 +384,7 @@ import TerminalInterop
 
   @Test static func rejectedAndCancelledResizePreserveSemanticState() {
     DocumentReflowTransaction.drainRetirementForTesting()
-    let cancelled = terminal_create(80, 24)!; defer { terminal_destroy(cancelled) }
+    let cancelled = helge_terminal_create(80, 24)!; defer { helge_terminal_destroy(cancelled) }
     feed(cancelled, "e")
     _ = TerminalResizeBridge.begin(core: cancelled, columns: 40, rows: 24, cellWidth: 8, cellHeight: 16)
     TerminalResizeBridge.cancel(core: cancelled)
@@ -392,7 +392,7 @@ import TerminalInterop
     #expect(swiftTerminalSnapshot(cancelled, scroll: nil, now: 0).snapshot!.rows[0].cells[0].text == "e\u{301}",
                  "cancelled resize must not break an adjacent grapheme")
     DocumentReflowTransaction.drainRetirementForTesting()
-    let rejected = terminal_create(80, 24)!; defer { terminal_destroy(rejected) }
+    let rejected = helge_terminal_create(80, 24)!; defer { helge_terminal_destroy(rejected) }
     feed(rejected, "e")
     var first = ReflowReservationLedger.shared.reserve(96 * 1024 * 1024)
     var second = ReflowReservationLedger.shared.reserve(32 * 1024 * 1024)
@@ -404,7 +404,7 @@ import TerminalInterop
     #expect(swiftTerminalSnapshot(rejected, scroll: nil, now: 0).snapshot!.rows[0].cells[0].text == "e\u{301}",
                  "rejected resize must not break an adjacent grapheme")
 
-    let gated = terminal_create(80, 24)!; defer { terminal_destroy(gated) }
+    let gated = helge_terminal_create(80, 24)!; defer { helge_terminal_destroy(gated) }
     feed(gated, "\u{1b}[?2026hX")
     _ = TerminalResizeBridge.begin(core: gated, columns: 40, rows: 24, cellWidth: 8, cellHeight: 16)
     TerminalResizeBridge.cancel(core: gated)
@@ -427,13 +427,13 @@ import TerminalInterop
 
   @Test static func insertionBoundaryAffinity() {
     for text in ["ABCDEFGH", "ABCD", "abc猫"] {
-      let core = terminal_create(8, 3)!
+      let core = helge_terminal_create(8, 3)!
       feed(core, text + "\u{1b}[1;\(text == "abc猫" ? 4 : 5)H")
-      #expect(terminal_resize(core, 4, 4))
+      #expect(helge_terminal_resize(core, 4, 4))
       let cursor = swiftTerminalSnapshot(core, scroll: nil, now: 0).snapshot!.cursor
       #expect(cursor.row == 1 && cursor.col == 0 && !cursor.pending_wrap,
                    "ordinary before-atom boundary must map after a wrap: \(text)")
-      terminal_destroy(core)
+      helge_terminal_destroy(core)
     }
   }
 

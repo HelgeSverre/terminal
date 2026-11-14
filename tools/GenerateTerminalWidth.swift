@@ -1,4 +1,4 @@
-// Generates Sources/TerminalCore/Text/TerminalWidthTables.swift from the exact generated tables
+// Generates Sources/TerminalEngine/Text/TerminalWidthTables.swift from the exact generated tables
 // extracted from pinned unicode-width 0.2.3 into tools/unicode. This is a data
 // formatter, not a Unicode-property implementation: its output must preserve the
 // crate's scalar decisions byte-for-byte. Invoke with:
@@ -11,7 +11,7 @@ import Foundation
   static func main() throws {
     let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     let input = root.appendingPathComponent("tools/unicode/terminal-width-18.0.0.json")
-    let output = root.appendingPathComponent("Sources/TerminalCore/Text/TerminalWidthTables.swift")
+    let output = root.appendingPathComponent("Sources/TerminalEngine/Text/TerminalWidthTables.swift")
     let data = try Data(contentsOf: input)
     let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     guard digest == "5659728c03da5ff3d09aedf3ee6f54e797efc903650f7724cf76b2b43d9c7ec3" else {

@@ -1,20 +1,20 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 // Nine executable margin integration scenarios. These cross the C-shaped emulator seam, not a helper grid: snapshots
 // therefore prove that protocol parsing mutates the canonical rich document.
 @Suite enum TerminalDocumentOracleTests {
   static func make(_ columns: UInt32 = 8, _ rows: UInt32 = 4) -> OpaquePointer {
-    return terminal_create(columns, rows)!
+    return helge_terminal_create(columns, rows)!
   }
   static func feed(_ terminal: OpaquePointer, _ string: String) {
     let bytes = Data(string.utf8)
-    _ = bytes.withUnsafeBytes { terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0) }
+    _ = bytes.withUnsafeBytes { helge_terminal_feed(terminal, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0) }
   }
   static func snapshot(_ terminal: OpaquePointer) -> [String: Any] {
     TerminalSnapshotTestSupport.ownerSnapshot(terminal)!
@@ -26,7 +26,7 @@ import TerminalInterop
       guard let context, let bytes, count > 0 else { return }
       Unmanaged<Box>.fromOpaque(context).takeUnretainedValue().bytes.append(bytes, count: count)
     }
-    terminal_replies(terminal, Unmanaged.passUnretained(box).toOpaque(), callback)
+    helge_terminal_replies(terminal, Unmanaged.passUnretained(box).toOpaque(), callback)
     return box.bytes
   }
   static func line(_ value: [String: Any], _ row: Int) -> String {
@@ -46,7 +46,7 @@ import TerminalInterop
   }
 
   @Test static func originHomeQueriesAndSaveConflict() {
-    let t = make(10, 5); defer { terminal_destroy(t) }
+    let t = make(10, 5); defer { helge_terminal_destroy(t) }
     feed(t, "\u{1b}[?69h\u{1b}[3;8s\u{1b}[2;4r\u{1b}[?6h")
     var value = snapshot(t)
     #expect(value["primary_margins"] as? [Int] == [2, 7])
@@ -65,7 +65,7 @@ import TerminalInterop
   }
 
   @Test static func regionalWrapAndMotions() {
-    let t = make(); defer { terminal_destroy(t) }; seed(t)
+    let t = make(); defer { helge_terminal_destroy(t) }; seed(t)
     feed(t, "\u{1b}[?69h\u{1b}[3;6s\u{1b}[?6h12345")
     expectLines(t, ["ab1234yz", "cd5111wx", "ef2222uv", "gh3333st"])
     feed(t, "\u{1b}[1;1H\u{1b}[?7lABCDE")
@@ -84,7 +84,7 @@ import TerminalInterop
   }
 
   @Test static func rectangularIndexIdentityAndNoHistory() {
-    let t = make(); defer { terminal_destroy(t) }; seed(t)
+    let t = make(); defer { helge_terminal_destroy(t) }; seed(t)
     let rowIDs = (snapshot(t)["rows"] as! [[String: Any]]).map { $0["id"] as! Int }
     feed(t, "\u{1b}[?69h\u{1b}[3;6s\u{1b}[2;4r\u{1b}[4;3H\n")
     expectLines(t, ["ab0000yz", "cd2222wx", "ef3333uv", "gh    st"])
@@ -98,7 +98,7 @@ import TerminalInterop
   }
 
   @Test static func rectangularInsertDeleteAndEraseBackground() {
-    let t = make(); defer { terminal_destroy(t) }; seed(t)
+    let t = make(); defer { helge_terminal_destroy(t) }; seed(t)
     feed(t, "\u{1b}[?69h\u{1b}[3;6s\u{1b}[2;4r\u{1b}[3;4H\u{1b}[44m\u{1b}[L")
     expectLines(t, ["ab0000yz", "cd1111wx", "ef    uv", "gh2222st"])
     let value = snapshot(t)
@@ -110,7 +110,7 @@ import TerminalInterop
   }
 
   @Test static func horizontalInsertDeleteAndWideEdges() {
-    let t = make(8, 3); defer { terminal_destroy(t) }
+    let t = make(8, 3); defer { helge_terminal_destroy(t) }
     feed(t, "ABCDWXYZ\u{1b}[?69h\u{1b}[3;6s\u{1b}[4G\u{1b}[@")
     #expect(line(snapshot(t), 0) == "ABC DWYZ")
     feed(t, "\u{1b}[?69l\u{1b}[1GABCDWXYZ\u{1b}[?69h\u{1b}[3;6s\u{1b}[4G\u{1b}[2P")
@@ -126,7 +126,7 @@ import TerminalInterop
   }
 
   @Test static func richRectangularScroll() {
-    let t = make(8, 3); defer { terminal_destroy(t) }
+    let t = make(8, 3); defer { helge_terminal_destroy(t) }
     feed(t, "\u{1b}[2;3H\u{1b}[38;2;10;20;30m\u{1b}[1\"q\u{1b}]8;;https://example.test/\u{1b}\\猫é\u{1b}]8;;\u{1b}\\\u{1b}[0m\u{1b}[?69h\u{1b}[3;7s\u{1b}[S")
     let value = snapshot(t); let cat = cell(value, 0, 2)
     #expect(cat["text"] as? String == "猫")
@@ -137,25 +137,25 @@ import TerminalInterop
   }
 
   @Test static func screenScopeResetResizeAndMarginDisable() {
-    let t = make(8, 3); defer { terminal_destroy(t) }
+    let t = make(8, 3); defer { helge_terminal_destroy(t) }
     feed(t, "\u{1b}[?69h\u{1b}[3;6s\u{1b}[?47h\u{1b}[2;7s\u{1b}[?47l")
     var value = snapshot(t); #expect(value["primary_margins"] as? [Int] == [2, 5]); #expect(value["alternate_margins"] as? [Int] == [1, 6])
     feed(t, "\u{1b}[?69l"); value = snapshot(t); #expect(value["primary_margins"] as? [Int] == [0, 7] && value["alternate_margins"] as? [Int] == [0, 7])
-    feed(t, "\u{1b}[?69h\u{1b}[3;6s"); #expect(terminal_resize(t, 9, 4)); value = snapshot(t); #expect(value["primary_margins"] as? [Int] == [0, 8] && value["alternate_margins"] as? [Int] == [0, 8])
+    feed(t, "\u{1b}[?69h\u{1b}[3;6s"); #expect(helge_terminal_resize(t, 9, 4)); value = snapshot(t); #expect(value["primary_margins"] as? [Int] == [0, 8] && value["alternate_margins"] as? [Int] == [0, 8])
     feed(t, "\u{1b}[3;6s\u{1b}[!p"); #expect((value["modes"] as? [String: Any]) != nil)
     value = snapshot(t); #expect((value["modes"] as! [String: Any])["left_right_margins"] as? Bool == false)
   }
 
   @Test static func chunkingAndRegionalTabs() {
     let fixture = "abcdefgh\u{1b}[2;1Hijklmnop\u{1b}[3;1Hqrstuvwx\u{1b}[?69h\u{1b}[3;6s\u{1b}[?6h12345猫é\u{1b}[1;1H\u{1b}[@Z\u{1b}[2P\u{1b}[S\u{1b}[T\u{1b}[L\u{1b}[M\u{1b}[2;2H\r\n\u{1b}[6n\u{1b}[?69$p"
-    let expected = make(); defer { terminal_destroy(expected) }; feed(expected, fixture); let baseline = snapshot(expected)
+    let expected = make(); defer { helge_terminal_destroy(expected) }; feed(expected, fixture); let baseline = snapshot(expected)
     for split in 0...fixture.utf8.count {
-      let t = make(); defer { terminal_destroy(t) }; let bytes = Array(fixture.utf8)
-      bytes[0..<split].withUnsafeBytes { _ = terminal_feed(t, $0.bindMemory(to: UInt8.self).baseAddress, split, 0) }
-      bytes[split..<bytes.count].withUnsafeBytes { _ = terminal_feed(t, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count - split, 0) }
+      let t = make(); defer { helge_terminal_destroy(t) }; let bytes = Array(fixture.utf8)
+      bytes[0..<split].withUnsafeBytes { _ = helge_terminal_feed(t, $0.bindMemory(to: UInt8.self).baseAddress, split, 0) }
+      bytes[split..<bytes.count].withUnsafeBytes { _ = helge_terminal_feed(t, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count - split, 0) }
       #expect((0..<4).allSatisfy { line(snapshot(t), $0) == line(baseline, $0) })
     }
-    let t = make(20, 3); defer { terminal_destroy(t) }; feed(t, "\u{1b}[?69h\u{1b}[5;13s\u{1b}[1;7H\r\u{8}")
+    let t = make(20, 3); defer { helge_terminal_destroy(t) }; feed(t, "\u{1b}[?69h\u{1b}[5;13s\u{1b}[1;7H\r\u{8}")
     #expect(cursor(snapshot(t))["col"] as? Int == 4); feed(t, "\t\t\u{1b}[2Z"); #expect(cursor(snapshot(t))["col"] as? Int == 4)
   }
 }

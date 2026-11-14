@@ -1,5 +1,5 @@
 import AppKit
-import TerminalSession
+import TerminalHost
 
 package enum ClipboardAccessDecision {
   case allow, deny
@@ -69,7 +69,7 @@ public final class ClipboardAccess {
   /// Explicit copy is a local user action, so it never prompts. The terminal
   /// owner produces immutable text asynchronously; this bridge alone decides
   /// whether that completion may still change the host pasteboard.
-  package func copy(from session: Session, selectionRevision: UInt64) {
+  package func copy(from session: TerminalSession, selectionRevision: UInt64) {
     precondition(Thread.isMainThread)
     // `Session.selection` rejects synchronously before it schedules any main
     // completion. Do not supersede an already allowed OSC 52 write unless the

@@ -18,8 +18,8 @@ let package = Package(
     .executableTarget(
       name: "OursHost",
       dependencies: [
-        .product(name: "TerminalView", package: "Terminal"),
-        .product(name: "TerminalSession", package: "Terminal"),
+        .product(name: "TerminalUI", package: "Terminal"),
+        .product(name: "TerminalHost", package: "Terminal"),
       ],
       swiftSettings: [.swiftLanguageMode(.v5)]),
     .executableTarget(

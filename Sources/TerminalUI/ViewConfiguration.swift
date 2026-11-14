@@ -1,6 +1,6 @@
 import Foundation
 import Metal
-import TerminalSession
+import TerminalHost
 
 /// What a host chooses for a terminal view.
 public struct TerminalViewConfiguration {

@@ -1,10 +1,10 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 @Suite enum EmulatorTests {
   private final class Bytes { var value = Data() }
@@ -24,13 +24,13 @@ import TerminalInterop
   }
   static func binaryHeader(_ core: OpaquePointer, scroll: Int) -> [String: Any] {
     let capture = Metadata()
-    #expect(terminal_snapshot_binary(
+    #expect(helge_terminal_snapshot_binary(
       core, scroll, 0, Unmanaged.passUnretained(capture).toOpaque(), collectMetadata))
     return try! JSONSerialization.jsonObject(with: capture.value) as! [String: Any]
   }
   static func viewHeader(_ core: OpaquePointer) -> [String: Any] {
     let capture = Metadata()
-    #expect(terminal_view_snapshot_binary(core, 0, Unmanaged.passUnretained(capture).toOpaque(), collectMetadata))
+    #expect(helge_terminal_view_snapshot_binary(core, 0, Unmanaged.passUnretained(capture).toOpaque(), collectMetadata))
     return try! JSONSerialization.jsonObject(with: capture.value) as! [String: Any]
   }
   static func snapshot(_ core: OpaquePointer) -> [String: Any] {
@@ -38,19 +38,19 @@ import TerminalInterop
     return snapshot
   }
   static func legacySnapshot(_ core: OpaquePointer, scroll: Int) -> [String: Any] {
-    guard let raw = terminal_snapshot(core, scroll, 0) else { Issue.record("missing legacy snapshot"); return [:] }
-    defer { terminal_string_free(raw) }
+    guard let raw = helge_terminal_snapshot(core, scroll, 0) else { Issue.record("missing legacy snapshot"); return [:] }
+    defer { helge_terminal_string_free(raw) }
     return try! JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8)) as! [String: Any]
   }
   static func feed(_ core: OpaquePointer, _ text: String) {
     let data = Data(text.utf8)
-    _ = data.withUnsafeBytes { terminal_feed(core, $0.bindMemory(to: UInt8.self).baseAddress, data.count, 0) }
+    _ = data.withUnsafeBytes { helge_terminal_feed(core, $0.bindMemory(to: UInt8.self).baseAddress, data.count, 0) }
   }
   static func input(_ core: OpaquePointer, text: String = "", key: UInt32, modifiers: UInt32 = 0,
                     event: UInt32 = 0) -> Data {
     let capture = Bytes()
     let accepted = text.withCString {
-      terminal_input(
+      helge_terminal_input(
         core, $0, key, modifiers, event, Unmanaged.passUnretained(capture).toOpaque(), collect)
     }
     #expect(accepted)
@@ -58,22 +58,22 @@ import TerminalInterop
   }
   static func replies(_ core: OpaquePointer) -> Data {
     let capture = Bytes()
-    terminal_replies(core, Unmanaged.passUnretained(capture).toOpaque(), collect)
+    helge_terminal_replies(core, Unmanaged.passUnretained(capture).toOpaque(), collect)
     return capture.value
   }
   static func nativeInput(_ core: OpaquePointer, text: String = "", key: UInt32,
                           modifiers: UInt32 = 0, event: UInt32 = 0) -> Data {
     let capture = Bytes()
     let accepted = text.withCString {
-      terminal_input_with_metadata(core, $0, key, modifiers, event, nil, nil, 0, 0,
+      helge_terminal_input_with_metadata(core, $0, key, modifiers, event, nil, nil, 0, 0,
                                    Unmanaged.passUnretained(capture).toOpaque(), collect)
     }
     #expect(accepted)
     return capture.value
   }
   @Test static func nativeModifierWire() {
-    let core = terminal_create(8, 2)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "\u{1b}[>11u") // Full key reporting plus press/repeat/release.
     for (mask, encoded) in [(UInt32(64), 65), (128, 129), (192, 193)] {
       let expected = Data("\u{1b}[97;\(encoded):1u".utf8)
@@ -108,22 +108,22 @@ import TerminalInterop
     var offset = 0
     for requested in partitions where offset < bytes.count {
       let end = min(bytes.count, offset + requested)
-      while offset < end || terminal_has_work(core) {
-        let wasWorking = terminal_has_work(core)
+      while offset < end || helge_terminal_has_work(core) {
+        let wasWorking = helge_terminal_has_work(core)
         let count: Int = bytes.withUnsafeBytes { buffer in
           let pointer = offset < end ? buffer.bindMemory(to: UInt8.self).baseAddress!.advanced(by: offset) : nil
-          return terminal_feed(core, pointer, end - offset, 0)
+          return helge_terminal_feed(core, pointer, end - offset, 0)
         }
         #expect(count >= 0 && count <= end - offset)
         #expect(count > 0 || wasWorking)
         offset += count
       }
     }
-    while offset < bytes.count || terminal_has_work(core) {
-      let wasWorking = terminal_has_work(core)
+    while offset < bytes.count || helge_terminal_has_work(core) {
+      let wasWorking = helge_terminal_has_work(core)
       let count: Int = bytes.withUnsafeBytes { buffer in
         let pointer = offset < bytes.count ? buffer.bindMemory(to: UInt8.self).baseAddress!.advanced(by: offset) : nil
-        return terminal_feed(core, pointer, bytes.count - offset, 0)
+        return helge_terminal_feed(core, pointer, bytes.count - offset, 0)
       }
       #expect(count >= 0 && count <= bytes.count - offset)
       #expect(count > 0 || wasWorking)
@@ -132,7 +132,7 @@ import TerminalInterop
   }
   static func rawFeed(_ core: OpaquePointer, _ bytes: Data) -> Int {
     bytes.withUnsafeBytes {
-      terminal_feed(core, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0)
+      helge_terminal_feed(core, $0.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0)
     }
   }
   @Test static func asciiByteAdmission() {
@@ -143,8 +143,8 @@ import TerminalInterop
       String(repeating: "A", count: 1_024) +
       "\u{1b}]8;;https://current.example\u{7}\u{1b}[32m\u{301}\u{1b}[3b\u{1b}]8;;\u{7}\u{1b}[0m"
     let payload = Data(text.utf8)
-    let whole = terminal_create(8, 2)!, bytewise = terminal_create(8, 2)!, irregular = terminal_create(8, 2)!
-    defer { terminal_destroy(whole); terminal_destroy(bytewise); terminal_destroy(irregular) }
+    let whole = helge_terminal_create(8, 2)!, bytewise = helge_terminal_create(8, 2)!, irregular = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(whole); helge_terminal_destroy(bytewise); helge_terminal_destroy(irregular) }
     feed(whole, bytes: payload, partitions: [payload.count])
     feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
     feed(irregular, bytes: payload, partitions: [3, 17, 1_023, 2, 19, 7, 53])
@@ -154,8 +154,8 @@ import TerminalInterop
     // A viable prefix must force its following ASCII through UTF-8 rejection
     // first; bulk admission resumes only after the decoder becomes idle.
     let pending = Data([0xe1, 0x80]) + Data(repeating: UInt8(ascii: "B"), count: 32)
-    let pendingWhole = terminal_create(8, 2)!, pendingBytes = terminal_create(8, 2)!
-    defer { terminal_destroy(pendingWhole); terminal_destroy(pendingBytes) }
+    let pendingWhole = helge_terminal_create(8, 2)!, pendingBytes = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(pendingWhole); helge_terminal_destroy(pendingBytes) }
     feed(pendingWhole, bytes: pending, partitions: [pending.count])
     feed(pendingBytes, bytes: pending, partitions: [1, 1] + Array(repeating: 1, count: 32))
     #expect(stableSnapshot(pendingWhole) == stableSnapshot(pendingBytes))
@@ -164,8 +164,8 @@ import TerminalInterop
     // ordinary decoder path; normal charset resumes borrowed admission.
     let dec = Data(("\u{1b}(0" + String(repeating: "q", count: 32) +
       "\u{1b}(B" + String(repeating: "x", count: 32)).utf8)
-    let decWhole = terminal_create(8, 2)!, decBytes = terminal_create(8, 2)!
-    defer { terminal_destroy(decWhole); terminal_destroy(decBytes) }
+    let decWhole = helge_terminal_create(8, 2)!, decBytes = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(decWhole); helge_terminal_destroy(decBytes) }
     feed(decWhole, bytes: dec, partitions: [dec.count])
     feed(decBytes, bytes: dec, partitions: Array(repeating: 1, count: dec.count))
     #expect(stableSnapshot(decWhole) == stableSnapshot(decBytes))
@@ -176,8 +176,8 @@ import TerminalInterop
     let shortMixed = Data((String(repeating: "a", count: 15) + "猫" +
       "\u{1b}[31m" + String(repeating: "b", count: 15) + "\u{1b}[0m" +
       String(repeating: "c", count: 15) + "\u{301}").utf8)
-    let shortWhole = terminal_create(8, 2)!, shortBytes = terminal_create(8, 2)!, shortIrregular = terminal_create(8, 2)!
-    defer { terminal_destroy(shortWhole); terminal_destroy(shortBytes); terminal_destroy(shortIrregular) }
+    let shortWhole = helge_terminal_create(8, 2)!, shortBytes = helge_terminal_create(8, 2)!, shortIrregular = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(shortWhole); helge_terminal_destroy(shortBytes); helge_terminal_destroy(shortIrregular) }
     feed(shortWhole, bytes: shortMixed, partitions: [shortMixed.count])
     feed(shortBytes, bytes: shortMixed, partitions: Array(repeating: 1, count: shortMixed.count))
     feed(shortIrregular, bytes: shortMixed, partitions: [4, 11, 3, 15, 2, 7, 9])
@@ -186,19 +186,19 @@ import TerminalInterop
 
     // Feed consumes no more than 64 KiB even when that first chunk is one
     // bulk ASCII run. History is disabled to keep this ABI boundary small.
-    let boundary = terminal_create(8, 2)!
-    defer { terminal_destroy(boundary) }
-    terminal_set_history_limit(boundary, 0)
+    let boundary = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(boundary) }
+    helge_terminal_set_history_limit(boundary, 0)
     let bytes = Data(repeating: UInt8(ascii: "z"), count: 65_537)
     #expect(rawFeed(boundary, bytes) == 65_536)
     #expect(rawFeed(boundary, Data(bytes.suffix(1))) == 1)
-    #expect(terminal_validate(boundary))
+    #expect(helge_terminal_validate(boundary))
 
     // REP remains a resumable input boundary even after a bulk ASCII run:
     // the final CSI byte is admitted, then both repeat budgets drain before
     // the withheld suffix can become last-printed text.
-    let repeatCore = terminal_create(128, 2)!
-    defer { terminal_destroy(repeatCore) }
+    let repeatCore = helge_terminal_create(128, 2)!
+    defer { helge_terminal_destroy(repeatCore) }
     let repeatPrefix = Data((String(repeating: "A", count: 32) + "\u{1b}[5000bZ").utf8)
     let suffixOffset = repeatPrefix.firstIndex(of: UInt8(ascii: "Z"))!
     #expect(rawFeed(repeatCore, repeatPrefix) == suffixOffset)
@@ -217,7 +217,7 @@ import TerminalInterop
     #expect((afterSuffix["document_epoch"] as? Int) == 5_035)
     #expect(visibleZCount() == 1)
     #expect(rawFeed(repeatCore, Data("\u{1b}[1b".utf8)) == 4)
-    #expect(terminal_feed(repeatCore, nil, 0, 0) == 0)
+    #expect(helge_terminal_feed(repeatCore, nil, 0, 0) == 0)
     #expect(visibleZCount() == 2)
   }
   @Test static func borrowedASCIIContinuationEquivalence() {
@@ -243,13 +243,13 @@ import TerminalInterop
       let payload = body + Data("\u{1b}[6n".utf8)
       for budget: UInt64 in [0, 4096] {
         func run(_ partitions: [Int]) -> (Data, Data, UInt64) {
-          let core = terminal_create(32, 4)!
-          defer { terminal_destroy(core) }
-          terminal_set_history_byte_limit(core, budget)
+          let core = helge_terminal_create(32, 4)!
+          defer { helge_terminal_destroy(core) }
+          helge_terminal_set_history_byte_limit(core, budget)
           feed(core, bytes: payload, partitions: partitions)
-          terminal_finish(core)
-          #expect(terminal_validate(core), "ASCII continuation invariants: \(name)")
-          return (stableSnapshot(core), replies(core), terminal_history_bytes(core))
+          helge_terminal_finish(core)
+          #expect(helge_terminal_validate(core), "ASCII continuation invariants: \(name)")
+          return (stableSnapshot(core), replies(core), helge_terminal_history_bytes(core))
         }
         let expected = run(Array(repeating: 1, count: payload.count))
         var partitions = [[payload.count], [3, 17, 1, 1023, 2, 19, 7]]
@@ -275,10 +275,10 @@ import TerminalInterop
     let text = "\u{1b}(0q\u{1b}(B\u{1b}[31m\u{1b}]8;;https://example.test/batch\u{7}" +
       long + "\u{1b}]8;;\u{7}\u{1b}[0m\r\nZ\u{1b}[2b\u{1b}[5n"
     let payload = Data(text.utf8)
-    let all = terminal_create(8, 2)!
-    let bytewise = terminal_create(8, 2)!
-    let irregular = terminal_create(8, 2)!
-    defer { terminal_destroy(all); terminal_destroy(bytewise); terminal_destroy(irregular) }
+    let all = helge_terminal_create(8, 2)!
+    let bytewise = helge_terminal_create(8, 2)!
+    let irregular = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(all); helge_terminal_destroy(bytewise); helge_terminal_destroy(irregular) }
     feed(all, bytes: payload, partitions: [payload.count])
     feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
     feed(irregular, bytes: payload, partitions: [3, 1021, 2, 17, 5, 31, 7, 509])
@@ -290,8 +290,8 @@ import TerminalInterop
 
     // Extending a styled/hyperlinked cluster must retain its base attributes
     // for REP, rather than using the SGR/OSC 8 state current at the mark.
-    let richRepeat = terminal_create(16, 2)!
-    defer { terminal_destroy(richRepeat) }
+    let richRepeat = helge_terminal_create(16, 2)!
+    defer { helge_terminal_destroy(richRepeat) }
     feed(richRepeat, bytes: Data("\u{1b}]8;;https://one.example\u{1b}\\\u{1b}[31mA\u{1b}]8;;https://two.example\u{1b}\\\u{1b}[32m\u{301}\u{1b}[2b".utf8), partitions: [4, 1, 7, 2, 99])
     let repeated = cells(snapshot(richRepeat), 0)
     for index in 0..<3 {
@@ -303,8 +303,8 @@ import TerminalInterop
     // An incomplete UTF-8 prefix is only finished by an actual control/ESC,
     // never by an ordinary scratch/feed boundary.
     let interrupted = Data([0xf0, 0x9f, 0x1b, 0x5b, 0x33, 0x31, 0x6d, 0x41])
-    let once = terminal_create(8, 2)!, split = terminal_create(8, 2)!
-    defer { terminal_destroy(once); terminal_destroy(split) }
+    let once = helge_terminal_create(8, 2)!, split = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(once); helge_terminal_destroy(split) }
     feed(once, bytes: interrupted, partitions: [interrupted.count])
     feed(split, bytes: interrupted, partitions: [1, 1, 1, 2, 3])
     #expect(stableSnapshot(once) == stableSnapshot(split))
@@ -313,8 +313,8 @@ import TerminalInterop
     // lands exactly at capacity after 1023 ASCII scalars, so this guards the
     // decoder's `.two` path when its emission straddles scratch draining.
     let twoEmission = Data(repeating: UInt8(ascii: "x"), count: 1023) + Data([0xe1, 0x80, 0x42])
-    let twoWhole = terminal_create(8, 2)!, twoBytes = terminal_create(8, 2)!, twoIrregular = terminal_create(8, 2)!
-    defer { terminal_destroy(twoWhole); terminal_destroy(twoBytes); terminal_destroy(twoIrregular) }
+    let twoWhole = helge_terminal_create(8, 2)!, twoBytes = helge_terminal_create(8, 2)!, twoIrregular = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(twoWhole); helge_terminal_destroy(twoBytes); helge_terminal_destroy(twoIrregular) }
     feed(twoWhole, bytes: twoEmission, partitions: [twoEmission.count])
     feed(twoBytes, bytes: twoEmission, partitions: Array(repeating: 1, count: twoEmission.count))
     feed(twoIrregular, bytes: twoEmission, partitions: [1023, 1, 2])
@@ -327,15 +327,15 @@ import TerminalInterop
     let bufferedWrap = Data((String(repeating: "w", count: 1_129) + "\u{1b}[5n").utf8)
     for budget: UInt64 in [0, 1] {
       func constrained() -> OpaquePointer {
-        let core = terminal_create(4, 2)!
-        terminal_set_history_limit(core, 8)
+        let core = helge_terminal_create(4, 2)!
+        helge_terminal_set_history_limit(core, 8)
         feed(core, bytes: Data("0\r\n1\r\n2\r\n3".utf8), partitions: [8])
-        terminal_view_scroll(core, 1)
-        terminal_set_history_byte_limit(core, budget)
+        helge_terminal_view_scroll(core, 1)
+        helge_terminal_set_history_byte_limit(core, budget)
         return core
       }
       let whole = constrained(), bytewise = constrained(), irregular = constrained()
-      defer { terminal_destroy(whole); terminal_destroy(bytewise); terminal_destroy(irregular) }
+      defer { helge_terminal_destroy(whole); helge_terminal_destroy(bytewise); helge_terminal_destroy(irregular) }
       feed(whole, bytes: bufferedWrap, partitions: [bufferedWrap.count])
       feed(bytewise, bytes: bufferedWrap, partitions: Array(repeating: 1, count: bufferedWrap.count))
       feed(irregular, bytes: bufferedWrap, partitions: [5, 1023, 2, 17, 11, 71])
@@ -348,15 +348,15 @@ import TerminalInterop
   }
   @Test static func indexHistoryUsesMutatedPrimaryForViewportClamp() {
     for budget in ["count", "bytes-zero", "bytes-one"] {
-      let core = terminal_create(4, 2)!
-      defer { terminal_destroy(core) }
+      let core = helge_terminal_create(4, 2)!
+      defer { helge_terminal_destroy(core) }
       feed(core, "A\r\nB\r\nC")
-      terminal_view_scroll(core, 1) // Pin the row identity for A.
-      #expect(terminal_resize(core, 4, 3)) // A becomes primary, not history.
+      helge_terminal_view_scroll(core, 1) // Pin the row identity for A.
+      #expect(helge_terminal_resize(core, 4, 3)) // A becomes primary, not history.
       switch budget {
-      case "count": terminal_set_history_limit(core, 0)
-      case "bytes-zero": terminal_set_history_byte_limit(core, 0)
-      default: terminal_set_history_byte_limit(core, 1)
+      case "count": helge_terminal_set_history_limit(core, 0)
+      case "bytes-zero": helge_terminal_set_history_byte_limit(core, 0)
+      default: helge_terminal_set_history_byte_limit(core, 1)
       }
       // No retained row exists to evict yet, so the anchor remains live.
       let before = snapshot(core)
@@ -370,8 +370,8 @@ import TerminalInterop
     }
   }
   @Test static func csiASCIIParsing() {
-    let core = terminal_create(8, 2)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(core) }
     // Empty fields retain default-zero semantics; max UInt32 is valid while
     // an overflowing contiguous parameter ignores its whole CSI command.
     feed(core, "\u{1b}[31mR\u{1b}[;mD\u{1b}[4294967295CZ\u{1b}[4294967296DQ")
@@ -382,8 +382,8 @@ import TerminalInterop
     // Overflowing D was ignored, so Q follows the max-valid C movement.
     #expect(cells(snapshot(core), 1)[0]["text"] as? String == "Q")
 
-    let rendition = terminal_create(8, 2)!
-    defer { terminal_destroy(rendition) }
+    let rendition = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(rendition) }
     feed(rendition, "\u{1b}[38:2::255:255:255;4:3;48;5;7mX")
     let style = cells(snapshot(rendition), 0)[0]["style"] as! [String: Any]
     #expect(style["foreground"] as? [String: [Int]] == ["Rgb": [255, 255, 255]])
@@ -412,8 +412,8 @@ import TerminalInterop
 
     // A non-ASCII parameter byte used to be rejected by the UInt32 numeric
     // validation. It must not become a defaulted cursor-down command.
-    let malformed = terminal_create(4, 2)!
-    defer { terminal_destroy(malformed) }
+    let malformed = helge_terminal_create(4, 2)!
+    defer { helge_terminal_destroy(malformed) }
     feed(malformed, "X")
     feed(malformed, bytes: Data([0x1b, 0x5b, 0xb2, 0x42]), partitions: [4])
     feed(malformed, "Y")
@@ -423,8 +423,8 @@ import TerminalInterop
 
     // Individual digit runs fit UInt32 here, but the old flattened value was
     // Int.max and could overflow cursor arithmetic. It is one invalid CSI.
-    let concatenated = terminal_create(4, 2)!
-    defer { terminal_destroy(concatenated) }
+    let concatenated = helge_terminal_create(4, 2)!
+    defer { helge_terminal_destroy(concatenated) }
     feed(concatenated, "X\u{1b}[922337203:6:854775807CY")
     #expect(cells(snapshot(concatenated), 0)[0]["text"] as? String == "X")
     #expect(cells(snapshot(concatenated), 0)[1]["text"] as? String == "Y")
@@ -432,8 +432,8 @@ import TerminalInterop
     // `>` belongs to the keyboard `u` commands and secondary device
     // attributes. Before any other final byte it names a command this terminal
     // does not have, so the cursor stays where it is.
-    let prefixedMotion = terminal_create(8, 2)!
-    defer { terminal_destroy(prefixedMotion) }
+    let prefixedMotion = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(prefixedMotion) }
     feed(prefixedMotion, "X\u{1b}[>31CY")
     #expect(cells(snapshot(prefixedMotion), 0)[1]["text"] as? String == "Y")
   }
@@ -466,8 +466,8 @@ import TerminalInterop
     do {
       let prepared = "one\r\ntwo\r\nthree\r\nfour\u{1b}[2;3H"
       func observed(_ sequence: String) -> (rows: [String], replies: String) {
-        let terminal = terminal_create(12, 4)!
-        defer { terminal_destroy(terminal) }
+        let terminal = helge_terminal_create(12, 4)!
+        defer { helge_terminal_destroy(terminal) }
         feed(terminal, prepared + sequence + "Z")
         let reply = String(decoding: replies(terminal), as: UTF8.self)
         guard let snapshot = swiftTerminalSnapshot(terminal, scroll: 0, now: 0).snapshot else {
@@ -487,8 +487,8 @@ import TerminalInterop
       }
       // An ignored command does not touch a pending wrap either: the next
       // character still starts the next line.
-      let wrapping = terminal_create(4, 2)!
-      defer { terminal_destroy(wrapping) }
+      let wrapping = helge_terminal_create(4, 2)!
+      defer { helge_terminal_destroy(wrapping) }
       feed(wrapping, "abcd\u{1b}[>0qe")
       #expect(cells(snapshot(wrapping), 0)[3]["text"] as? String == "d", "last column kept")
       #expect(cells(snapshot(wrapping), 1)[0]["text"] as? String == "e", "wrap still pending")
@@ -519,8 +519,8 @@ import TerminalInterop
         [indexed, rgb, indexed, rgb]))
     }
     for (name, wire, expected) in fixtures {
-      let terminal = terminal_create(32, 2)!
-      defer { terminal_destroy(terminal) }
+      let terminal = helge_terminal_create(32, 2)!
+      defer { helge_terminal_destroy(terminal) }
       feed(terminal, wire)
       guard let direct = swiftTerminalSnapshot(terminal, scroll: 0, now: 0).snapshot else {
         Issue.record("missing direct SGR snapshot: \(name)"); return
@@ -540,8 +540,8 @@ import TerminalInterop
       "\u{1b}[38:2::255:1:2;48;5;7;4:3mD" +
       "\u{1b}[0mE\u{1b}[5n"
     let payload = Data(text.utf8)
-    let whole = terminal_create(8, 3)!, bytewise = terminal_create(8, 3)!, irregular = terminal_create(8, 3)!
-    defer { terminal_destroy(whole); terminal_destroy(bytewise); terminal_destroy(irregular) }
+    let whole = helge_terminal_create(8, 3)!, bytewise = helge_terminal_create(8, 3)!, irregular = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(whole); helge_terminal_destroy(bytewise); helge_terminal_destroy(irregular) }
     feed(whole, bytes: payload, partitions: [payload.count])
     feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
     feed(irregular, bytes: payload, partitions: [5, 63, 2, 127, 17, 3, 71])
@@ -570,8 +570,8 @@ import TerminalInterop
     let text = "\u{1b}[?69h\u{1b}[3;6s\u{1b}[4GQ\rR\r\nS" +
       "\u{1b}[3;1He\u{301}\rZ\u{1b}(0q\u{1b}(B\rT"
     let payload = Data(text.utf8)
-    let whole = terminal_create(8, 3)!, bytewise = terminal_create(8, 3)!, irregular = terminal_create(8, 3)!
-    defer { terminal_destroy(whole); terminal_destroy(bytewise); terminal_destroy(irregular) }
+    let whole = helge_terminal_create(8, 3)!, bytewise = helge_terminal_create(8, 3)!, irregular = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(whole); helge_terminal_destroy(bytewise); helge_terminal_destroy(irregular) }
     feed(whole, bytes: payload, partitions: [payload.count])
     feed(bytewise, bytes: payload, partitions: Array(repeating: 1, count: payload.count))
     feed(irregular, bytes: payload, partitions: [1, 4, 2, 7, 3, 11, 5, 19])
@@ -590,15 +590,15 @@ import TerminalInterop
   @Test static func searchABI() {
     func create(_ core: OpaquePointer, _ query: String) -> OpaquePointer? {
       let bytes = Array(query.utf8)
-      return bytes.withUnsafeBufferPointer { terminal_search_create(core, $0.baseAddress, $0.count) }
+      return bytes.withUnsafeBufferPointer { helge_terminal_search_create(core, $0.baseAddress, $0.count) }
     }
     func runTask(_ core: OpaquePointer, _ task: OpaquePointer) -> UInt32 {
       for _ in 0..<10_000 {
-        switch terminal_search_fill(core, task) {
+        switch helge_terminal_search_fill(core, task) {
         case 0:
-          #expect([UInt32(0), 1, 2].contains(terminal_search_step(task)))
-        case 2: return terminal_search_accept(core, task)
-        case 3, 4: return terminal_search_fill(core, task)
+          #expect([UInt32(0), 1, 2].contains(helge_terminal_search_step(task)))
+        case 2: return helge_terminal_search_accept(core, task)
+        case 3, 4: return helge_terminal_search_fill(core, task)
         default: Issue.record("unexpected search status"); return UInt32.max
         }
       }
@@ -606,12 +606,12 @@ import TerminalInterop
     }
     func run(_ core: OpaquePointer, _ query: String) -> UInt32 {
       guard let task = create(core, query) else { return UInt32.max }
-      defer { terminal_search_destroy(task) }
+      defer { helge_terminal_search_destroy(task) }
       return runTask(core, task)
     }
 
-    let soft = terminal_create(4, 3)!
-    defer { terminal_destroy(soft) }
+    let soft = helge_terminal_create(4, 3)!
+    defer { helge_terminal_destroy(soft) }
     feed(soft, "abcdEFGH\r\nnext  ")
     #expect(run(soft, "dEf") == 5)
     #expect((snapshot(soft)["search"] as! [[String: Int]]).count == 2)
@@ -620,8 +620,8 @@ import TerminalInterop
     #expect(run(soft, "next  ") == 5)
     #expect(run(soft, "\n") == 5) // A zero-width hard-break proof still navigates.
 
-    let history = terminal_create(8, 2)!
-    defer { terminal_destroy(history) }
+    let history = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(history) }
     feed(history, "target\r\nsecond\r\nTARGET\r\nlater\r\nlast")
     #expect(run(history, "target") == 5)
     // The newest match is selected and centered, clear of a bar docked over
@@ -633,12 +633,12 @@ import TerminalInterop
     #expect((binaryHeader(history, scroll: 0)["search"] as! [[String: Int]]).isEmpty)
     func position(_ core: OpaquePointer) -> [UInt32]? {
       var index: UInt32 = 0, total: UInt32 = 0, capped = true
-      guard terminal_search_position(core, &index, &total, &capped), !capped else { return nil }
+      guard helge_terminal_search_position(core, &index, &total, &capped), !capped else { return nil }
       return [index, total]
     }
     func navigate(_ core: OpaquePointer, older: Bool) -> [UInt32]? {
       var index: UInt32 = 0, total: UInt32 = 0, capped = true
-      guard terminal_search_navigate(core, older, &index, &total, &capped), !capped else { return nil }
+      guard helge_terminal_search_navigate(core, older, &index, &total, &capped), !capped else { return nil }
       return [index, total]
     }
     #expect(position(history) == [1, 2])
@@ -653,13 +653,13 @@ import TerminalInterop
     #expect(navigate(history, older: true) == [1, 2])
     #expect(navigate(history, older: false) == [2, 2])
     #expect(navigate(history, older: false) == [1, 2])
-    terminal_search_clear(history)
+    helge_terminal_search_clear(history)
     #expect(position(history) == nil && navigate(history, older: true) == nil)
     #expect((snapshot(history)["search"] as! [[String: Int]]).isEmpty)
 
     // Several matches on one row: one navigated, the others secondary.
-    let sameRow = terminal_create(12, 2)!
-    defer { terminal_destroy(sameRow) }
+    let sameRow = helge_terminal_create(12, 2)!
+    defer { helge_terminal_destroy(sameRow) }
     feed(sameRow, "ab ab ab")
     #expect(run(sameRow, "ab") == 5 && position(sameRow) == [1, 3])
     #expect((snapshot(sameRow)["search"] as! [[String: Int]]) == [["row": 0, "start": 6, "end": 8]])
@@ -670,22 +670,22 @@ import TerminalInterop
     #expect(navigate(sameRow, older: true) == nil && position(sameRow) == nil)
 
     // Navigation skips a match whose row changed and lands on a live one.
-    let skipping = terminal_create(8, 3)!
-    defer { terminal_destroy(skipping) }
+    let skipping = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(skipping) }
     feed(skipping, "hit\r\nhit\r\nhit")
     #expect(run(skipping, "hit") == 5 && position(skipping) == [1, 3])
     feed(skipping, "\u{1b}[2;1HX")
     #expect(navigate(skipping, older: true) == [3, 3])
 
-    let alternate = terminal_create(8, 2)!
-    defer { terminal_destroy(alternate) }
+    let alternate = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(alternate) }
     feed(alternate, "needle")
     feed(alternate, "\u{1b}[?1049hALT")
     #expect(run(alternate, "needle") == 2)
     #expect(run(alternate, "alt") == 5)
 
-    let unicode = terminal_create(5, 3)!
-    defer { terminal_destroy(unicode) }
+    let unicode = helge_terminal_create(5, 3)!
+    defer { helge_terminal_destroy(unicode) }
     feed(unicode, "Ée\u{301}猫👩🏽‍💻")
     #expect(run(unicode, "éE\u{301}猫") == 5)
     #expect(run(unicode, "猫👩🏽‍💻") == 5)
@@ -697,8 +697,8 @@ import TerminalInterop
 
     // Accepted decorations retain their complete row proofs: unrelated output
     // leaves them visible, while a changed matched row silently drops them.
-    let decoration = terminal_create(8, 3)!
-    defer { terminal_destroy(decoration) }
+    let decoration = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(decoration) }
     feed(decoration, "target\r\nmiddle\r\nlater")
     #expect(run(decoration, "target") == 5)
     #expect(!(snapshot(decoration)["search"] as! [[String: Int]]).isEmpty)
@@ -709,136 +709,136 @@ import TerminalInterop
 
     // A task captures its final row identity at creation. Later output is not
     // chased, while a changed matched row is still rejected by row proof.
-    let future = terminal_create(8, 2)!
-    defer { terminal_destroy(future) }
+    let future = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(future) }
     feed(future, "first\r\nend")
     guard let futureTask = create(future, "future") else { Issue.record("future task"); return }
-    defer { terminal_search_destroy(futureTask) }
+    defer { helge_terminal_search_destroy(futureTask) }
     feed(future, "\r\nfuture")
     #expect(runTask(future, futureTask) == 2)
 
-    let staleCore = terminal_create(8, 2)!
-    defer { terminal_destroy(staleCore) }
+    let staleCore = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(staleCore) }
     feed(staleCore, "target")
     guard let stale = create(staleCore, "target") else { Issue.record("search create"); return }
-    defer { terminal_search_destroy(stale) }
+    defer { helge_terminal_search_destroy(stale) }
     // Fill lends an immutable old row; overwriting that row before its worker
     // step must be rejected by proof at owner acceptance, not mis-highlighted.
-    #expect(terminal_search_fill(staleCore, stale) == 0)
+    #expect(helge_terminal_search_fill(staleCore, stale) == 0)
     feed(staleCore, "\rX")
-    #expect([UInt32(0), 1, 2].contains(terminal_search_step(stale)))
+    #expect([UInt32(0), 1, 2].contains(helge_terminal_search_step(stale)))
     #expect(runTask(staleCore, stale) == 3)
 
-    let transition = terminal_create(8, 2)!
-    defer { terminal_destroy(transition) }
+    let transition = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(transition) }
     feed(transition, "target")
     guard let transitionTask = create(transition, "target") else { Issue.record("transition task"); return }
-    defer { terminal_search_destroy(transitionTask) }
-    #expect(terminal_search_fill(transition, transitionTask) == 0)
+    defer { helge_terminal_search_destroy(transitionTask) }
+    #expect(helge_terminal_search_fill(transition, transitionTask) == 0)
     feed(transition, "\u{1b}[?1049hALT\u{1b}[?1049l")
-    _ = terminal_search_step(transitionTask)
+    _ = helge_terminal_search_step(transitionTask)
     #expect(runTask(transition, transitionTask) == 3)
 
-    let cleared = terminal_create(8, 2)!
-    defer { terminal_destroy(cleared) }
+    let cleared = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(cleared) }
     feed(cleared, "target")
     guard let clearTask = create(cleared, "target") else { Issue.record("clear task"); return }
-    defer { terminal_search_destroy(clearTask) }
-    #expect(terminal_search_fill(cleared, clearTask) == 0)
-    _ = terminal_clear_display(cleared)
-    _ = terminal_search_step(clearTask)
+    defer { helge_terminal_search_destroy(clearTask) }
+    #expect(helge_terminal_search_fill(cleared, clearTask) == 0)
+    _ = helge_terminal_clear_display(cleared)
+    _ = helge_terminal_search_step(clearTask)
     #expect(runTask(cleared, clearTask) == 3)
 
-    let resized = terminal_create(8, 2)!
-    defer { terminal_destroy(resized) }
+    let resized = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(resized) }
     feed(resized, "target")
     guard let resizedTask = create(resized, "target") else { Issue.record("resize task"); return }
-    defer { terminal_search_destroy(resizedTask) }
-    #expect(terminal_resize(resized, 9, 2))
-    #expect(terminal_search_fill(resized, resizedTask) == 3)
+    defer { helge_terminal_search_destroy(resizedTask) }
+    #expect(helge_terminal_resize(resized, 9, 2))
+    #expect(helge_terminal_search_fill(resized, resizedTask) == 3)
 
-    let pendingResize = terminal_create(8, 2)!
-    defer { terminal_destroy(pendingResize) }
+    let pendingResize = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(pendingResize) }
     feed(pendingResize, "target")
     guard let pendingResizeTask = create(pendingResize, "target") else { Issue.record("pending resize task"); return }
-    defer { terminal_search_destroy(pendingResizeTask) }
-    #expect(terminal_resize(pendingResize, 9, 2))
-    #expect(terminal_search_accept(pendingResize, pendingResizeTask) == 3)
+    defer { helge_terminal_search_destroy(pendingResizeTask) }
+    #expect(helge_terminal_resize(pendingResize, 9, 2))
+    #expect(helge_terminal_search_accept(pendingResize, pendingResizeTask) == 3)
 
-    let evicted = terminal_create(8, 2)!
-    defer { terminal_destroy(evicted) }
+    let evicted = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(evicted) }
     feed(evicted, "target\r\none\r\ntwo")
     guard let evictedTask = create(evicted, "target") else { Issue.record("eviction task"); return }
-    defer { terminal_search_destroy(evictedTask) }
-    terminal_set_history_limit(evicted, 0)
-    #expect(terminal_search_fill(evicted, evictedTask) == 3)
+    defer { helge_terminal_search_destroy(evictedTask) }
+    helge_terminal_set_history_limit(evicted, 0)
+    #expect(helge_terminal_search_fill(evicted, evictedTask) == 3)
 
     // Raising or reapplying a scrollback limit without evicting a proven row
     // does not change the search stamp. The task remains acceptable.
-    let unchangedLimit = terminal_create(8, 2)!
-    defer { terminal_destroy(unchangedLimit) }
+    let unchangedLimit = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(unchangedLimit) }
     feed(unchangedLimit, "target")
     guard let unchangedLimitTask = create(unchangedLimit, "target") else { Issue.record("limit task"); return }
-    defer { terminal_search_destroy(unchangedLimitTask) }
-    terminal_set_history_limit(unchangedLimit, 10_000)
+    defer { helge_terminal_search_destroy(unchangedLimitTask) }
+    helge_terminal_set_history_limit(unchangedLimit, 10_000)
     #expect(runTask(unchangedLimit, unchangedLimitTask) == 5)
 
     // A captured final row does not chase later output, but if later output
     // makes it soft-wrap it still keeps that successor in its proof.
-    let extendedStop = terminal_create(4, 2)!
-    defer { terminal_destroy(extendedStop) }
+    let extendedStop = helge_terminal_create(4, 2)!
+    defer { helge_terminal_destroy(extendedStop) }
     feed(extendedStop, "aaaaBBBB")
     guard let extendedStopTask = create(extendedStop, "BBBB") else { Issue.record("stop task"); return }
-    defer { terminal_search_destroy(extendedStopTask) }
+    defer { helge_terminal_search_destroy(extendedStopTask) }
     feed(extendedStop, "C")
     #expect(runTask(extendedStop, extendedStopTask) == 5)
 
     // RIS restarts document row IDs; the dedicated generation prevents an ABA
     // match when a fresh terminal prints identical text into the same grid.
-    let reset = terminal_create(8, 2)!
-    defer { terminal_destroy(reset) }
+    let reset = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(reset) }
     feed(reset, "same")
     guard let resetTask = create(reset, "same") else { Issue.record("reset task"); return }
-    defer { terminal_search_destroy(resetTask) }
-    #expect(terminal_search_fill(reset, resetTask) == 0)
+    defer { helge_terminal_search_destroy(resetTask) }
+    #expect(helge_terminal_search_fill(reset, resetTask) == 0)
     feed(reset, "\u{1b}csame")
-    _ = terminal_search_step(resetTask)
+    _ = helge_terminal_search_step(resetTask)
     #expect(runTask(reset, resetTask) == 3)
     let tooLong = [UInt8](repeating: 120, count: 4_097)
-    #expect(tooLong.withUnsafeBufferPointer { terminal_search_create(soft, $0.baseAddress, $0.count) } == nil)
+    #expect(tooLong.withUnsafeBufferPointer { helge_terminal_search_create(soft, $0.baseAddress, $0.count) } == nil)
 
-    let overlaps = terminal_create(4_096, 2)!
-    defer { terminal_destroy(overlaps) }
+    let overlaps = helge_terminal_create(4_096, 2)!
+    defer { helge_terminal_destroy(overlaps) }
     feed(overlaps, String(repeating: "a", count: 4_096))
     #expect(run(overlaps, String(repeating: "a", count: 2_048)) == 5)
     #expect((snapshot(overlaps)["search"] as! [[String: Int]]) == [
       ["row": 0, "start": 2_048, "end": 4_096]
     ])
 
-    let detached = terminal_create(80, 2)!
+    let detached = helge_terminal_create(80, 2)!
     feed(detached, String(repeating: "x", count: 80))
     guard let workerOnly = create(detached, "x") else { Issue.record("worker task"); return }
-    #expect(terminal_search_fill(detached, workerOnly) == 0)
-    terminal_destroy(detached)
-    #expect([UInt32(0), 1, 2].contains(terminal_search_step(workerOnly)))
-    terminal_search_destroy(workerOnly)
+    #expect(helge_terminal_search_fill(detached, workerOnly) == 0)
+    helge_terminal_destroy(detached)
+    #expect([UInt32(0), 1, 2].contains(helge_terminal_search_step(workerOnly)))
+    helge_terminal_search_destroy(workerOnly)
   }
   @Test static func binarySnapshotOffsetsRemainIndependentOfOwnerViewport() {
-    let core = terminal_create(4, 2)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(4, 2)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "A\r\nB\r\nC")
     #expect(binaryHeader(core, scroll: 1)["scroll_offset"] as? Int == 1)
-    terminal_view_scroll(core, 1)
+    helge_terminal_view_scroll(core, 1)
     #expect(viewHeader(core)["following_tail"] as? Bool == false)
     #expect(binaryHeader(core, scroll: 0)["following_tail"] as? Bool == true)
-    #expect(terminal_resize(core, 4, 3)) // The anchor moves into the live grid.
+    #expect(helge_terminal_resize(core, 4, 3)) // The anchor moves into the live grid.
     #expect(viewHeader(core)["scroll_offset"] as? Int == 0)
     #expect(viewHeader(core)["following_tail"] as? Bool == false)
     #expect(binaryHeader(core, scroll: 0)["following_tail"] as? Bool == true)
   }
   @Test static func legacySnapshotHonorsExplicitNumericScroll() {
-    let core = terminal_create(8, 3)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "zero\r\none\r\ntwo\r\nthree\r\nfour\r\nfive")
 
     let tail = legacySnapshot(core, scroll: 0)
@@ -860,14 +860,14 @@ import TerminalInterop
     #expect((tailRows.last?["id"] as? Int) != (previousRows.last?["id"] as? Int))
     #expect((previousRows.first?["id"] as? Int) != (oldestRows.first?["id"] as? Int))
 
-    let wrapped = terminal_create(4, 2)!
-    defer { terminal_destroy(wrapped) }
+    let wrapped = helge_terminal_create(4, 2)!
+    defer { helge_terminal_destroy(wrapped) }
     feed(wrapped, "abcdefghijkl")
     let wrappedOldest = legacySnapshot(wrapped, scroll: Int.max)
     #expect((wrappedOldest["rows"] as! [[String: Any]]).contains { $0["soft_wrapped"] as? Bool == true })
 
-    terminal_view_scroll(core, 1)
-    #expect(terminal_resize(core, 8, 4))
+    helge_terminal_view_scroll(core, 1)
+    #expect(helge_terminal_resize(core, 8, 4))
     let owner = snapshot(core)
     let explicitTail = legacySnapshot(core, scroll: 0)
     #expect(owner["scroll_offset"] as? Int == 0 && owner["following_tail"] as? Bool == false)
@@ -875,29 +875,29 @@ import TerminalInterop
     #expect(JSON(owner["rows"]!) == JSON(explicitTail["rows"]!))
   }
   @Test static func defaultHistoryBudgetSurvivesContinuousOutput() {
-    let core = terminal_create(4_096, 1)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(4_096, 1)!
+    defer { helge_terminal_destroy(core) }
     let limit: UInt64 = 64 * 1_048_576
     let line = Data((String(repeating: "x", count: 4_096) + "\r\n").utf8)
     for _ in 0..<200 {
       #expect(rawFeed(core, line) == line.count)
-      #expect(terminal_history_bytes(core) <= limit)
+      #expect(helge_terminal_history_bytes(core) <= limit)
     }
-    terminal_view_scroll(core, Int64.max) // Retain the oldest available row.
+    helge_terminal_view_scroll(core, Int64.max) // Retain the oldest available row.
     let before = viewHeader(core)["viewport_clamp_revision"] as! Int
     for _ in 0..<300 {
       #expect(rawFeed(core, line) == line.count)
-      #expect(terminal_history_bytes(core) <= limit)
+      #expect(helge_terminal_history_bytes(core) <= limit)
     }
     let after = viewHeader(core)
     #expect((after["viewport_clamp_revision"] as! Int) > before)
     #expect(after["following_tail"] as? Bool == false)
     #expect((after["history_rows"] as! Int) < 500)
-    #expect(terminal_resize(core, 2_048, 2))
-    #expect(terminal_history_bytes(core) <= limit)
-    #expect(terminal_resize(core, 4_096, 1))
-    #expect(terminal_history_bytes(core) <= limit)
-    #expect(terminal_validate(core))
+    #expect(helge_terminal_resize(core, 2_048, 2))
+    #expect(helge_terminal_history_bytes(core) <= limit)
+    #expect(helge_terminal_resize(core, 4_096, 1))
+    #expect(helge_terminal_history_bytes(core) <= limit)
+    #expect(helge_terminal_validate(core))
   }
 
   @Test static func geometryABIContract() {
@@ -905,28 +905,28 @@ import TerminalInterop
     // clamping here would make a malformed host request look valid.
     let invalid: [(UInt32, UInt32)] = [(0, 1), (1, 0), (4_097, 1), (1, 4_097), (4_096, 257)]
     for (columns, rows) in invalid {
-      if let terminal = terminal_create(columns, rows) {
-        terminal_destroy(terminal)
-        Issue.record("terminal_create accepted invalid geometry \(columns)x\(rows)"); return
+      if let terminal = helge_terminal_create(columns, rows) {
+        helge_terminal_destroy(terminal)
+        Issue.record("helge_terminal_create accepted invalid geometry \(columns)x\(rows)"); return
       }
     }
     // Exercise the exact maximum once, releasing it before the rejection
     // checks so the ABI contract does not retain a large fixture.
-    guard let maximum = terminal_create(4_096, 256) else {
-      Issue.record("terminal_create rejected valid maximum geometry"); return
+    guard let maximum = helge_terminal_create(4_096, 256) else {
+      Issue.record("helge_terminal_create rejected valid maximum geometry"); return
     }
-    terminal_destroy(maximum)
-    let resized = terminal_create(8, 2)!
-    defer { terminal_destroy(resized) }
+    helge_terminal_destroy(maximum)
+    let resized = helge_terminal_create(8, 2)!
+    defer { helge_terminal_destroy(resized) }
     for (columns, rows) in invalid {
-      #expect(!terminal_resize(resized, columns, rows))
+      #expect(!helge_terminal_resize(resized, columns, rows))
     }
     #expect(viewHeader(resized)["cols"] as? Int == 8)
     // Pixel metrics are validated before applying either geometry or cell
     // dimensions; malformed metrics must not be normalized into a resize.
     let invalidPixels: [(UInt32, UInt32)] = [(0, 16), (16, 0), (1_025, 16), (16, 1_025)]
     for (width, height) in invalidPixels {
-      #expect(!terminal_resize_pixels(resized, 8, 2, width, height))
+      #expect(!helge_terminal_resize_pixels(resized, 8, 2, width, height))
     }
     #expect(viewHeader(resized)["cols"] as? Int == 8)
   }
@@ -934,8 +934,8 @@ import TerminalInterop
   /// Feeds `input` to a fresh terminal and returns its text rows, replies and cursor.
   static func observe(_ input: String, columns: UInt32 = 10, rows: UInt32 = 3)
     -> (rows: [String], replies: String, cursor: (row: Int, column: Int)) {
-    let terminal = terminal_create(columns, rows)!
-    defer { terminal_destroy(terminal) }
+    let terminal = helge_terminal_create(columns, rows)!
+    defer { helge_terminal_destroy(terminal) }
     feed(terminal, input)
     let reply = String(decoding: replies(terminal), as: UTF8.self)
     // Synchronized output withholds publication; such inputs check replies only.
@@ -963,6 +963,8 @@ import TerminalInterop
       ("\u{1b}[?1002h\u{1b}[?1000$p\u{1b}[?1002$p", "\u{1b}[?1000;2$y\u{1b}[?1002;1$y", "DECRQM mouse modes"),
       ("\u{1b}[?2026h\u{1b}[?2026$p", "\u{1b}[?2026;1$y", "DECRQM synchronized output"),
       ("\u{1b}[?69$p", "\u{1b}[?69;2$y", "DECRQM left/right margins"),
+      ("\u{1b}[?2027$p", "\u{1b}[?2027;3$y", "DECRQM grapheme clustering is permanently set"),
+      ("\u{1b}[?2027l\u{1b}[?2027$p", "\u{1b}[?2027;3$y", "DECRQM grapheme clustering cannot be reset"),
       ("\u{1b}[?12345$p", "\u{1b}[?12345;0$y", "DECRQM unknown private mode"),
       ("\u{1b}[4h\u{1b}[4$p", "\u{1b}[4;1$y", "DECRQM ANSI insert mode"),
       ("\u{1b}[20$p", "\u{1b}[20;2$y", "DECRQM ANSI newline mode"),
@@ -1007,8 +1009,8 @@ import TerminalInterop
     #expect(margins.rows == ["", "EEEE", "EEEE"], "DECALN resets the scroll region: \(margins.rows)")
   }
   @Test static func swiftCoreSmoke() {
-    guard let core = terminal_create(8, 3) else { Issue.record("create"); return }
-    defer { terminal_destroy(core) }
+    guard let core = helge_terminal_create(8, 3) else { Issue.record("create"); return }
+    defer { helge_terminal_destroy(core) }
     feed(core, "one\ntwo")
     var value = snapshot(core)
     let first = cells(value, 0)
@@ -1049,9 +1051,9 @@ import TerminalInterop
     let images = value["images"] as! [[String: Any]]
     #expect(images.count == 1 && images[0]["image"] as? Int == 42)
 
-    #expect(terminal_resize(core, 4, 2))
+    #expect(helge_terminal_resize(core, 4, 2))
     let euro = Array("€".utf8)
-    for byte in euro { var b = byte; _ = terminal_feed(core, &b, 1, 0) }
+    for byte in euro { var b = byte; _ = helge_terminal_feed(core, &b, 1, 0) }
     value = snapshot(core)
     #expect(value["cols"] as? Int == 4)
     // This is a safety/reentrancy smoke only: semantic maximal-subpart UTF-8

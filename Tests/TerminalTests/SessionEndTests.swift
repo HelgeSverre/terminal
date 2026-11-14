@@ -1,9 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 @Suite @MainActor struct SessionEndTests {
   /// A left shell closes its pane; a shell that fails as it starts, and any
@@ -22,7 +22,7 @@ import Testing
 
   @Test(arguments: [(0, true), (3, false)])
   func theEndReportsHowTheChildExited(status: Int, clean: Bool) async {
-    let session = Session(launch: TestEnvironment.shell("printf SESSION_END_READY; exit \(status)"))
+    let session = TerminalSession(launch: TestEnvironment.shell("printf SESSION_END_READY; exit \(status)"))
     defer { session.close() }
     var end: SessionEnd?
     var ends = 0
@@ -39,7 +39,7 @@ import Testing
   }
 
   @Test func theEndNamesTheSignalThatKilledTheChild() async {
-    let session = Session(launch: TestEnvironment.shell("printf SESSION_END_READY; kill -TERM $$"))
+    let session = TerminalSession(launch: TestEnvironment.shell("printf SESSION_END_READY; kill -TERM $$"))
     defer { session.close() }
     var end: SessionEnd?
     session.onEnd = { end = $0 }
@@ -53,7 +53,7 @@ import Testing
   @Test func theLaunchEnvironmentReplacesTheChildsVariables() async {
     var launch = TestEnvironment.shell(#"printf 'ENV<%s|%s|%s>' "$TERM_PROGRAM" "$HOST_MARK" "$TERM"; exit 0"#)
     launch.environment = ["TERM_PROGRAM": "HostApp", "HOST_MARK": "a b=c"]
-    let session = Session(launch: launch)
+    let session = TerminalSession(launch: launch)
     defer { session.close() }
     var text = ""
     session.onSnapshot = { text = $0.rows.map { $0.cells.map(\.text).joined() }.joined() }
@@ -62,7 +62,7 @@ import Testing
 
   /// A launch that cannot start says which step failed, as a value.
   @Test func aFailedLaunchIsReportedWithItsStage() async {
-    let missing = Session(launch: LaunchSpec(
+    let missing = TerminalSession(launch: LaunchSpec(
       executable: "/nonexistent/program", arguments: ["program"], cwd: "/tmp", launcher: TestEnvironment.launcher))
     defer { missing.close() }
     var failure: SessionLaunchFailure?
@@ -70,7 +70,7 @@ import Testing
     #expect(await TestEnvironment.wait { failure != nil })
     #expect(failure == .stage(.execute, errno: ENOENT))
 
-    let nowhere = Session(launch: LaunchSpec(
+    let nowhere = TerminalSession(launch: LaunchSpec(
       executable: "/bin/sh", arguments: ["/bin/sh"], cwd: "/nonexistent/directory", launcher: TestEnvironment.launcher))
     defer { nowhere.close() }
     var second: SessionLaunchFailure?
@@ -78,7 +78,7 @@ import Testing
     #expect(await TestEnvironment.wait { second != nil })
     #expect(second == .stage(.workingDirectory, errno: ENOENT))
 
-    let invalid = Session(launch: LaunchSpec(
+    let invalid = TerminalSession(launch: LaunchSpec(
       executable: "/bin/sh", arguments: [], cwd: "/tmp", launcher: TestEnvironment.launcher))
     defer { invalid.close() }
     var third: SessionLaunchFailure?
@@ -92,7 +92,7 @@ import Testing
   @Test func releasingASessionEndsItsChild() async throws {
     let file = FileManager.default.temporaryDirectory.appendingPathComponent("session-release-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: file) }
-    var session: Session? = Session(launch: TestEnvironment.shell("echo $$ > '\(file.path)'; exec /bin/sleep 60"))
+    var session: TerminalSession? = TerminalSession(launch: TestEnvironment.shell("echo $$ > '\(file.path)'; exec /bin/sleep 60"))
     var status: [String] = []
     session?.onStatus = { status.append($0) }
     #expect(await TestEnvironment.wait { (try? String(contentsOf: file, encoding: .utf8))?.hasSuffix("\n") == true })
@@ -109,7 +109,7 @@ import Testing
   /// The host's status handler and the view's are separate: neither replaces
   /// the other.
   @Test func theHostAndTheViewBothHearStatus() async {
-    let session = Session(launch: TestEnvironment.shell("printf SESSION_END_READY; exit 0"))
+    let session = TerminalSession(launch: TestEnvironment.shell("printf SESSION_END_READY; exit 0"))
     defer { session.close() }
     var host: [String] = []
     var view: [String] = []
@@ -121,7 +121,7 @@ import Testing
   /// A background job that keeps the terminal open must not keep the pane
   /// after the shell itself has exited.
   @Test func theEndArrivesWhileABackgroundJobHoldsTheTerminal() async {
-    let session = Session(launch: TestEnvironment.shell("sleep 30 & printf SESSION_END_READY; exit 0"))
+    let session = TerminalSession(launch: TestEnvironment.shell("sleep 30 & printf SESSION_END_READY; exit 0"))
     defer { session.close() }
     var end: SessionEnd?
     session.onEnd = { end = $0 }

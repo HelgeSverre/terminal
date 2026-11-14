@@ -2,9 +2,9 @@ import CryptoKit
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 @Suite enum UnicodeLowercaseTests {
   private static let expectedUnicodeVersion = "17.0.0"

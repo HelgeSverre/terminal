@@ -1,5 +1,5 @@
 import Foundation
-import TerminalCore
+import TerminalEngine
 
 /// The visible, actionable links in one immutable terminal snapshot.
 ///

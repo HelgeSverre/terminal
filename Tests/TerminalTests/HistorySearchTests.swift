@@ -1,9 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 @Suite enum HistorySearchTests {
   static let stamp = TerminalSearchStamp(document: 1, history: 1, geometry: 1, screen: 1, alternate: false)

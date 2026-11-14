@@ -92,17 +92,17 @@ led to these rules.
 | Area | Entry point |
 | --- | --- |
 | Windows, pane tree, menus | [main.swift](../Sources/Terminal/main.swift) |
-| Native input and accessibility | [Canvas.swift](../Sources/TerminalView/Canvas.swift) |
-| PTY and terminal-state ordering | [Session.swift](../Sources/TerminalSession/Session.swift) |
-| Read admission, readiness, and descriptor lifetime | [IO](../Sources/TerminalSession/IO) |
-| Emulation and document storage | [Emulation](../Sources/TerminalCore/Emulation) |
-| Unicode decoding and text tables | [Text](../Sources/TerminalCore/Text) |
-| Rendering and glyph resources | [Renderer.swift](../Sources/TerminalView/Renderer.swift) |
+| Native input and accessibility | [Canvas.swift](../Sources/TerminalUI/Canvas.swift) |
+| PTY and terminal-state ordering | [Session.swift](../Sources/TerminalHost/TerminalSession.swift) |
+| Read admission, readiness, and descriptor lifetime | [IO](../Sources/TerminalHost/IO) |
+| Emulation and document storage | [Emulation](../Sources/TerminalEngine/Emulation) |
+| Unicode decoding and text tables | [Text](../Sources/TerminalEngine/Text) |
+| Rendering and glyph resources | [Renderer.swift](../Sources/TerminalUI/Renderer.swift) |
 | Process setup | [Spawn.c](../Sources/TerminalInterop/Spawn.c) · [Launcher.c](../Sources/TerminalLauncher/Launcher.c) |
 
 The sources are four Swift modules, each importing the ones before it:
-`Sources/TerminalCore` (emulator and text), `Sources/TerminalSession` (PTY
-session), `Sources/TerminalView` (AppKit view and Metal renderer) and
+`Sources/TerminalEngine` (emulator and text), `Sources/TerminalHost` (PTY
+session), `Sources/TerminalUI` (AppKit view and Metal renderer) and
 `Sources/Terminal` (the application: windows, panes, settings, automation).
 `Sources/TerminalInterop` holds the C declarations and the spawn. Another app
 can use the first three; see [embedding](embedding.md).

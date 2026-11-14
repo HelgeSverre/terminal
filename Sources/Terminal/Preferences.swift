@@ -1,7 +1,7 @@
 import Foundation
-import TerminalCore
-import TerminalSession
-import TerminalView
+import TerminalEngine
+import TerminalHost
+import TerminalUI
 
 enum PaneInactiveDim: Int, CaseIterable {
   case off = 0
@@ -243,7 +243,7 @@ extension LaunchSpec {
   }
 }
 
-extension Session {
+extension TerminalSession {
   /// What a pane split from this one starts: the shell, in this pane's directory.
   @MainActor var siblingLaunch: LaunchSpec { .shell.inheritingDirectory(deliveredDirectory) }
 }

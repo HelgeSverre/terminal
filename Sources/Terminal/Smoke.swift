@@ -1,8 +1,8 @@
 import AppKit
 import Darwin
-import TerminalCore
-import TerminalSession
-import TerminalView
+import TerminalEngine
+import TerminalHost
+import TerminalUI
 
 @MainActor enum CloseSmokeTest {
   static func start(window: TerminalWindow, path: String) {

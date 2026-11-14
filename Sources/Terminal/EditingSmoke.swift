@@ -1,5 +1,5 @@
 import AppKit
-import TerminalCore
+import TerminalEngine
 
 // Dispatches synthetic AppKit events and checks ZLE's independent editable buffer.
 // Existing history suggestions are exercised, but never written to the report.

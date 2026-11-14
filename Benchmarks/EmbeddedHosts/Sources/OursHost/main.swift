@@ -1,6 +1,6 @@
 import AppKit
-import TerminalSession
-import TerminalView
+import TerminalHost
+import TerminalUI
 
 // Usage: OursHost COMMAND [ARGUMENT...]
 // Runs the command in one 100 × 30 terminal and exits when it ends.
@@ -17,7 +17,7 @@ final class Host: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     do { rendering = try TerminalRendering() } catch { NSLog("No renderer: \(error)"); exit(3) }
     let launcher = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("TerminalLauncher").path
-    let session = Session(
+    let session = TerminalSession(
       launch: LaunchSpec(
         executable: command[0], arguments: command, cwd: FileManager.default.currentDirectoryPath, launcher: launcher),
       startsAtFirstGrid: true)

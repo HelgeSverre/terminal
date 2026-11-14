@@ -2,10 +2,10 @@ import Darwin
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 // An end-to-end guard for the class of bugs where a shell's line editor and
 // terminal disagree about the width of a Unicode prompt. This owns an isolated
@@ -54,11 +54,11 @@ import TerminalInterop
       #expect(completed, "timed out waiting for \(label); visible=\(text(latest).suffix(512))")
       return completed
     }
-    func send(_ session: Session, _ value: String, key: UInt32 = 0) {
+    func send(_ session: TerminalSession, _ value: String, key: UInt32 = 0) {
       #expect(session.input(value, key: key), "input rejected: key=\(key), bytes=\(value.utf8.count)")
     }
-    func enter(_ session: Session) { session.rawInput(Data([13])) }
-    func probe(_ session: Session) { session.rawInput(Data([7])) } // Bound to a private zle widget below.
+    func enter(_ session: TerminalSession) { session.rawInput(Data([13])) }
+    func probe(_ session: TerminalSession) { session.rawInput(Data([7])) } // Bound to a private zle widget below.
     func readState() -> [String]? {
       guard let value = try? String(contentsOf: statePath, encoding: .utf8) else { return nil }
       return value.trimmingCharacters(in: .newlines).split(separator: "|", omittingEmptySubsequences: false).map(String.init)
@@ -86,7 +86,7 @@ import TerminalInterop
     try #require(setenv("TERMINAL_SHELL_EDIT_STATE", statePath.path, 1) == 0, "set state environment")
     defer { unsetenv("TERMINAL_SHELL_EDIT_STATE") }
 
-    let session = Session(launch: LaunchSpec(
+    let session = TerminalSession(launch: LaunchSpec(
       executable: "/bin/zsh", arguments: ["/bin/zsh", "-dfi"], cwd: fixture.path, launcher: TestEnvironment.launcher))
     session.onSnapshot = { latest = $0 }
     session.onStatus = {

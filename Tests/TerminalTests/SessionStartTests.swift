@@ -1,9 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 @Suite @MainActor struct SessionStartTests {
   private func screen(_ snapshot: TerminalSnapshot) -> String {
@@ -14,7 +14,7 @@ import Testing
   /// 80 by 24 one that is resized a moment later: the child reads the size
   /// once, as it starts, and must see the real one.
   @Test func aChildStartedAtTheFirstGridSeesThatGrid() async {
-    let session = Session(
+    let session = TerminalSession(
       launch: TestEnvironment.shell("printf 'SIZE=%s.' \"$(stty size)\"; exec /bin/cat"), startsAtFirstGrid: true)
     defer { session.close() }
     var text = ""
@@ -29,7 +29,7 @@ import Testing
 
   /// A pane that is never laid out still gets its child, at the default size.
   @Test func aChildWithoutAGridStartsAfterAMoment() async {
-    let session = Session(
+    let session = TerminalSession(
       launch: TestEnvironment.shell("printf 'SIZE=%s.' \"$(stty size)\"; exec /bin/cat"), startsAtFirstGrid: true)
     defer { session.close() }
     var text = ""
@@ -39,7 +39,7 @@ import Testing
 
   /// Closing before the child exists must not start one.
   @Test func closingBeforeTheFirstGridStartsNothing() async {
-    let session = Session(launch: TestEnvironment.shell("printf STARTED; exec /bin/cat"), startsAtFirstGrid: true)
+    let session = TerminalSession(launch: TestEnvironment.shell("printf STARTED; exec /bin/cat"), startsAtFirstGrid: true)
     var text = ""
     session.onSnapshot = { text = self.screen($0) }
     session.close()

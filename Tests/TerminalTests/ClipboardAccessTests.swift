@@ -2,9 +2,9 @@ import AppKit
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 /// Serialized: every test writes to a private named pasteboard and the
 /// tests share the helpers below.
@@ -27,8 +27,8 @@ import Testing
   /// The sessions one test started, so it can close them and check that
   /// their children were reaped.
   final class Owned {
-    var sessions: [Session] = []
-    func own(_ session: Session) -> Session {
+    var sessions: [TerminalSession] = []
+    func own(_ session: TerminalSession) -> TerminalSession {
       sessions.append(session)
       return session
     }
@@ -60,11 +60,11 @@ import Testing
   static func selectedSession(
     _ owned: Owned, _ value: String, display: String? = nil, selection: Range<Int>? = nil,
     trailingOutput: String? = nil
-  ) async -> (Session, UInt64)? {
+  ) async -> (TerminalSession, UInt64)? {
     let displayed = display ?? value
     let selectedRange = selection ?? 0..<value.count
     let suffix = trailingOutput.map { "; sleep 0.15; printf '\($0)'" } ?? ""
-    let session = owned.own(Session(launch: TestEnvironment.shell("sleep 0.05; printf '\(displayed)'\(suffix); sleep 1")))
+    let session = owned.own(TerminalSession(launch: TestEnvironment.shell("sleep 0.05; printf '\(displayed)'\(suffix); sleep 1")))
     var latest: TerminalSnapshot?
     session.onSnapshot = { latest = $0 }
     _ = await TestEnvironment.wait(seconds: 3) { latest.map(text)?.contains(displayed) == true }
@@ -211,7 +211,7 @@ import Testing
       completion(.allow)
       return nil
     }
-    let writer = owned.own(Session(launch: TestEnvironment.shell(
+    let writer = owned.own(TerminalSession(launch: TestEnvironment.shell(
       "stty raw -echo; printf '\\033]52;c;cHR5IGZpeHR1cmU=\\007WRITE_READY'; exec /bin/cat >/dev/null")))
     writer.onClipboardWrite = { request in orderedAccess.request(request, from: nil) }
     _ = await TestEnvironment.wait(seconds: 3) { orderedPasteboard.data(forType: .string) == Data("pty fixture".utf8) }
@@ -231,7 +231,7 @@ import Testing
       closedDecision = completion
       return nil
     }
-    let closed = owned.own(Session(launch: TestEnvironment.shell(
+    let closed = owned.own(TerminalSession(launch: TestEnvironment.shell(
       #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; print "\e]52;c;Y2xvc2VkIGZpeHR1cmU=\a"; STDIN.read(1)'"#)))
     var eofCancelled = false
     closed.onClipboardWrite = { [weak closed] request in
@@ -253,7 +253,7 @@ import Testing
 
   @Test static func lateCloseHandlerDeliveredOnce() async {
     let owned = Owned()
-    let late = owned.own(Session(launch: TestEnvironment.shell("printf LATE_CLOSE_READY")))
+    let late = owned.own(TerminalSession(launch: TestEnvironment.shell("printf LATE_CLOSE_READY")))
     var lateCloseNotifications = 0
     // `statistics` answers on a later turn, so the flag outlives each poll.
     var readEnded = false
@@ -271,7 +271,7 @@ import Testing
 
   @Test static func readQueryDeniedWithoutHostRequest() async {
     let owned = Owned()
-    let reader = owned.own(Session(launch: TestEnvironment.shell(
+    let reader = owned.own(TerminalSession(launch: TestEnvironment.shell(
       #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; print "\e]52;c;?\a"; answer=STDIN.read(9); print(answer == "\e]52;c;\e\\" ? "READ_DENIED_OK" : "READ_BAD")'"#)))
     var queryRequestedHostClipboard = false
     var readDenied = false

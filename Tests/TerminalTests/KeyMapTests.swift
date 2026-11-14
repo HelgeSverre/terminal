@@ -2,10 +2,10 @@ import Foundation
 import AppKit
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 private final class Capture { var data = Data() }
 @Suite struct KeyMapTests {
@@ -30,8 +30,8 @@ private final class Capture { var data = Data() }
     ) {
       #expect(condition(), Comment(rawValue: context), sourceLocation: sourceLocation)
     }
-    let core = terminal_create(80, 24)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(80, 24)!
+    defer { helge_terminal_destroy(core) }
     func encode(
       _ physical: UInt16, _ text: String = "", flags: NSEvent.ModifierFlags = [],
       release: Bool = false
@@ -44,7 +44,7 @@ private final class Capture { var data = Data() }
         Issue.record("physical key must route to the terminal"); return Data()
       }
       let capture = Capture()
-      let accepted = terminal_input_with_metadata(
+      let accepted = helge_terminal_input_with_metadata(
         core, (300...317).contains(mapped.key) ? mapped.text : mapped.logical,
         mapped.key, mapped.modifiers, release ? 2 : 0, mapped.text, mapped.legacyText,
         scalar(mapped.shifted), scalar(mapped.baseLayout),
@@ -65,7 +65,7 @@ private final class Capture { var data = Data() }
     }
     func feed(_ text: String) {
       let bytes = Array(text.utf8)
-      let used = bytes.withUnsafeBufferPointer { terminal_feed(core, $0.baseAddress, $0.count, 0) }
+      let used = bytes.withUnsafeBufferPointer { helge_terminal_feed(core, $0.baseAddress, $0.count, 0) }
       context = "feed bytes=\(bytes.count) used=\(used)"
       check(used == bytes.count)
     }
@@ -85,7 +85,7 @@ private final class Capture { var data = Data() }
       Issue.record("localized keypad must route to terminal"); return
     }
     let localizedCapture = Capture()
-    check(terminal_input_with_metadata(
+    check(helge_terminal_input_with_metadata(
       core, localized.text, localized.key, localized.modifiers, 0,
       localized.text, localized.legacyText,
       localized.shifted.unicodeScalars.count == 1 ? localized.shifted.unicodeScalars.first!.value : 0,
@@ -108,7 +108,7 @@ private final class Capture { var data = Data() }
     // The keypad's current-layout symbol is protocol metadata; numeric-mode
     // legacy input must use the text AppKit committed for this press instead.
     let committedKeypadComma = Capture()
-    check(terminal_input_with_metadata(
+    check(helge_terminal_input_with_metadata(
       core, ",", 310, 0, 0, ",", ".", 0, 0,
       Unmanaged.passUnretained(committedKeypadComma).toOpaque(),
       { context, bytes, count in
@@ -156,7 +156,7 @@ private final class Capture { var data = Data() }
     check(mappedPunctuation.baseLayout == "1")
     check(mappedPunctuation.modifiers & 1 == 1)
     let alternateCapture = Capture()
-    check(terminal_input_with_metadata(
+    check(helge_terminal_input_with_metadata(
       core, "1", mappedPunctuation.key, mappedPunctuation.modifiers, 0, "!", "!", 33, 49,
       Unmanaged.passUnretained(alternateCapture).toOpaque(),
       { context, bytes, count in
@@ -207,7 +207,7 @@ private final class Capture { var data = Data() }
     check(mappedCaps.baseLayout == "'")
     check(mappedCaps.modifiers == 64)
     let modifierCapture = Capture()
-    check(terminal_input_with_metadata(
+    check(helge_terminal_input_with_metadata(
       core, "", controlDown.event.key, controlDown.event.modifiers, 0, nil, nil, 0, 0,
       Unmanaged.passUnretained(modifierCapture).toOpaque(),
       { context, bytes, count in
@@ -216,7 +216,7 @@ private final class Capture { var data = Data() }
       }))
     check(modifierCapture.data == Data("\u{1b}[57442;5:1u".utf8))
     let counterpartRelease = Capture()
-    check(terminal_input_with_metadata(
+    check(helge_terminal_input_with_metadata(
       core, "", controlDown.event.key, controlDown.event.modifiers, 2, nil, nil, 0, 0,
       Unmanaged.passUnretained(counterpartRelease).toOpaque(),
       { context, bytes, count in
@@ -249,7 +249,7 @@ private final class Capture { var data = Data() }
     ) -> Data {
       let capture = Capture()
       func send(_ legacyPointer: UnsafePointer<CChar>?) {
-        check(terminal_input_with_metadata(
+        check(helge_terminal_input_with_metadata(
           core, logical, 200, modifiers, 0, text, legacyPointer, scalar(shifted), scalar(base),
           Unmanaged.passUnretained(capture).toOpaque(),
           { context, bytes, count in
@@ -298,7 +298,7 @@ private final class Capture { var data = Data() }
       == Data("\u{1b}[49;10u".utf8))
     func missingAssociated(_ associated: UnsafePointer<CChar>?) -> Data {
       let capture = Capture()
-      check(terminal_input_with_metadata(
+      check(helge_terminal_input_with_metadata(
         core, "a", 200, 0, 0, associated, nil, 0, 0,
         Unmanaged.passUnretained(capture).toOpaque(),
         { context, bytes, count in
@@ -318,7 +318,7 @@ private final class Capture { var data = Data() }
     check(missingAssociated(nil) == Data("\u{1b}[97;1u".utf8))
     check("".withCString { missingAssociated($0) } == Data("\u{1b}[97;1u".utf8))
     let defaultCapture = Capture()
-    check(terminal_input(
+    check(helge_terminal_input(
       core, "a", 200, 0, 0, Unmanaged.passUnretained(defaultCapture).toOpaque(),
       { context, bytes, count in
         guard let context, let bytes else { return }
@@ -327,7 +327,7 @@ private final class Capture { var data = Data() }
     check(defaultCapture.data == Data("\u{1b}[97;1;97u".utf8))
     feed("\u{1b}[=12u")
     let shiftedDefault = Capture()
-    check(terminal_input(
+    check(helge_terminal_input(
       core, "A", 200, 1, 0, Unmanaged.passUnretained(shiftedDefault).toOpaque(),
       { context, bytes, count in
         guard let context, let bytes else { return }

@@ -1,5 +1,5 @@
 import Foundation
-import TerminalCore
+import TerminalEngine
 
 /// What a host may change about a running session.
 public struct TerminalSessionConfiguration {

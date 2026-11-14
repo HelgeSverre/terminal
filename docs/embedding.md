@@ -35,34 +35,38 @@ targets: [
   .executableTarget(
     name: "MyApp",
     dependencies: [
-      .product(name: "TerminalView", package: "terminal"),
-      .product(name: "TerminalSession", package: "terminal"),
+      .product(name: "TerminalUI", package: "terminal"),
+      .product(name: "TerminalHost", package: "terminal"),
     ]),
 ]
 ```
 
 | Product | Contents |
 | --- | --- |
-| `TerminalView` | `TerminalCanvasView`, `TerminalRendering`, `ClipboardAccess`, `TerminalViewConfiguration`, `TerminalEditMenu`. Carries the fonts and the shader source as package resources. |
-| `TerminalSession` | `Session`, `LaunchSpec`, `SessionEnd`, `TerminalSessionConfiguration` |
+| `TerminalUI` | `TerminalCanvasView`, `TerminalRendering`, `ClipboardAccess`, `TerminalViewConfiguration`, `TerminalEditMenu`. Carries the fonts and the shader source as package resources. |
+| `TerminalHost` | `TerminalSession`, `LaunchSpec`, `SessionEnd`, `TerminalSessionConfiguration` |
 | `TerminalLauncher` | The helper executable every session starts its child through |
 
-The emulator (`TerminalCore`) is linked in by both libraries. It has no public
+As a dependency the package brings no dependencies of its own: the app, its
+updater and the test suites are part of the manifest only in this
+repository.
+
+The emulator (`TerminalEngine`) is linked in by both libraries. It has no public
 interface of its own yet.
 
 ## Show a terminal
 
 ```swift
 import AppKit
-import TerminalSession
-import TerminalView
+import TerminalHost
+import TerminalUI
 
 // Once per app: the renderer and the clipboard access all views share.
 let rendering = try TerminalRendering()
 let clipboard = ClipboardAccess(writingTo: .general)
 
 // Once per terminal. `launcherPath` is where the app keeps the launcher; see below.
-let session = Session(
+let session = TerminalSession(
   launch: .loginShell(cwd: NSHomeDirectory(), launcher: launcherPath),
   startsAtFirstGrid: true)
 let view = TerminalCanvasView(
@@ -163,12 +167,12 @@ policy.
 
 ## Resources
 
-`TerminalView` carries Obel Mono, Symbols Nerd Font Mono and the Metal shader
+`TerminalUI` carries Obel Mono, Symbols Nerd Font Mono and the Metal shader
 source as package resources, so an embedding app adds nothing to its bundle
 for them. The shader source is compiled when `TerminalRendering` is created; its initializer throws
 `TerminalRendering.RendererError` (`.noDevice`, `.noShaders`, `.noMemory`).
 The fonts keep their own licenses; see the
-[font directory](../Sources/TerminalView/Resources/Fonts/README.md).
+[font directory](../Sources/TerminalUI/Resources/Fonts/README.md).
 
 ## What is missing
 
@@ -178,10 +182,10 @@ The fonts keep their own licenses; see the
   can set only the font size.
 - **The find bar.** The Find action needs the app's find bar, which a host
   cannot attach yet.
-- **Feeding bytes without a child process.** `Session` always starts a
+- **Feeding bytes without a child process.** `TerminalSession` always starts a
   program on a PTY. An SSH client or a replay tool needs a session over its
   own transport.
-- **The emulator on its own.** `TerminalCore` has no public interface for
+- **The emulator on its own.** `TerminalEngine` has no public interface for
   headless use.
 - **A launch without the helper.** The host must carry `TerminalLauncher`.
 - **Other platforms.** macOS on Apple Silicon is the only tested target.
@@ -201,10 +205,10 @@ measures both as embedded libraries.
 | Target | Directory | Imports |
 | --- | --- | --- |
 | `TerminalInterop` | `Sources/TerminalInterop` | C declarations of the emulator interface, and the spawn |
-| `TerminalCore` | `Sources/TerminalCore` | `TerminalInterop` |
-| `TerminalSession` | `Sources/TerminalSession` | `TerminalCore` |
-| `TerminalView` | `Sources/TerminalView` | `TerminalSession`, AppKit, Metal |
-| `TerminalApp` | `Sources/Terminal` | `TerminalView`; the app itself |
+| `TerminalEngine` | `Sources/TerminalEngine` | `TerminalInterop` |
+| `TerminalHost` | `Sources/TerminalHost` | `TerminalEngine` |
+| `TerminalUI` | `Sources/TerminalUI` | `TerminalHost`, AppKit, Metal |
+| `TerminalApp` | `Sources/Terminal` | `TerminalUI`; the app itself |
 
 Declarations one target needs from another are `package`: visible inside this
 package, invisible to an embedding app. Only what this page describes is

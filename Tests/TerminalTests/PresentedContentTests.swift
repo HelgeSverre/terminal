@@ -1,10 +1,10 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 /// Presented-content validation against the core: issued identities, row proofs,
 /// stable history, bounded validation and cancellation.
@@ -13,13 +13,13 @@ import TerminalInterop
     Array(text.utf8).withUnsafeBufferPointer { bytes in
       var offset = 0
       while offset < bytes.count {
-        let count = terminal_feed(core, bytes.baseAddress!.advanced(by: offset), bytes.count - offset, 0)
-        let progressed = count > 0 || terminal_has_work(core)
+        let count = helge_terminal_feed(core, bytes.baseAddress!.advanced(by: offset), bytes.count - offset, 0)
+        let progressed = count > 0 || helge_terminal_has_work(core)
         #expect(progressed, "feed progress"); if !progressed { return }
         offset += count
       }
     }
-    while terminal_has_work(core) { _ = terminal_feed(core, nil, 0, 0) }
+    while helge_terminal_has_work(core) { _ = helge_terminal_feed(core, nil, 0, 0) }
   }
   static func snapshot(_ core: OpaquePointer) -> TerminalSnapshot { swiftTerminalSnapshot(core, scroll: nil, now: 0).snapshot! }
   static func content(_ snapshot: TerminalSnapshot, _ rows: [(Int, Range<Int>)]) -> TerminalPresentedContent {
@@ -49,8 +49,8 @@ import TerminalInterop
       geometryEpoch: original.geometryEpoch, columns: original.columns, rows: original.rows)
   }
   @Test static func stableIdentityAndNoSelectionMutation() {
-    let core = terminal_create(8, 3)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "link\r\nother")
     let shown = snapshot(core)
     let hit = shown.selectionHit(row: 0, boundary: 0)!, end = shown.selectionHit(row: 0, boundary: 4)!
@@ -63,16 +63,16 @@ import TerminalInterop
     #expect(after.selection == before.selection && after.revision == before.revision,
       "read-only validation changes neither selection nor publication revision")
     feed(core, "\r\nmore\r\nlast")
-    terminal_view_scroll(core, 1)
+    helge_terminal_view_scroll(core, 1)
     accepted(core, content(shown, [(0, 0..<4)]), "unchanged row follows identity into history despite new output and view scroll")
-    terminal_view_follow_tail(core)
+    helge_terminal_view_follow_tail(core)
     accepted(core, content(shown, [(0, 0..<4)]), "follow-tail change does not stale content")
-    terminal_set_history_limit(core, 0)
+    helge_terminal_set_history_limit(core, 0)
     rejected(core, content(shown, [(0, 0..<4)]), .evicted, "evicted row cannot activate")
   }
   @Test static func staleRowsAndInteriors() {
-    let core = terminal_create(8, 4)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 4)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "first\r\nmiddle\r\nlast")
     let shown = snapshot(core)
     feed(core, "\u{1b}[4;1HX")
@@ -87,23 +87,23 @@ import TerminalInterop
     rejected(core, content(ordered, [(0, 0..<5), (2, 0..<4)]), .evicted, "deleted row identity cannot be rebound")
   }
   @Test static func geometryResetAndScreens() {
-    let core = terminal_create(8, 3)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "target")
     let shown = snapshot(core)
     feed(core, "\u{1b}[?47hALT")
     rejected(core, content(shown, [(0, 0..<6)]), .staleTarget, "wrong selected screen")
     feed(core, "\u{1b}[?47l")
     accepted(core, content(shown, [(0, 0..<6)]), "unchanged primary identity survives alternate return")
-    #expect(terminal_resize(core, 10, 3), "resize fixture")
+    #expect(helge_terminal_resize(core, 10, 3), "resize fixture")
     rejected(core, content(shown, [(0, 0..<6)]), .staleTarget, "geometry changed")
     let beforeReset = snapshot(core)
     feed(core, "\u{1b}ctarget")
     rejected(core, content(beforeReset, [(0, 0..<6)]), .staleTarget, "RIS resets identity namespace")
   }
   @Test static func malformedAndZeroProofs() {
-    let core = terminal_create(8, 3)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "界x")
     let shown = snapshot(core), proof = shown.selectionPresentation!
     #expect(proof.snapshotID > 0, "issued identity is positive")
@@ -132,8 +132,8 @@ import TerminalInterop
       .limitExceeded, "row proof count bound")
   }
   @Test static func boundedCancellationAndAdmission() {
-    let core = terminal_create(4, 512)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(4, 512)!
+    defer { helge_terminal_destroy(core) }
     let shown = snapshot(core)
     let target = content(shown, [(0, 0..<1), (511, 0..<1)])
     let before = shown.selection
@@ -154,10 +154,10 @@ import TerminalInterop
     if case .rejected(.staleTarget) = TerminalPresentedContentBridge.advance(core: core) {} else { Issue.record("mutation after an earlier proof was checked cannot slip through"); return }
     let fresh = content(snapshot(core), [(0, 0..<1), (511, 0..<1)])
     _ = TerminalPresentedContentBridge.begin(core: core, content: fresh)
-    terminal_set_history_limit(core, 0)
+    helge_terminal_set_history_limit(core, 0)
     if case .rejected(.staleTarget) = TerminalPresentedContentBridge.advance(core: core) {} else { Issue.record("history configuration mutation also stales stepped validation"); return }
-    let abandoned = terminal_create(4, 512)!
+    let abandoned = helge_terminal_create(4, 512)!
     _ = TerminalPresentedContentBridge.begin(core: abandoned, content: content(snapshot(abandoned), [(0, 0..<1), (511, 0..<1)]))
-    terminal_destroy(abandoned) // no worker or row lease may outlive this owner
+    helge_terminal_destroy(abandoned) // no worker or row lease may outlive this owner
   }
 }

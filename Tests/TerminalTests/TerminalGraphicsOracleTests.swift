@@ -1,10 +1,10 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 // Public ABI regressions for kitty graphics.
 // Each case is its own test so a failure cannot hide the remaining red
@@ -17,39 +17,39 @@ import TerminalInterop
   }
   static func feed(_ core: OpaquePointer, _ bytes: Data, now: UInt64 = 0) {
     var offset = 0
-    while offset < bytes.count || terminal_has_work(core) {
+    while offset < bytes.count || helge_terminal_has_work(core) {
       let used = bytes.withUnsafeBytes { raw in
-        terminal_feed(core, raw.bindMemory(to: UInt8.self).baseAddress?.advanced(by: offset), bytes.count - offset, now)
+        helge_terminal_feed(core, raw.bindMemory(to: UInt8.self).baseAddress?.advanced(by: offset), bytes.count - offset, now)
       }
-      guard used > 0 || terminal_has_work(core) || offset == bytes.count else {
-        Issue.record("terminal_feed made no progress at offset \(offset)")
+      guard used > 0 || helge_terminal_has_work(core) || offset == bytes.count else {
+        Issue.record("helge_terminal_feed made no progress at offset \(offset)")
         return
       }
       offset += used
     }
-    #expect(terminal_validate(core))
+    #expect(helge_terminal_validate(core))
   }
   static func feed(_ core: OpaquePointer, _ text: String, now: UInt64 = 0) { feed(core, Data(text.utf8), now: now) }
   static func command(_ header: String, _ pixels: [UInt8] = []) -> String {
     "\u{1b}_G\(header);\(Data(pixels).base64EncodedString())\u{1b}\\"
   }
   static func snapshot(_ core: OpaquePointer, scroll: Int = 0, now: UInt64 = 0) -> [String: Any]? {
-    guard let raw = terminal_snapshot(core, scroll, now) else { return nil }
-    defer { terminal_string_free(raw) }
+    guard let raw = helge_terminal_snapshot(core, scroll, now) else { return nil }
+    defer { helge_terminal_string_free(raw) }
     return try! JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8)) as? [String: Any]
   }
   static func images(_ core: OpaquePointer, scroll: Int = 0) -> [[String: Any]] { snapshot(core, scroll: scroll)!["images"] as! [[String: Any]] }
   static func replies(_ core: OpaquePointer) -> String {
-    let result = Bytes(); terminal_replies(core, Unmanaged.passUnretained(result).toOpaque(), collect)
+    let result = Bytes(); helge_terminal_replies(core, Unmanaged.passUnretained(result).toOpaque(), collect)
     return String(decoding: result.data, as: UTF8.self)
   }
   static func rgba(_ core: OpaquePointer, _ image: [String: Any]) -> Data? {
     let result = Bytes()
-    guard terminal_image_rgba(core, UInt32(image["image"] as! Int), UInt64(image["generation"] as! Int), Unmanaged.passUnretained(result).toOpaque(), collect) else { return nil }
+    guard helge_terminal_image_rgba(core, UInt32(image["image"] as! Int), UInt64(image["generation"] as! Int), Unmanaged.passUnretained(result).toOpaque(), collect) else { return nil }
     return result.data
   }
   static func withTerminal(_ body: (OpaquePointer) -> Void) {
-    let core = terminal_create(8, 3)!; defer { terminal_destroy(core) }; body(core)
+    let core = helge_terminal_create(8, 3)!; defer { helge_terminal_destroy(core) }; body(core)
   }
   @Test static func ignoredPngMetadata() { withTerminal { core in
     // Two compressed 512 KiB ancillary values are ignored before ImageIO.
@@ -98,7 +98,7 @@ import TerminalInterop
     feed(core, command("a=T,f=24,s=1,v=1,i=1,p=1,C=1", [1, 2, 3]))
     for id in 2...256 { feed(core, command("a=p,i=1,p=\(id),C=1")) }
     #expect(images(core).count == 256)
-    terminal_set_history_limit(core, 0)
+    helge_terminal_set_history_limit(core, 0)
     feed(core, "\r\n\r\n\r\n")
     #expect(images(core).isEmpty)
     _ = replies(core)
@@ -167,10 +167,10 @@ import TerminalInterop
     feed(core, command("a=T,f=24,s=1,v=1,i=1,C=1", [1, 2, 3]))
     let rows = snapshot(core)!["rows"] as! [[String: Any]]
     let firstID = rows[0]["id"] as! Int
-    #expect(terminal_resize(core, 8, 4))
+    #expect(helge_terminal_resize(core, 8, 4))
     #expect((snapshot(core)!["rows"] as! [[String: Any]])[0]["id"] as? Int == firstID)
     #expect(images(core).count == 1 && images(core)[0]["row"] as? Int == 0)
-    #expect(terminal_resize(core, 4, 4))
+    #expect(helge_terminal_resize(core, 4, 4))
     #expect(images(core).isEmpty)
   }}
   @Test static func partitions() {
@@ -257,7 +257,7 @@ import TerminalInterop
     feed(core, "\u{1b}_Gm=0;BAUG\u{18}", now: 20_001)
     feed(core, "\u{1b}_Gm=0;BAUG\u{1b}\\", now: 20_002)
     #expect(images(core).isEmpty)
-    feed(core, begin); terminal_finish(core)
+    feed(core, begin); helge_terminal_finish(core)
     feed(core, "\u{1b}_Gm=0;BAUG\u{1b}\\")
     #expect(images(core).isEmpty)
     feed(core, begin); feed(core, "\u{1b}_Gm=0;BAUG\u{1b}\\")

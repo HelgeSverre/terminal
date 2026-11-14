@@ -2,9 +2,9 @@ import AppKit
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 /// Serialized as a precaution: preferences persist through UserDefaults. The
 /// tests use defaults held in memory and never touch the user's own.

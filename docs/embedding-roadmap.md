@@ -94,6 +94,16 @@ is not part of the library by design.
 - **From "not public":** scroll, process ID, working directory, visible text,
   grid size, and the Paste, Cancel Paste and Clear Screen actions are public.
 
+- **Defect 6:** the modules are now `TerminalEngine`, `TerminalHost` and
+  `TerminalUI`, the session type is `TerminalSession`, and the C functions
+  are `helge_terminal_*`. The lists below use the names they had when
+  audited: `TerminalCore`, `TerminalSession`, `TerminalView` and `Session`.
+- **Defect 19:** as another app's dependency the package has no dependencies
+  of its own and no app, tool or test targets, and never compiles the test
+  hooks. The manifest tells by its location in a `checkouts` directory.
+- **Mode 2027:** a query is answered "permanently set". A layout by code
+  point width is not built; see `BUGS.md`.
+
 The lists below are as audited at `7a396ab`.
 
 ## Defects in the public interface today
@@ -101,7 +111,7 @@ The lists below are as audited at `7a396ab`.
 ### Breaks a host, or forces a rename later
 
 1. **The view overwrites the host's `session.onStatus`.** `TerminalCanvasView`
-   assigns it in its initializer (`Sources/TerminalView/Canvas.swift:145`).
+   assigns it in its initializer (`Sources/TerminalUI/Canvas.swift:145`).
    A handler set before the view exists is lost; the example sets it after
    and works by order alone.
 2. **A session serves one view, and nothing says so.** The view also takes
@@ -118,7 +128,7 @@ The lists below are as audited at `7a396ab`.
    "Session finished" all arrive on `onStatus`. A failed launch never fires
    `onEnd`, so a host can only tell failure from a slow start by parsing text.
 6. **Names.** `Session` is too generic for a public type. The module
-   `TerminalView` shares its name with SwiftTerm's main class. The C type
+   `TerminalUI` shares its name with SwiftTerm's main class. The C type
    `Terminal` and the unprefixed `terminal_*` symbols can collide in a host
    process.
 7. **App behaviour inside the libraries.**
@@ -176,7 +186,7 @@ The lists below are as audited at `7a396ab`.
 | Font, colors, insets, cursor | fixed (`Font.swift`, `Theme.swift`) |
 | Environment and `TERM_PROGRAM` for the child | fixed in `Spawn.c` |
 | A transport other than a local process | absent |
-| The emulator without a session | no public declaration in `TerminalCore` |
+| The emulator without a session | no public declaration in `TerminalEngine` |
 
 ## Order of work
 
@@ -230,7 +240,7 @@ rest on, and of a binary dependency.
 
 - The session leak on release is derived from the strong capture; it was not
   run.
-- Whether importing our `TerminalView` module beside SwiftTerm fails to
+- Whether importing our `TerminalUI` module beside SwiftTerm fails to
   compile was not built.
 - Whether `ghostty.h` can run a surface without spawning a command, and how
   complete it is on iOS.

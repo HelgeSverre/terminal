@@ -16,14 +16,14 @@ enum TerminalSnapshotTestSupport {
 
   static func ownerSnapshot(_ terminal: OpaquePointer, now: UInt64 = 0) -> [String: Any]? {
     let capture = Metadata()
-    guard terminal_view_snapshot_binary(
+    guard helge_terminal_view_snapshot_binary(
       terminal, now, Unmanaged.passUnretained(capture).toOpaque(), collect),
       let ownerObject = try? JSONSerialization.jsonObject(with: capture.value),
       var owner = ownerObject as? [String: Any],
       let offset = owner["scroll_offset"] as? Int,
-      let raw = terminal_snapshot(terminal, offset, now)
+      let raw = helge_terminal_snapshot(terminal, offset, now)
     else { return nil }
-    defer { terminal_string_free(raw) }
+    defer { helge_terminal_string_free(raw) }
     guard let numericObject = try? JSONSerialization.jsonObject(with: Data(String(cString: raw).utf8)),
           let numeric = numericObject as? [String: Any],
           let rows = numeric["rows"] else { return nil }

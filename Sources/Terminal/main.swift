@@ -1,7 +1,7 @@
 import AppKit
 import TerminalInterop
-import TerminalSession
-import TerminalView
+import TerminalHost
+import TerminalUI
 
 /// A smoke run must never observe or mutate the user's clipboard. The report
 /// path already belongs to the fixture, so it is a stable private-board scope.
@@ -136,7 +136,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     let delegate = NSApp.delegate as? AppDelegate
     let pane = TerminalCanvasView(
       frame: .zero,
-      session: Session(launch: initialLaunch ?? diagnosticSplitLaunch ?? launch ?? .shell, startsAtFirstGrid: true),
+      session: TerminalSession(launch: initialLaunch ?? diagnosticSplitLaunch ?? launch ?? .shell, startsAtFirstGrid: true),
       rendering: delegate?.rendering, clipboard: delegate?.clipboardAccess,
       configuration: TerminalPreferences.load().view)
     pane.onFocused = { [weak pane] in
@@ -716,7 +716,7 @@ if let index = catalogArguments.firstIndex(of: "--font-catalog"),
 }
 SmokeStream.runIfRequested()
 // Children are told which version of this terminal they run in.
-terminal_set_program_version(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
+helge_terminal_set_program_version(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
 if let launch = AppDelegate.firstLaunch() {
   let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096)
   let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096)

@@ -2,17 +2,17 @@ import Darwin
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 /// Serialized: the scenarios share the process, and some change the process
 /// environment (ZDOTDIR) or fill process-wide state while they run. Each test
 /// gets its own instance, so `ownedSessions` is per scenario.
 @Suite(.serialized) @MainActor final class SessionTests {
-  var ownedSessions: [Session] = []
-  func own(_ session: Session) -> Session {
+  var ownedSessions: [TerminalSession] = []
+  func own(_ session: TerminalSession) -> TerminalSession {
     ownedSessions.append(session)
     return session
   }
@@ -89,10 +89,10 @@ import TerminalInterop
       Issue.record("could not create split alias: \(error)")
     }
     let splitURL = splitAlias.absoluteString
-    let parent = own(Session(launch: LaunchSpec(executable: "/bin/sh",
+    let parent = own(TerminalSession(launch: LaunchSpec(executable: "/bin/sh",
       arguments: ["/bin/sh", "-c", "stty -echo; cd -- \"$1\"; printf '\\033]7;%s\\007SPLIT_CWD_READY' \"$2\"; IFS= read -r line",
         "split-fixture", splitAlias.path, splitURL], cwd: "/tmp", launcher: spec("").launcher)))
-    var sibling: Session?
+    var sibling: TerminalSession?
     var parentCWD: String?, childText = ""
     var parentEnded = false, siblingEnded = false, siblingMatched = false
     parent.onStatus = { if $0 == "Session finished" { parentEnded = true } }
@@ -104,7 +104,7 @@ import TerminalInterop
       let launch = parent.siblingLaunch
       #expect(URL(fileURLWithPath: launch.cwd).resolvingSymlinksInPath().path == splitFolder.resolvingSymlinksInPath().path,
         "split sibling cwd resolved outside fixture: \(launch.cwd)")
-      let child = self.own(Session(launch: LaunchSpec(executable: "/bin/sh",
+      let child = self.own(TerminalSession(launch: LaunchSpec(executable: "/bin/sh",
         arguments: ["/bin/sh", "-c", "printf 'SPLIT_CHILD_PWD=%s\\n' \"$PWD\""],
         cwd: launch.cwd, launcher: self.spec("").launcher)))
       sibling = child
@@ -154,7 +154,7 @@ import TerminalInterop
       print "\e[2J\e[H#{marker}"
       '
       """#
-    let readBuffer = own(Session(launch: spec(readBufferScript)))
+    let readBuffer = own(TerminalSession(launch: spec(readBufferScript)))
     var readBufferOK = false, readBufferFinished = false
     var readBufferStats: [String: Any] = [:]
     readBuffer.onSnapshot = { snapshot in
@@ -176,8 +176,8 @@ import TerminalInterop
     // A UI snapshot is deliberately coalesced, so it cannot timestamp parser order.
     // Check both sides of the resumable packet boundary directly, then exercise
     // Session's FIFO against a real PTY child below.
-    if let orderingCore = terminal_create(80, 24) {
-      defer { terminal_destroy(orderingCore) }
+    if let orderingCore = helge_terminal_create(80, 24) {
+      defer { helge_terminal_destroy(orderingCore) }
       let packet = Data("X\u{1b}[500000b\u{1b}[?2004h".utf8)
       let capture: @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void = {
         context, bytes, count in
@@ -187,22 +187,22 @@ import TerminalInterop
       func encodePaste() -> Data {
         let encoded = NSMutableData()
         let accepted = "hello\nworld".withCString {
-          terminal_input(orderingCore, $0, 1, 0, 0, Unmanaged.passUnretained(encoded).toOpaque(), capture)
+          helge_terminal_input(orderingCore, $0, 1, 0, 0, Unmanaged.passUnretained(encoded).toOpaque(), capture)
         }
         #expect(accepted, "ordering core rejected paste input")
         return encoded as Data
       }
       let firstAccepted = packet.withUnsafeBytes {
-        terminal_feed(orderingCore, $0.bindMemory(to: UInt8.self).baseAddress!, packet.count, 0)
+        helge_terminal_feed(orderingCore, $0.bindMemory(to: UInt8.self).baseAddress!, packet.count, 0)
       }
-      #expect(firstAccepted < packet.count && terminal_has_work(orderingCore),
+      #expect(firstAccepted < packet.count && helge_terminal_has_work(orderingCore),
         "REP packet did not yield before its mode suffix")
       #expect(encodePaste() == Data("hello\rworld".utf8), "input_before_mode_suffix_is_unbracketed")
       var accepted = firstAccepted
       packet.withUnsafeBytes { packet in
         let bytes = packet.bindMemory(to: UInt8.self)
-        while accepted < packet.count || terminal_has_work(orderingCore) {
-          accepted += terminal_feed(orderingCore, bytes.baseAddress!.advanced(by: accepted), packet.count - accepted, 0)
+        while accepted < packet.count || helge_terminal_has_work(orderingCore) {
+          accepted += helge_terminal_feed(orderingCore, bytes.baseAddress!.advanced(by: accepted), packet.count - accepted, 0)
         }
       }
       #expect(encodePaste() == Data("\u{1b}[200~hello\rworld\u{1b}[201~".utf8), "input_after_accepted_output_is_bracketed")
@@ -212,7 +212,7 @@ import TerminalInterop
     // The child validates the final PTY receipt, independent of snapshot cadence.
     let orderedScript =
       "stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; print \"X\\e[500000b\\e[?2004hREADY\"; s=STDIN.read(23); print(s==\"\\e[200~hello\\rworld\\e[201~\" ? \"\\r\\nORDERED_PASTE_OK\" : \"\\r\\nBAD_PASTE\")'"
-    let ordered = own(Session(launch: spec(orderedScript)))
+    let ordered = own(TerminalSession(launch: spec(orderedScript)))
     var sent = false
     var done = false
     ordered.onSnapshot = { snapshot in
@@ -284,7 +284,7 @@ import TerminalInterop
         break zshFixture
       }
       setenv("ZDOTDIR", privateZdotdir.path, 1)
-      let readyShell = own(Session(launch: zshSpec(launcher: bundle.launcher)))
+      let readyShell = own(TerminalSession(launch: zshSpec(launcher: bundle.launcher)))
       var sawDrawing = false
       var sawReady = false
       var startupCommandAttempts = 0
@@ -332,7 +332,7 @@ import TerminalInterop
     defer { ownedSessions.forEach { $0.close() } }
     // Automation and IME commits use key=0: the C ABI must forward the full
     // committed string rather than silently reducing it to its first scalar.
-    let committed = own(Session(launch: spec("stty raw -echo; exec /bin/cat")))
+    let committed = own(TerminalSession(launch: spec("stty raw -echo; exec /bin/cat")))
     var committedEchoed = false
     committed.onSnapshot = { snapshot in
       let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
@@ -347,7 +347,7 @@ import TerminalInterop
 
   @Test func finishedPTYRefusesInput() async throws {
     defer { ownedSessions.forEach { $0.close() } }
-    let finished = own(Session(launch: spec("printf FINISHED_PTY_READY")))
+    let finished = own(TerminalSession(launch: spec("printf FINISHED_PTY_READY")))
     var finishedRead = false
     _ = await TestEnvironment.wait(seconds: 3) {
       finished.statistics { stats in finishedRead = stats["read_ended"] as? Bool == true }
@@ -368,7 +368,7 @@ import TerminalInterop
     // screen must still prove selection/copy and a projected link activation
     // after the short-lived child has been reaped; ordinary text remains
     // rejected because there is no writer.
-    let finishedActions = own(Session(launch: rubySpec(#"""
+    let finishedActions = own(TerminalSession(launch: rubySpec(#"""
       STDOUT.sync = true
       print "FINISHED_SELECT \e]8;;https://example.test/finished\e\\FINISHED_LINK\e]8;;\e\\"
       """#, [])))
@@ -446,7 +446,7 @@ import TerminalInterop
 
   @Test func physicalKeyReachesPTY() async throws {
     defer { ownedSessions.forEach { $0.close() } }
-    let physical = own(Session(launch: spec(
+    let physical = own(TerminalSession(launch: spec(
       #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; print "PHYSICAL_READY"; key=STDIN.read(1); print(key=="!" ? "\r\nPHYSICAL_KEY_OK" : "\r\nPHYSICAL_KEY_BAD")'"#)))
     var physicalSent = false, physicalDone = false, physicalAdmitted = false
     physical.onSnapshot = { snapshot in
@@ -469,7 +469,7 @@ import TerminalInterop
     defer { ownedSessions.forEach { $0.close() } }
     // Typed key metadata is retained across the owner queue. Enormous retained
     // or expanded wire input must be rejected before it can stall the PTY.
-    let bounded = own(Session(launch: spec("sleep 1")))
+    let bounded = own(TerminalSession(launch: spec("sleep 1")))
     var boundedStatuses: [String] = []
     bounded.onStatus = { boundedStatuses.append($0) }
     let oversizedMetadata = TerminalKeyEvent(
@@ -506,7 +506,7 @@ import TerminalInterop
     func preservesModifierViewport(kitty: Bool) async -> Bool {
       let mode = kitty ? "print \"\\e[=8u\"; " : ""
       let read = kitty ? 2 : 1
-      let modifierView = own(Session(launch: spec(
+      let modifierView = own(TerminalSession(launch: spec(
         "stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; \(mode)30.times{|i| print \"modifier#{i}\\r\\n\"}; print \"MODIFIER_READY\"; STDIN.read(\(read)); print \"MODIFIER_TICK\"; sleep 1'")))
       var phase = 0
       var revision: UInt64 = 0
@@ -546,7 +546,7 @@ import TerminalInterop
     defer { ownedSessions.forEach { $0.close() } }
     // These events pass through the real owner FIFO and typed snapshot bridge.
     // Focus reports and a paired release must not make history jump to the tail.
-    let view = own(Session(launch: spec(
+    let view = own(TerminalSession(launch: spec(
       #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; 30.times{|i| print "row#{i}\r\n"}; print "VIEW_READY"; STDIN.read(1); print "\r\nVIEW_NEW_OUTPUT"'"#)))
     var viewPhase = 0
     var capturedRows: [RowSnapshot] = []
@@ -608,7 +608,7 @@ import TerminalInterop
       input = STDIN.read(1)
       print "RESIZE_REJECT_INPUT=#{input.ord} SIZE=#{`stty size`.strip}"
       """#
-    let rejectedResize = own(Session(launch: rubySpec(rejectedResizeScript, [rejectedResizeReceipt.path])))
+    let rejectedResize = own(TerminalSession(launch: rubySpec(rejectedResizeScript, [rejectedResizeReceipt.path])))
     var rejectedResizeRequested = false
     var rejectedResizeDelivered = false
     rejectedResize.onSnapshot = { snapshot in
@@ -654,7 +654,7 @@ import TerminalInterop
       print "RAPID_RESIZE_INPUT=#{input.ord} SIZE=#{`stty size`.strip}"
       sleep 0.1
       """#
-    let rapidResize = own(Session(launch: rubySpec(rapidResizeScript, [rapidResizeReceipt.path])))
+    let rapidResize = own(TerminalSession(launch: rubySpec(rapidResizeScript, [rapidResizeReceipt.path])))
     var rapidResizeRequested = false
     var rapidResizeDelivered = false
     rapidResize.onSnapshot = { snapshot in
@@ -701,7 +701,7 @@ import TerminalInterop
       input = STDIN.read(1)
       print "RESIZE_COMMIT_INPUT=#{input.ord} SIZE=#{`stty size`.strip}"
       """#
-    let committedResize = own(Session(launch: rubySpec(committedResizeScript, [committedResizeReceipt.path])))
+    let committedResize = own(TerminalSession(launch: rubySpec(committedResizeScript, [committedResizeReceipt.path])))
     var committedResizeRequested = false
     var committedResizeDelivered = false
     var committedResizeProbe = false
@@ -764,7 +764,7 @@ import TerminalInterop
       print "RESIZE_CANCEL_READY"
       sleep 30
       """#
-    let cancelledResize = own(Session(launch: rubySpec(cancelledResizeScript, [cancelledResizeReceipt.path])))
+    let cancelledResize = own(TerminalSession(launch: rubySpec(cancelledResizeScript, [cancelledResizeReceipt.path])))
     var cancelledResizeRequested = false
     var cancelledResizeClosed = false
     var cancelledResizeReaped = false
@@ -823,7 +823,7 @@ import TerminalInterop
       end
       sleep 30
       """#
-    let selectionSession = own(Session(launch: rubySpec(selectionScript, [])))
+    let selectionSession = own(TerminalSession(launch: rubySpec(selectionScript, [])))
     var staleHit: TerminalSelectionHit?
     var staleRequested = false
     var staleRejected = false
@@ -989,7 +989,7 @@ import TerminalInterop
       end
       sleep 30
       """#
-    let linkHistory = own(Session(launch: rubySpec(linkHistoryScript, [])))
+    let linkHistory = own(TerminalSession(launch: rubySpec(linkHistoryScript, [])))
     var linkHistoryResizeRequested = false
     var linkHistoryActivation: VisibleLinkProjection.Activation?
     var linkHistoryOutputReceived = false
@@ -1043,7 +1043,7 @@ import TerminalInterop
       print "\e]8;;https://example.test/pending-link\e\\https://example.test/pending-link\e]8;;\e\\"
       sleep 30
       """#
-    let pendingLink = own(Session(launch: rubySpec(pendingLinkScript, [])))
+    let pendingLink = own(TerminalSession(launch: rubySpec(pendingLinkScript, [])))
     var pendingLinkResizeRequested = false
     var pendingLinkActivation: VisibleLinkProjection.Activation?
     var pendingLinkAdmitted = false
@@ -1103,7 +1103,7 @@ import TerminalInterop
       print "SELECTION_COPY_READY"
       sleep 30
       """#
-    let pendingSelection = own(Session(launch: rubySpec(pendingSelectionScript, [])))
+    let pendingSelection = own(TerminalSession(launch: rubySpec(pendingSelectionScript, [])))
     var pendingSelectionResizeRequested = false
     var pendingSelectionCaptureRequested = false
     var pendingSelectionCaptureCompleted = false
@@ -1167,7 +1167,7 @@ import TerminalInterop
 
   @Test func historySearch() async throws {
     defer { ownedSessions.forEach { $0.close() } }
-    let searchable = own(Session(launch: spec(
+    let searchable = own(TerminalSession(launch: spec(
       #"stty raw -echo; exec /usr/bin/ruby -e 'STDOUT.sync=true; 3000.times{|i| print(i==1000 ? "SEARCH_NEEDLE\r\n" : "row#{i}\r\n")}; print "SEARCH_READY"; STDIN.read(1)'"#)))
     var searchReady = false
     var searchFound = false
@@ -1214,7 +1214,7 @@ import TerminalInterop
   @Test func saturatedPTYCancelClose() async throws {
     defer { ownedSessions.forEach { $0.close() } }
     // Fill a non-reading child's PTY. Urgent cancellation and closure must still run.
-    let blocked = own(Session(
+    let blocked = own(TerminalSession(
       launch: spec(#"stty raw -echo; printf '\033[?2004hBLOCK_READY'; exec /bin/sleep 30"#)))
     var started = false
     var reaped = false

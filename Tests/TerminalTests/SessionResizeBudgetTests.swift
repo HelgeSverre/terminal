@@ -1,9 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 /// Serialized: the test holds the process-wide reflow budget.
 @Suite(.serialized) @MainActor struct SessionResizeBudgetTests {
@@ -13,7 +13,7 @@ import Testing
   @Test func resizeWaitsForReflowBudget() async {
     var held: [ReflowReservationLedger.Lease] = []
     while let lease = ReflowReservationLedger.shared.reserve(32 * 1024 * 1024) { held.append(lease) }
-    let session = Session(launch: TestEnvironment.shell("stty raw -echo; printf BUDGET_RESIZE_READY; exec /bin/cat"))
+    let session = TerminalSession(launch: TestEnvironment.shell("stty raw -echo; printf BUDGET_RESIZE_READY; exec /bin/cat"))
     defer { session.close() }
     var requested: Date?
     var grid = (columns: 0, rows: 0)

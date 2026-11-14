@@ -1,5 +1,5 @@
 import AppKit
-import TerminalView
+import TerminalUI
 
 final class TerminalPanePresentationView: NSView {
   static let headerHeight: CGFloat = 20

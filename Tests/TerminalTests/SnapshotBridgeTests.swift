@@ -2,10 +2,10 @@ import AppKit
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 /// Serialized: the diagnostics counters (`SnapshotABIDiagnostics`) are
 /// process-wide, and the test compares them before and after.
@@ -14,8 +14,8 @@ import TerminalInterop
     let bytes = Array(text.utf8) + [0]
     bytes.withUnsafeBufferPointer { buffer in
       var offset = 0
-      while offset < bytes.count - 1 || terminal_has_work(core) {
-        let used = terminal_feed(core, buffer.baseAddress! + offset, bytes.count - 1 - offset, 0)
+      while offset < bytes.count - 1 || helge_terminal_has_work(core) {
+        let used = helge_terminal_feed(core, buffer.baseAddress! + offset, bytes.count - 1 - offset, 0)
         offset += used
       }
     }
@@ -40,8 +40,8 @@ import TerminalInterop
     #expect(value.cwd == legacy.cwd)
   }
   static func legacySnapshot(_ core: OpaquePointer, scroll: Int = 0) throws -> TerminalSnapshot {
-    let json = try #require(terminal_snapshot(core, scroll, 0), "legacy snapshot")
-    defer { terminal_string_free(json) }
+    let json = try #require(helge_terminal_snapshot(core, scroll, 0), "legacy snapshot")
+    defer { helge_terminal_string_free(json) }
     return try JSONDecoder().decode(TerminalSnapshot.self, from: Data(bytes: json, count: strlen(json)))
   }
   @MainActor static func check(_ core: OpaquePointer, scroll: Int = 0) throws -> TerminalSnapshot {
@@ -59,8 +59,8 @@ import TerminalInterop
   /// C oracles: styles and links, Unicode, search, scroll, images, the sync
   /// gate and owned lifetimes. The blocks share one terminal core.
   @MainActor @Test static func directBridgeMatchesOracles() throws {
-    let core = try #require(terminal_create(8, 3), "create core")
-    defer { terminal_destroy(core) }
+    let core = try #require(helge_terminal_create(8, 3), "create core")
+    defer { helge_terminal_destroy(core) }
     func feed(_ text: String) { Self.feed(core, text) }
     func check(scroll: Int = 0) throws -> TerminalSnapshot { try Self.check(core, scroll: scroll) }
     #expect(SnapshotBridge.read(nil, scroll: 0, now: 0).snapshot == nil)
@@ -88,10 +88,10 @@ import TerminalInterop
     // borrowed-string and JSON paths rather than silently using Swift values.
     #expect(SnapshotABIDiagnostics.borrowedStringAllocations > borrowedBaseline)
     #expect(SnapshotABIDiagnostics.jsonPublications >= jsonBaseline + 2)
-    let shapeJSON = terminal_snapshot(core, 0, 0)!
+    let shapeJSON = helge_terminal_snapshot(core, 0, 0)!
     var shapeMetadata = try JSONSerialization.jsonObject(
       with: Data(bytes: shapeJSON, count: strlen(shapeJSON))) as! [String: Any]
-    terminal_string_free(shapeJSON)
+    helge_terminal_string_free(shapeJSON)
     for (columns, rows) in [(0, 1), (1, 0), (4097, 1), (1, 4097), (4096, 257), (Int.max, Int.max)] {
       let error = TerminalSnapshot.geometryError(columns: columns, rows: rows)
       #expect(error != nil)
@@ -117,10 +117,10 @@ import TerminalInterop
     feed("\u{1b}]133;B\u{7}")
     let inputReady = try check()
     #expect(inputReady.at_prompt && inputReady.input_ready == true)
-    let readyJSON = try #require(terminal_snapshot(core, 0, 0), "ready snapshot")
+    let readyJSON = try #require(helge_terminal_snapshot(core, 0, 0), "ready snapshot")
     var oldMetadata = try JSONSerialization.jsonObject(
       with: Data(bytes: readyJSON, count: strlen(readyJSON))) as! [String: Any]
-    terminal_string_free(readyJSON)
+    helge_terminal_string_free(readyJSON)
     oldMetadata.removeValue(forKey: "input_ready")
     let oldSnapshot = try JSONDecoder().decode(
       TerminalSnapshot.self, from: JSONSerialization.data(withJSONObject: oldMetadata))
@@ -210,7 +210,7 @@ import TerminalInterop
     feed("\u{1b}]8;;\u{1b}\\\u{1b}[0m\r\nplain\r\nmore\r\nlast\r\n")
     _ = try check()
     _ = try check(scroll: 2)
-    terminal_view_scroll(core, 2)
+    helge_terminal_view_scroll(core, 2)
     let anchored = SnapshotBridge.readView(core, now: 0).snapshot!
     compare(anchored, BinarySnapshotOracle.readView(core, now: 0).snapshot!)
     #expect(!anchored.following_tail && anchored.scroll_offset == 2)
@@ -218,7 +218,7 @@ import TerminalInterop
     let retained = SnapshotBridge.readView(core, now: 0).snapshot!
     compare(retained, BinarySnapshotOracle.readView(core, now: 0).snapshot!)
     #expect(retained.rows == anchored.rows && retained.scroll_offset == 4)
-    terminal_view_follow_tail(core)
+    helge_terminal_view_follow_tail(core)
     #expect(SnapshotBridge.readView(core, now: 0).snapshot!.following_tail)
     feed("\u{1b}]2;Bridge title\u{7}\u{1b}[?1004h\u{1b}[?2004h\u{1b}[?1006h")
     feed("\u{1b}[?1002h\u{1b}[20h\u{1b}[?25l\u{1b}[4 q")
@@ -252,20 +252,20 @@ import TerminalInterop
     #expect(caretProjection.spans(for: caretRange).first?.column == 5)
     feed("\u{1b}cneedle")
     let query = Array("needle".utf8)
-    let task = query.withUnsafeBufferPointer { terminal_search_create(core, $0.baseAddress, $0.count) }!
+    let task = query.withUnsafeBufferPointer { helge_terminal_search_create(core, $0.baseAddress, $0.count) }!
     var searchStatus: UInt32 = 0
     for _ in 0..<100 {
-      searchStatus = terminal_search_fill(core, task)
-      if searchStatus == 0 { _ = terminal_search_step(task) }
-      else if searchStatus == 2 { searchStatus = terminal_search_accept(core, task); break }
+      searchStatus = helge_terminal_search_fill(core, task)
+      if searchStatus == 0 { _ = helge_terminal_search_step(task) }
+      else if searchStatus == 2 { searchStatus = helge_terminal_search_accept(core, task); break }
       else { Issue.record("unexpected search status"); break }
     }
-    terminal_search_destroy(task)
+    helge_terminal_search_destroy(task)
     #expect(searchStatus == 5)
     let searched = try check()
     #expect(!searched.search.isEmpty)
     feed("\u{1b}c")
-    #expect(terminal_resize(core, 1, 3))
+    #expect(helge_terminal_resize(core, 1, 3))
     feed("猫")
     let clipped = try check()
     #expect(clipped.rows[0].cells[0].flags & 1 != 0)
@@ -284,17 +284,17 @@ import TerminalInterop
     // Alternating styles exercise both ends of the sorted run index and
     // ranges crossing a synthetic newline without asking for the full grid.
     let parent = NSView(frame: .zero)
-    let stripedCore = terminal_create(128, 64)!
+    let stripedCore = helge_terminal_create(128, 64)!
     let stripes = Data((0..<8_191).map { "\u{1b}[\($0.isMultiple(of: 2) ? 31 : 32)mX" }.joined().utf8)
     stripes.withUnsafeBytes { raw in
       let bytes = raw.bindMemory(to: UInt8.self)
       var offset = 0
-      while offset < bytes.count || terminal_has_work(stripedCore) {
-        offset += terminal_feed(stripedCore, bytes.baseAddress! + offset, bytes.count - offset, 0)
+      while offset < bytes.count || helge_terminal_has_work(stripedCore) {
+        offset += helge_terminal_feed(stripedCore, bytes.baseAddress! + offset, bytes.count - offset, 0)
       }
     }
     let striped = AccessibilityProjection(snapshot: SnapshotBridge.read(stripedCore, scroll: 0, now: 0).snapshot!)
-    terminal_destroy(stripedCore)
+    helge_terminal_destroy(stripedCore)
     #expect(striped.length == 8_191 + 63)
     for index in 0..<striped.length {
       #expect(striped.styleRange(for: index) == NSRange(location: index, length: 1))
@@ -317,12 +317,12 @@ import TerminalInterop
   @MainActor @Test static func historyViewport() throws {
     // History is a displayed viewport: the live cursor must not manufacture
     // padding in an unrelated historical row. The projection owns that rule.
-    let historyCore = terminal_create(8, 3)!
+    let historyCore = helge_terminal_create(8, 3)!
     let historyInput = Data("\r\n\r\n\r\n\u{1b}[1;6H".utf8)
     historyInput.withUnsafeBytes {
-      _ = terminal_feed(historyCore, $0.bindMemory(to: UInt8.self).baseAddress!, $0.count, 0)
+      _ = helge_terminal_feed(historyCore, $0.bindMemory(to: UInt8.self).baseAddress!, $0.count, 0)
     }
-    terminal_view_scroll(historyCore, 1)
+    helge_terminal_view_scroll(historyCore, 1)
     let historyView = SnapshotBridge.readView(historyCore, now: 0).snapshot!
     compare(historyView, BinarySnapshotOracle.readView(historyCore, now: 0).snapshot!)
     #expect(!historyView.following_tail)
@@ -334,10 +334,10 @@ import TerminalInterop
       compare(SnapshotBridge.read(historyCore, scroll: scroll, now: 0).snapshot!, legacy)
       compare(BinarySnapshotOracle.read(historyCore, scroll: scroll, now: 0).snapshot!, legacy)
     }
-    #expect(terminal_resize(historyCore, 8, 5))
+    #expect(helge_terminal_resize(historyCore, 8, 5))
     let primaryAnchor = SnapshotBridge.readView(historyCore, now: 0).snapshot!
     #expect(primaryAnchor.scroll_offset == 0 && !primaryAnchor.following_tail)
     compare(primaryAnchor, BinarySnapshotOracle.readView(historyCore, now: 0).snapshot!)
-    terminal_destroy(historyCore)
+    helge_terminal_destroy(historyCore)
   }
 }

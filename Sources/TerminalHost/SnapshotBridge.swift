@@ -1,5 +1,5 @@
 import Foundation
-import TerminalCore
+import TerminalEngine
 
 // The handle is owner-queue confined. Publication returns owned Swift values;
 // the C borrowed-cell/JSON endpoints remain separate compatibility oracles.

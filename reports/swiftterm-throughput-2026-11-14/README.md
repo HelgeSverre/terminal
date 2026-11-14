@@ -8,7 +8,7 @@ is built differently (see below).
 
 | | Terminal | SwiftTerm |
 | --- | --- | --- |
-| Version | `7a396ab`, through the `TerminalView` product | `v1.99.3` (`282c3c3a`), the newest release |
+| Version | `7a396ab`, through the `TerminalUI` product | `v1.99.3` (`282c3c3a`), the newest release |
 | Build | `swift build -c release` | `swift build -c release`, with one line patched |
 | Renderer | Metal | Core Graphics (its default), and Metal with `--metal` |
 | Font | Obel Mono 14 pt | Menlo 14 pt |

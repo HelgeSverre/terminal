@@ -2,7 +2,7 @@
 
 The settings window is an AppKit extension of Terminal's existing charcoal and
 yellow visual language. `Sources/Terminal/Settings.swift` owns the window, schema,
-and shared field renderer; `Sources/TerminalView/Theme.swift` owns its palette.
+and shared field renderer; `Sources/TerminalUI/Theme.swift` owns its palette.
 This document describes the local implementation, not a published release.
 
 The five sections are General, Text, Scrollback, Panes, and Keyboard. The HTML

@@ -3,7 +3,7 @@ import CoreText
 import Metal
 import QuartzCore
 import simd
-import TerminalCore
+import TerminalEngine
 
 struct RenderRequest {
   let snapshot: TerminalSnapshot

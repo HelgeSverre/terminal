@@ -4,9 +4,9 @@ import Metal
 import Testing
 import simd
 @testable import TerminalApp
-@testable import TerminalCore
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalEngine
+@testable import TerminalHost
+@testable import TerminalUI
 
 private struct ShaderQuad {
   var rect: SIMD4<Float>
@@ -42,7 +42,7 @@ private struct ShaderQuad {
   static func productionLibrary(device: MTLDevice) -> MTLLibrary? {
     let built = TestEnvironment.repository.appendingPathComponent("dist/Terminal.app/Contents/Resources/Terminal.metallib")
     if let library = try? device.makeLibrary(URL: built) { return library }
-    let source = TestEnvironment.repository.appendingPathComponent("Sources/TerminalView/Resources/Terminal.metal")
+    let source = TestEnvironment.repository.appendingPathComponent("Sources/TerminalUI/Resources/Terminal.metal")
     guard let text = try? String(contentsOf: source, encoding: .utf8) else { return nil }
     return try? device.makeLibrary(source: text, options: nil)
   }

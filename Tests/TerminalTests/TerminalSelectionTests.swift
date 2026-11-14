@@ -1,10 +1,10 @@
 import Foundation
 import Testing
 @testable import TerminalApp
-@testable import TerminalCore
+@testable import TerminalEngine
 import TerminalInterop
-@testable import TerminalSession
-@testable import TerminalView
+@testable import TerminalHost
+@testable import TerminalUI
 
 /// Owner selection against the core. Serialized: tests pause and drain the process-wide
 /// selection retirement queue and word-job worker.
@@ -14,7 +14,7 @@ import TerminalInterop
     bytes.withUnsafeBufferPointer { buffer in
       var offset = 0
       while offset < buffer.count {
-        let count = terminal_feed(core, buffer.baseAddress!.advanced(by: offset), buffer.count - offset, 0)
+        let count = helge_terminal_feed(core, buffer.baseAddress!.advanced(by: offset), buffer.count - offset, 0)
         #expect(count > 0, "fixture feed progress"); if count <= 0 { return }
         offset += count
       }
@@ -48,8 +48,8 @@ import TerminalInterop
     return result
   }
   @Test static func emptyGesture() {
-    let core = terminal_create(8, 3)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "a界")
     for column in [0, 5] {
       _ = perform(core, .begin(hit(snapshot(core), row: 0, column: column), granularity: .character))
@@ -67,8 +67,8 @@ import TerminalInterop
     #expect(snapshot(core).selection.phase == .committed && copy(core) == "", "nonempty implicit-blank range remains a successful empty copy")
   }
   @Test static func selectedHardRowBoundaries() {
-    let core = terminal_create(8, 3)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "first\r\nnext")
     select(core, snapshot(core), (0, 0), (1, 0))
     #expect(copy(core) == "first\n", "selected trailing hard newline is copied")
@@ -87,8 +87,8 @@ import TerminalInterop
     #expect(snapshot(core).selection.phase == .none, "soft-wrap boundary alone contains no selected cells or hard separator")
   }
   @Test static func inclusivePointerGesture() {
-    let core = terminal_create(8, 3)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "abcde\r\nABCDE")
     func drag(_ start: (Int, Int), _ end: (Int, Int), _ granularity: TerminalSelectionGranularity = .character) {
       // This fixture checks pointer ranges, not retirement backpressure
@@ -113,13 +113,13 @@ import TerminalInterop
     #expect(copy(core) == "a", "AX range remains exclusive")
   }
   @Test static func historyCaptureAndRetirement() {
-    let core = terminal_create(4, 3)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(4, 3)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "x")
     let original = snapshot(core)
     _ = perform(core, .begin(hit(original, row: 0, column: 0), granularity: .character))
     feed(core, String(repeating: "\r\nx", count: 49_999))
-    let charged = terminal_history_bytes(core)
+    let charged = helge_terminal_history_bytes(core)
     let shown = snapshot(core)
     var progress = TerminalSelectionBridge.begin(core: core, action: .extend(hit(shown, row: 2, column: 0)))
     var turns = 0
@@ -130,8 +130,8 @@ import TerminalInterop
     if case .completed = progress {} else { Issue.record("immutable unseen history interior admitted"); return }
     #expect(turns >= 195, "50k rows captured in bounded owner turns")
     #expect(copy(core) == String(repeating: "x\n", count: 49_999) + "x", "50k history copy is exact")
-    #expect(terminal_history_bytes(core) == charged && original.rows[0].cells[0].text == "x", "selection does not alter history accounting or retained snapshot")
-    terminal_set_history_limit(core, 0)
+    #expect(helge_terminal_history_bytes(core) == charged && original.rows[0].cells[0].text == "x", "selection does not alter history accounting or retained snapshot")
+    helge_terminal_set_history_limit(core, 0)
     #expect(copy(core) == nil, "selection does not pin 50k rows against eviction")
 
     TerminalSelection.drainRetirementForTesting()
@@ -146,29 +146,29 @@ import TerminalInterop
     #expect(copy(core) == "x", "retirement releases admission only after resources are dropped")
   }
   @Test static func alternateCrop() {
-    let core = terminal_create(4, 4)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(4, 4)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "\u{1b}[?47habcdefghij")
     select(core, snapshot(core), (0, 0), (2, 2))
     #expect(copy(core) == "abcdefghij", "alternate soft-chain selection")
-    #expect(terminal_resize(core, 4, 2), "alternate height crop")
+    #expect(helge_terminal_resize(core, 4, 2), "alternate height crop")
     #expect(copy(core) == nil, "cropped selected successor invalidates soft-chain selection")
     select(core, snapshot(core), (0, 0), (0, 4))
-    #expect(terminal_resize(core, 4, 1), "alternate last-row soft edge crop")
+    #expect(helge_terminal_resize(core, 4, 1), "alternate last-row soft edge crop")
     #expect(copy(core) == "abcd", "edge after final selected row is irrelevant to copy")
   }
   @Test static func oversizedCopyRejectsAtomically() {
-    let core = terminal_create(512, 256)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(512, 256)!
+    defer { helge_terminal_destroy(core) }
     // One admitted cluster reaches the real 64-scalar cap. REP shares its
     // immutable payload; no giant fixture input bypasses parser admission.
     let cluster = "a" + String(repeating: "\u{1ab0}", count: 63)
     #expect(cluster.unicodeScalars.count == 64 && cluster.utf8.count == 190, "capped cluster fixture")
     feed(core, cluster + "\u{1b}[131071b")
     var feedTurns = 0
-    while terminal_has_work(core) {
+    while helge_terminal_has_work(core) {
       feedTurns += 1; #expect(feedTurns < 10_000, "resumable REP fixture progress"); if feedTurns >= 10_000 { break }
-      _ = terminal_feed(core, nil, 0, 0)
+      _ = helge_terminal_feed(core, nil, 0, 0)
     }
     let filled = snapshot(core)
     #expect(filled.rows[0].cells[0].text == cluster && filled.rows[255].cells[511].text == cluster,
@@ -209,8 +209,8 @@ import TerminalInterop
     }
   }
   @Test static func exactWriteEvidence() {
-    let core = terminal_create(12, 3)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(12, 3)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "hello world")
     select(core, snapshot(core), (0, 0), (0, 5))
     feed(core, "\u{1b}[1;10HX")
@@ -222,8 +222,8 @@ import TerminalInterop
     #expect(copy(core) == nil, "insert/delete shifting selected content must invalidate")
   }
   @Test static func presentedInteriorProof() {
-    let core = terminal_create(8, 4)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 4)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "one\r\ntwo\r\nthree")
     let shown = snapshot(core)
     feed(core, "\u{1b}[2;1HX")
@@ -235,8 +235,8 @@ import TerminalInterop
     if case .rejected(.staleTarget) = stale {} else { Issue.record("RIS row ID reuse must reject old hit"); return }
   }
   @Test static func copyPolicy() {
-    let core = terminal_create(6, 4)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(6, 4)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "ab  \r\nc界d\r\n\u{1b}[8msecret")
     select(core, snapshot(core), (0, 0), (1, 6))
     #expect(copy(core) == "ab  \nc界d", "printed spaces preserved; absent tail trimmed; wide continuation skipped")
@@ -249,8 +249,8 @@ import TerminalInterop
     #expect(copy(core) == "ABCDEFGH", "confirmed soft wrap joins without newline")
   }
   @Test static func stableRowsAndScreens() {
-    let core = terminal_create(8, 3)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 3)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "selected\r\nnext")
     select(core, snapshot(core), (0, 0), (0, 8))
     feed(core, "\r\nmore\r\nlast")
@@ -261,12 +261,12 @@ import TerminalInterop
     #expect(copy(core) == "ALT", "alternate owns separate selection")
     feed(core, "\u{1b}[?1049l")
     #expect(copy(core) == "selected", "primary selection returns")
-    terminal_set_history_limit(core, 0)
+    helge_terminal_set_history_limit(core, 0)
     #expect(copy(core) == nil, "eviction clears endpoint without pinning history")
   }
   @Test static func acceptedCopyAndCancellation() {
-    let core = terminal_create(80, 80)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(80, 80)!
+    defer { helge_terminal_destroy(core) }
     feed(core, String(repeating: "x", count: 79))
     select(core, snapshot(core), (0, 0), (0, 79))
     guard case .completed(let result) = perform(core, .copy(expectedSelectionRevision: snapshot(core).selection.revision)) else {
@@ -280,19 +280,19 @@ import TerminalInterop
     if case .rejected(.noSelection) = TerminalSelectionBridge.advance(core: core) {} else { Issue.record("cancel ends pending operation"); return }
   }
   @Test static func reflowSelection() {
-    let core = terminal_create(8, 4)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 4)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "abcdefghijklmnop\r\nend")
     select(core, snapshot(core), (0, 1), (1, 7))
     let original = copy(core)
-    #expect(terminal_resize(core, 5, 6), "selection reflow commits")
+    #expect(helge_terminal_resize(core, 5, 6), "selection reflow commits")
     #expect(copy(core) == original, "linear selected content survives width reflow")
-    #expect(terminal_resize(core, 8, 4), "selection roundtrip commits")
+    #expect(helge_terminal_resize(core, 8, 4), "selection roundtrip commits")
     #expect(copy(core) == original, "linear selected content survives width roundtrip")
     feed(core, "\u{1b}cabcdefghABCDEFGH")
     select(core, snapshot(core), (0, 2), (1, 5), mode: .rectangular)
     #expect(copy(core) == "cde\nCDE", "rectangle before reflow")
-    #expect(terminal_resize(core, 16, 4), "rectangle reflow")
+    #expect(helge_terminal_resize(core, 16, 4), "rectangle reflow")
     #expect(copy(core) == "cde\nCDE", "rectangle groups survive two disjoint intervals in one output row")
     feed(core, "\u{1b}[1;7Hx")
     #expect(copy(core) == "cde\nCDE", "write between rectangle slices preserves selection")
@@ -300,8 +300,8 @@ import TerminalInterop
     #expect(copy(core) == nil, "same-byte overwrite inside second rectangle slice invalidates")
   }
   @Test static func delayedWordWorker() {
-    let core = terminal_create(8, 4)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 4)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "élève/path next")
     var result = TerminalSelectionProgress.pending
     TerminalSelection.withWordJobsPausedForTesting {
@@ -318,8 +318,8 @@ import TerminalInterop
     #expect(copy(core) == "élève/path", "delayed worker preserves Unicode word and soft-wrap boundaries")
   }
   @Test static func wordSelection() {
-    let core = terminal_create(8, 4)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(8, 4)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "élève/path next")
     let shown = snapshot(core)
     guard case .completed = perform(core, .begin(hit(shown, row: 0, column: 2), granularity: .word)) else {
@@ -338,8 +338,8 @@ import TerminalInterop
     #expect(TerminalSelectionWordProfile(punctuation: "\u{7}") == nil, "profile rejects controls")
     #expect(TerminalSelectionWordProfile(punctuation: String(repeating: "x", count: 65)) == nil, "profile scalar bound")
     #expect((try? JSONDecoder().decode(TerminalSelectionWordProfile.self, from: Data("\"a b\"".utf8))) == nil, "decoded profile validated")
-    let core = terminal_create(16, 3)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(16, 3)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "foo/bar next")
     _ = perform(core, .begin(hit(snapshot(core), row: 0, column: 1), granularity: .word))
     #expect(copy(core) == "foo/bar", "default punctuation profile")
@@ -353,22 +353,22 @@ import TerminalInterop
     if case .rejected = perform(core, .copy(expectedSelectionRevision: oldRevision)) {} else { Issue.record("delayed copy cannot retarget alternate screen"); return }
   }
   @Test static func resizeCancellationAndWideAffinity() {
-    let core = terminal_create(1, 4)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(1, 4)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "界")
     select(core, snapshot(core), (0, 0), (0, 1))
     _ = TerminalResizeBridge.begin(core: core, columns: 2, rows: 4, cellWidth: 8, cellHeight: 16)
     TerminalResizeBridge.cancel(core: core)
     #expect(copy(core) == "界", "resize cancellation preserves selection watch generation")
-    #expect(terminal_resize(core, 2, 4), "clipped-wide selection resize")
+    #expect(helge_terminal_resize(core, 2, 4), "clipped-wide selection resize")
     #expect(copy(core) == "界", "clipped-wide selection restored intact")
     let value = snapshot(core)
     #expect(value.cursor.row == 0 && value.cursor.col == 1 && value.cursor.pending_wrap,
       "selection before-affinity must not move pending-wrap cursor after-affinity")
   }
   @Test static func pendingRollbackAndEmptyCopy() {
-    let core = terminal_create(16, 512)!
-    defer { terminal_destroy(core) }
+    let core = helge_terminal_create(16, 512)!
+    defer { helge_terminal_destroy(core) }
     feed(core, "saved")
     select(core, snapshot(core), (0, 0), (0, 5))
     let shown = snapshot(core)
@@ -381,8 +381,8 @@ import TerminalInterop
     feed(core, "\u{1b}[1;2Ha")
     #expect(copy(core) == nil, "restored observation still catches equal-byte selected write")
 
-    let blank = terminal_create(1024, 128)!
-    defer { terminal_destroy(blank) }
+    let blank = helge_terminal_create(1024, 128)!
+    defer { helge_terminal_destroy(blank) }
     select(blank, snapshot(blank), (0, 0), (127, 1024))
     var progress = TerminalSelectionBridge.begin(core: blank, action: .copy(expectedSelectionRevision: snapshot(blank).selection.revision))
     var turns = 0

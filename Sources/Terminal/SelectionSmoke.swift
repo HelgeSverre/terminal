@@ -1,6 +1,6 @@
 import AppKit
-import TerminalCore
-import TerminalView
+import TerminalEngine
+import TerminalUI
 
 /// Real-AppKit selection smoke. It uses only a fixed child fixture, private
 /// pasteboard scope, and the same mouse handlers used by the application.
