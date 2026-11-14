@@ -72,6 +72,30 @@ is not part of the library by design.
 | Conformance evidence | 414 tests, real programs; no esctest, no fuzzer | 474 gated esctest cases, fuzzer, Thread Sanitizer | fuzzing, interface checks; esctest report-only |
 | License | MIT | MIT | MIT |
 
+## Fixed since the audit
+
+- **Defect 1:** the view no longer replaces the host's `session.onStatus`.
+- **Defect 2:** a second view on one session stops with a message instead of
+  blanking the first.
+- **Defect 3:** releasing a session ends its child, as `close()` does.
+- **Defect 4:** `TerminalRendering.RendererError` is public.
+- **Defect 5:** launch failures arrive as `SessionLaunchFailure` on
+  `onLaunchFailure`; `SessionEnd` carries the exit code or the signal.
+  `onStatus` remains, as text for a log.
+- **Defect 7, in part:** the libraries no longer read the host's command
+  line, and `LaunchSpec.environment` lets a host set `TERM_PROGRAM` and any
+  other variable. The zsh integration lookup and the accessibility
+  identifiers are unchanged. `EarlyChild` touches `UserDefaults` only when the
+  app starts an early child, which a host never does.
+- **Defect 8:** the parser's classes are exempt from dynamic exclusivity
+  checks in the source, so the package build needs no flag. The same host
+  measured 131 MiB/s on truecolor before and 204 to 206 after; mixed Unicode
+  went from 107 to 142 to 143.
+- **From "not public":** scroll, process ID, working directory, visible text,
+  grid size, and the Paste, Cancel Paste and Clear Screen actions are public.
+
+The lists below are as audited at `7a396ab`.
+
 ## Defects in the public interface today
 
 ### Breaks a host, or forces a rename later

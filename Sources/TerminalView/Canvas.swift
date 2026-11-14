@@ -106,6 +106,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     self.configuration = configuration
     super.init(frame: frame)
     fontPoints = configuration.fontSize
+    session.attachView()
     session.configure(configuration.session)
     wantsLayer = true
     // Let AppKit map top-left placement into the backing layer's coordinate
@@ -142,7 +143,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
       }
       display(value)
     }
-    session.onStatus = { [weak self] status in self?.onStatus?(status) }
+    session.onViewStatus = { [weak self] status in self?.onStatus?(status) }
     session.onClipboardWrite = { [weak self] request in
       guard let self, let clipboard = self.clipboard else {
         request.resolve(false) { _ in }
@@ -439,6 +440,19 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   /// The grid the view's bounds hold at the current font, or nil while the
   /// view is too small to hold one.
+  /// The text on screen, one line per row, without trailing spaces.
+  public var visibleText: String {
+    guard let snapshot else { return "" }
+    return snapshot.rows.map { row in
+      // The second cell of a wide character holds nothing of its own.
+      var line = row.cells.map { $0.kind == "Continuation" ? "" : ($0.text.isEmpty ? " " : $0.text) }.joined()
+      while line.hasSuffix(" ") { line.removeLast() }
+      return line
+    }.joined(separator: "\n")
+  }
+  /// The grid the view's bounds hold at the current font, or nil while the
+  /// view is too small to hold one.
+  public var gridSize: (columns: Int, rows: Int)? { gridForBounds }
   package var gridForBounds: (columns: Int, rows: Int)? {
     guard bounds.width > 16, bounds.height > 16, cellWidth > 0, cellHeight > 0 else { return nil }
     return (
@@ -824,11 +838,14 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     guard item.action == #selector(copy(_:)) else { return true }
     return snapshot.map { $0.selection.phase != .none } ?? false
   }
-  @objc func cancelPaste(_ sender: Any?) { session.cancelPaste() }
-  @objc package func clearScreen(_ sender: Any?) {
+  /// Stops a paste that is still being delivered.
+  @objc public func cancelPaste(_ sender: Any?) { session.cancelPaste() }
+  /// Clears the display, keeping the prompt being edited.
+  @objc public func clearScreen(_ sender: Any?) {
     session.clearDisplay()
   }
-  @objc func paste(_ sender: Any?) {
+  /// Pastes the general pasteboard's text.
+  @objc public func paste(_ sender: Any?) {
     if let text = NSPasteboard.general.string(forType: .string) { send(text, key: 1) }
   }
   public override func selectAll(_ sender: Any?) {

@@ -722,6 +722,17 @@ if let launch = AppDelegate.firstLaunch() {
   let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096)
   EarlyChild.start(launch, grid: columns.flatMap { columns in rows.map { (columns, $0) } })
 }
+// The libraries take their measurement switches from the app; they do not
+// read its command line.
+do {
+  let arguments = Array(CommandLine.arguments.prefix { $0 != "--execute" })
+  SessionDiagnostics.collectsStreamStatistics = arguments.contains("--session-statistics-file")
+  RenderingDiagnostics.atlasPressure = CommandLine.arguments.contains("--atlas-pressure-smoke")
+  RenderingDiagnostics.atlasFallbackBudget = CommandLine.arguments.contains("--atlas-fallback-budget-smoke")
+  if let index = arguments.firstIndex(of: "--first-frame-file"), index + 1 < arguments.count {
+    RenderingDiagnostics.firstFrameFile = arguments[index + 1]
+  }
+}
 let application = NSApplication.shared
 // Started only now: touching Metal before the application object exists
 // leaves the first window unable to become key when the app is launched

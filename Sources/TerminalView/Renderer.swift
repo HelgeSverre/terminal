@@ -233,8 +233,8 @@ public final class TerminalRendering: @unchecked Sendable {
     }
     device = gpu
     self.commands = commands
-    let pressureSmoke = CommandLine.arguments.contains("--atlas-pressure-smoke")
-    let fallbackBudgetSmoke = CommandLine.arguments.contains("--atlas-fallback-budget-smoke")
+    let pressureSmoke = RenderingDiagnostics.atlasPressure
+    let fallbackBudgetSmoke = RenderingDiagnostics.atlasFallbackBudget
     atlasSize = pressureSmoke ? 128 : 2048
     atlasPages = pressureSmoke ? 4 : 2
     directGlyphBudget = fallbackBudgetSmoke ? 0 : 8 * 1024 * 1024
@@ -271,7 +271,15 @@ public final class TerminalRendering: @unchecked Sendable {
     resetAtlas()
     glyphResidency.setOnReady { [weak self] in self?.redisplayAfterGlyphReady() }
   }
-  enum RendererError: Error { case noDevice, noShaders, noMemory }
+  /// Why a renderer could not be created.
+  public enum RendererError: Error, Sendable {
+    /// The Mac has no Metal device.
+    case noDevice
+    /// The bundle holds neither the compiled shaders nor their source.
+    case noShaders
+    /// The first glyph atlas page could not be allocated.
+    case noMemory
+  }
   func attach(_ layer: CAMetalLayer) -> SurfaceLease {
     precondition(Thread.isMainThread)
     layer.device = device
@@ -833,8 +841,7 @@ public final class TerminalRendering: @unchecked Sendable {
       }
     }
     if !request.marked.isEmpty {
-      let smokeMarkedLimit = CommandLine.arguments.contains("--atlas-pressure-smoke")
-        || CommandLine.arguments.contains("--atlas-fallback-budget-smoke")
+      let smokeMarkedLimit = RenderingDiagnostics.atlasPressure || RenderingDiagnostics.atlasFallbackBudget
       let cells = min(smokeMarkedLimit ? 160 : 20, max(1, request.marked.count))
       let key = GlyphKey(
         text: request.marked, cells: cells, bold: false, italic: false,
@@ -1107,11 +1114,7 @@ package final class RendererMetrics: @unchecked Sendable {
   // `--first-frame-file PATH` asks for the time of the process's first
   // presented frame, for startup measurement: one line, "frame <ns>", on the
   // CLOCK_UPTIME_RAW clock.
-  private static var firstFrameFile: String? = {
-    let arguments = CommandLine.arguments.prefix { $0 != "--execute" }
-    guard let index = arguments.firstIndex(of: "--first-frame-file"), index + 1 < arguments.count else { return nil }
-    return arguments[index + 1]
-  }()
+  private static var firstFrameFile: String? = RenderingDiagnostics.firstFrameFile
   static func recordPresentation(
     requestWidth: Int, requestHeight: Int, drawableWidth: Int, drawableHeight: Int
   ) {

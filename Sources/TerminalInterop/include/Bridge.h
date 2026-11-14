@@ -52,6 +52,9 @@ void terminal_search_clear(Terminal *);
 void terminal_finish(Terminal *);
 typedef struct {int master;int status;int pid;int error;} TerminalProcess;
 TerminalProcess terminal_spawn_args(const char *,const char *,const char *,uint16_t,uint16_t,char *const []);
+/* The same, with "NAME=value" entries that replace the child's variables of
+ * those names; the last argument is NULL-terminated or NULL. */
+TerminalProcess terminal_spawn_environment(const char *,const char *,const char *,uint16_t,uint16_t,char *const [],char *const []);
 void terminal_set_program_version(const char *);
 bool terminal_validate(Terminal *);
 bool terminal_has_work(Terminal *);

@@ -42,3 +42,15 @@ package enum TerminalResources {
     return try device.makeLibrary(source: String(contentsOf: source, encoding: .utf8), options: nil)
   }
 }
+
+/// Measurement switches the app turns on from its command line. The view and
+/// the renderer never read the host's arguments themselves. Set before the
+/// renderer is created.
+package enum RenderingDiagnostics {
+  /// A small glyph atlas, so that a smoke run fills it.
+  nonisolated(unsafe) package static var atlasPressure = false
+  /// No budget for glyphs outside the atlas, so that a smoke run exhausts it.
+  nonisolated(unsafe) package static var atlasFallbackBudget = false
+  /// Where to write the time of the first presented frame, as "frame <ns>".
+  nonisolated(unsafe) package static var firstFrameFile: String?
+}

@@ -99,12 +99,23 @@ with the app.
 | Launch | Runs |
 | --- | --- |
 | `LaunchSpec.loginShell(cwd:launcher:)` | `$SHELL -l`, or `/bin/zsh -l` when `SHELL` is unset |
-| `LaunchSpec(executable:arguments:cwd:launcher:)` | Any program. `arguments` includes the program name as its first element. |
+| `LaunchSpec(executable:arguments:cwd:launcher:environment:)` | Any program. `arguments` includes the program name as its first element. |
 
-The child sees `TERM=xterm-256color`, `COLORTERM=truecolor` and
-`TERM_PROGRAM=HelgeTerminal`. Variables that describe another terminal the
-host itself was started from (`TERM_SESSION_ID`, `KITTY_*`, `TMUX` and the
-like) are removed.
+The child inherits the host's environment with `TERM=xterm-256color`,
+`COLORTERM=truecolor` and `TERM_PROGRAM=HelgeTerminal` set, and with the
+variables removed that describe another terminal the host itself was started
+from (`TERM_SESSION_ID`, `KITTY_*`, `TMUX` and the like). `environment` names
+variables for the child and replaces any of these, so a host sets its own
+`TERM_PROGRAM` there.
+
+### Lifetime
+
+A session serves one view; creating a second view on it stops the program
+with a message. `close()` ends the session: the child is sent `SIGHUP`, and
+`SIGKILL` two seconds later if it is still there. Releasing the last
+reference to a session does the same, so a host that drops a view and its
+session does not leave a shell running. After `close()` the session does not
+call `onEnd`.
 
 ## Callbacks and control
 
@@ -115,9 +126,15 @@ All callbacks run on the main thread.
 | `view.onTitle` | The program set the window title |
 | `view.onActivated` | The view is becoming the window's first responder |
 | `view.onFocused` | The view has become first responder, one main-queue turn later |
-| `session.onStatus` | A lifecycle or failure message, such as `Launch failed: …` or `Session finished` |
-| `session.onEnd` | The child has exited and its last output is on screen. `SessionEnd` carries `exitedCleanly` and `seconds`, the run time in seconds. |
+| `session.onStatus` | A line of text about the session's life, for a log |
+| `session.onLaunchFailure` | The child could not be started. `SessionLaunchFailure` says why: `.invalidArguments`, `.spawn(errno:)`, or `.stage(_:errno:)` with the launcher's failing step, such as `.execute` for a missing program or `.workingDirectory` for a missing directory. |
+| `session.onEnd` | The child has exited and its last output is on screen. `SessionEnd` carries `exitedCleanly`, `exitCode` or `terminatingSignal`, and `seconds`, the run time in seconds. |
+| `session.processIdentifier` | The child's process ID, once it has started |
+| `session.workingDirectory` | The directory the child last reported with OSC 7 |
 | `session.rawInput(_:)` | Send bytes to the child as if typed |
+| `session.scroll(_:)` | Move the view over the history by lines; positive is toward older output |
+| `view.visibleText` | The text on screen, one line per row |
+| `view.gridSize` | The columns and rows the view holds |
 | `session.clearDisplay()` | Clear the display, as the app's Clear Screen command does |
 | `session.close()` | End the session and its child |
 | `view.apply(_:)` | Change the configuration of a running view |
@@ -128,8 +145,9 @@ sends Escape, and a `TerminalSessionConfiguration`: the history limit in rows
 
 ## Menus
 
-Copy, Paste, Select All and Cancel Paste are ordinary responder actions on
-the view. `TerminalEditMenu.make()` returns an Edit menu wired to them. Its
+Copy, Paste, Select All, Cancel Paste and Clear Screen are ordinary responder
+actions on the view (`copy(_:)`, `paste(_:)`, `selectAll(_:)`,
+`cancelPaste(_:)`, `clearScreen(_:)`). `TerminalEditMenu.make()` returns an Edit menu wired to them. Its
 Find items do nothing in an embedding app until a host can attach a find bar:
 
 ```swift
@@ -147,7 +165,8 @@ policy.
 
 `TerminalView` carries Obel Mono, Symbols Nerd Font Mono and the Metal shader
 source as package resources, so an embedding app adds nothing to its bundle
-for them. The shader source is compiled when `TerminalRendering` is created.
+for them. The shader source is compiled when `TerminalRendering` is created; its initializer throws
+`TerminalRendering.RendererError` (`.noDevice`, `.noShaders`, `.noMemory`).
 The fonts keep their own licenses; see the
 [font directory](../Sources/TerminalView/Resources/Fonts/README.md).
 

@@ -95,6 +95,14 @@ package enum EarlyChild {
   }
 }
 
+/// Measurement switches the app turns on from its command line. A session
+/// never reads the host's arguments itself.
+package enum SessionDiagnostics {
+  /// Whether sessions count their stream events. Set before the first
+  /// session is created.
+  nonisolated(unsafe) package static var collectsStreamStatistics = false
+}
+
 /// How a session's child ended, for deciding what becomes of its pane.
 public struct SessionEnd {
   public let exitedCleanly: Bool
@@ -102,6 +110,15 @@ public struct SessionEnd {
   /// of the app is adopted later.
   public let seconds: Double
   package let ranLoginShell: Bool
+  /// The status `waitpid` gave for the child.
+  package var waitStatus: Int32 = 0
+  /// The child's exit code, or nil when a signal ended it.
+  public var exitCode: Int32? { waitStatus & 0x7f == 0 ? (waitStatus >> 8) & 0xff : nil }
+  /// The signal that ended the child, or nil when it exited by itself.
+  public var terminatingSignal: Int32? {
+    let signal = waitStatus & 0x7f
+    return signal != 0 && signal != 0x7f ? signal : nil
+  }
 
   /// A shell that was left, by `exit` or end of input, takes its pane with
   /// it. One that fails as it starts stays, so what it printed can be read;
@@ -109,16 +126,46 @@ public struct SessionEnd {
   package var closesPane: Bool { ranLoginShell && (exitedCleanly || seconds >= 1) }
 }
 
+/// Why a session's child did not start. After `engineUnavailable`,
+/// `invalidArguments` or `spawn` there is no child and the session never
+/// reports an end. After `stage` or `handshake` the launcher itself exits,
+/// and the end follows as for any child.
+public enum SessionLaunchFailure: Error, Equatable, Sendable {
+  /// What the launcher was doing when it failed.
+  public enum Stage: Int32, Sendable {
+    case statusDescriptor = 1, controllingTerminal, workingDirectory, signals, execute
+  }
+  /// The emulator could not be created.
+  case engineUnavailable
+  /// The launch has no arguments, or more than a launch accepts.
+  case invalidArguments
+  /// The PTY or the launcher could not be started; `errno` says why.
+  case spawn(errno: Int32)
+  /// The launcher started and failed at `stage`. A missing program fails at
+  /// `.execute`, a missing directory at `.workingDirectory`.
+  case stage(Stage?, errno: Int32)
+  /// The launcher's report could not be read.
+  case handshake
+}
+
 public struct LaunchSpec: Equatable {
   public let executable: String
   public let arguments: [String]
   public let cwd: String
   public let launcher: String
-  public init(executable: String, arguments: [String], cwd: String, launcher: String) {
+  /// Variables set for the child, replacing what it would otherwise get.
+  /// The child inherits the host's environment, with `TERM`, `COLORTERM`,
+  /// `TERM_PROGRAM` and `LANG` set by the terminal and the variables that
+  /// describe another terminal removed. `TERM_PROGRAM` is `HelgeTerminal`
+  /// unless named here.
+  public var environment: [String: String] = [:]
+  public init(executable: String, arguments: [String], cwd: String, launcher: String,
+              environment: [String: String] = [:]) {
     self.executable = executable
     self.arguments = arguments
     self.cwd = cwd
     self.launcher = launcher
+    self.environment = environment
   }
   /// Whether the arguments are within what a launch accepts.
   public var isValid: Bool {
@@ -128,9 +175,16 @@ public struct LaunchSpec: Equatable {
   /// Starts the child on a new PTY of the given size.
   package func spawn(columns: Int, rows: Int) -> TerminalProcess {
     var argv = arguments.map { strdup($0) } + [nil]
-    defer { for value in argv { free(value) } }
-    return argv.withUnsafeMutableBufferPointer {
-      terminal_spawn_args(launcher, executable, cwd, UInt16(columns), UInt16(rows), $0.baseAddress)
+    var extra = environment.sorted { $0.key < $1.key }.map { strdup($0.key + "=" + $0.value) } + [nil]
+    defer {
+      for value in argv { free(value) }
+      for value in extra { free(value) }
+    }
+    return argv.withUnsafeMutableBufferPointer { argv in
+      extra.withUnsafeMutableBufferPointer { extra in
+        terminal_spawn_environment(
+          launcher, executable, cwd, UInt16(columns), UInt16(rows), argv.baseAddress, extra.baseAddress)
+      }
     }
   }
   /// The user's login shell, started with `-l`.
@@ -366,7 +420,29 @@ public final class Session: @unchecked Sendable {
   private lazy var historySearch = HistorySearch(session: self)
   private let clipboardSessionID = UUID()
   package var onSnapshot: (@MainActor (TerminalSnapshot) -> Void)?
+  /// A line of text about the session's life, for a log or a status bar.
+  /// Launch failures also arrive, typed, on `onLaunchFailure`.
   public var onStatus: (@MainActor (String) -> Void)?
+  /// The same lines, for the view the session is shown in.
+  package var onViewStatus: (@MainActor (String) -> Void)?
+  /// The child's process ID, once it has started.
+  @MainActor public private(set) var processIdentifier: Int32?
+  /// The directory the child last reported with OSC 7, when it named one on
+  /// this Mac.
+  @MainActor public var workingDirectory: URL? {
+    guard let location = deliveredDirectory, let url = URL(string: location), url.isFileURL else { return nil }
+    return url
+  }
+  /// Called once when the child could not be started.
+  public var onLaunchFailure: (@MainActor (SessionLaunchFailure) -> Void)?
+  /// Whether a view shows this session. A session serves one view.
+  @MainActor private var hasView = false
+  /// Claims the session for a view. A second view on the same session would
+  /// take the first one's snapshots, so it is a programming error.
+  @MainActor package func attachView() {
+    precondition(!hasView, "A Session serves one TerminalCanvasView")
+    hasView = true
+  }
   /// Called once, when the child has exited and its last output is parsed.
   public var onEnd: (@MainActor (SessionEnd) -> Void)?
   package var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
@@ -379,9 +455,7 @@ public final class Session: @unchecked Sendable {
   public init(launch: LaunchSpec, startsAtFirstGrid: Bool = false) {
     launchSpec = launch
     awaitsGrid = startsAtFirstGrid
-    if CommandLine.arguments.prefix(while: { $0 != "--execute" }).contains("--session-statistics-file") {
-      streamStatistics = StreamStatistics()
-    }
+    if SessionDiagnostics.collectsStreamStatistics { streamStatistics = StreamStatistics() }
     readBroker = PTYReadBroker(owner: queue, diagnostics: streamStatistics != nil, deliver: { [weak self] bytes in
       guard let self else { return }
       guard !closed else { readBroker.consumed(bytes.count, completedNode: true); return }
@@ -394,7 +468,49 @@ public final class Session: @unchecked Sendable {
     })
     readBroker.submit { [self] in start() }
   }
-  deinit { if let core { terminal_destroy(core) } }
+  /// A session released without `close()` ends here: its child is hung up
+  /// and, if it stays, killed. Nothing else refers to the session by now, so
+  /// its state is touched without its queue.
+  deinit {
+    readEndpoint?.close()
+    if writeSuspended { writer?.resume() }
+    writer?.cancel()
+    statusReader?.cancel()
+    process?.cancel()
+    if let core { terminal_destroy(core) }
+    if pid > 0, !reaped { Self.endAbandonedChild(pid) }
+  }
+  /// Hangs up a child whose session is gone, kills it after two seconds if
+  /// it is still there, and reaps it.
+  private static func endAbandonedChild(_ pid: Int32) {
+    kill(pid, SIGHUP)
+    abandonedQueue.async {
+      abandoned.insert(pid)
+      reapAbandonedChild(pid, attempt: 0)
+    }
+    abandonedQueue.asyncAfter(deadline: .now() + .seconds(2)) {
+      if abandoned.contains(pid) { kill(pid, SIGKILL) }
+    }
+  }
+  /// On `abandonedQueue`. Asks again every 50 ms until the child can be
+  /// reaped: an exit notification can arrive before `waitpid` will answer,
+  /// so this polls instead of waiting for one.
+  private static func reapAbandonedChild(_ pid: Int32, attempt: Int) {
+    var status: Int32 = 0
+    let result = waitpid(pid, &status, WNOHANG)
+    if result == 0, attempt < 200 {
+      abandonedQueue.asyncAfter(deadline: .now() + .milliseconds(50)) {
+        reapAbandonedChild(pid, attempt: attempt + 1)
+      }
+      return
+    }
+    if result == pid { LiveChildren.ended() }
+    abandoned.remove(pid)
+  }
+  private static let abandonedQueue = DispatchQueue(label: "no.helgesverre.terminal.abandoned-children")
+  /// Children whose sessions are gone, until they are reaped. Read and
+  /// written on `abandonedQueue` only.
+  nonisolated(unsafe) private static var abandoned: Set<Int32> = []
   private static var now: UInt64 { DispatchTime.now().uptimeNanoseconds / 1_000_000 }
   private var writeBytes: Int { writes.reduce(0) { $0 + $1.remaining } }
   package typealias SearchCompletion = @MainActor (HistorySearchOutcome, HistorySearchPosition?) -> Void
@@ -500,7 +616,18 @@ public final class Session: @unchecked Sendable {
     return HistorySearchPosition(index: Int(index), total: Int(total), capped: capped)
   }
   private func report(_ text: String) {
-    DispatchQueue.main.async { [weak self] in self?.onStatus?(text) }
+    DispatchQueue.main.async { [weak self] in
+      self?.onStatus?(text)
+      self?.onViewStatus?(text)
+    }
+  }
+  private func fail(_ failure: SessionLaunchFailure, _ text: String) {
+    switch failure {
+    case .engineUnavailable, .invalidArguments, .spawn: stopAcceptingInput()
+    case .stage, .handshake: break
+    }
+    report(text)
+    DispatchQueue.main.async { [weak self] in self?.onLaunchFailure?(failure) }
   }
   private enum Admission {
     case accepted, busy, closed
@@ -657,17 +784,11 @@ public final class Session: @unchecked Sendable {
   }
   private func start() {
     guard terminal_abi_version() == 1, let handle = terminal_create(80, 24) else {
-      stopAcceptingInput()
-      report("Core initialization failed")
-      return
+      return fail(.engineUnavailable, "Core initialization failed")
     }
     core = handle
     let spec = launchSpec
-    guard spec.isValid else {
-      stopAcceptingInput()
-      report("Invalid launch arguments")
-      return
-    }
+    guard spec.isValid else { return fail(.invalidArguments, "Invalid launch arguments") }
     guard awaitsGrid else { return launch(spec, columns: 80, rows: 24, cellWidth: 0, cellHeight: 0) }
     awaitingGrid = true
     // A pane that is never laid out still gets its shell.
@@ -684,12 +805,12 @@ public final class Session: @unchecked Sendable {
     let adopted = EarlyChild.adopt(spec)
     let child = adopted ?? spec.spawn(columns: columns, rows: rows)
     guard child.error == 0 else {
-      stopAcceptingInput()
-      report("Launch failed: \(String(cString:strerror(child.error)))")
-      return
+      return fail(.spawn(errno: child.error), "Launch failed: \(String(cString:strerror(child.error)))")
     }
     master = child.master
     pid = child.pid
+    let started = child.pid
+    DispatchQueue.main.async { [weak self] in self?.processIdentifier = started }
     if adopted == nil, cellWidth > 0 {
       // The pixel size too, before the child looks: the resize that follows
       // then changes nothing and sends it no signal.
@@ -724,13 +845,15 @@ public final class Session: @unchecked Sendable {
           let error = failure.withUnsafeBytes {
             $0.loadUnaligned(fromByteOffset: 4, as: Int32.self)
           }
-          self?.report("Launch stage \(stage) failed: \(String(cString:strerror(error)))")
+          self?.fail(
+            .stage(SessionLaunchFailure.Stage(rawValue: stage), errno: error),
+            "Launch stage \(stage) failed: \(String(cString:strerror(error)))")
           status?.cancel()
         }
       } else if count == 0 {
         status?.cancel()
       } else if errno != EAGAIN && errno != EINTR {
-        self?.report("Launch handshake failed")
+        self?.fail(.handshake, "Launch handshake failed")
         status?.cancel()
       }
     }
@@ -738,7 +861,8 @@ public final class Session: @unchecked Sendable {
     statusReader = status
     status.resume()
     let p = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
-    p.setEventHandler { [self] in reap() }
+    // Weak: a session its host has let go of is not kept alive by its child.
+    p.setEventHandler { [weak self] in self?.reap() }
     process = p
     p.resume()
     reap()
@@ -751,7 +875,8 @@ public final class Session: @unchecked Sendable {
     // WIFEXITED and a zero WEXITSTATUS.
     let clean = exitStatus & 0x7f == 0 && (exitStatus >> 8) & 0xff == 0
     let seconds = Double(DispatchTime.now().uptimeNanoseconds &- startedNanoseconds) / 1e9
-    let end = SessionEnd(exitedCleanly: clean, seconds: seconds, ranLoginShell: launchSpec.isLoginShell)
+    let end = SessionEnd(
+      exitedCleanly: clean, seconds: seconds, ranLoginShell: launchSpec.isLoginShell, waitStatus: exitStatus)
     DispatchQueue.main.async { [weak self] in self?.onEnd?(end) }
   }
   private func reap() {
@@ -1299,7 +1424,9 @@ public final class Session: @unchecked Sendable {
       }
     }
   }
-  package func scroll(_ amount: Int) {
+  /// Moves the view over the history by lines. A positive amount moves
+  /// toward older output, a negative one toward the newest.
+  public func scroll(_ amount: Int) {
     readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.scroll(amount))

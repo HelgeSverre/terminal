@@ -238,7 +238,8 @@ extension LaunchSpec {
   }
   func inheritingDirectory(_ location: String?) -> Self {
     Self(executable: executable, arguments: arguments,
-         cwd: TerminalPreferences.load().launchDirectory(inheriting: location), launcher: launcher)
+         cwd: TerminalPreferences.load().launchDirectory(inheriting: location), launcher: launcher,
+         environment: environment)
   }
 }
 

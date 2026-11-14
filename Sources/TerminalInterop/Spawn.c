@@ -69,9 +69,12 @@ static int names_another_terminal(const char *value){
 }
 // Only normal interactive zsh launches are wrapped. Explicit commands keep
 // their original startup semantics. The signed bundle owns the integration.
-static int make_environment(const char *launcher,const char *executable,char *const argv[],size_t argc,SpawnEnvironment *out){
+// `extra` holds "NAME=value" entries the host chose. Each replaces whatever
+// the environment built here says for that name, the terminal's own included.
+static int make_environment(const char *launcher,const char *executable,char *const argv[],size_t argc,char *const extra[],SpawnEnvironment *out){
     size_t count=0;while(environ[count])count++;
-    out->values=calloc(count+9,sizeof(char *));if(!out->values)return ENOMEM;
+    size_t extras=0;while(extra&&extra[extras])extras++;
+    out->values=calloc(count+9+extras,sizeof(char *));if(!out->values)return ENOMEM;
     const char *name=strrchr(executable,'/');name=name?name+1:executable;
     const char *parent=strrchr(launcher,'/');
     int wrap=!strcmp(name,"zsh")&&(argc==1||(argc==2&&!strcmp(argv[1],"-l")))&&parent;
@@ -102,9 +105,19 @@ static int make_environment(const char *launcher,const char *executable,char *co
         out->values[n++]=out->directory;out->values[n++]=out->original;
         out->values[n++]=original?"HELGE_TERMINAL_ZDOTDIR_SET=1":"HELGE_TERMINAL_ZDOTDIR_SET=0";
     }
+    for(size_t e=0;e<extras;e++){
+        const char *equals=strchr(extra[e],'=');if(!equals||equals==extra[e])continue;
+        size_t key=(size_t)(equals-extra[e])+1,kept=0;
+        for(size_t i=0;i<n;i++)if(strncmp(out->values[i],extra[e],key))out->values[kept++]=out->values[i];
+        n=kept;out->values[n++]=extra[e];
+    }
+    out->values[n]=NULL;
     return 0;
 }
 TerminalProcess terminal_spawn_args(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[]){
+    return terminal_spawn_environment(launcher,executable,cwd,cols,rows,target_argv,NULL);
+}
+TerminalProcess terminal_spawn_environment(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[],char *const extra_environment[]){
     TerminalProcess out={-1,-1,-1,0};int master=-1,slave=-1,p[2]={-1,-1};
     struct winsize size={.ws_row=rows,.ws_col=cols};
     if(openpty(&master,&slave,NULL,NULL,&size)<0){out.error=errno;return out;}
@@ -122,7 +135,7 @@ TerminalProcess terminal_spawn_args(const char *launcher,const char *executable,
     char **argv=calloc(argc+4,sizeof(char *));
     if(!argv){error=ENOMEM;}else{argv[0]=(char *)launcher;argv[1]=(char *)cwd;argv[2]=(char *)executable;for(size_t i=0;i<argc;i++)argv[i+3]=target_argv[i];}
     SpawnEnvironment env={0};
-    if(!error)error=make_environment(launcher,executable,target_argv,argc,&env);
+    if(!error)error=make_environment(launcher,executable,target_argv,argc,extra_environment,&env);
     if(!error)error=posix_spawn(&out.pid,launcher,&actions,&attr,argv,env.values);
     destroy_environment(&env);
     posix_spawnattr_destroy(&attr);posix_spawn_file_actions_destroy(&actions);close(high_slave);close(high_status);free(argv);
