@@ -106,7 +106,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   /// Without `rendering` the view draws nothing; without `clipboard` it
   /// refuses clipboard writes and copies nothing.
   public init(frame: NSRect, session: TerminalSession, rendering: TerminalRendering?, clipboard: ClipboardAccess?,
-       configuration: TerminalViewConfiguration) {
+       configuration: TerminalViewConfiguration = TerminalViewConfiguration()) {
     self.session = session
     self.rendering = rendering
     self.clipboard = clipboard
@@ -311,6 +311,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     self.configuration = configuration
     fontPoints = configuration.fontSize
     session.configure(configuration.session)
+    findBar?.apply(TerminalChromeColors(configuration.session.colors))
     updateGeometry()
   }
   package func updateFocus() {
@@ -434,7 +435,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     redraw()
     return true
   }
-  private var insetPixels: Int { Int((TerminalTheme.contentInset * scale).rounded()) }
+  private var insetPixels: Int { Int((min(200, max(0, configuration.contentInset)) * scale).rounded()) }
   private var scale: CGFloat { window?.backingScaleFactor ?? 2 }
   /// Grid sizing is also needed before the first AppKit layout pass, when the
   /// canvas still has a zero frame. Keep font metrics independent of bounds so
@@ -497,8 +498,9 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     selectionNotice?.removeFromSuperview()
     let notice = NSTextField(labelWithString: "  \(message)  ")
     notice.font = .systemFont(ofSize: 11)
-    notice.textColor = TerminalTheme.color(TerminalTheme.secondary)
-    notice.backgroundColor = TerminalTheme.color(TerminalTheme.background)
+    let chrome = TerminalChromeColors(configuration.session.colors)
+    notice.textColor = TerminalTheme.color(chrome.secondary)
+    notice.backgroundColor = TerminalTheme.color(chrome.background)
     notice.drawsBackground = true
     notice.alignment = .center
     notice.lineBreakMode = .byTruncatingTail
@@ -895,6 +897,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   /// edge of this view, `TerminalFindBar.height` tall. It hides itself.
   public func attach(findBar: TerminalFindBar) {
     self.findBar = findBar
+    findBar.apply(TerminalChromeColors(configuration.session.colors))
     findBar.onQuery = { [weak self] query in self?.runFind(query) }
     findBar.onStep = { [weak self] older in self?.stepFind(older: older) }
     findBar.onClose = { [weak self] in self?.closeFind() }

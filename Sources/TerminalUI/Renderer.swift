@@ -689,6 +689,7 @@ public final class TerminalRendering: @unchecked Sendable {
     let currentSearchRows = Dictionary(grouping: snap.search, by: { $0.row })
     let otherSearchRows = Dictionary(grouping: snap.search_matches, by: { $0.row })
     let palette = CellPalette(snapshot: snap)
+    let chrome = TerminalChromeColors(request.colors)
     let baseBackground = palette.background
     let whiteUV = SIMD4<Float>(0.5 / Float(atlasSize), 0.5 / Float(atlasSize), 0, 0)
     func rect(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ color: SIMD4<Float>) {
@@ -730,11 +731,11 @@ public final class TerminalRendering: @unchecked Sendable {
           var fg = colors.foreground
           var bg = colors.background
           if let currentSearch, currentSearch.contains(where: { $0.start <= c && c < $0.end }) {
-            bg = TerminalTheme.linear(TerminalTheme.accent)
-            fg = TerminalTheme.linear(TerminalTheme.background)
+            bg = TerminalTheme.linear(chrome.accent)
+            fg = TerminalTheme.linear(chrome.background)
           } else if let otherSearch, otherSearch.contains(where: { $0.start <= c && c < $0.end }) {
-            bg = TerminalTheme.linear(TerminalTheme.selection)
-            fg = TerminalTheme.linear(TerminalTheme.text)
+            bg = TerminalTheme.linear(request.colors.selectionBackground)
+            fg = TerminalTheme.linear(request.colors.selectionForeground)
           }
           while selectionSegment < snap.selection.segments.count {
             let segment = snap.selection.segments[selectionSegment]
@@ -838,7 +839,7 @@ public final class TerminalRendering: @unchecked Sendable {
       let tint =
         request.focused
         ? TerminalTheme.linear(request.colors.cursor, alpha: 0.65)
-        : TerminalTheme.linear(TerminalTheme.muted, alpha: 0.25)
+        : TerminalTheme.linear(chrome.muted, alpha: 0.25)
       switch snap.cursor.shape {
       case 3, 4: rect(x, y + request.cellHeight - 2, request.cellWidth, 2, tint)
       case 5, 6: rect(x, y, 2, request.cellHeight, tint)
@@ -860,7 +861,7 @@ public final class TerminalRendering: @unchecked Sendable {
         let y = request.inset + snap.cursor.row * request.cellHeight
         rect(
           x, y, cells * request.cellWidth, request.cellHeight,
-          TerminalTheme.linear(TerminalTheme.raised))
+          TerminalTheme.linear(chrome.raised))
         if case .resident(let g) = lookup {
           appendGlyph(
             Quad(
@@ -871,12 +872,12 @@ public final class TerminalRendering: @unchecked Sendable {
         }
         rect(
           x, y + request.cellHeight - 2, cells * request.cellWidth, 1,
-          TerminalTheme.linear(TerminalTheme.accent))
+          TerminalTheme.linear(chrome.accent))
       case .unavailable:
         let x = request.inset + snap.cursor.col * request.cellWidth
         let y = request.inset + snap.cursor.row * request.cellHeight
         let span = cells * request.cellWidth
-        let tint = TerminalTheme.linear(TerminalTheme.text)
+        let tint = TerminalTheme.linear(chrome.text)
         rect(x, y, span, 1, tint)
         rect(x, y + request.cellHeight - 1, span, 1, tint)
         rect(x, y, 1, request.cellHeight, tint)

@@ -213,6 +213,7 @@ All callbacks run on the main thread.
 | `session.processIdentifier` | The child's process ID, once it has started |
 | `session.workingDirectory` | The directory the child last reported with OSC 7 |
 | `session.rawInput(_:)` | Send bytes to the child as if typed |
+| `session.paste(_:)` | Send text as a paste, bracketed when the program asked for that; at most 1 MiB |
 | `session.scroll(_:)` | Move the view over the history by lines; positive is toward older output |
 | `view.visibleText` | The text on screen, one line per row |
 | `view.hasSelection`, `view.selectedText(_:)`, `view.clearSelection()` | Whether text is selected, the selected text as Copy would give it, and removing the selection |
@@ -224,7 +225,8 @@ All callbacks run on the main thread.
 | `view.apply(_:)` | Change the configuration of a running view |
 
 `TerminalViewConfiguration` holds the font size in points, the font family,
-whether Option sends Escape, and a `TerminalSessionConfiguration`: the history limit in rows
+whether Option sends Escape, the inset between the view's edge and the text
+(`contentInset`, 8 points unless set), and a `TerminalSessionConfiguration`: the history limit in rows
 (at most 50,000), whether typing scrolls back to the newest output, and the
 colors.
 
@@ -252,7 +254,9 @@ view.apply(configuration)      // or pass it to the view's initializer
 
 Programs that ask for the colors (OSC 4, 10, 11) are told these. A color a
 program has set for itself is kept when the scheme changes, and a terminal
-reset returns to the scheme.
+reset returns to the scheme. With any scheme but the standard one, the find
+bar, the selection notice, search highlights and the idle cursor are colored
+from the scheme's text, background and cursor.
 
 ## Menus
 
@@ -282,8 +286,18 @@ view.attach(findBar: findBar)
 
 Programs may write the clipboard with OSC 52 through the `ClipboardAccess`
 the view was given; a view created with `clipboard: nil` refuses those writes
-and copies nothing. [Clipboard protocol](osc52-clipboard.md) describes the
-policy.
+and copies nothing. `ClipboardAccess(writingTo:)` allows every write, as the
+app does. A host that wants a say gives a decision instead:
+
+```swift
+let clipboard = ClipboardAccess(writingTo: .general) { text, decide in
+  decide(text.utf8.count < 10_000)     // at once, or later after asking the user
+}
+```
+
+It is asked about each write, on the main thread; Copy from the menu is the
+user's own act and is not asked about. [Clipboard protocol](osc52-clipboard.md)
+describes the rest of the policy.
 
 ## Accessibility identifiers
 
@@ -307,8 +321,8 @@ The fonts keep their own licenses; see the
 
 - **A stable interface.** Nothing here is versioned yet. Depend on a commit
   or on `main`, and expect changes.
-- **The rest of the look.** The find bar, the selection notice and the
-  inset keep the app's look. Ligatures are not drawn.
+- **The rest of the look.** The find bar and the selection notice take
+  their colors from the scheme but keep their shape. Ligatures are not drawn.
 - **More of the emulator.** `HeadlessTerminal` has no selection, no search
   and no key encoding; a host sends bytes of its own making.
 - **A launch without the helper.** The host must carry `TerminalLauncher`.

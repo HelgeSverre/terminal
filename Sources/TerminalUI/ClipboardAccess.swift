@@ -28,6 +28,9 @@ public final class ClipboardAccess {
   package static let maximumPending = 4
   private let pasteboard: NSPasteboard
   private let decide: DecisionHandler
+  /// The app's rule: one refusal silences that session's later requests.
+  /// A host that decides each write is asked every time.
+  private let denialSilencesSession: Bool
   private var queued: [Pending] = []
   private var active: Pending?
   private var deniedSessions = Set<UUID>()
@@ -39,12 +42,27 @@ public final class ClipboardAccess {
   public convenience init(writingTo pasteboard: NSPasteboard) {
     self.init(pasteboard: pasteboard, decide: ClipboardAccess.allow)
   }
+  /// Clipboard access that asks the host about each write a program makes
+  /// with OSC 52. `decide` gets the text and answers through its second
+  /// argument, at once or later, on the main thread; true writes
+  /// `pasteboard`. A request whose session closes meanwhile is dropped.
+  /// Copy from the menu is the user's own act and is never asked about.
+  public convenience init(
+    writingTo pasteboard: NSPasteboard, deciding decide: @escaping (String, @escaping (Bool) -> Void) -> Void
+  ) {
+    self.init(pasteboard: pasteboard, denialSilencesSession: false) { request, _, completion in
+      decide(String(decoding: request.data, as: UTF8.self)) { completion($0 ? .allow : .deny) }
+      return nil
+    }
+  }
   package init(
-    pasteboard: NSPasteboard = .general, decide: @escaping DecisionHandler = ClipboardAccess.allow
+    pasteboard: NSPasteboard = .general, denialSilencesSession: Bool = true,
+    decide: @escaping DecisionHandler = ClipboardAccess.allow
   ) {
     precondition(Thread.isMainThread)
     self.pasteboard = pasteboard
     self.decide = decide
+    self.denialSilencesSession = denialSilencesSession
   }
 
   package func request(_ request: ClipboardWriteRequest, from window: NSWindow?) {
@@ -120,7 +138,7 @@ public final class ClipboardAccess {
       pending.dismiss = decide(pending.request, pending.window) { [weak self, weak pending] decision in
         guard let self, let pending, self.active === pending else { return }
         let allowed = decision == .allow && !pending.cancelled && pending.request.isLive
-        if decision == .deny { self.deniedSessions.insert(pending.request.sessionID) }
+        if decision == .deny, self.denialSilencesSession { self.deniedSessions.insert(pending.request.sessionID) }
         if allowed {
           pending.writePermit = self.issueWritePermit()
           pending.pasteboardChangeCount = self.pasteboard.changeCount

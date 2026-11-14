@@ -19,10 +19,11 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
 
   private final class QueryField: NSTextField {
     var onFocusChange: ((Bool) -> Void)?
+    var chrome = TerminalChromeColors.standard
     override func becomeFirstResponder() -> Bool {
       let accepted = super.becomeFirstResponder()
       if accepted {
-        (currentEditor() as? NSTextView)?.insertionPointColor = TerminalTheme.color(TerminalTheme.accent)
+        (currentEditor() as? NSTextView)?.insertionPointColor = TerminalTheme.color(chrome.accent)
         onFocusChange?(true)
       }
       return accepted
@@ -38,6 +39,22 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
   private var fieldFocused = false
   private var searchingNotice = 0
   private(set) var result = FindBarResult.idle
+  private var chrome = TerminalChromeColors.standard
+
+  /// Recolors the bar for the terminal it serves.
+  func apply(_ colors: TerminalChromeColors) {
+    guard colors != chrome else { return }
+    chrome = colors
+    field.chrome = colors
+    glass.contentTintColor = TerminalTheme.color(colors.muted)
+    field.textColor = TerminalTheme.color(colors.text)
+    field.placeholderAttributedString = NSAttributedString(
+      string: "Find in scrollback",
+      attributes: [.foregroundColor: TerminalTheme.color(colors.muted), .font: NSFont.systemFont(ofSize: 13)])
+    for button in [previous, next, close] { button.contentTintColor = TerminalTheme.color(colors.secondary) }
+    apply(result)
+    needsDisplay = true
+  }
 
   /// The query changed; empty means the highlights should be cleared.
   var onQuery: ((String) -> Void)?
@@ -57,7 +74,7 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
 
     glass.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)?
       .withSymbolConfiguration(.init(pointSize: 11, weight: .medium))
-    glass.contentTintColor = TerminalTheme.color(TerminalTheme.muted)
+    glass.contentTintColor = TerminalTheme.color(chrome.muted)
     glass.setAccessibilityElement(false)
     addSubview(glass)
 
@@ -65,11 +82,11 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
     field.drawsBackground = false
     field.focusRingType = .none
     field.font = .systemFont(ofSize: 13)
-    field.textColor = TerminalTheme.color(TerminalTheme.text)
+    field.textColor = TerminalTheme.color(chrome.text)
     field.placeholderAttributedString = NSAttributedString(
       string: "Find in scrollback",
       attributes: [
-        .foregroundColor: TerminalTheme.color(TerminalTheme.muted), .font: NSFont.systemFont(ofSize: 13),
+        .foregroundColor: TerminalTheme.color(chrome.muted), .font: NSFont.systemFont(ofSize: 13),
       ])
     field.cell?.isScrollable = true
     field.cell?.wraps = false
@@ -105,7 +122,7 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
     button.imagePosition = .imageOnly
     button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)?
       .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold))
-    button.contentTintColor = TerminalTheme.color(TerminalTheme.secondary)
+    button.contentTintColor = TerminalTheme.color(chrome.secondary)
     button.target = self
     button.action = action
     button.toolTip = hint
@@ -161,7 +178,7 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
     }
     count.stringValue = text
     count.isHidden = text.isEmpty
-    count.textColor = TerminalTheme.color(failed ? TerminalTheme.danger : TerminalTheme.muted)
+    count.textColor = TerminalTheme.color(failed ? chrome.danger : chrome.muted)
     previous.isEnabled = navigable
     next.isEnabled = navigable
     needsLayout = true
@@ -198,11 +215,11 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
   }
 
   public override func draw(_ dirtyRect: NSRect) {
-    TerminalTheme.color(TerminalTheme.raised).setFill()
+    TerminalTheme.color(chrome.raised).setFill()
     bounds.fill()
-    TerminalTheme.color(TerminalTheme.border).setFill()
+    TerminalTheme.color(chrome.border).setFill()
     NSRect(x: previous.frame.minX - 4, y: (bounds.height - 14) / 2, width: 1, height: 14).fill()
-    TerminalTheme.color(fieldFocused ? TerminalTheme.accent : TerminalTheme.border).setFill()
+    TerminalTheme.color(fieldFocused ? chrome.accent : chrome.border).setFill()
     NSRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
   }
 

@@ -119,7 +119,9 @@ is not part of the library by design.
   family for a view. Verified by tests of face selection and measurement, and
   by reading back a rendered frame in Menlo.
 - **Hooks:** `view.onOpenLink`, `view.onContextMenu` and `session.onBell`.
-  The clipboard decision for OSC 52 is still the view's own.
+  `ClipboardAccess(writingTo:deciding:)` asks the host about each OSC 52
+  write. `session.paste`, `contentInset` and chrome colored from the scheme
+  followed.
 - **Mode 2027:** a query is answered "permanently set". A layout by code
   point width is not built; see `BUGS.md`.
 

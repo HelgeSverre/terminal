@@ -1390,6 +1390,10 @@ public final class TerminalSession: @unchecked Sendable {
     }
     return true
   }
+  /// Sends text as a paste: bracketed when the program asked for that, and
+  /// with line ends as a paste has them. At most 1 MiB; returns false when
+  /// the text was not accepted.
+  @discardableResult public func paste(_ text: String) -> Bool { input(text, key: 1) }
   public func rawInput(_ bytes: Data) {
     _ = submitRaw(bytes, event: Event.raw)
   }

@@ -10,6 +10,8 @@ public struct TerminalViewConfiguration {
   /// Nil, or a family the Mac does not have, gives the bundled Obel Mono.
   /// Icons the family lacks still come from the bundled symbols font.
   public var fontFamily: String?
+  /// The space between the view's edge and the text, in points.
+  public var contentInset: CGFloat = 8
   /// Whether Option sends Escape before the key instead of composing a character.
   public var optionSendsEscape: Bool
   public var session: TerminalSessionConfiguration
