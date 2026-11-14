@@ -209,7 +209,7 @@ colors.
 ### Font
 
 `fontFamily` names an installed fixed-pitch family, such as `"Menlo"` or
-`"SF Mono"`; the grid is measured from it. Left nil, or naming a family the
+`"Monaco"`; the grid is measured from it. Left nil, or naming a family the
 Mac does not have, it gives the bundled Obel Mono. A family without a bold
 or italic face draws its regular one. Icons the family lacks come from the
 bundled symbols font. Views with different families share one renderer.

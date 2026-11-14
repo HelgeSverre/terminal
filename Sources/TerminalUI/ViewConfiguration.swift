@@ -6,7 +6,7 @@ import TerminalHost
 public struct TerminalViewConfiguration {
   /// The font size, in points.
   public var fontSize: CGFloat
-  /// An installed fixed-pitch font family, such as "Menlo" or "SF Mono".
+  /// An installed fixed-pitch font family, such as "Menlo" or "Monaco".
   /// Nil, or a family the Mac does not have, gives the bundled Obel Mono.
   /// Icons the family lacks still come from the bundled symbols font.
   public var fontFamily: String?
