@@ -60,6 +60,32 @@ import TerminalEngine
     #expect(ask("4;1;?") == "\u{1b}]4;1;rgb:efef/4444/4444\u{1b}\\")
   }
 
+  @Test func cellsCarryTheirResolvedStyle() throws {
+    let terminal = try #require(HeadlessTerminal(columns: 12, rows: 3))
+    terminal.feed("a\u{1b}[1;3;4;31mb\u{1b}[0m\u{1b}[7mc\u{1b}[0m\u{1b}[38;2;1;2;3;48;5;196md\u{1b}[0m猫\u{1b}]8;;https://example.com\u{1b}\\L\u{1b}]8;;\u{1b}\\")
+    let row = try #require(terminal.screen()).cells[0]
+    #expect(row.count == 12)
+    #expect(row[0].text == "a" && row[0].foreground == 0xe6e6e6 && row[0].background == 0x0a0a0b && !row[0].bold)
+    #expect(row[1].bold && row[1].italic && row[1].underlined && row[1].foreground == 0xef4444)
+    #expect(row[2].foreground == 0x0a0a0b && row[2].background == 0xe6e6e6, "reverse video swaps the colors")
+    #expect(row[3].foreground == 0x010203 && row[3].background == 0xff0000)
+    #expect(row[4].text == "猫" && !row[4].isContinuation)
+    #expect(row[5].text.isEmpty && row[5].isContinuation)
+    #expect(row[6].text == "L" && row[6].link == "https://example.com")
+    #expect(row[7].link == nil)
+  }
+
+  @Test func historyIsReadByScrollingBack() throws {
+    let terminal = try #require(HeadlessTerminal(columns: 10, rows: 3))
+    terminal.feed((1...8).map { "line \($0)" }.joined(separator: "\r\n"))
+    let tail = try #require(terminal.screen())
+    #expect(tail.rows == ["line 6", "line 7", "line 8"])
+    #expect(tail.historyRows == 5)
+    #expect(try #require(terminal.screen(scrolledBack: 2)).rows == ["line 4", "line 5", "line 6"])
+    #expect(try #require(terminal.screen(scrolledBack: 99)).rows == ["line 1", "line 2", "line 3"])
+    #expect(try #require(terminal.screen()).rows == tail.rows, "reading history does not move the terminal")
+  }
+
   @Test func resizeReflowsAndRejectsNonsense() throws {
     let terminal = try #require(HeadlessTerminal(columns: 10, rows: 4))
     terminal.feed("0123456789abcde")

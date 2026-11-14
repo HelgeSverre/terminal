@@ -71,9 +71,19 @@ if let screen = terminal.screen() {                  // nil while the program ho
 terminal.resize(columns: 120, rows: 40)              // reflows
 ```
 
-An instance is used from one thread at a time. The screen is text, the
-cursor, the title, the alternate-screen flag and the reported directory;
-colors, styles, history and selection are not public yet.
+An instance is used from one thread at a time. A `Screen` holds:
+
+| Member | Meaning |
+| --- | --- |
+| `rows`, `text` | One string per row without trailing spaces, and the rows joined by newlines |
+| `cells` | Every cell: its text, whether it is the second half of a wide character, foreground and background as `0xRRGGBB` with the palette, reverse video and faint applied, bold, italic, underlined, struck through, concealed, and its hyperlink |
+| `cursorRow`, `cursorColumn` | Counted from zero |
+| `title`, `isAlternateScreen`, `workingDirectory` | As the program set them |
+| `historyRows` | Rows kept above the screen |
+
+`screen(scrolledBack: n)` gives the window `n` rows into the history without
+moving the terminal, and `setColors(_:)` sets the colors programs are told.
+Selection and key encoding are not public here.
 
 ## Show a terminal
 
@@ -299,8 +309,8 @@ The fonts keep their own licenses; see the
   or on `main`, and expect changes.
 - **The rest of the look.** The find bar, the selection notice and the
   inset keep the app's look. Ligatures are not drawn.
-- **More of the emulator.** `HeadlessTerminal` gives text only: no colors
-  or styles per cell, no history, no selection, no key encoding.
+- **More of the emulator.** `HeadlessTerminal` has no selection, no search
+  and no key encoding; a host sends bytes of its own making.
 - **A launch without the helper.** The host must carry `TerminalLauncher`.
 - **Other platforms.** macOS on Apple Silicon is the only tested target.
   There is no iOS view and no SwiftUI wrapper; wrap `TerminalCanvasView` in
