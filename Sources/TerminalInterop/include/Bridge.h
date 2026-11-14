@@ -60,6 +60,8 @@ bool helge_terminal_validate(Terminal *);
 bool helge_terminal_has_work(Terminal *);
 /* Default foreground and background as 0xRRGGBB, then sixteen ANSI colors. */
 void helge_terminal_set_colors(Terminal *,uint32_t,uint32_t,const uint32_t *);
+/* The state mode 2027 starts in and a reset returns to. */
+void helge_terminal_set_grapheme_clustering(Terminal *,bool);
 /* BEL characters parsed since the last call. */
 uint32_t helge_terminal_take_bells(Terminal *);
 void helge_terminal_set_history_limit(Terminal *,uint32_t);

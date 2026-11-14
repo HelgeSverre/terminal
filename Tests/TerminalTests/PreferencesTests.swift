@@ -89,6 +89,21 @@ import Testing
     #expect(value.launchDirectory == home) // A saved folder may disappear later.
   }
 
+  /// The text layout is a stored choice with no control in Settings.
+  @Test static func theTextLayoutIsReadFromDefaults() {
+    let defaults = MemoryDefaults()
+    #expect(TerminalPreferences.load(from: defaults).session.graphemeClustering)
+    // Saving the default writes nothing, so the default can still change.
+    TerminalPreferences.load(from: defaults).save(to: defaults)
+    #expect(defaults.object(forKey: "graphemeClustering") == nil)
+    defaults.set(false, forKey: "graphemeClustering")
+    let byCodePoint = TerminalPreferences.load(from: defaults)
+    #expect(!byCodePoint.session.graphemeClustering)
+    #expect(!byCodePoint.view.session.graphemeClustering)
+    byCodePoint.save(to: defaults)
+    #expect(defaults.object(forKey: "graphemeClustering") as? Bool == false)
+  }
+
   /// Private defaults: pane presentation settings round-trip and bad values fall back.
   @Test static func privateDefaultsAndPresentation() throws {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Terminal settings \(UUID().uuidString)")

@@ -137,6 +137,8 @@ private final class TerminalEmulator {
   @exclusivity(unchecked) private var tabs: [Bool]
   @exclusivity(unchecked) private var tabsCleared = false
   @exclusivity(unchecked) private var revision: UInt64 = 1
+  @exclusivity(unchecked) private var graphemeClustering = true
+  @exclusivity(unchecked) private var hostGraphemeClustering = true
   /// BEL characters since the host last asked.
   @exclusivity(unchecked) private var bells: UInt32 = 0
   func takeBells() -> UInt32 { defer { bells = 0 }; return bells }
@@ -784,6 +786,7 @@ private final class TerminalEmulator {
     focusReporting = false; reverseVideo = false; mouseMode = 0; sgrMouse = false
     currentLink = nil
     palette.reset()
+    applyGraphemeClustering(hostGraphemeClustering)
     charsetSpecial = [false, false]; charsetSlot = 0
     forgetLastPrinted()
     tabs = (0..<columns).map { $0 > 0 && $0.isMultiple(of: 8) }
@@ -1203,10 +1206,7 @@ private final class TerminalEmulator {
   /// DECRQM status: 1 set, 2 reset, 3 permanently set, 0 for a mode
   /// `setMode` does not implement.
   private func modeReport(_ mode: Int, privateMode: Bool) -> Int {
-    // Grapheme clustering (mode 2027) is how text is always laid out here: a
-    // cluster such as an emoji with a skin tone takes the cells of one
-    // character. A program that asks learns that it cannot be turned off.
-    if privateMode, mode == 2027 { return 3 }
+    if privateMode, mode == 2027 { return graphemeClustering ? 1 : 2 }
     let enabled: Bool
     if !privateMode {
       switch mode {
@@ -1270,6 +1270,7 @@ private final class TerminalEmulator {
       case 9, 1000, 1002, 1003: mouseMode = enabled ? mode : 0
       case 1006: sgrMouse = enabled
       case 2004: bracketedPaste = enabled
+      case 2027: applyGraphemeClustering(enabled)
       case 5: reverseVideo = enabled
       case 69:
         leftRightMargins = enabled
@@ -1585,6 +1586,18 @@ private final class TerminalEmulator {
       for (index, row) in primary.rows.enumerated() { positions[row.id] = history.count + index - start }
     }
     return graphics.visible(alternate: usingAlternate, positions: positions, height: rowCount)
+  }
+  /// Mode 2027. Set: a grapheme cluster, such as an emoji with a skin tone,
+  /// takes the cells of one character. Reset: each code point with a width
+  /// takes its own cells, which is what a program that sums `wcwidth` expects.
+  private func applyGraphemeClustering(_ enabled: Bool) {
+    graphemeClustering = enabled
+    document.setGraphemeClustering(enabled)
+  }
+  /// The host's choice: the state the mode starts in and a reset returns to.
+  func setGraphemeClusteringDefault(_ enabled: Bool) {
+    hostGraphemeClustering = enabled
+    applyGraphemeClustering(enabled)
   }
   func setColorScheme(_ value: TerminalColorScheme) { palette.setScheme(value); changed(document: false) }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
@@ -2138,6 +2151,7 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
   guard let ansi else { return }
   core(pointer)?.setColorScheme(TerminalColorScheme(foreground: foreground, background: background, ansi: Array(UnsafeBufferPointer(start: ansi, count: 16))))
 }
+@_cdecl("helge_terminal_set_grapheme_clustering") func swift_terminal_set_grapheme_clustering(_ pointer: OpaquePointer?, _ enabled: Bool) { core(pointer)?.setGraphemeClusteringDefault(enabled) }
 @_cdecl("helge_terminal_take_bells") func swift_terminal_take_bells(_ pointer: OpaquePointer?) -> UInt32 { core(pointer)?.takeBells() ?? 0 }
 @_cdecl("helge_terminal_set_history_limit") func swift_terminal_set_history_limit(_ pointer: OpaquePointer?, _ limit: UInt32) { core(pointer)?.setHistoryLimit(Int(limit)) }
 @_cdecl("helge_terminal_set_history_byte_limit") func swift_terminal_set_history_byte_limit(_ pointer: OpaquePointer?, _ limit: UInt64) { core(pointer)?.setHistoryByteLimit(limit > UInt64(Int.max) ? Int.max : Int(limit)) }

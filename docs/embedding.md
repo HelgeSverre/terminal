@@ -82,7 +82,8 @@ An instance is used from one thread at a time. A `Screen` holds:
 | `historyRows` | Rows kept above the screen |
 
 `screen(scrolledBack: n)` gives the window `n` rows into the history without
-moving the terminal, and `setColors(_:)` sets the colors programs are told.
+moving the terminal, `setColors(_:)` sets the colors programs are told, and
+`setGraphemeClustering(_:)` sets the state mode 2027 starts in.
 Selection and key encoding are not public here.
 
 ## Show a terminal
@@ -229,6 +230,16 @@ whether Option sends Escape, the inset between the view's edge and the text
 (`contentInset`, 8 points unless set), and a `TerminalSessionConfiguration`: the history limit in rows
 (at most 50,000), whether typing scrolls back to the newest output, and the
 colors.
+
+### Wide text
+
+`configuration.session.graphemeClustering` is the state mode 2027 starts in.
+True, the default: an emoji with a skin tone, a flag or a joined family takes
+the cells of one character, as a program that segments by grapheme expects.
+False: every code point with a width takes its own cells, as zsh and other
+programs that sum `wcwidth` expect; their cursor then stays where they think
+it is, and such emoji are drawn in pieces. A program can switch the mode for
+itself, and a terminal reset returns to the host's choice.
 
 ### Font
 

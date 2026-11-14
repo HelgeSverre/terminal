@@ -105,6 +105,11 @@ struct TerminalPreferences {
   let inactivePaneDim: PaneInactiveDim
   /// Header color of every pane that has not been given its own.
   let defaultPaneColor: PaneChromeColor
+  /// Whether an emoji sequence takes the cells of one character (mode 2027
+  /// set) or each code point takes its own, as zsh counts. No control in
+  /// Settings yet: `defaults write no.helgesverre.terminal graphemeClustering
+  /// -bool false`. See "Shell line editing after emoji sequences" in BUGS.md.
+  var graphemeClustering = true
   enum ValidationError: LocalizedError {
     case font, history, directory, wordCharacters
     var errorDescription: String? {
@@ -152,8 +157,10 @@ struct TerminalPreferences {
     TerminalViewConfiguration(fontSize: fontSize, optionSendsEscape: optionSendsEscape, session: session)
   }
   var session: TerminalSessionConfiguration {
-    TerminalSessionConfiguration(historyRows: historyRows, followTailOnInput: followTailOnInput,
+    var value = TerminalSessionConfiguration(historyRows: historyRows, followTailOnInput: followTailOnInput,
       selectionWordProfile: selectionWordProfile)
+    value.graphemeClustering = graphemeClustering
+    return value
   }
   static func edited(fontSize: String, historyRows: String, optionSendsEscape: Bool,
                      followTailOnInput: Bool, startingDirectory: String,
@@ -165,10 +172,13 @@ struct TerminalPreferences {
     guard let directory = Self.directory(startingDirectory) else { throw ValidationError.directory }
     guard let profile = TerminalSelectionWordProfile(punctuation: selectionWordCharacters)
     else { throw ValidationError.wordCharacters }
-    return Self(fontSize: font, historyRows: rows, optionSendsEscape: optionSendsEscape,
+    var value = Self(fontSize: font, historyRows: rows, optionSendsEscape: optionSendsEscape,
                 followTailOnInput: followTailOnInput, startingDirectory: directory,
                 selectionWordProfile: profile, showPaneTitles: showPaneTitles,
                 inactivePaneDim: inactivePaneDim, defaultPaneColor: defaultPaneColor)
+    // Settings has no control for it, so an edit keeps what is stored.
+    value.graphemeClustering = (UserDefaults.standard.object(forKey: "graphemeClustering") as? Bool) != false
+    return value
   }
   // Transient launch options never modify saved preferences, nor inspect child argv.
   static func launchInteger(_ name: String, within range: ClosedRange<Int>) -> Int? {
@@ -196,7 +206,7 @@ struct TerminalPreferences {
     let rows =
       defaults.object(forKey: "historyRows") == nil
       ? 50_000 : defaults.integer(forKey: "historyRows")
-    return Self(
+    var loaded = Self(
       fontSize: launchInteger("--font-size", within: 8...40).map { CGFloat($0) }
         ?? CGFloat(font.isFinite && (8...40).contains(font) ? font : 14),
       historyRows: launchInteger("--history-limit", within: 0...50_000)
@@ -213,6 +223,8 @@ struct TerminalPreferences {
         ? PaneInactiveDim.five.rawValue : defaults.integer(forKey: "inactivePaneDim")),
       defaultPaneColor: defaults.string(forKey: "defaultPaneColor")
         .flatMap { PaneChromeColor(hex: $0) } ?? .standard)
+    loaded.graphemeClustering = (defaults.object(forKey: "graphemeClustering") as? Bool) != false
+    return loaded
   }
   func save() { save(to: .standard) }
   func save(to d: UserDefaults) {
@@ -225,6 +237,10 @@ struct TerminalPreferences {
     d.set(showPaneTitles, forKey: "showPaneTitles")
     d.set(inactivePaneDim.rawValue, forKey: "inactivePaneDim")
     d.set(defaultPaneColor.hex, forKey: "defaultPaneColor")
+    // Written only when chosen, so the default can still change.
+    if !graphemeClustering || d.object(forKey: "graphemeClustering") != nil {
+      d.set(graphemeClustering, forKey: "graphemeClustering")
+    }
   }
 }
 

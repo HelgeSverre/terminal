@@ -1037,9 +1037,11 @@ struct TerminalDocument {
     var clusters = ClusterCache()
     // Scratch for the multi-scalar clusters of the run being admitted.
     var runClusters: [PrintedCluster] = []
+    /// Whether text is laid out by code point width (mode 2027 reset).
+    var legacy = false
 
     mutating func reset() {
-      segmenter = TerminalText.Segmenter()
+      segmenter = TerminalText.Segmenter(legacy: legacy)
       openCluster = nil
       retainedScalars = 0
       capped = false
@@ -1175,6 +1177,12 @@ struct TerminalDocument {
   }
 
   mutating func resetPrintCluster() {
+    printState.reset()
+  }
+  /// Chooses between grapheme clusters and code point widths for the text
+  /// printed from now on. Cells already written stay as they are.
+  mutating func setGraphemeClustering(_ enabled: Bool) {
+    printState.legacy = !enabled
     printState.reset()
   }
 
@@ -1497,7 +1505,7 @@ struct TerminalDocument {
               // `candidate` joins the cluster before it. When this run began
               // that cluster, take the rest of it from the buffer and admit
               // the whole; otherwise the code below extends its cell.
-              guard lead >= 0 else { break }
+              guard lead >= 0, !segmenter.legacy else { break }
               var clusterEnd = end + 1
               while clusterEnd < limit {
                 var following = next
@@ -1589,7 +1597,7 @@ struct TerminalDocument {
           segmenter = next
           end += 1
         }
-        if extendCluster(at: owner, with: UnsafeBufferPointer(rebasing: scalars[(consumed - 1)..<end]),
+        if !state.legacy, extendCluster(at: owner, with: UnsafeBufferPointer(rebasing: scalars[(consumed - 1)..<end]),
                          in: &screen, columns: columns, horizontal: horizontal, autoWrap: autoWrap,
                          insertMode: insertMode, state: &state, effect: &effect) {
           state.segmenter = segmenter
@@ -1742,8 +1750,9 @@ struct TerminalDocument {
       state.retainedScalars += 1
       var combined = cell.text
       combined.unicodeScalars.append(scalar)
-      let nominal = min(2, max(1, TerminalText.cellWidth(of: combined)))
       let oldWidth = cell.kind == 2 ? 2 : 1
+      // By code point width, a joining scalar has no width to add.
+      let nominal = state.legacy ? oldWidth : min(2, max(1, TerminalText.cellWidth(of: combined)))
       let right = writeBounds(owner.column).right
       if nominal > oldWidth && owner.column + nominal > right + 1 && autoWrap {
         erase(owner.row, owner.column..<(owner.column + oldWidth), cell.style.erased())

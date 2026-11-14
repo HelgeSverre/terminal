@@ -94,6 +94,9 @@ public final class HeadlessTerminal {
       helge_terminal_set_colors(core, colors.foreground, colors.background, $0.baseAddress)
     }
   }
+  /// The state mode 2027 starts in: grapheme clusters (true, the default)
+  /// or one cell run per code point with a width (false).
+  public func setGraphemeClustering(_ enabled: Bool) { helge_terminal_set_grapheme_clustering(core, enabled) }
   @discardableResult public func resize(columns: Int, rows: Int) -> Bool {
     guard columns > 0, rows > 0, columns <= 4096, rows <= 4096,
       helge_terminal_resize(core, UInt32(columns), UInt32(rows))

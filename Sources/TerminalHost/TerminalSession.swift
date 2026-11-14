@@ -1185,6 +1185,9 @@ public final class TerminalSession: @unchecked Sendable {
           helge_terminal_set_colors(core, value.colors.foreground, value.colors.background, $0.baseAddress)
         }
       }
+      if value.graphemeClustering != configuration.graphemeClustering {
+        helge_terminal_set_grapheme_clustering(core, value.graphemeClustering)
+      }
       configuration = value
       helge_terminal_set_history_limit(core, UInt32(value.historyRows))
       // Configuration is semantic FIFO state: a later word gesture observes

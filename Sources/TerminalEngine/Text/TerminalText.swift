@@ -22,9 +22,19 @@ enum TerminalText {
     private var extendedPictographicTail = false
     private var zwjAfterExtendedPictographic = false
     private var linkerTail = false
+    /// Layout by code point width, as with mode 2027 reset: every scalar
+    /// with a width starts a cell, and one without joins the cell before.
+    /// This is what a program that sums `wcwidth` expects.
+    private(set) var legacy = false
+
+    init(legacy: Bool = false) { self.legacy = legacy }
 
     mutating func push(_ scalar: Unicode.Scalar) -> Bool {
       push(scalar, category: TerminalText.category(of: scalar))
+    }
+    @inline(__always) private mutating func pushLegacy(width: Int) -> Bool {
+      previous = .other
+      return width > 0
     }
 
     /// Equivalent to `push` for a scalar in U+0020...U+007E. Such a scalar is
@@ -33,15 +43,16 @@ enum TerminalText {
     @inline(__always)
     @discardableResult mutating func pushPrintableASCII() -> Bool {
       let boundary = printableASCIIStartsCluster
-      self = Segmenter()
+      self = Segmenter(legacy: legacy)
       previous = .other
       return boundary
     }
     /// Whether a scalar in U+0020...U+007E pushed now would start a cluster.
-    @inline(__always) var printableASCIIStartsCluster: Bool { previous != .prepend }
+    @inline(__always) var printableASCIIStartsCluster: Bool { previous != .prepend || legacy }
 
     mutating func push(_ scalar: Unicode.Scalar, category current: Category) -> Bool {
-      push(scalar, category: current, isIncbLinker: Unicode18GraphemeTables.isIncbLinker(scalar.value))
+      if legacy { return pushLegacy(width: TerminalWidth.width(of: scalar)) }
+      return push(scalar, category: current, isIncbLinker: Unicode18GraphemeTables.isIncbLinker(scalar.value))
     }
 
     /// Whether a plain-text scalar (`ScalarClass.isPlainText`) pushed now would
@@ -53,6 +64,7 @@ enum TerminalText {
     mutating func push(_ scalar: Unicode.Scalar, class scalarClass: ScalarClass) -> Bool {
       // Ordinary text after ordinary text is a boundary that changes nothing.
       if scalarClass.isPlainText, isAfterPlainText { return true }
+      if legacy { return pushLegacy(width: scalarClass.width) }
       return push(scalar, category: scalarClass.category, isIncbLinker: scalarClass.isIncbLinker)
     }
 

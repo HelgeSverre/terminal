@@ -86,6 +86,47 @@ import TerminalEngine
     #expect(try #require(terminal.screen()).rows == tail.rows, "reading history does not move the terminal")
   }
 
+  /// zsh sums the width of each code point. With mode 2027 reset the
+  /// terminal lays text out the same way, so the two agree on the cursor.
+  @Test func textIsLaidOutByClusterOrByCodePoint() throws {
+    let woman = "\u{1F469}\u{1F3FD}\u{200D}\u{1F4BB}"   // woman, skin tone, joiner, laptop
+    let flag = "\u{1F1F3}\u{1F1F4}"
+    let cloud = "\u{2601}\u{FE0F}"
+    func columns(_ text: String, clustering: Bool, by program: Bool = false) throws -> Int {
+      let terminal = try #require(HeadlessTerminal(columns: 40, rows: 3))
+      if program {
+        terminal.feed(clustering ? "\u{1b}[?2027h" : "\u{1b}[?2027l")
+      } else {
+        terminal.setGraphemeClustering(clustering)
+      }
+      terminal.feed(text)
+      return try #require(terminal.screen()).cursorColumn
+    }
+    #expect(try columns(woman, clustering: true) == 2)
+    #expect(try columns(woman, clustering: false) == 6, "woman, skin tone and laptop, two columns each")
+    #expect(try columns(woman, clustering: false, by: true) == 6)
+    #expect(try columns(flag, clustering: true) == 2)
+    #expect(try columns(cloud, clustering: true) == 2)
+    #expect(try columns(cloud, clustering: false) == 1, "the variation selector has no width")
+    #expect(try columns("e\u{301}x", clustering: false) == 2, "a combining mark joins the letter")
+    #expect(try columns("a猫b", clustering: false) == 4)
+
+    // The pieces are cells of their own, and the joiner stays with the cell before.
+    let terminal = try #require(HeadlessTerminal(columns: 40, rows: 3))
+    terminal.setGraphemeClustering(false)
+    terminal.feed(woman + "!")
+    let row = try #require(terminal.screen()).cells[0]
+    #expect(row[0].text == "\u{1F469}" && row[1].isContinuation)
+    #expect(row[2].text == "\u{1F3FD}\u{200D}")
+    #expect(row[4].text == "\u{1F4BB}")
+    #expect(row[6].text == "!")
+    // The program turns clustering on; a reset returns to the host's choice.
+    terminal.feed("\r\n\u{1b}[?2027h" + woman)
+    #expect(try #require(terminal.screen()).cursorColumn == 2)
+    terminal.feed("\u{1b}c" + woman)
+    #expect(try #require(terminal.screen()).cursorColumn == 6)
+  }
+
   @Test func resizeReflowsAndRejectsNonsense() throws {
     let terminal = try #require(HeadlessTerminal(columns: 10, rows: 4))
     terminal.feed("0123456789abcde")

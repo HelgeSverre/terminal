@@ -22,7 +22,19 @@ zsh-autosuggestions suggestion, zsh's cursor moves land to the left of where
 it intends, and its next redraw overwrites the prompt: typing `a`, `s`,
 Backspace, Backspace, `ls` left `asls` at column 0.
 
-The emulator has no mode that lays text out by code point width. It answers a
-query for mode 2027 with "permanently set", so a program that asks learns
-which layout is in use; zsh does not ask.
-A recorded byte stream that reproduces the overwrite is not in the tree yet.
+Mode 2027 chooses the layout. Set, which is how a session starts, a cluster
+takes the cells of one character. Reset, every code point with a width takes
+its own cells and one without joins the cell before, which is zsh's count;
+the emoji is then drawn in pieces (woman, skin tone, laptop). A program
+switches with `CSI ? 2027 h` and `l`; zsh does not.
+
+The app starts sessions in the layout stored under `graphemeClustering`,
+which has no control in Settings:
+
+```shell
+defaults write no.helgesverre.terminal graphemeClustering -bool false
+```
+
+`ShellWidthTests` runs the edit in a real zsh in both layouts: by code point
+the line is right, and by cluster zsh still overwrites its prompt. The
+default is unchanged, so this entry stays open until a default is chosen.
