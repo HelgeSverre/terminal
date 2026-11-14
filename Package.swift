@@ -12,6 +12,14 @@ let testHooks: [SwiftSetting] = Context.environment["TERMINAL_TEST_HOOKS"] == ni
 let package = Package(
   name: "Terminal",
   platforms: [.macOS(.v15)],
+  products: [
+    // What another app embeds. See docs/embedding.md.
+    .library(name: "TerminalView", targets: ["TerminalView"]),
+    .library(name: "TerminalSession", targets: ["TerminalSession"]),
+    // The helper every session starts its child through; an embedding app
+    // carries it in its bundle.
+    .executable(name: "TerminalLauncher", targets: ["TerminalLauncher"]),
+  ],
   dependencies: [
     // The updater. Pinned exactly: it installs software on the user's machine.
     .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1"),
@@ -33,6 +41,9 @@ let package = Package(
     // selection, find and accessibility.
     .target(
       name: "TerminalView", dependencies: ["TerminalSession", "TerminalCore"], path: "Sources/TerminalView",
+      // The fonts and the shader source. The app bundle carries its own
+      // copies, with the shader compiled.
+      resources: [.copy("Resources/Fonts"), .copy("Resources/Terminal.metal")],
       swiftSettings: [.swiftLanguageMode(.v5)] + testHooks),
     .executableTarget(
       name: "TerminalApp",
@@ -43,8 +54,7 @@ let package = Package(
       linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]),
     // The helper every PTY child is started through.
     .executableTarget(
-      name: "TerminalLauncher", path: "Sources/TerminalLauncher",
-      cSettings: [.unsafeFlags(["-Wall", "-Wextra", "-Werror"])]),
+      name: "TerminalLauncher", path: "Sources/TerminalLauncher"),
     // The developer tool, built here for its tests; `just` builds the one it runs.
     .executableTarget(
       name: "dev", path: "tools/Dev", exclude: ["KeyEcho.c", "Stamp.c"],

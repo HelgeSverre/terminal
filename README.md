@@ -108,13 +108,15 @@ flowchart LR
 | [Window and pane tree](Sources/Terminal/main.swift) | Windows, tabs, splits, focus, and minimum sizes |
 | [Pane presentation](Sources/Terminal/PanePresentation.swift) | Pane headers, colors, and inactive dimming |
 | [Pane color palette](Sources/Terminal/PaneColorPalette.swift) | Swatch grid and hex entry shared by the pane popover and Settings |
-| [Canvas](Sources/Terminal/Canvas.swift) | Native input, selection, geometry, and accessibility |
-| [Session](Sources/Terminal/Session.swift) | Child process, PTY transport, ordering, and snapshot publication |
-| [Emulation](Sources/Terminal/Emulation) | VT parsing, screens, history, reflow, and graphics state |
-| [Rendering](Sources/Terminal/Renderer.swift) | Drawable scheduling, glyph residency, and Metal commands |
+| [Canvas](Sources/TerminalView/Canvas.swift) | Native input, selection, geometry, and accessibility |
+| [Session](Sources/TerminalSession/Session.swift) | Child process, PTY transport, ordering, and snapshot publication |
+| [Emulation](Sources/TerminalCore/Emulation) | VT parsing, screens, history, reflow, and graphics state |
+| [Rendering](Sources/TerminalView/Renderer.swift) | Drawable scheduling, glyph residency, and Metal commands |
 
 Panes share the renderer service and glyph budget. CoreText rasterizes glyphs;
-Metal draws cells and images. A small C launcher handles process setup. Design
+Metal draws cells and images. A small C launcher handles process setup. The
+emulator, the session and the view are separate package targets that another
+app can embed; see [embedding](docs/embedding.md). Design
 rationale is recorded in [decisions](docs/decisions.md). The [runtime
 guide](docs/architecture.md) explains ownership and resize ordering; the
 [glossary](GLOSSARY.md) defines project terms.
@@ -160,16 +162,17 @@ The bundle identifier is `no.helgesverre.terminal`.
 | [Usage](docs/usage.md) | Shell editing, selection, settings, and shortcuts |
 | [Automation](docs/automation.md) | Accessibility and AppleScript commands |
 | [Architecture](docs/architecture.md) | Runtime ownership, presentation, and resize flow |
+| [Embedding](docs/embedding.md) | Using the terminal view in another app through the Swift package |
 | [Specification](docs/spec.md) · [status](docs/status.md) | Requirements, completed work, and open gaps |
 | [Benchmarks](docs/benchmarking.md) | Ghostty/Kitty comparisons, SQL output, resize stress, and measurement limits |
 | [Swift cutover](docs/swift-cutover.md) | Paired Rust/Swift measurements and the archived Rust snapshot |
 | [Terminal compatibility](docs/terminfo.md) | Bundled capabilities and parser coverage |
 | [Clipboard protocol](docs/osc52-clipboard.md) | OSC 52 behavior and policy |
-| [Fonts](assets/fonts/README.md) | Font sources and licenses |
+| [Fonts](Sources/TerminalView/Resources/Fonts/README.md) | Font sources and licenses |
 
 ## License
 
 The code is released under the [MIT License](LICENSE). The bundled fonts and
 the code derived from other projects keep their own licenses; see
-[Fonts](assets/fonts/README.md) and the
+[Fonts](Sources/TerminalView/Resources/Fonts/README.md) and the
 [third-party notices](Resources/Terminal/THIRD_PARTY_NOTICES.md).

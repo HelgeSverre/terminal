@@ -54,7 +54,7 @@ private struct SurfaceImageKey: Hashable {
 // command queue and glyph cache. A pane receives only an opaque surface lease.
 // Rendering state, GPU submissions, and (eventually) glyph residency therefore
 // have one place to enforce lifetime and process-wide resource rules.
-package final class TerminalRendering: @unchecked Sendable {
+public final class TerminalRendering: @unchecked Sendable {
   final class SurfaceLease: @unchecked Sendable {
     fileprivate let id = UUID()
     private let completionLock = NSLock()
@@ -225,7 +225,9 @@ package final class TerminalRendering: @unchecked Sendable {
     guard idleQuadBuffers.count < Self.idleQuadBufferLimit else { return }
     idleQuadBuffers.append(buffer)
   }
-  package init() throws {
+  /// One renderer serves every view of the app. Fails without a Metal
+  /// device or without the shaders.
+  public init() throws {
     guard let gpu = MTLCreateSystemDefaultDevice(), let commands = gpu.makeCommandQueue() else {
       throw RendererError.noDevice
     }
@@ -237,9 +239,7 @@ package final class TerminalRendering: @unchecked Sendable {
     atlasPages = pressureSmoke ? 4 : 2
     directGlyphBudget = fallbackBudgetSmoke ? 0 : 8 * 1024 * 1024
     directGlyphLimit = fallbackBudgetSmoke ? 0 : 1024
-    guard let libraryURL = TerminalResources.bundle.url(forResource: "Terminal", withExtension: "metallib")
-    else { throw RendererError.noShaders }
-    let library = try gpu.makeLibrary(URL: libraryURL)
+    guard let library = try TerminalResources.shaders(for: gpu) else { throw RendererError.noShaders }
     let descriptor = MTLRenderPipelineDescriptor()
     descriptor.vertexFunction = library.makeFunction(name: "terminal_vertex")
     descriptor.fragmentFunction = library.makeFunction(name: "terminal_fragment")

@@ -9,7 +9,7 @@ package enum ClipboardAccessDecision {
 // write the clipboard without asking: this is a personal terminal, and a
 // prompt per write (or per pane) only got in the way. `decide` stays as a
 // seam so tests can hold or deny a request.
-package final class ClipboardAccess {
+public final class ClipboardAccess {
   package typealias DecisionHandler = (
     ClipboardWriteRequest, NSWindow?, @escaping (ClipboardAccessDecision) -> Void
   ) -> (() -> Void)?
@@ -20,7 +20,7 @@ package final class ClipboardAccess {
     package var dismiss: (() -> Void)?
     package var writePermit: UInt64?
     package var pasteboardChangeCount: Int?
-    package init(_ request: ClipboardWriteRequest, window: NSWindow?) {
+    init(_ request: ClipboardWriteRequest, window: NSWindow?) {
       self.request = request
       self.window = window
     }
@@ -35,6 +35,10 @@ package final class ClipboardAccess {
   /// single ordering point for OSC 52 decisions and explicit user copies.
   private var latestWritePermit: UInt64 = 0
 
+  /// Clipboard access that lets programs write `pasteboard` without asking.
+  public convenience init(writingTo pasteboard: NSPasteboard) {
+    self.init(pasteboard: pasteboard, decide: ClipboardAccess.allow)
+  }
   package init(
     pasteboard: NSPasteboard = .general, decide: @escaping DecisionHandler = ClipboardAccess.allow
   ) {

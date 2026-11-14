@@ -92,15 +92,20 @@ led to these rules.
 | Area | Entry point |
 | --- | --- |
 | Windows, pane tree, menus | [main.swift](../Sources/Terminal/main.swift) |
-| Native input and accessibility | [Canvas.swift](../Sources/Terminal/Canvas.swift) |
-| PTY and terminal-state ordering | [Session.swift](../Sources/Terminal/Session.swift) |
-| Read admission, readiness, and descriptor lifetime | [IO](../Sources/Terminal/IO) |
-| Emulation and document storage | [Emulation](../Sources/Terminal/Emulation) |
-| Unicode decoding and text tables | [Text](../Sources/Terminal/Text) |
-| Rendering and glyph resources | [Renderer.swift](../Sources/Terminal/Renderer.swift) |
-| Process setup | [Spawn.c](../Sources/Terminal/Interop/Spawn.c) · [Launcher.c](../Sources/TerminalLauncher/Launcher.c) |
+| Native input and accessibility | [Canvas.swift](../Sources/TerminalView/Canvas.swift) |
+| PTY and terminal-state ordering | [Session.swift](../Sources/TerminalSession/Session.swift) |
+| Read admission, readiness, and descriptor lifetime | [IO](../Sources/TerminalSession/IO) |
+| Emulation and document storage | [Emulation](../Sources/TerminalCore/Emulation) |
+| Unicode decoding and text tables | [Text](../Sources/TerminalCore/Text) |
+| Rendering and glyph resources | [Renderer.swift](../Sources/TerminalView/Renderer.swift) |
+| Process setup | [Spawn.c](../Sources/TerminalInterop/Spawn.c) · [Launcher.c](../Sources/TerminalLauncher/Launcher.c) |
 
-`Sources/Terminal` contains the application in one Swift compiler module.
+The sources are four Swift modules, each importing the ones before it:
+`Sources/TerminalCore` (emulator and text), `Sources/TerminalSession` (PTY
+session), `Sources/TerminalView` (AppKit view and Metal renderer) and
+`Sources/Terminal` (the application: windows, panes, settings, automation).
+`Sources/TerminalInterop` holds the C declarations and the spawn. Another app
+can use the first three; see [embedding](embedding.md).
 `Tests/TerminalTests` holds the Swift Testing suites that `Package.swift`
 builds, `Tests/Programs` the few directly compiled probe and PTY programs, `Resources/Terminal`
 holds bundle inputs, and `Benchmarks/TerminalBench` holds the PTY driver.

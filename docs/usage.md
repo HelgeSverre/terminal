@@ -97,7 +97,7 @@ files into a pane pastes their quoted paths.
 
 Obel Mono is bundled in regular, bold, and italic faces. Symbols Nerd Font Mono
 supplies missing icon glyphs. Sources and licenses are in the
-[font directory](../assets/fonts/README.md).
+[font directory](../Sources/TerminalView/Resources/Fonts/README.md).
 
 The font-size number field accepts 8–40 pt. Use its stepper or press Up/Down to
 adjust the value. Settings also controls scrollback, following output on input,

@@ -96,11 +96,11 @@ package enum EarlyChild {
 }
 
 /// How a session's child ended, for deciding what becomes of its pane.
-package struct SessionEnd {
-  package let exitedCleanly: Bool
+public struct SessionEnd {
+  public let exitedCleanly: Bool
   /// From the start of the session, not of the child: a shell started ahead
   /// of the app is adopted later.
-  package let seconds: Double
+  public let seconds: Double
   package let ranLoginShell: Bool
 
   /// A shell that was left, by `exit` or end of input, takes its pane with
@@ -109,19 +109,19 @@ package struct SessionEnd {
   package var closesPane: Bool { ranLoginShell && (exitedCleanly || seconds >= 1) }
 }
 
-package struct LaunchSpec: Equatable {
-  package let executable: String
-  package let arguments: [String]
-  package let cwd: String
-  package let launcher: String
-  package init(executable: String, arguments: [String], cwd: String, launcher: String) {
+public struct LaunchSpec: Equatable {
+  public let executable: String
+  public let arguments: [String]
+  public let cwd: String
+  public let launcher: String
+  public init(executable: String, arguments: [String], cwd: String, launcher: String) {
     self.executable = executable
     self.arguments = arguments
     self.cwd = cwd
     self.launcher = launcher
   }
   /// Whether the arguments are within what a launch accepts.
-  package var isValid: Bool {
+  public var isValid: Bool {
     !arguments.isEmpty && arguments.count <= 256
       && arguments.reduce(0, { $0 + $1.utf8.count }) <= 1_048_576
   }
@@ -134,7 +134,7 @@ package struct LaunchSpec: Equatable {
     }
   }
   /// The user's login shell, started with `-l`.
-  package static func loginShell(cwd: String, launcher: String) -> LaunchSpec {
+  public static func loginShell(cwd: String, launcher: String) -> LaunchSpec {
     let executable = loginShellPath
     return LaunchSpec(executable: executable, arguments: [executable, "-l"], cwd: cwd, launcher: launcher)
   }
@@ -213,7 +213,7 @@ package struct TerminalKeyEvent {
   }
 }
 // The PTY and emulator handle are confined to this queue. Main receives immutable decoded values.
-package final class Session: @unchecked Sendable {
+public final class Session: @unchecked Sendable {
   typealias SelectionCompletion = @MainActor (Result<String?, TerminalSelectionFailure>) -> Void
   package typealias LinkCompletion = @MainActor (Result<URL, TerminalSelectionFailure>) -> Void
   private final class SelectionDelivery {
@@ -366,9 +366,9 @@ package final class Session: @unchecked Sendable {
   private lazy var historySearch = HistorySearch(session: self)
   private let clipboardSessionID = UUID()
   package var onSnapshot: (@MainActor (TerminalSnapshot) -> Void)?
-  package var onStatus: (@MainActor (String) -> Void)?
+  public var onStatus: (@MainActor (String) -> Void)?
   /// Called once, when the child has exited and its last output is parsed.
-  package var onEnd: (@MainActor (SessionEnd) -> Void)?
+  public var onEnd: (@MainActor (SessionEnd) -> Void)?
   package var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
   private var onClipboardClosed: (@MainActor (UUID) -> Void)?
   /// With `startsAtFirstGrid` the child is started when the pane's first
@@ -376,7 +376,7 @@ package final class Session: @unchecked Sendable {
   /// is laid out; a shell started at once would draw its first prompt for
   /// 80 columns and be resized a moment later, which leaves a stray `%` line
   /// or a misplaced right prompt behind.
-  package init(launch: LaunchSpec, startsAtFirstGrid: Bool = false) {
+  public init(launch: LaunchSpec, startsAtFirstGrid: Bool = false) {
     launchSpec = launch
     awaitsGrid = startsAtFirstGrid
     if CommandLine.arguments.prefix(while: { $0 != "--execute" }).contains("--session-statistics-file") {
@@ -1197,7 +1197,7 @@ package final class Session: @unchecked Sendable {
     }
     return true
   }
-  package func rawInput(_ bytes: Data) {
+  public func rawInput(_ bytes: Data) {
     _ = submitRaw(bytes, event: Event.raw)
   }
   @discardableResult package func shortcut(_ text: String) -> Bool {
@@ -1258,7 +1258,7 @@ package final class Session: @unchecked Sendable {
       DispatchQueue.main.async { completion(stats) }
     }
   }
-  package func configure(_ value: TerminalSessionConfiguration) {
+  public func configure(_ value: TerminalSessionConfiguration) {
     readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.configure(value))
@@ -1305,7 +1305,7 @@ package final class Session: @unchecked Sendable {
       enqueue(.scroll(amount))
     }
   }
-  package func clearDisplay() {
+  public func clearDisplay() {
     readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.clearDisplay)
@@ -1474,7 +1474,7 @@ package final class Session: @unchecked Sendable {
       }
     }
   }
-  package func close() {
+  public func close() {
     closeInteractions()
     readBroker.submit { [self] in
       guard !closed else { return }

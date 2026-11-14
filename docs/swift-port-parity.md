@@ -1,7 +1,7 @@
 # Swift replacement validation
 
 The app builds entirely from Swift, C and Metal. `just build` compiles the
-emulator at `Sources/Terminal/Emulation/TerminalEmulator.swift`; `just release-build`
+emulator at `Sources/TerminalCore/Emulation/TerminalEmulator.swift`; `just release-build`
 uses whole-module optimization. No supported build, test or data-generation
 command requires Cargo. The Rust implementation is retained on the private
 `archive/rust-2026-11-08` snapshot branch, alongside frozen comparison apps.

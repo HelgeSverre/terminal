@@ -28,8 +28,8 @@ The terminal emulator and document now share one Swift compiler module with the
 native host. Session queues retain exclusive mutation ownership; presentation
 uses direct immutable snapshots. The versioned C and JSON APIs remain for
 compatibility tests and headless tools, rather than the normal rendering path.
-`Sources/Terminal/Emulation` owns interpretation, document/history, protocol input, search,
-graphics state and snapshots; `Sources/Terminal/Text` owns streaming Unicode processing.
+`Sources/TerminalCore/Emulation` owns interpretation, document/history, protocol input, search,
+graphics state and snapshots; `Sources/TerminalCore/Text` owns streaming Unicode processing.
 
 PTY reads use one shared serial Dispatch lane, separate from each session's
 terminal owner. An ordered broker submits output and semantic controls to that

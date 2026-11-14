@@ -3,9 +3,9 @@ import QuartzCore
 import TerminalCore
 import TerminalSession
 
-package final class TerminalCanvasView: NSView, NSTextInputClient {
+public final class TerminalCanvasView: NSView, NSTextInputClient {
   package let automationID = UUID().uuidString
-  package let session: Session
+  public let session: Session
   private let rendering: TerminalRendering?
   private let clipboard: ClipboardAccess?
   private var configuration: TerminalViewConfiguration
@@ -51,13 +51,13 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
   private var findGeneration = 0
   private var findPending = false
   package var onStatus: ((String) -> Void)?
-  package var onTitle: ((String) -> Void)?
-  package var onActivated: (() -> Void)?
+  public var onTitle: ((String) -> Void)?
+  public var onActivated: (() -> Void)?
   /// Called when this view has become the window's first responder.
-  package var onFocused: (() -> Void)?
+  public var onFocused: (() -> Void)?
   package var onObservedSnapshot: ((TerminalSnapshot) -> Void)?
   package func refresh() { redraw() }
-  package func contentSize(columns: Int, rows: Int) -> NSSize {
+  public func contentSize(columns: Int, rows: Int) -> NSSize {
     updateMetrics()
     return NSSize(
       width: CGFloat(columns * cellWidth + 2 * insetPixels) / scale,
@@ -83,22 +83,22 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     ]
   }
 
-  package override var acceptsFirstResponder: Bool { true }
+  public override var acceptsFirstResponder: Bool { true }
   /// Accept the click that activates an unfocused window so it focuses the
   /// pane under the pointer instead of restoring the previously focused pane.
   /// AppKit asks only for clicks in non-key windows; that click only focuses.
-  package override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+  public override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
     if let event, event.type == .leftMouseDown { activatingClick = event.eventNumber }
     return true
   }
-  package override var wantsUpdateLayer: Bool { true }
-  package override var isOpaque: Bool { true }
-  package override func updateLayer() { redraw() }
-  package override var isFlipped: Bool { true }
-  package override func makeBackingLayer() -> CALayer { CAMetalLayer() }
+  public override var wantsUpdateLayer: Bool { true }
+  public override var isOpaque: Bool { true }
+  public override func updateLayer() { redraw() }
+  public override var isFlipped: Bool { true }
+  public override func makeBackingLayer() -> CALayer { CAMetalLayer() }
   /// Without `rendering` the view draws nothing; without `clipboard` it
   /// refuses clipboard writes and copies nothing.
-  package init(frame: NSRect, session: Session, rendering: TerminalRendering?, clipboard: ClipboardAccess?,
+  public init(frame: NSRect, session: Session, rendering: TerminalRendering?, clipboard: ClipboardAccess?,
        configuration: TerminalViewConfiguration) {
     self.session = session
     self.rendering = rendering
@@ -154,7 +154,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
       clipboard?.cancel(sessionID: sessionID)
     }
   }
-  required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
+  public required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   package func detachRenderingSurface() {
     guard let surface else { return }
     rendering?.detach(surface)
@@ -198,11 +198,11 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
       }
     }
   }
-  package override func accessibilityNumberOfCharacters() -> Int { accessible?.length ?? 0 }
-  package override func accessibilityVisibleCharacterRange() -> NSRange {
+  public override func accessibilityNumberOfCharacters() -> Int { accessible?.length ?? 0 }
+  public override func accessibilityVisibleCharacterRange() -> NSRange {
     NSRange(location: 0, length: accessible?.length ?? 0)
   }
-  package override func accessibilitySelectedTextRange() -> NSRange {
+  public override func accessibilitySelectedTextRange() -> NSRange {
     guard let accessible else { return NSRange(location: 0, length: 0) }
     let ranges = accessible.selectedRanges()
     if ranges.count == 1 { return ranges[0] }
@@ -213,17 +213,17 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     let caret = (snapshot?.cursor.row ?? 0) * accessible.columns + (snapshot?.cursor.col ?? 0)
     return accessible.textRange(gridStart: caret, gridEnd: caret)
   }
-  package override func accessibilitySelectedTextRanges() -> [NSValue]? {
+  public override func accessibilitySelectedTextRanges() -> [NSValue]? {
     guard let accessible else { return [] }
     let ranges = accessible.selectedRanges()
     if !ranges.isEmpty { return ranges.map { NSValue(range: $0) } }
     let caret = accessibilitySelectedTextRange()
     return caret.location == NSNotFound ? [] : [NSValue(range: caret)]
   }
-  package override func setAccessibilitySelectedTextRange(_ range: NSRange) {
+  public override func setAccessibilitySelectedTextRange(_ range: NSRange) {
     setAccessibilitySelectedTextRanges([NSValue(range: range)])
   }
-  package override func setAccessibilitySelectedTextRanges(_ ranges: [NSValue]?) {
+  public override func setAccessibilitySelectedTextRanges(_ ranges: [NSValue]?) {
     let ranges = ranges?.map(\.rangeValue) ?? []
     if ranges.isEmpty || ranges.allSatisfy({ $0.length == 0 }) {
       requestSelection(.clear)
@@ -232,36 +232,36 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     guard let range = accessible?.presentedRange(for: ranges) else { return }
     requestSelection(.range(start: range.start, end: range.end, mode: range.mode))
   }
-  package override func accessibilitySelectedText() -> String? {
+  public override func accessibilitySelectedText() -> String? {
     accessible?.selectedText()
   }
-  package override func accessibilityString(for range: NSRange) -> String? { accessible?.string(in: range) }
-  package override func accessibilityChildren() -> [Any]? {
+  public override func accessibilityString(for range: NSRange) -> String? { accessible?.string(in: range) }
+  public override func accessibilityChildren() -> [Any]? {
     var children: [Any] = accessible?.linkElements(parent: self, activate: { [weak self] activation in
       self?.activateLink(activation) ?? false
     }) ?? []
     if let selectionNotice { children.append(selectionNotice) }
     return children
   }
-  package override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
+  public override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
     accessible?.attributedString(in: range, fontSize: fontPoints, parent: self, activate: { [weak self] activation in
       self?.activateLink(activation) ?? false
     })
   }
-  package override func accessibilityStyleRange(for index: Int) -> NSRange {
+  public override func accessibilityStyleRange(for index: Int) -> NSRange {
     accessible?.styleRange(for: index) ?? NSRange(location: NSNotFound, length: 0)
   }
-  package override func accessibilityRange(for index: Int) -> NSRange {
+  public override func accessibilityRange(for index: Int) -> NSRange {
     accessible?.range(for: index) ?? NSRange(location: NSNotFound, length: 0)
   }
-  package override func accessibilityRange(forLine line: Int) -> NSRange {
+  public override func accessibilityRange(forLine line: Int) -> NSRange {
     accessible?.range(forLine: line) ?? NSRange(location: NSNotFound, length: 0)
   }
-  package override func accessibilityLine(for index: Int) -> Int { accessible?.line(for: index) ?? -1 }
-  package override func accessibilityInsertionPointLineNumber() -> Int {
+  public override func accessibilityLine(for index: Int) -> Int { accessible?.line(for: index) ?? -1 }
+  public override func accessibilityInsertionPointLineNumber() -> Int {
     accessibilityLine(for: accessibilitySelectedTextRange().location)
   }
-  package override func accessibilityRange(for point: NSPoint) -> NSRange {
+  public override func accessibilityRange(for point: NSPoint) -> NSRange {
     guard let window, let accessible else { return NSRange(location: NSNotFound, length: 0) }
     let local = convert(
       window.convertFromScreen(NSRect(origin: point, size: .zero)).origin, from: nil)
@@ -275,7 +275,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     let offset = accessible.textRange(gridStart: index, gridEnd: index).location
     return accessible.range(for: offset)
   }
-  package override func accessibilityFrame(for range: NSRange) -> NSRect {
+  public override func accessibilityFrame(for range: NSRange) -> NSRect {
     guard let window, let accessible else { return .zero }
     var frame = NSRect.null
     for span in accessible.spans(for: range) {
@@ -291,7 +291,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     guard !frame.isNull else { return .zero }
     return window.convertToScreen(convert(frame, to: nil))
   }
-  package override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
+  public override func isAccessibilitySelectorAllowed(_ selector: Selector) -> Bool {
     if selector == NSSelectorFromString("setAccessibilityValue:")
       || selector == NSSelectorFromString("setAccessibilitySelectedText:")
     {
@@ -299,7 +299,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     }
     return super.isAccessibilitySelectorAllowed(selector)
   }
-  package func apply(_ configuration: TerminalViewConfiguration) {
+  public func apply(_ configuration: TerminalViewConfiguration) {
     self.configuration = configuration
     fontPoints = configuration.fontSize
     session.configure(configuration.session)
@@ -323,7 +323,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
       redraw()
     }
   }
-  package override func updateTrackingAreas() {
+  public override func updateTrackingAreas() {
     super.updateTrackingAreas()
     if let tracking { removeTrackingArea(tracking) }
     let area = NSTrackingArea(
@@ -333,22 +333,22 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     addTrackingArea(area)
     tracking = area
   }
-  package override func mouseMoved(with event: NSEvent) {
+  public override func mouseMoved(with event: NSEvent) {
     updateLinkHover(locationInWindow: event.locationInWindow, modifiers: event.modifierFlags)
     if !event.modifierFlags.contains(.command), snapshot?.modes.mouse == 1003 {
       _ = reportMouse(event, button: 35, release: false)
     }
   }
-  package override func mouseEntered(with event: NSEvent) {
+  public override func mouseEntered(with event: NSEvent) {
     updateLinkHover(locationInWindow: event.locationInWindow, modifiers: event.modifierFlags)
   }
-  package override func mouseExited(with event: NSEvent) {
+  public override func mouseExited(with event: NSEvent) {
     if hoveredLink != nil { hoveredLink = nil; redraw() }
   }
-  package override func cursorUpdate(with event: NSEvent) {
+  public override func cursorUpdate(with event: NSEvent) {
     updateLinkHover(locationInWindow: event.locationInWindow, modifiers: event.modifierFlags)
   }
-  package override func resetCursorRects() { addCursorRect(bounds, cursor: .iBeam) }
+  public override func resetCursorRects() { addCursorRect(bounds, cursor: .iBeam) }
 
   private func linkOccurrence(locationInWindow: NSPoint) -> VisibleLinkProjection.Occurrence? {
     guard let snapshot, snapshot.cols > 0, !snapshot.rows.isEmpty else { return nil }
@@ -388,23 +388,23 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     if hoveredLink != value { hoveredLink = value; redraw() }
     if active { (value == nil ? NSCursor.iBeam : NSCursor.pointingHand).set() }
   }
-  package override func rightMouseDragged(with event: NSEvent) {
+  public override func rightMouseDragged(with event: NSEvent) {
     _ = reportMouse(event, button: 34, release: false)
   }
-  package override func viewDidMoveToWindow() {
+  public override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
     window?.acceptsMouseMovedEvents = true
     updateGeometry()
   }
-  package override func viewDidChangeBackingProperties() {
+  public override func viewDidChangeBackingProperties() {
     super.viewDidChangeBackingProperties()
     updateGeometry()
   }
-  package override func setFrameSize(_ newSize: NSSize) {
+  public override func setFrameSize(_ newSize: NSSize) {
     super.setFrameSize(newSize)
     updateGeometry()
   }
-  package override func becomeFirstResponder() -> Bool {
+  public override func becomeFirstResponder() -> Bool {
     // The window owns title publication.  Notify it synchronously so changing
     // panes immediately restores this pane's cached title, even if a later
     // responder change moves focus into a transient control.
@@ -416,7 +416,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     }
     return true
   }
-  package override func resignFirstResponder() -> Bool {
+  public override func resignFirstResponder() -> Bool {
     releaseOwnedKeys()
     if focused {
       focused = false
@@ -563,7 +563,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
   private func modifiers(_ flags: NSEvent.ModifierFlags) -> UInt32 {
     NativeKeyMap.modifiers(flags)
   }
-  package override func keyDown(with event: NSEvent) {
+  public override func keyDown(with event: NSEvent) {
     originatingKey = event
     defer { originatingKey = nil }
     if hasMarkedText() {
@@ -586,21 +586,21 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   /// ⌘Z, ⇧⌘Z and ⌘X belong to the Edit menu's text items, which would take
   /// them even while disabled. Typed into the terminal they go to its program.
-  package override func performKeyEquivalent(with event: NSEvent) -> Bool {
+  public override func performKeyEquivalent(with event: NSEvent) -> Bool {
     guard window?.firstResponder === self, TerminalEditMenu.isTextOnlyKey(event) else {
       return super.performKeyEquivalent(with: event)
     }
     keyDown(with: event)
     return true
   }
-  package override func keyUp(with event: NSEvent) {
+  public override func keyUp(with event: NSEvent) {
     guard let delivered = terminalKeys.removeValue(forKey: event.keyCode) else { return }
     session.input(TerminalKeyEvent(
       text: delivered.text, logical: delivered.logical, shifted: delivered.shifted,
       baseLayout: delivered.baseLayout, legacyText: delivered.legacyText, key: delivered.key,
       modifiers: modifiers(event.modifierFlags) & ~delivered.consumedModifiers, event: 2))
   }
-  package override func flagsChanged(with event: NSEvent) {
+  public override func flagsChanged(with event: NSEvent) {
     updateLinkHoverForCurrentPointer(modifiers: event.modifierFlags)
     guard let modifier = NativeKeyMap.modifierEvent(event) else { return }
     guard let resolved = modifierState.resolve(modifier) else { return }
@@ -621,7 +621,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
         modifiers: release.modifiers, event: 2))
     }
   }
-  package func insertText(_ string: Any, replacementRange: NSRange) {
+  public func insertText(_ string: Any, replacementRange: NSRange) {
     guard !cancellingComposition else { return }
     let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
     let composing = hasMarkedText()
@@ -643,7 +643,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     }
     inputContext?.invalidateCharacterCoordinates()
   }
-  package func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+  public func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
     guard !cancellingComposition else { return }
     let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
     marked = NSMutableAttributedString(string: text)
@@ -651,7 +651,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     inputContext?.invalidateCharacterCoordinates()
     redraw()
   }
-  package func unmarkText() {
+  public func unmarkText() {
     let text = marked.string
     marked.mutableString.setString("")
     markedSelection = NSRange(location: 0, length: 0)
@@ -668,16 +668,16 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     inputContext?.invalidateCharacterCoordinates()
     redraw()
   }
-  package func hasMarkedText() -> Bool { marked.length > 0 }
-  package func markedRange() -> NSRange {
+  public func hasMarkedText() -> Bool { marked.length > 0 }
+  public func markedRange() -> NSRange {
     hasMarkedText()
       ? NSRange(location: 0, length: marked.length) : NSRange(location: NSNotFound, length: 0)
   }
-  package func selectedRange() -> NSRange { markedSelection }
-  package func validAttributesForMarkedText() -> [NSAttributedString.Key] {
+  public func selectedRange() -> NSRange { markedSelection }
+  public func validAttributesForMarkedText() -> [NSAttributedString.Key] {
     [.underlineStyle, .foregroundColor, .backgroundColor]
   }
-  package func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?)
+  public func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?)
     -> NSAttributedString?
   {
     guard hasMarkedText(), range.location <= marked.length else { return nil }
@@ -685,8 +685,8 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     actualRange?.pointee = r
     return marked.attributedSubstring(from: r)
   }
-  package func characterIndex(for point: NSPoint) -> Int { 0 }
-  package func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+  public func characterIndex(for point: NSPoint) -> Int { 0 }
+  public func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
     let cursor = snapshot?.cursor
     let rect = NSRect(
       x: CGFloat(insetPixels + (cursor?.col ?? 0) * cellWidth) / scale,
@@ -696,7 +696,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     actualRange?.pointee = range
     return window?.convertToScreen(convert(rect, to: nil)) ?? .zero
   }
-  package override func doCommand(by selector: Selector) {
+  public override func doCommand(by selector: Selector) {
     switch NSStringFromSelector(selector) {
     case "insertNewline:": send(key: 22)
     case "insertTab:": send(key: 21)
@@ -729,7 +729,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
       Int((point.x * scale - CGFloat(insetPixels)) / CGFloat(cellWidth))))
     return value.selectionHit(row: row, boundary: boundary)
   }
-  package override func mouseDown(with event: NSEvent) {
+  public override func mouseDown(with event: NSEvent) {
     localLinkPress = false
     dragging = false
     window?.makeFirstResponder(self)
@@ -756,13 +756,13 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
       ? .rectangular : event.clickCount >= 3 ? .line : event.clickCount == 2 ? .word : .character
     dragging = requestSelection(.begin(hit, granularity: granularity))
   }
-  package override func mouseDragged(with event: NSEvent) {
+  public override func mouseDragged(with event: NSEvent) {
     if localLinkPress || activatingPress { return }
     if dragging {
       if let hit = selectionHit(event) { requestSelection(.extend(hit)) }
     } else { _ = reportMouse(event, button: 32, release: false) }
   }
-  package override func mouseUp(with event: NSEvent) {
+  public override func mouseUp(with event: NSEvent) {
     if activatingPress { activatingPress = false; return }
     if localLinkPress { localLinkPress = false; return }
     if dragging {
@@ -770,7 +770,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
       requestSelection(.commit)
     } else { _ = reportMouse(event, button: 0, release: true) }
   }
-  package override func rightMouseDown(with event: NSEvent) {
+  public override func rightMouseDown(with event: NSEvent) {
     if !reportMouse(event, button: 2, release: false) {
       let menu = NSMenu()
       menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "")
@@ -778,7 +778,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
       NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
   }
-  package override func rightMouseUp(with event: NSEvent) {
+  public override func rightMouseUp(with event: NSEvent) {
     _ = reportMouse(event, button: 2, release: true)
   }
   private func reportMouse(_ event: NSEvent, button: Int, release: Bool) -> Bool {
@@ -803,7 +803,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     }
     return true
   }
-  package override func scrollWheel(with event: NSEvent) {
+  public override func scrollWheel(with event: NSEvent) {
     guard let value = snapshot else { return }
     let lines = scrollAccumulator.lines(for: event, lineHeight: CGFloat(cellHeight) / scale)
     guard lines != 0 else { return }
@@ -815,7 +815,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
       session.scroll(lines)
     }
   }
-  @objc package func copy(_ sender: Any?) {
+  @objc public func copy(_ sender: Any?) {
     guard let value = snapshot, value.selection.phase != .none, let clipboard else { return }
     clipboard.copy(from: session, selectionRevision: value.selection.revision)
   }
@@ -831,7 +831,7 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
   @objc func paste(_ sender: Any?) {
     if let text = NSPasteboard.general.string(forType: .string) { send(text, key: 1) }
   }
-  package override func selectAll(_ sender: Any?) {
+  public override func selectAll(_ sender: Any?) {
     guard let value = snapshot,
       let start = value.selectionHit(row: 0, boundary: 0),
       let end = value.selectionHit(row: value.rows.count - 1, boundary: value.cols)
@@ -923,8 +923,8 @@ package final class TerminalCanvasView: NSView, NSTextInputClient {
     findBar?.dismiss()
     window?.makeFirstResponder(self)
   }
-  package override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
-  package override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+  public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { .copy }
+  public override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
     if let urls = sender.draggingPasteboard.readObjects(
       forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty
     {
