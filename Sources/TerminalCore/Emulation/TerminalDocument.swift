@@ -219,14 +219,14 @@ private struct TerminalLegacyCapacityCell {
   var e: UInt64 = 0; var f: UInt64 = 0; var g: UInt64 = 0; var h: UInt64 = 0
 }
 private final class TerminalRowStorage {
-  var slots: [TerminalRowSlot]
-  var payloads = TerminalRowPayloads()
+  @exclusivity(unchecked) var slots: [TerminalRowSlot]
+  @exclusivity(unchecked) var payloads = TerminalRowPayloads()
   // Non-default styles used by this row; a slot's style index is its position
   // plus one. Entries are append-only between compactions, so an index stays
   // valid for the whole of one row edit.
-  var styles: [TerminalStyle]
-  var logicalCapacity: Int
-  var detachCapacity: Int
+  @exclusivity(unchecked) var styles: [TerminalStyle]
+  @exclusivity(unchecked) var logicalCapacity: Int
+  @exclusivity(unchecked) var detachCapacity: Int
   init(slots: [TerminalRowSlot], payloads: TerminalRowPayloads = TerminalRowPayloads(),
        styles: [TerminalStyle] = [], logicalCapacity: Int, detachCapacity: Int) {
     self.slots = slots; self.payloads = payloads; self.styles = styles

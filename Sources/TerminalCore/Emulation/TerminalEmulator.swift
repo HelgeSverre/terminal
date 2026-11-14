@@ -22,7 +22,7 @@ private enum VTParserState { case ground, escape, charset(Int), escapeIntermedia
 private final class TerminalSearchToken {
   // The task contains only immutable page snapshots while it is with the
   // worker. The core is consulted exclusively by fill/accept on its owner.
-  var task: TerminalSearchTask
+  @exclusivity(unchecked) var task: TerminalSearchTask
   init(_ task: TerminalSearchTask) { self.task = task }
 }
 
@@ -39,8 +39,8 @@ enum SnapshotABIDiagnostics {
 // promise is deliberately narrow: clients copy before return, so storage can
 // be released immediately afterwards.
 private final class BorrowedSnapshotCells {
-  var text: [UnsafeMutablePointer<UInt8>] = []
-  var links: [UnsafeMutablePointer<UInt8>] = []
+  @exclusivity(unchecked) var text: [UnsafeMutablePointer<UInt8>] = []
+  @exclusivity(unchecked) var links: [UnsafeMutablePointer<UInt8>] = []
   deinit { text.forEach { $0.deallocate() }; links.forEach { $0.deallocate() } }
   func copy(_ string: String, into target: inout [UnsafeMutablePointer<UInt8>]) -> UnsafePointer<UInt8>? {
     #if SNAPSHOT_ABI_DIAGNOSTICS
@@ -61,53 +61,53 @@ private final class TerminalEmulator {
   private enum DisplayClearAction: UInt32 {
     case ignoredAlternate = 0, cleared = 1, redrawPrompt = 2
   }
-  private(set) var columns: Int
-  private(set) var rowCount: Int
-  private var document: TerminalDocument
+  @exclusivity(unchecked) private(set) var columns: Int
+  @exclusivity(unchecked) private(set) var rowCount: Int
+  @exclusivity(unchecked) private var document: TerminalDocument
   private let selection = TerminalSelection()
-  private var selectionDocumentGeneration = UUID()
-  private var selectionSnapshotID: UInt64 = 0
-  private var pendingSelectionRevision: UInt64?
+  @exclusivity(unchecked) private var selectionDocumentGeneration = UUID()
+  @exclusivity(unchecked) private var selectionSnapshotID: UInt64 = 0
+  @exclusivity(unchecked) private var pendingSelectionRevision: UInt64?
   private struct PendingPresentedContent {
     var revision: UInt64
     let historyEpoch: UInt64
     let validator: TerminalPresentedContentValidator
   }
-  private var pendingPresentedContent: PendingPresentedContent?
+  @exclusivity(unchecked) private var pendingPresentedContent: PendingPresentedContent?
   private struct PendingResize {
     let geometry: TerminalResizeGeometry
     var revision: UInt64
     var transaction: DocumentReflowTransaction
     var relievingPressure = false
   }
-  private var pendingResize: PendingResize?
+  @exclusivity(unchecked) private var pendingResize: PendingResize?
   private var primary: TerminalScreen { get { document.primary } set { document.primary = newValue } }
   private var alternate: TerminalScreen { get { document.alternate } set { document.alternate = newValue } }
-  private var usingAlternate = false
+  @exclusivity(unchecked) private var usingAlternate = false
   private var history: TerminalHistory { document.history }
-  private var historyLimit = 50_000
-  private var historyByteLimit = 64 * 1024 * 1024
-  private var viewOffset = 0
+  @exclusivity(unchecked) private var historyLimit = 50_000
+  @exclusivity(unchecked) private var historyByteLimit = 64 * 1024 * 1024
+  @exclusivity(unchecked) private var viewOffset = 0
   // Nil means follow-tail. A retained row identity keeps a viewport stable as
   // output appends history and is remapped during document reflow.
-  private var viewAnchor: UInt64?
-  private var viewportClampRevision: UInt64 = 1
-  private var viewportWasClamped = false
+  @exclusivity(unchecked) private var viewAnchor: UInt64?
+  @exclusivity(unchecked) private var viewportClampRevision: UInt64 = 1
+  @exclusivity(unchecked) private var viewportWasClamped = false
   // Modes describe protocol policy. Geometry itself belongs to each document
   // screen, because primary and alternate retain independent margins.
-  private var originMode = false
-  private var leftRightMargins = false
-  private var autoWrap = true
-  private var insertMode = false
-  private var newlineMode = false
-  private var syncDeadline: UInt64?
-  private var clock: UInt64 = 0
-  private var parser = VTParserState.ground
-  private var utf8 = TerminalText.UTF8Decoder()
-  private var sequence = ""
+  @exclusivity(unchecked) private var originMode = false
+  @exclusivity(unchecked) private var leftRightMargins = false
+  @exclusivity(unchecked) private var autoWrap = true
+  @exclusivity(unchecked) private var insertMode = false
+  @exclusivity(unchecked) private var newlineMode = false
+  @exclusivity(unchecked) private var syncDeadline: UInt64?
+  @exclusivity(unchecked) private var clock: UInt64 = 0
+  @exclusivity(unchecked) private var parser = VTParserState.ground
+  @exclusivity(unchecked) private var utf8 = TerminalText.UTF8Decoder()
+  @exclusivity(unchecked) private var sequence = ""
   // Style, link and protection of the next printed cell. They live in one
   // value so a print transaction borrows them instead of assembling a copy.
-  private var attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
+  @exclusivity(unchecked) private var attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
   private var pen: TerminalStyle {
     get { attributes.style }
     set { captureRepeatAttributes(); attributes.style = newValue }
@@ -120,31 +120,31 @@ private final class TerminalEmulator {
     get { attributes.protected }
     set { captureRepeatAttributes(); attributes.protected = newValue }
   }
-  private var replies = Data()
-  private var nextClipboardRequestID: UInt64 = 1
-  private var clipboardRequests: [(UInt64, Data)] = []
-  private var pendingClipboardRequests = Set<UInt64>()
-  private var palette = TerminalPalette()
-  private var title = ""
-  private var currentDirectory: String?
-  private var applicationCursor = false
-  private var applicationKeypad = false
-  private var bracketedPaste = false
-  private var focusReporting = false
-  private var reverseVideo = false
-  private var mouseMode = 0
-  private var sgrMouse = false
-  private var tabs: [Bool]
-  private var tabsCleared = false
-  private var revision: UInt64 = 1
-  private var geometryEpoch: UInt64 = 1
+  @exclusivity(unchecked) private var replies = Data()
+  @exclusivity(unchecked) private var nextClipboardRequestID: UInt64 = 1
+  @exclusivity(unchecked) private var clipboardRequests: [(UInt64, Data)] = []
+  @exclusivity(unchecked) private var pendingClipboardRequests = Set<UInt64>()
+  @exclusivity(unchecked) private var palette = TerminalPalette()
+  @exclusivity(unchecked) private var title = ""
+  @exclusivity(unchecked) private var currentDirectory: String?
+  @exclusivity(unchecked) private var applicationCursor = false
+  @exclusivity(unchecked) private var applicationKeypad = false
+  @exclusivity(unchecked) private var bracketedPaste = false
+  @exclusivity(unchecked) private var focusReporting = false
+  @exclusivity(unchecked) private var reverseVideo = false
+  @exclusivity(unchecked) private var mouseMode = 0
+  @exclusivity(unchecked) private var sgrMouse = false
+  @exclusivity(unchecked) private var tabs: [Bool]
+  @exclusivity(unchecked) private var tabsCleared = false
+  @exclusivity(unchecked) private var revision: UInt64 = 1
+  @exclusivity(unchecked) private var geometryEpoch: UInt64 = 1
   // TerminalDocument deliberately restarts row IDs after a hard reset. Keep a
   // monotonic identity generation so a pending search cannot mistake a fresh
   // post-RIS row for an old (id, revision) pair.
-  private var searchGeneration: UInt64 = 1
-  private var documentEpoch: UInt64 = 1
-  private var historyEpoch: UInt64 = 1
-  private var screenEpoch: UInt64 = 1
+  @exclusivity(unchecked) private var searchGeneration: UInt64 = 1
+  @exclusivity(unchecked) private var documentEpoch: UInt64 = 1
+  @exclusivity(unchecked) private var historyEpoch: UInt64 = 1
+  @exclusivity(unchecked) private var screenEpoch: UInt64 = 1
   // Accepted matches stay in document identity space. Each keeps the row
   // revision that was proven at accept time, so a later change to an
   // unrelated row does not discard a valid decoration while a changed row can
@@ -162,16 +162,16 @@ private final class TerminalEmulator {
     /// publication costs the visible rows and not the retained match count.
     let byRow: [UInt64: [(match: Int, span: Int)]]
   }
-  private var searchHits: SearchHits?
+  @exclusivity(unchecked) private var searchHits: SearchHits?
   private let graphics = KittyGraphicsStore()
-  private var cellPixelWidth = 8
-  private var cellPixelHeight = 16
-  private var lastPrinted: TerminalDocument.PrintedText?
+  @exclusivity(unchecked) private var cellPixelWidth = 8
+  @exclusivity(unchecked) private var cellPixelHeight = 16
+  @exclusivity(unchecked) private var lastPrinted: TerminalDocument.PrintedText?
   // REP prints with the attributes of the last printed cluster. Those are
   // nearly always the current `attributes`, so they are copied only when the
   // current ones are about to change (or when a cluster kept its own).
-  private var lastPrintedAttributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
-  private var repeatUsesCurrentAttributes = false
+  @exclusivity(unchecked) private var lastPrintedAttributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
+  @exclusivity(unchecked) private var repeatUsesCurrentAttributes = false
   private func captureRepeatAttributes() {
     guard repeatUsesCurrentAttributes else { return }
     lastPrintedAttributes = attributes
@@ -183,15 +183,15 @@ private final class TerminalEmulator {
     repeatUsesCurrentAttributes = false
     repeatRemaining = 0
   }
-  private var repeatRemaining = 0
-  private var charsetSpecial = [false, false]
-  private var charsetSlot = 0
+  @exclusivity(unchecked) private var repeatRemaining = 0
+  @exclusivity(unchecked) private var charsetSpecial = [false, false]
+  @exclusivity(unchecked) private var charsetSlot = 0
   // Decoded text waiting to be printed: the first `decodedScalarCount`
   // elements of a buffer that keeps its full size, so that decoding writes
   // into it directly. Those before `decodedScalarStart` are already printed.
-  private var decodedScalars = [Unicode.Scalar](repeating: "\0", count: 2 * decodedFlushCount)
-  private var decodedScalarCount = 0
-  private var decodedScalarStart = 0
+  @exclusivity(unchecked) private var decodedScalars = [Unicode.Scalar](repeating: "\0", count: 2 * decodedFlushCount)
+  @exclusivity(unchecked) private var decodedScalarCount = 0
+  @exclusivity(unchecked) private var decodedScalarStart = 0
   /// Pending decoded scalars are printed once this many have gathered.
   private static let decodedFlushCount = 1024
   // A shorter ASCII run that follows undrained decoded text joins that text,
@@ -199,10 +199,10 @@ private final class TerminalEmulator {
   private static let minimumDirectASCIIRun = 16
   // CSI input itself is capped at 16 KiB, so this reusable numeric scratch is
   // bounded by the parser's existing sequence limit.
-  private var csiParameterScratch: [Int] = []
-  private var csiBytes: [UInt8] = []
+  @exclusivity(unchecked) private var csiParameterScratch: [Int] = []
+  @exclusivity(unchecked) private var csiBytes: [UInt8] = []
   // Preserve the old scalar-backed String limit: bytes >= 0x80 took two UTF-8 bytes.
-  private var csiUTF8Count = 0
+  @exclusivity(unchecked) private var csiUTF8Count = 0
 
   init(columns: Int, rows: Int) {
     self.columns = max(1, min(4096, columns))

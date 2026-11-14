@@ -104,6 +104,22 @@ that works in a package is in the source: `@exclusivity(unchecked)` on the
 emulator's hot stored properties, or keeping that state in locals on the
 parser's fast path.
 
+That change was made afterwards (the commit that adds this paragraph):
+`@exclusivity(unchecked)` on the stored properties of the parser's classes.
+The same host, rebuilt with plain `swift build -c release`, three passes of
+16 MiB and 10 runs per workload, medians in MiB/s:
+
+| Workload | Before | After, pass 1 | Pass 2 | Pass 3 |
+| --- | --- | --- | --- | --- |
+| ascii_short_lines | 255 | 255 | 276 | 276 |
+| ascii_long_lines | 287 | 286 | 304 | 319 |
+| ansi_truecolor | 131 | 206 | 204 | 206 |
+| unicode | 107 | 143 | 143 | 142 |
+
+"Before" is the best pass of the table above. On truecolor the package is now
+level with SwiftTerm's best pass (212 and 204), and on mixed Unicode about
+4.5 times SwiftTerm.
+
 ## Not measured
 
 Frame rate, input latency, startup, resize and memory under scrollback. The
