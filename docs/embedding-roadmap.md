@@ -102,8 +102,12 @@ is not part of the library by design.
   of its own and no app, tool or test targets, and never compiles the test
   hooks. The manifest tells by its location in a `checkouts` directory.
 - **Headless engine, first step:** `HeadlessTerminal` in the `TerminalEngine`
-  product feeds bytes and returns screen text and replies. Cell styles,
-  history and a session over a host's transport are still missing.
+  product feeds bytes and returns screen text and replies. Cell styles and
+  history are still missing.
+- **Item 6, a transport:** `TerminalSession(transport:)` runs a session over
+  a host's `TerminalTransport` (SSH, serial, replay). The session reads and
+  writes one end of a socket pair, so the read, write and flow-control code
+  is the PTY's; the local process is not itself a transport.
 - **Mode 2027:** a query is answered "permanently set". A layout by code
   point width is not built; see `BUGS.md`.
 

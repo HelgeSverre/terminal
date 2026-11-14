@@ -142,6 +142,37 @@ reference to a session does the same, so a host that drops a view and its
 session does not leave a shell running. After `close()` the session does not
 call `onEnd`.
 
+### A session without a local process
+
+An SSH client, a serial console or a replay tool gives the session a
+transport instead of a launch. No launcher is needed.
+
+```swift
+final class Channel: TerminalTransport {
+  var connection: TerminalConnection?
+  func start(_ connection: TerminalConnection, columns: Int, rows: Int) {
+    self.connection = connection          // open the far end at this size
+  }
+  func send(_ bytes: Data) { /* keystrokes and the terminal's replies, for the far end */ }
+  func resize(columns: Int, rows: Int, pixelWidth: Int, pixelHeight: Int) { /* window change */ }
+  func close() { connection = nil }
+}
+
+let session = TerminalSession(transport: channel, startsAtFirstGrid: true)
+// When the far end has output:
+channel.connection?.receive(bytes)
+// When it is gone:
+channel.connection?.end()                 // or end(error:)
+```
+
+| Rule | Detail |
+| --- | --- |
+| Threads | The transport's methods run on one private serial queue, one at a time. `receive` and `end` may be called from any thread. |
+| Order | Bytes are shown in the order `receive` got them. Everything received before `end` is shown before the session reports its end. |
+| Flow control | `receive` returns at once and keeps the bytes until the terminal takes them. `bufferedByteCount` says how many wait; a source that can outrun the terminal, such as a file, pauses while it is large. |
+| End | `end()` gives `onEnd` with `exitedCleanly` true; `end(error:)` gives it false and the error in `transportError`. `exitCode` and `processIdentifier` are nil. |
+| Close | `close()` is called once after `start`, when the session is closed or released or the transport has ended it. |
+
 ## Callbacks and control
 
 All callbacks run on the main thread.
@@ -203,9 +234,6 @@ The fonts keep their own licenses; see the
   can set only the font size.
 - **The find bar.** The Find action needs the app's find bar, which a host
   cannot attach yet.
-- **Feeding bytes without a child process.** `TerminalSession` always starts a
-  program on a PTY. An SSH client or a replay tool needs a session over its
-  own transport.
 - **More of the emulator.** `HeadlessTerminal` gives text only: no colors
   or styles per cell, no history, no selection, no key encoding.
 - **A launch without the helper.** The host must carry `TerminalLauncher`.

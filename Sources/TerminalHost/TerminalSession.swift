@@ -112,8 +112,12 @@ public struct SessionEnd {
   package let ranLoginShell: Bool
   /// The status `waitpid` gave for the child.
   package var waitStatus: Int32 = 0
+  /// False for a session over a transport.
+  package var hadChild = true
+  /// The error a transport ended its connection with, if it gave one.
+  public var transportError: (any Error)? = nil
   /// The child's exit code, or nil when a signal ended it.
-  public var exitCode: Int32? { waitStatus & 0x7f == 0 ? (waitStatus >> 8) & 0xff : nil }
+  public var exitCode: Int32? { hadChild && waitStatus & 0x7f == 0 ? (waitStatus >> 8) & 0xff : nil }
   /// The signal that ended the child, or nil when it exited by itself.
   public var terminatingSignal: Int32? {
     let signal = waitStatus & 0x7f
@@ -350,7 +354,9 @@ public final class TerminalSession: @unchecked Sendable {
     case clipboardDecision(UInt64, Bool, @MainActor (Bool) -> Void)
     case eof, idle
   }
-  private let launchSpec: LaunchSpec
+  private let launchSpec: LaunchSpec?
+  private let transport: TerminalTransport?
+  private var connection: TerminalConnection?
   private let awaitsGrid: Bool
   /// The core exists and the child is still to be started.
   private var awaitingGrid = false
@@ -452,8 +458,18 @@ public final class TerminalSession: @unchecked Sendable {
   /// is laid out; a shell started at once would draw its first prompt for
   /// 80 columns and be resized a moment later, which leaves a stray `%` line
   /// or a misplaced right prompt behind.
-  public init(launch: LaunchSpec, startsAtFirstGrid: Bool = false) {
+  public convenience init(launch: LaunchSpec, startsAtFirstGrid: Bool = false) {
+    self.init(launch: launch, transport: nil, startsAtFirstGrid: startsAtFirstGrid)
+  }
+  /// A session with no local process: `transport` is its far end. The
+  /// session reports its end when the transport ends its connection, and
+  /// `processIdentifier` stays nil.
+  public convenience init(transport: TerminalTransport, startsAtFirstGrid: Bool = false) {
+    self.init(launch: nil, transport: transport, startsAtFirstGrid: startsAtFirstGrid)
+  }
+  private init(launch: LaunchSpec?, transport: TerminalTransport?, startsAtFirstGrid: Bool) {
     launchSpec = launch
+    self.transport = transport
     awaitsGrid = startsAtFirstGrid
     if SessionDiagnostics.collectsStreamStatistics { streamStatistics = StreamStatistics() }
     readBroker = PTYReadBroker(owner: queue, diagnostics: streamStatistics != nil, deliver: { [weak self] bytes in
@@ -787,21 +803,23 @@ public final class TerminalSession: @unchecked Sendable {
       return fail(.engineUnavailable, "Core initialization failed")
     }
     core = handle
-    let spec = launchSpec
-    guard spec.isValid else { return fail(.invalidArguments, "Invalid launch arguments") }
-    guard awaitsGrid else { return launch(spec, columns: 80, rows: 24, cellWidth: 0, cellHeight: 0) }
+    guard launchSpec?.isValid != false else { return fail(.invalidArguments, "Invalid launch arguments") }
+    guard awaitsGrid else { return launch(columns: 80, rows: 24, cellWidth: 0, cellHeight: 0) }
     awaitingGrid = true
     // A pane that is never laid out still gets its shell.
     queue.asyncAfter(deadline: .now() + .seconds(1)) { [weak self] in
       self?.readBroker.submit {
         guard let self, self.awaitingGrid, !self.closed else { return }
         self.awaitingGrid = false
-        self.launch(spec, columns: 80, rows: 24, cellWidth: 0, cellHeight: 0)
+        self.launch(columns: 80, rows: 24, cellWidth: 0, cellHeight: 0)
       }
     }
   }
   /// Starts the child on a terminal of the given size and attaches to it.
-  private func launch(_ spec: LaunchSpec, columns: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
+  private func launch(columns: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
+    guard let spec = launchSpec else {
+      return connect(columns: columns, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
+    }
     let adopted = EarlyChild.adopt(spec)
     let child = adopted ?? spec.spawn(columns: columns, rows: rows)
     guard child.error == 0 else {
@@ -819,19 +837,8 @@ public final class TerminalSession: @unchecked Sendable {
         ws_xpixel: UInt16(clamping: columns * cellWidth), ws_ypixel: UInt16(clamping: rows * cellHeight))
       _ = ioctl(master, TIOCSWINSZ, &size)
     }
-    startedNanoseconds = DispatchTime.now().uptimeNanoseconds
     LiveChildren.started()
-    let lifetime = PTYDescriptorLifetime(descriptor: master, sources: 2)
-    descriptorLifetime = lifetime
-    let w = DispatchSource.makeWriteSource(fileDescriptor: master, queue: queue)
-    writer = w
-    w.setEventHandler { [weak self] in self?.flush() }
-    w.setCancelHandler { lifetime.sourceCancelled(1) }
-    readEndpoint = PTYReadEndpoint(fd: master, broker: readBroker, lifetime: lifetime,
-      eofObserved: { [weak self] in self?.stopAcceptingInput() })
-    w.resume()
-    w.suspend()
-    writeSuspended = true
+    attach()
     let fd = child.status
     let status = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
     var failure = Data()
@@ -869,14 +876,52 @@ public final class TerminalSession: @unchecked Sendable {
     publish()
     scheduleOwner()
   }
+  /// Starts the transport on a terminal of the given size.
+  private func connect(columns: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
+    guard let transport else { return }
+    switch TerminalConnection.socketPair() {
+    case .failure(let error):
+      fail(.spawn(errno: error.code.rawValue), "Transport failed: \(String(cString: strerror(error.code.rawValue)))")
+    case .success(let ends):
+      master = ends.session
+      // There is no child to wait for: the end of the stream is the end.
+      reaped = true
+      let line = TerminalConnection(descriptor: ends.transport, transport: transport)
+      connection = line
+      attach()
+      line.start(columns: columns, rows: rows)
+      if cellWidth > 0 {
+        line.resize(columns: columns, rows: rows, pixelWidth: columns * cellWidth, pixelHeight: rows * cellHeight)
+      }
+      publish()
+      scheduleOwner()
+    }
+  }
+  /// Reads and writes `master`, a PTY or a transport's socket.
+  private func attach() {
+    startedNanoseconds = DispatchTime.now().uptimeNanoseconds
+    let lifetime = PTYDescriptorLifetime(descriptor: master, sources: 2)
+    descriptorLifetime = lifetime
+    let w = DispatchSource.makeWriteSource(fileDescriptor: master, queue: queue)
+    writer = w
+    w.setEventHandler { [weak self] in self?.flush() }
+    w.setCancelHandler { lifetime.sourceCancelled(1) }
+    readEndpoint = PTYReadEndpoint(fd: master, broker: readBroker, lifetime: lifetime,
+      eofObserved: { [weak self] in self?.stopAcceptingInput() })
+    w.resume()
+    w.suspend()
+    writeSuspended = true
+  }
   /// The child is gone and everything it wrote is on screen.
   private func finish() {
     report("Session finished")
     // WIFEXITED and a zero WEXITSTATUS.
-    let clean = exitStatus & 0x7f == 0 && (exitStatus >> 8) & 0xff == 0
+    let failure = connection?.failure
+    let clean = exitStatus & 0x7f == 0 && (exitStatus >> 8) & 0xff == 0 && failure == nil
     let seconds = Double(DispatchTime.now().uptimeNanoseconds &- startedNanoseconds) / 1e9
     let end = SessionEnd(
-      exitedCleanly: clean, seconds: seconds, ranLoginShell: launchSpec.isLoginShell, waitStatus: exitStatus)
+      exitedCleanly: clean, seconds: seconds, ranLoginShell: launchSpec?.isLoginShell == true,
+      waitStatus: exitStatus, hadChild: launchSpec != nil, transportError: failure)
     DispatchQueue.main.async { [weak self] in self?.onEnd?(end) }
   }
   private func reap() {
@@ -1061,10 +1106,16 @@ public final class TerminalSession: @unchecked Sendable {
           ws_row: UInt16(geometry.rows), ws_col: UInt16(geometry.columns),
           ws_xpixel: UInt16(clamping: geometry.columns * geometry.cellWidth),
           ws_ypixel: UInt16(clamping: geometry.rows * geometry.cellHeight))
-        if let result = descriptorLifetime?.withLease({ ioctl($0, TIOCSWINSZ, &size) }), result < 0 {
-          report("PTY resize failed")
+        if let connection {
+          connection.resize(
+            columns: geometry.columns, rows: geometry.rows,
+            pixelWidth: Int(size.ws_xpixel), pixelHeight: Int(size.ws_ypixel))
+        } else {
+          if let result = descriptorLifetime?.withLease({ ioctl($0, TIOCSWINSZ, &size) }), result < 0 {
+            report("PTY resize failed")
+          }
+          EarlyChild.noteGrid(size)
         }
-        EarlyChild.noteGrid(size)
       case .rejected(let reason, _):
         resizePending = false
         precondition(queuedResizeCount > 0)
@@ -1414,7 +1465,7 @@ public final class TerminalSession: @unchecked Sendable {
       wantedGrid = (cols, rows, cellWidth, cellHeight)
       if awaitingGrid {
         awaitingGrid = false
-        launch(launchSpec, columns: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
+        launch(columns: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
       }
       if cols != columns || rows != rowCount || cellWidth != cellWidthPx
         || cellHeight != cellHeightPx || queuedResizeCount > 0
