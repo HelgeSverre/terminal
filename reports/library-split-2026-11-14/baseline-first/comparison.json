@@ -1,0 +1,53 @@
+{
+  "apps": {
+    "baseline": {
+      "bundle": "/Users/helge/code/terminal-library/target/frozen/Baseline.app",
+      "bundle_regular_file_bytes": 9835612,
+      "cleanup_survivors": [],
+      "executable_bytes": 3061360,
+      "executable_sha256": "52e583a114c5e1c727ddf801e71a4b5e5ec19358e7510e1b096af6e821c707ef",
+      "exit_status": 0,
+      "natural_exit": true,
+      "pid": 90672,
+      "report": "baseline.json"
+    },
+    "candidate": {
+      "bundle": "/Users/helge/code/terminal-library/target/frozen/Candidate.app",
+      "bundle_regular_file_bytes": 10030748,
+      "cleanup_survivors": [],
+      "executable_bytes": 3256496,
+      "executable_sha256": "b8f02ba7c3de84d5bb82304c1bbb2e8158a98471a489b0909309ba6a0f232043",
+      "exit_status": 0,
+      "natural_exit": true,
+      "pid": 90807,
+      "report": "candidate.json"
+    }
+  },
+  "driver_sha256": "fea221df7dc59de890e2d1849958d3386c2c32185ee2f4087fefe37d678d7f9e",
+  "driver_source_sha256": "cbe52cd535960db64083aa08d6928e9ec6037e5c7d37caa6b1a680051e25577e",
+  "font": "Obel Mono",
+  "font_size": 14,
+  "geometry": [
+    100,
+    30
+  ],
+  "order": [
+    "baseline",
+    "candidate"
+  ],
+  "passed": true,
+  "performance_gate": {
+    "minimum_candidate_to_baseline_ratio": 0.7,
+    "observed_ratios": {
+      "ansi_truecolor": 0.9842078983328758,
+      "ascii_long_lines": 1.0439739997822033,
+      "ascii_short_lines": 1.051256648511618,
+      "unicode": 1.0340415245317143
+    },
+    "passed": true
+  },
+  "requested_bytes": 16777216,
+  "runner_sha256": "b09676ae33856534bb766a3a2f62626d1679ec3a6b3b6b5d5bdeb2eabdb0ab9d",
+  "runs_per_workload": 10,
+  "scope": "Sequential visible-app PTY pilot; parser barriers are not display latency. History is excluded by the driver alternate screen."
+}
