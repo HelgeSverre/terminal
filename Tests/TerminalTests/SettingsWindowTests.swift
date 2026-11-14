@@ -1,6 +1,8 @@
 import AppKit
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 /// Serialized: the test installs a volatile argument domain in the standard UserDefaults.
 @Suite(.serialized) @MainActor struct SettingsWindowTests {

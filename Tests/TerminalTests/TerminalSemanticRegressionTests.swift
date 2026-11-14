@@ -1,6 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+import TerminalInterop
+@testable import TerminalSession
 
 // Observable semantics cases that are not already owned by the
 // margin, viewport, reflow, prompt/clear, input, or scheduler ABI oracles.

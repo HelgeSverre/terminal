@@ -2,6 +2,9 @@ import Darwin
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+import TerminalInterop
+@testable import TerminalSession
 
 /// Reflow semantics of the document and the resize bridge. Serialized: several
 /// tests fill or inspect the process-wide reflow reservation ledger.

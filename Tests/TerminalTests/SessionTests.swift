@@ -2,6 +2,9 @@ import Darwin
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+import TerminalInterop
+@testable import TerminalSession
 
 /// Serialized: the scenarios share the process, and some change the process
 /// environment (ZDOTDIR) or fill process-wide state while they run. Each test

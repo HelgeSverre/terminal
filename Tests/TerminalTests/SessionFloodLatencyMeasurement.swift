@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 /// Not a check: prints how long typed input takes to reach a program, idle
 /// and while that program floods the terminal with output. The time runs

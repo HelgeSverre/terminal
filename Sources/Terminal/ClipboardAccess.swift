@@ -1,4 +1,5 @@
 import AppKit
+import TerminalSession
 
 enum ClipboardAccessDecision {
   case allow, deny

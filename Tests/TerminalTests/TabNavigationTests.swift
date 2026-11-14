@@ -1,6 +1,8 @@
 import AppKit
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 @Suite @MainActor struct TabNavigationTests {
   typealias Selection = TerminalTabNavigation.Selection

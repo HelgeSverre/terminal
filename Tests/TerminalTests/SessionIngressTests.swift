@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 @Suite struct SessionIngressTests {
   enum Event: Equatable { case input(Int), resize(Int), eof, cancelled }

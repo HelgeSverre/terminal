@@ -1,4 +1,5 @@
 import Foundation
+import TerminalInterop
 
 // The owner view API publishes authoritative metadata, while the legacy ABI
 // selects rows by an explicit numeric offset. Combine those two existing

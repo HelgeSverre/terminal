@@ -1,5 +1,7 @@
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 @Suite struct UpdatesTests {
   /// Only a released copy started the ordinary way looks for updates.

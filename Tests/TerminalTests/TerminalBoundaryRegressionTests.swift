@@ -1,6 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+import TerminalInterop
+@testable import TerminalSession
 
 // ABI regressions at resource/transport boundaries, independent of private
 // parser, screen and grapheme representations. Each case is its own test, so a

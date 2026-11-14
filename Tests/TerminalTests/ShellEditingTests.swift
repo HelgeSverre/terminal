@@ -2,6 +2,9 @@ import Darwin
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+import TerminalInterop
+@testable import TerminalSession
 
 // An end-to-end guard for the class of bugs where a shell's line editor and
 // terminal disagree about the width of a Unicode prompt. This owns an isolated

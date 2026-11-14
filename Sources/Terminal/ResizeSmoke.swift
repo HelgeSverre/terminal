@@ -1,4 +1,5 @@
 import AppKit
+import TerminalCore
 
 // A private-ZDOTDIR Starship fixture for the prompt reflow regression. Reports
 // counts and geometry only; no user configuration, history, or shell output is

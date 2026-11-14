@@ -2,6 +2,9 @@ import AppKit
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+import TerminalInterop
+@testable import TerminalSession
 
 /// Serialized: the diagnostics counters (`SnapshotABIDiagnostics`) are
 /// process-wide, and the test compares them before and after.

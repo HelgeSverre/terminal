@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 @Suite enum StatisticsTests {
   /// Empty, finite and nonfinite distributions all serialize as JSON values.

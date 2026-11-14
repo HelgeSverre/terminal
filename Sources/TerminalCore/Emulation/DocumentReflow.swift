@@ -1,22 +1,22 @@
 import Foundation
 
-struct TerminalResizeGeometry: Equatable {
-  let columns: Int
-  let rows: Int
-  let cellWidth: Int
-  let cellHeight: Int
-  var isValid: Bool {
+package struct TerminalResizeGeometry: Equatable {
+  package let columns: Int
+  package let rows: Int
+  package let cellWidth: Int
+  package let cellHeight: Int
+  package var isValid: Bool {
     (1...4096).contains(columns) && (1...4096).contains(rows) && columns <= 1_048_576 / rows
       && (1...1024).contains(cellWidth) && (1...1024).contains(cellHeight)
   }
 }
 
-enum TerminalResizeRejection: String, CustomStringConvertible {
+package enum TerminalResizeRejection: String, CustomStringConvertible {
   case invalidGeometry, operationBudget, processBudget, staleInput, noOperation, resizeInProgress
-  var description: String { rawValue }
+  package var description: String { rawValue }
 }
 
-enum TerminalResizeProgress {
+package enum TerminalResizeProgress {
   case pending
   case committed(TerminalResizeGeometry)
   case rejected(TerminalResizeRejection, retained: TerminalResizeGeometry)

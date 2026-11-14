@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 @Suite enum GeometryTests {
   /// All block characters stay in bounds; half blocks tile odd and even cells

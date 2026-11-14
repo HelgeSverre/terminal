@@ -1,4 +1,6 @@
 import AppKit
+import TerminalCore
+import TerminalSession
 
 /// Resizes a window of streaming panes hard, in both directions.
 ///

@@ -2,7 +2,7 @@ import Foundation
 
 // Selection is owner-lane state. The host sends a hit from the displayed
 // snapshot, never an index to reinterpret against the current viewport.
-enum TerminalSelectionAction {
+package enum TerminalSelectionAction {
   case begin(TerminalSelectionHit, granularity: TerminalSelectionGranularity)
   case extend(TerminalSelectionHit)
   case commit
@@ -11,7 +11,7 @@ enum TerminalSelectionAction {
   case copy(expectedSelectionRevision: UInt64)
   case wordProfile(TerminalSelectionWordProfile)
 }
-enum TerminalSelectionProgress {
+package enum TerminalSelectionProgress {
   case pending
   // nil means no copy was requested. An empty string is a successful copy.
   case completed(copiedText: String?)

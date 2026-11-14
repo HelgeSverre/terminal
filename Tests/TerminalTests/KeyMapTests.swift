@@ -2,6 +2,9 @@ import Foundation
 import AppKit
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+import TerminalInterop
+@testable import TerminalSession
 
 private final class Capture { var data = Data() }
 @Suite struct KeyMapTests {

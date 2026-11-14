@@ -1,6 +1,8 @@
 import AppKit
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 @MainActor private final class LinkOwner: NSView {
   var projection: AccessibilityProjection

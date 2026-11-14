@@ -1,9 +1,11 @@
 import Foundation
+import TerminalCore
+import TerminalInterop
 
 private final class ImageCapture { var data: Data? }
-enum HistorySearchOutcome: Equatable {
+package enum HistorySearchOutcome: Equatable {
   case found, missing, changed, cancelled, invalidQuery, resourceLimit
-  var message: String {
+  package var message: String {
     switch self {
     case .found: return "Match found"
     case .missing: return "No match"
@@ -17,21 +19,21 @@ enum HistorySearchOutcome: Equatable {
 
 /// One-based position counted from the newest match. `capped` reports that
 /// matches older than the retention bound are not included in `total`.
-struct HistorySearchPosition: Equatable {
-  let index: Int
-  let total: Int
-  let capped: Bool
+package struct HistorySearchPosition: Equatable {
+  package let index: Int
+  package let total: Int
+  package let capped: Bool
 }
 
 /// The children every session has started and not yet reaped, including those
 /// of panes that are already closed. Quitting waits for this to empty, so a
 /// child that ignores the hang-up is still killed by its session first.
-enum LiveChildren {
+package enum LiveChildren {
   private static let group = DispatchGroup()
   static func started() { group.enter() }
   static func ended() { group.leave() }
   /// Calls `handler` once, off the main thread, when no child remains.
-  static func whenNoneRemain(_ handler: @escaping @Sendable () -> Void) {
+  package static func whenNoneRemain(_ handler: @escaping @Sendable () -> Void) {
     group.notify(queue: .global(qos: .userInteractive), execute: handler)
   }
 }
@@ -40,7 +42,7 @@ enum LiveChildren {
 /// (a login shell reading its configuration, usually) overlaps the app's own.
 /// The first session adopts it when it asks for the same launch; any other
 /// first launch ends it.
-enum EarlyChild {
+package enum EarlyChild {
   private static let lock = NSLock()
   nonisolated(unsafe) private static var pending: (spec: LaunchSpec, process: TerminalProcess)?
   nonisolated(unsafe) private static var remembersGrid = false
@@ -49,7 +51,7 @@ enum EarlyChild {
   /// Spawns `spec` now. With no explicit grid, the PTY starts at the size the
   /// first pane settled on last time, so the child usually never sees it
   /// change.
-  static func start(_ spec: LaunchSpec, grid: (columns: Int, rows: Int)?) {
+  package static func start(_ spec: LaunchSpec, grid: (columns: Int, rows: Int)?) {
     guard spec.isValid else { return }
     var size = winsize(ws_row: UInt16(grid?.rows ?? 24), ws_col: UInt16(grid?.columns ?? 80),
                        ws_xpixel: 0, ws_ypixel: 0)
@@ -94,61 +96,64 @@ enum EarlyChild {
 }
 
 /// How a session's child ended, for deciding what becomes of its pane.
-struct SessionEnd {
-  let exitedCleanly: Bool
+package struct SessionEnd {
+  package let exitedCleanly: Bool
   /// From the start of the session, not of the child: a shell started ahead
   /// of the app is adopted later.
-  let seconds: Double
-  let ranLoginShell: Bool
+  package let seconds: Double
+  package let ranLoginShell: Bool
 
   /// A shell that was left, by `exit` or end of input, takes its pane with
   /// it. One that fails as it starts stays, so what it printed can be read;
   /// so does any other command, whose output is the point of running it.
-  var closesPane: Bool { ranLoginShell && (exitedCleanly || seconds >= 1) }
+  package var closesPane: Bool { ranLoginShell && (exitedCleanly || seconds >= 1) }
 }
 
-struct LaunchSpec: Equatable {
-  let executable: String
-  let arguments: [String]
-  let cwd: String
-  let launcher: String
+package struct LaunchSpec: Equatable {
+  package let executable: String
+  package let arguments: [String]
+  package let cwd: String
+  package let launcher: String
+  package init(executable: String, arguments: [String], cwd: String, launcher: String) {
+    self.executable = executable
+    self.arguments = arguments
+    self.cwd = cwd
+    self.launcher = launcher
+  }
   /// Whether the arguments are within what a launch accepts.
-  var isValid: Bool {
+  package var isValid: Bool {
     !arguments.isEmpty && arguments.count <= 256
       && arguments.reduce(0, { $0 + $1.utf8.count }) <= 1_048_576
   }
   /// Starts the child on a new PTY of the given size.
-  func spawn(columns: Int, rows: Int) -> TerminalProcess {
+  package func spawn(columns: Int, rows: Int) -> TerminalProcess {
     var argv = arguments.map { strdup($0) } + [nil]
     defer { for value in argv { free(value) } }
     return argv.withUnsafeMutableBufferPointer {
       terminal_spawn_args(launcher, executable, cwd, UInt16(columns), UInt16(rows), $0.baseAddress)
     }
   }
-  static var shell: LaunchSpec {
-    let executable = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
-    return LaunchSpec(
-      executable: executable, arguments: [executable, "-l"],
-      cwd: TerminalPreferences.load().launchDirectory,
-      launcher: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher").path)
+  /// The user's login shell, started with `-l`.
+  package static func loginShell(cwd: String, launcher: String) -> LaunchSpec {
+    let executable = loginShellPath
+    return LaunchSpec(executable: executable, arguments: [executable, "-l"], cwd: cwd, launcher: launcher)
   }
-  func inheritingDirectory(_ location: String?) -> Self {
-    Self(executable: executable, arguments: arguments,
-         cwd: TerminalPreferences.load().launchDirectory(inheriting: location), launcher: launcher)
-  }
+  package static var loginShellPath: String { ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh" }
+  /// Whether this starts the user's login shell, as `loginShell` does.
+  package var isLoginShell: Bool { executable == Self.loginShellPath && arguments == [executable, "-l"] }
 }
-final class ClipboardWriteRequest {
-  let sessionID: UUID
-  let data: Data
+package final class ClipboardWriteRequest {
+  package let sessionID: UUID
+  package let data: Data
   private let live: () -> Bool
   private let completion: (Bool, @escaping @MainActor (Bool) -> Void) -> Void
   private var resolved = false
-  init(sessionID: UUID, data: Data, live: @escaping () -> Bool,
+  package init(sessionID: UUID, data: Data, live: @escaping () -> Bool,
        completion: @escaping (Bool, @escaping @MainActor (Bool) -> Void) -> Void) {
     self.sessionID = sessionID; self.data = data; self.live = live; self.completion = completion
   }
-  var isLive: Bool { live() }
-  func resolve(_ allowed: Bool, _ result: @escaping @MainActor (Bool) -> Void) {
+  package var isLive: Bool { live() }
+  package func resolve(_ allowed: Bool, _ result: @escaping @MainActor (Bool) -> Void) {
     guard !resolved else { return }
     resolved = true
     completion(allowed, result)
@@ -157,20 +162,31 @@ final class ClipboardWriteRequest {
 
 /// Immutable physical-key facts that survive queueing until the SwiftCore
 /// adapter emits the negotiated terminal sequence.
-struct TerminalKeyEvent {
+package struct TerminalKeyEvent {
   private static let retainedOverhead = 128
   private static let wireOverhead = 256
-  let text: String
-  let logical: String
-  let shifted: String
-  let baseLayout: String
-  let legacyText: String
-  let key: UInt32
-  let modifiers: UInt32
-  let event: UInt32
+  package let text: String
+  package let logical: String
+  package let shifted: String
+  package let baseLayout: String
+  package let legacyText: String
+  package let key: UInt32
+  package let modifiers: UInt32
+  package let event: UInt32
+  package init(text: String, logical: String, shifted: String, baseLayout: String, legacyText: String,
+               key: UInt32, modifiers: UInt32, event: UInt32) {
+    self.text = text
+    self.logical = logical
+    self.shifted = shifted
+    self.baseLayout = baseLayout
+    self.legacyText = legacyText
+    self.key = key
+    self.modifiers = modifiers
+    self.event = event
+  }
   private var isModifierOnly: Bool { (400...412).contains(key) }
-  var isKeyAction: Bool { event != 2 && !isModifierOnly }
-  var retainedCost: Int? {
+  package var isKeyAction: Bool { event != 2 && !isModifierOnly }
+  package var retainedCost: Int? {
     var total = Self.retainedOverhead
     for value in [text, logical, shifted, baseLayout, legacyText] {
       let bytes = value.utf8.count
@@ -179,7 +195,7 @@ struct TerminalKeyEvent {
     }
     return total
   }
-  var maximumWireBytes: Int? {
+  package var maximumWireBytes: Int? {
     let (expandedText, overflow) = text.utf8.count.multipliedReportingOverflow(by: 4)
     guard !overflow else { return nil }
     let payload = max(expandedText, legacyText.utf8.count)
@@ -188,18 +204,18 @@ struct TerminalKeyEvent {
   }
   /// Numeric keypad legacy input is AppKit's committed text. Other keys use
   /// their unmodified current-layout key as the negotiated primary value.
-  var adapterText: String { (300...317).contains(key) ? text : logical }
-  var shiftedScalar: UInt32 {
+  package var adapterText: String { (300...317).contains(key) ? text : logical }
+  package var shiftedScalar: UInt32 {
     shifted.unicodeScalars.count == 1 ? shifted.unicodeScalars.first!.value : 0
   }
-  var baseLayoutScalar: UInt32 {
+  package var baseLayoutScalar: UInt32 {
     baseLayout.unicodeScalars.count == 1 ? baseLayout.unicodeScalars.first!.value : 0
   }
 }
 // The PTY and emulator handle are confined to this queue. Main receives immutable decoded values.
-final class Session: @unchecked Sendable {
+package final class Session: @unchecked Sendable {
   typealias SelectionCompletion = @MainActor (Result<String?, TerminalSelectionFailure>) -> Void
-  typealias LinkCompletion = @MainActor (Result<URL, TerminalSelectionFailure>) -> Void
+  package typealias LinkCompletion = @MainActor (Result<URL, TerminalSelectionFailure>) -> Void
   private final class SelectionDelivery {
     let completion: SelectionCompletion
     let cost: Int
@@ -280,7 +296,7 @@ final class Session: @unchecked Sendable {
     case clipboardDecision(UInt64, Bool, @MainActor (Bool) -> Void)
     case eof, idle
   }
-  private let launchSpec: LaunchSpec?
+  private let launchSpec: LaunchSpec
   private let awaitsGrid: Bool
   /// The core exists and the child is still to be started.
   private var awaitingGrid = false
@@ -345,22 +361,22 @@ final class Session: @unchecked Sendable {
   private let publication = NSLock()
   private var latest: TerminalSnapshot?
   private var deliveryScheduled = false
-  @MainActor private var deliveredDirectory: String?
-  @MainActor var siblingLaunch: LaunchSpec { .shell.inheritingDirectory(deliveredDirectory) }
+  /// The working directory the child last reported, as an OSC 7 location.
+  @MainActor package private(set) var deliveredDirectory: String?
   private lazy var historySearch = HistorySearch(session: self)
   private let clipboardSessionID = UUID()
-  var onSnapshot: (@MainActor (TerminalSnapshot) -> Void)?
-  var onStatus: (@MainActor (String) -> Void)?
+  package var onSnapshot: (@MainActor (TerminalSnapshot) -> Void)?
+  package var onStatus: (@MainActor (String) -> Void)?
   /// Called once, when the child has exited and its last output is parsed.
-  var onEnd: (@MainActor (SessionEnd) -> Void)?
-  var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
+  package var onEnd: (@MainActor (SessionEnd) -> Void)?
+  package var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
   private var onClipboardClosed: (@MainActor (UUID) -> Void)?
   /// With `startsAtFirstGrid` the child is started when the pane's first
   /// size arrives, on a terminal of that size. A pane is created before it
   /// is laid out; a shell started at once would draw its first prompt for
   /// 80 columns and be resized a moment later, which leaves a stray `%` line
   /// or a misplaced right prompt behind.
-  init(launch: LaunchSpec? = nil, startsAtFirstGrid: Bool = false) {
+  package init(launch: LaunchSpec, startsAtFirstGrid: Bool = false) {
     launchSpec = launch
     awaitsGrid = startsAtFirstGrid
     if CommandLine.arguments.prefix(while: { $0 != "--execute" }).contains("--session-statistics-file") {
@@ -381,7 +397,7 @@ final class Session: @unchecked Sendable {
   deinit { if let core { terminal_destroy(core) } }
   private static var now: UInt64 { DispatchTime.now().uptimeNanoseconds / 1_000_000 }
   private var writeBytes: Int { writes.reduce(0) { $0 + $1.remaining } }
-  typealias SearchCompletion = @MainActor (HistorySearchOutcome, HistorySearchPosition?) -> Void
+  package typealias SearchCompletion = @MainActor (HistorySearchOutcome, HistorySearchPosition?) -> Void
   // This module owns worker scheduling, latest-query replacement, bounded work,
   // retries, lifetime and source validation. Canvas only submits a query and
   // receives an outcome; it never reconstructs history positions or epochs.
@@ -646,7 +662,7 @@ final class Session: @unchecked Sendable {
       return
     }
     core = handle
-    let spec = launchSpec ?? .shell
+    let spec = launchSpec
     guard spec.isValid else {
       stopAcceptingInput()
       report("Invalid launch arguments")
@@ -735,11 +751,7 @@ final class Session: @unchecked Sendable {
     // WIFEXITED and a zero WEXITSTATUS.
     let clean = exitStatus & 0x7f == 0 && (exitStatus >> 8) & 0xff == 0
     let seconds = Double(DispatchTime.now().uptimeNanoseconds &- startedNanoseconds) / 1e9
-    let shell = LaunchSpec.shell
-    let spec = launchSpec ?? shell
-    let end = SessionEnd(
-      exitedCleanly: clean, seconds: seconds,
-      ranLoginShell: spec.executable == shell.executable && spec.arguments == shell.arguments)
+    let end = SessionEnd(exitedCleanly: clean, seconds: seconds, ranLoginShell: launchSpec.isLoginShell)
     DispatchQueue.main.async { [weak self] in self?.onEnd?(end) }
   }
   private func reap() {
@@ -1081,7 +1093,7 @@ final class Session: @unchecked Sendable {
     }
   }
   private func drainClipboardWrites() { terminal_take_clipboard_requests(core, Unmanaged.passUnretained(self).toOpaque(), Self.collectClipboard) }
-  func setClipboardClosedHandler(_ handler: @escaping @MainActor (UUID) -> Void) {
+  package func setClipboardClosedHandler(_ handler: @escaping @MainActor (UUID) -> Void) {
     readBroker.submit { [weak self] in
       guard let self else { return }
       onClipboardClosed = handler
@@ -1134,7 +1146,7 @@ final class Session: @unchecked Sendable {
     updateReadInterest()
     scheduleOwner()
   }
-  @discardableResult func input(
+  @discardableResult package func input(
     _ text: String = "", key: UInt32 = 0, modifiers: UInt32 = 0, event: UInt32 = 0
   ) -> Bool {
     if key == 1 && text.utf8.count > 1_048_576 {
@@ -1159,7 +1171,7 @@ final class Session: @unchecked Sendable {
     }
     return true
   }
-  @discardableResult func input(_ input: TerminalKeyEvent) -> Bool {
+  @discardableResult package func input(_ input: TerminalKeyEvent) -> Bool {
     guard let cost = input.retainedCost else {
       report("Key input metadata is too large")
       return false
@@ -1185,10 +1197,10 @@ final class Session: @unchecked Sendable {
     }
     return true
   }
-  func rawInput(_ bytes: Data) {
+  package func rawInput(_ bytes: Data) {
     _ = submitRaw(bytes, event: Event.raw)
   }
-  @discardableResult func shortcut(_ text: String) -> Bool {
+  @discardableResult package func shortcut(_ text: String) -> Bool {
     submitRaw(Data(text.utf8), event: Event.shortcut)
   }
   private func submitRaw(_ bytes: Data, event: @escaping (Data, Int) -> Event) -> Bool {
@@ -1208,14 +1220,14 @@ final class Session: @unchecked Sendable {
     }
     return true
   }
-  func semanticProbe(_ completion: @escaping @MainActor (Double) -> Void) {
+  package func semanticProbe(_ completion: @escaping @MainActor (Double) -> Void) {
     let time = DispatchTime.now().uptimeNanoseconds
     readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.probe(time, completion))
     }
   }
-  func statistics(_ completion: @escaping @MainActor ([String: Any]) -> Void) {
+  package func statistics(_ completion: @escaping @MainActor ([String: Any]) -> Void) {
     readBroker.submit { [self] in
       let readStats = readBroker.snapshot
       let firstReadNs = readStats.firstReadNs
@@ -1246,7 +1258,7 @@ final class Session: @unchecked Sendable {
       DispatchQueue.main.async { completion(stats) }
     }
   }
-  func configure(_ value: TerminalSessionConfiguration) {
+  package func configure(_ value: TerminalSessionConfiguration) {
     readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.configure(value))
@@ -1271,13 +1283,13 @@ final class Session: @unchecked Sendable {
       }
     }
   }
-  func resize(cols: Int, rows: Int, cellWidth: Int = 8, cellHeight: Int = 16) {
+  package func resize(cols: Int, rows: Int, cellWidth: Int = 8, cellHeight: Int = 16) {
     readBroker.submit { [self] in
       guard !closed, cols >= 1, rows >= 1, cols <= 4096, rows <= 4096 else { return }
       wantedGrid = (cols, rows, cellWidth, cellHeight)
       if awaitingGrid {
         awaitingGrid = false
-        launch(launchSpec ?? .shell, columns: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
+        launch(launchSpec, columns: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
       }
       if cols != columns || rows != rowCount || cellWidth != cellWidthPx
         || cellHeight != cellHeightPx || queuedResizeCount > 0
@@ -1287,13 +1299,13 @@ final class Session: @unchecked Sendable {
       }
     }
   }
-  func scroll(_ amount: Int) {
+  package func scroll(_ amount: Int) {
     readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.scroll(amount))
     }
   }
-  func clearDisplay() {
+  package func clearDisplay() {
     readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.clearDisplay)
@@ -1302,7 +1314,7 @@ final class Session: @unchecked Sendable {
   /// Submits an immutable, presentation-proven selection gesture. The host
   /// never reads cells or derives copied text; success carries the core-built
   /// copy (where `nil` means a non-copy selection action).
-  @discardableResult func selection(
+  @discardableResult package func selection(
     _ action: TerminalSelectionAction,
     completion: (@MainActor (Result<String?, TerminalSelectionFailure>) -> Void)? = nil
   ) -> Bool {
@@ -1334,7 +1346,7 @@ final class Session: @unchecked Sendable {
   /// presented to the user. URL parsing and policy stay in the projection;
   /// this boundary only proves that those rows still describe the same content
   /// before returning the exact captured URL to Canvas.
-  @discardableResult func activateLink(
+  @discardableResult package func activateLink(
     _ activation: VisibleLinkProjection.Activation,
     completion: @escaping LinkCompletion
   ) -> Bool {
@@ -1356,12 +1368,12 @@ final class Session: @unchecked Sendable {
     }
     return true
   }
-  func find(_ query: String, completion: @escaping @MainActor (HistorySearchOutcome) -> Void) {
+  package func find(_ query: String, completion: @escaping @MainActor (HistorySearchOutcome) -> Void) {
     search(query) { outcome, _ in completion(outcome) }
   }
   /// Replaces any search in flight. A hit selects the newest match and
   /// reports its position among all retained matches.
-  func search(_ query: String, completion: @escaping SearchCompletion) {
+  package func search(_ query: String, completion: @escaping SearchCompletion) {
     readBroker.submit { [self] in
       guard !closed else {
         DispatchQueue.main.async { completion(.cancelled, nil) }
@@ -1372,7 +1384,7 @@ final class Session: @unchecked Sendable {
   }
   /// Moves to the adjacent match of the accepted search, wrapping at the ends.
   /// Nil means no accepted match is still valid; the caller searches again.
-  func searchNavigate(older: Bool, completion: @escaping @MainActor (HistorySearchPosition?) -> Void) {
+  package func searchNavigate(older: Bool, completion: @escaping @MainActor (HistorySearchPosition?) -> Void) {
     readBroker.submit { [self] in
       guard !closed else {
         DispatchQueue.main.async { completion(nil) }
@@ -1382,14 +1394,14 @@ final class Session: @unchecked Sendable {
     }
   }
   /// Cancels any search in flight and removes the match decorations.
-  func searchClear() {
+  package func searchClear() {
     readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.searchClear)
     }
   }
   // Urgent transport control: no semantic event or stalled write can trap it.
-  func cancelPaste() {
+  package func cancelPaste() {
     readBroker.submit { [self] in
       guard !closed else { return }
       ingress.transformEvents { event in
@@ -1462,7 +1474,7 @@ final class Session: @unchecked Sendable {
       }
     }
   }
-  func close() {
+  package func close() {
     closeInteractions()
     readBroker.submit { [self] in
       guard !closed else { return }

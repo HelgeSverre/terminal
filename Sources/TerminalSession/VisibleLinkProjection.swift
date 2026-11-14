@@ -1,4 +1,5 @@
 import Foundation
+import TerminalCore
 
 /// The visible, actionable links in one immutable terminal snapshot.
 ///
@@ -6,28 +7,28 @@ import Foundation
 /// plain URL recognition is derived from the bounded visible grid.  Canvas and
 /// accessibility consume the same occurrences so they cannot disagree about
 /// what a click means.
-struct VisibleLinkProjection {
+package struct VisibleLinkProjection {
   /// An immutable, owner-validatable link activation. The URL policy and
   /// visible-cell proof are both established by this projection; consumers
   /// must not reconstruct either from a label, an AX string, or a pointer.
-  struct Activation: Equatable {
-    let target: URL
-    let content: TerminalPresentedContent
+  package struct Activation: Equatable {
+    package let target: URL
+    package let content: TerminalPresentedContent
 
     fileprivate init(target: URL, content: TerminalPresentedContent) {
       self.target = target
       self.content = content
     }
   }
-  struct Occurrence: Equatable {
-    let target: URL
+  package struct Occurrence: Equatable {
+    package let target: URL
     /// Physical cell ranges, including both cells of a wide grapheme.
-    let gridSegments: [Range<Int>]
+    package let gridSegments: [Range<Int>]
     /// The visible spelling, without an artificial separator at a soft wrap.
-    let label: String
+    package let label: String
     /// Missing for legacy or mismatched presentation metadata. The link can
     /// remain visible to AX, but it cannot bypass owner validation.
-    let activation: Activation?
+    package let activation: Activation?
     private let snapshotIdentity: SnapshotIdentity
 
     fileprivate init(target: URL, gridSegments: [Range<Int>], label: String, activation: Activation?,
@@ -39,33 +40,33 @@ struct VisibleLinkProjection {
       self.snapshotIdentity = snapshotIdentity
     }
 
-    static func == (lhs: Occurrence, rhs: Occurrence) -> Bool {
+    package static func == (lhs: Occurrence, rhs: Occurrence) -> Bool {
       lhs.target == rhs.target && lhs.gridSegments == rhs.gridSegments && lhs.label == rhs.label
         && lhs.activation == rhs.activation && lhs.snapshotIdentity == rhs.snapshotIdentity
     }
   }
 
   fileprivate struct SnapshotIdentity: Equatable {
-    let revision: UInt64
-    let geometry: UInt64
-    let document: UInt64
-    let history: UInt64
-    let screen: UInt64
-    let viewport: UInt64
-    let scrollOffset: Int
-    let followingTail: Bool
+    package let revision: UInt64
+    package let geometry: UInt64
+    package let document: UInt64
+    package let history: UInt64
+    package let screen: UInt64
+    package let viewport: UInt64
+    package let scrollOffset: Int
+    package let followingTail: Bool
   }
 
   private struct CellPart {
-    let text: String
-    let grid: Range<Int>
+    package let text: String
+    package let grid: Range<Int>
     /// Non-nil means OSC 8 explicitly annotated this cell. Invalid annotations
     /// are still a boundary: they must not silently become plain-text links.
-    let explicit: String?
+    package let explicit: String?
   }
   private struct OccurrenceKey: Hashable { let target: String; let segments: [Range<Int>] }
 
-  let occurrences: [Occurrence]
+  package let occurrences: [Occurrence]
   private let byGrid: [Int32]
   private static let maximumOccurrences = 4_096
   private static let maximumCandidateUTF16 = 8 * 1024
@@ -85,7 +86,7 @@ struct VisibleLinkProjection {
     isURLWhitespaceOrControl(scalar) || scalar == "\"" || scalar == "'" || scalar == "<" || scalar == ">"
   }
 
-  init(snapshot: TerminalSnapshot) {
+  package init(snapshot: TerminalSnapshot) {
     let gridProduct = snapshot.cols.multipliedReportingOverflow(by: snapshot.rows.count)
     guard TerminalSnapshot.geometryError(columns: snapshot.cols, rows: snapshot.rows.count) == nil,
       !gridProduct.overflow
@@ -212,7 +213,7 @@ struct VisibleLinkProjection {
     byGrid = grid
   }
 
-  func occurrence(atGrid index: Int) -> Occurrence? {
+  package func occurrence(atGrid index: Int) -> Occurrence? {
     guard byGrid.indices.contains(index) else { return nil }
     let stored = byGrid[index]
     return stored >= 0 && Int(stored) < occurrences.count ? occurrences[Int(stored)] : nil
@@ -270,7 +271,7 @@ struct VisibleLinkProjection {
   /// The only URL validation used for OSC 8, plain recognition, Canvas and AX.
   /// Plain recognition intentionally requires a scheme; it does not turn a
   /// bare host, local path, or arbitrary colon-delimited token into an action.
-  static func openableURL(for text: String?) -> URL? {
+  package static func openableURL(for text: String?) -> URL? {
     guard let text, !text.isEmpty, text.utf8.count <= 8 * 1024,
       !text.unicodeScalars.contains(where: isURLWhitespaceOrControl),
       let components = URLComponents(string: text),
@@ -289,9 +290,9 @@ struct VisibleLinkProjection {
   }
 
   private struct PlainCandidate {
-    let target: URL
-    let parts: [CellPart]
-    let label: String
+    package let target: URL
+    package let parts: [CellPart]
+    package let label: String
   }
 
   private static func plainCandidates(in parts: [CellPart], limit: Int) -> [PlainCandidate] {

@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 @Suite @MainActor struct SessionEndTests {
   /// A left shell closes its pane; a shell that fails as it starts, and any

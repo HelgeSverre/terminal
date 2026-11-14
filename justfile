@@ -9,8 +9,8 @@ export TERMINAL_PROJECT_ROOT := justfile_directory()
 swift_test := "TERMINAL_TEST_HOOKS=1 swift test -c release -Xswiftc -enable-testing --no-parallel --quiet --disable-xctest"
 
 # The emulator's sources, for the few programs still compiled directly.
-emulator_sources := "Sources/Terminal/Text/*.swift Sources/Terminal/Emulation/*.swift"
-spawn_object := "xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -c Sources/Terminal/Interop/Spawn.c -o target/native/Spawn.o"
+emulator_sources := "-package-name terminal -I Sources/TerminalInterop/include Sources/TerminalCore/Text/*.swift Sources/TerminalCore/Emulation/*.swift"
+spawn_object := "xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=15.0 -I Sources/TerminalInterop/include -c Sources/TerminalInterop/Spawn.c -o target/native/Spawn.o"
 
 [private]
 default:
@@ -113,8 +113,8 @@ verify: build
     {{swift_test}} --skip DevTests --skip GlyphRasterWorkerTests --skip GlyphResidency
     just _glyph-rendering-tests
     {{spawn_object}}
-    xcrun clang -Wall -Wextra -Werror -I Sources/Terminal/Interop -c Tests/Programs/pty.c -o target/native/swift-pty-tests.o
-    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h {{emulator_sources}} target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
+    xcrun clang -Wall -Wextra -Werror -I Sources/TerminalInterop/include -c Tests/Programs/pty.c -o target/native/swift-pty-tests.o
+    xcrun swiftc -swift-version 5 -O {{emulator_sources}} target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
     target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
 
 # Arguments go to `swift test`: `just unit-test --filter SessionTests`.
@@ -372,4 +372,4 @@ _terminfo-test: _terminfo-probe _dev
 [private]
 @_terminfo-probe:
     mkdir -p target/native
-    xcrun swiftc -swift-version 5 -O -import-objc-header Sources/Terminal/Interop/Bridge.h {{emulator_sources}} Tests/Programs/TerminfoProbe.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminfo-probe
+    xcrun swiftc -swift-version 5 -O {{emulator_sources}} Tests/Programs/TerminfoProbe.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminfo-probe

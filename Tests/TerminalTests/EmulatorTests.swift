@@ -1,6 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+import TerminalInterop
+@testable import TerminalSession
 
 @Suite enum EmulatorTests {
   private final class Bytes { var value = Data() }

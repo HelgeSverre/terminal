@@ -1,4 +1,6 @@
 import AppKit
+import TerminalCore
+import TerminalSession
 
 typealias TerminalLinkActivationHandler = @MainActor (VisibleLinkProjection.Activation) -> Bool
 

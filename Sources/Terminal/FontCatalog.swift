@@ -1,5 +1,6 @@
 import AppKit
 import CoreText
+import TerminalCore
 
 // A catalog of the actual bundled cmap, used by both the printable specimen
 // and the native paged rendering smoke. Never guesses coverage from ranges.

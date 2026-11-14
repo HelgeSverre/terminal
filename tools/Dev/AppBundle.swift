@@ -77,34 +77,50 @@ enum AppBundle {
       .trimmingCharacters(in: .whitespacesAndNewlines)
   }
 
-  /// The release build: one compiler run over every source.
+  /// The release build: one compiler run over each module's sources.
   ///
-  /// The package is not used here. Its release builds optimize the whole
+  /// The package is not used here. Its release builds optimize a whole
   /// module but generate code on many threads, one unit per file, and that
   /// measured 9% slower on truecolor output than a single unit. Dynamic
   /// exclusivity checks are off as well: on the parser's hot path they cost
   /// a quarter of throughput. Returns the directory holding the two programs.
   private static func compileWholeModule(into directory: String) throws -> String {
     try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-    let sourceRoot = Repository.path("Sources/Terminal")
-    guard let found = FileManager.default.enumerator(atPath: sourceRoot) else { throw Failure("cannot list \(sourceRoot)") }
-    let sources = found.compactMap { $0 as? String }.filter { $0.hasSuffix(".swift") }.sorted().map { sourceRoot + "/" + $0 }
     // The package fetches the updater; this build only links against it.
     try Console.quietly(["swift", "package", "--package-path", Repository.root, "--scratch-path", packageDirectory, "resolve"])
     let warnings = ["-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=15.0"]
+    let interop = Repository.path("Sources/TerminalInterop")
     let spawn = directory + "/Spawn.o"
-    try Console.quietly(["xcrun", "clang"] + warnings + ["-c", sourceRoot + "/Interop/Spawn.c", "-o", spawn])
+    try Console.quietly(["xcrun", "clang"] + warnings + ["-I", interop + "/include", "-c", interop + "/Spawn.c", "-o", spawn])
     try Console.quietly(["xcrun", "clang"] + warnings
       + [Repository.path("Sources/TerminalLauncher/Launcher.c"), "-o", directory + "/TerminalLauncher"])
-    try Console.quietly(["xcrun", "swiftc", "-swift-version", "5", "-O", "-whole-module-optimization",
-                         "-enforce-exclusivity=unchecked", "-target", "arm64-apple-macosx15.0", "-module-name", "Terminal",
-                         "-import-objc-header", sourceRoot + "/Interop/Bridge.h",
+    let compile = ["xcrun", "swiftc", "-swift-version", "5", "-O", "-whole-module-optimization",
+                   "-enforce-exclusivity=unchecked", "-target", "arm64-apple-macosx15.0",
+                   "-package-name", "terminal", "-I", interop + "/include", "-I", directory]
+    var objects = [spawn]
+    for module in libraryModules {
+      let object = directory + "/" + module + ".o"
+      try Console.quietly(compile + ["-parse-as-library", "-module-name", module, "-emit-module",
+                                     "-emit-module-path", directory + "/" + module + ".swiftmodule",
+                                     "-emit-object", "-o", object] + swiftSources(in: "Sources/" + module))
+      objects.append(object)
+    }
+    try Console.quietly(compile + ["-module-name", "Terminal",
                          "-F", (updaterFramework as NSString).deletingLastPathComponent, "-framework", "Sparkle",
                          "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
                          "-framework", "AppKit", "-framework", "QuartzCore", "-framework", "Metal",
                          "-framework", "CoreText", "-framework", "ImageIO"]
-      + sources + [spawn, "-o", directory + "/TerminalApp"])
+      + swiftSources(in: "Sources/Terminal") + objects + ["-o", directory + "/TerminalApp"])
     return directory
+  }
+
+  /// The package's library targets, each before the ones that import it.
+  static let libraryModules = ["TerminalCore", "TerminalSession"]
+
+  private static func swiftSources(in directory: String) throws -> [String] {
+    let root = Repository.path(directory)
+    guard let found = FileManager.default.enumerator(atPath: root) else { throw Failure("cannot list \(root)") }
+    return found.compactMap { $0 as? String }.filter { $0.hasSuffix(".swift") }.sorted().map { root + "/" + $0 }
   }
 
   private static let packageDirectory = Repository.path("target/swiftpm/development")

@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 @Suite struct TransportTests {
   /// Every byte offset of bracket opening, Unicode payload and closing;

@@ -1,4 +1,5 @@
 import Foundation
+import TerminalCore
 
 /// Resolves terminal colors once for drawing and accessibility. Values are
 /// linear sRGB; selection/search may replace the rendered foreground later.

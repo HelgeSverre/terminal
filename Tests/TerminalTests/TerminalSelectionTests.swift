@@ -1,6 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+import TerminalInterop
+@testable import TerminalSession
 
 /// Owner selection against the core. Serialized: tests pause and drain the process-wide
 /// selection retirement queue and word-job worker.

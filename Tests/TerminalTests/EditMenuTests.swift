@@ -1,6 +1,8 @@
 import AppKit
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 /// The Edit menu answers through the focused view. A test process cannot make
 /// its window key, so nil-targeted dispatch is not exercised here; the menu's

@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 /// Serialized: the test holds the process-wide reflow budget.
 @Suite(.serialized) @MainActor struct SessionResizeBudgetTests {

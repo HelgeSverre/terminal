@@ -1,4 +1,5 @@
 import Foundation
+import TerminalInterop
 
 // Owns terminal emulation and the stable C compatibility boundary.  The public C-shaped surface is
 // deliberately thin: the state machine owns parsing, grid mutation, history,
@@ -2067,38 +2068,38 @@ private final class TerminalEmulator {
 private func core(_ pointer: OpaquePointer?) -> TerminalEmulator? { pointer.map { Unmanaged<TerminalEmulator>.fromOpaque(UnsafeMutableRawPointer($0)).takeUnretainedValue() } }
 // Internal Swift adapter: same owner-confined handle, no C callback or borrowed
 // row/cell storage. The returned value survives later mutation and destruction.
-func swiftTerminalSnapshot(_ pointer: OpaquePointer?, scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
+package func swiftTerminalSnapshot(_ pointer: OpaquePointer?, scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
   core(pointer)?.snapshotValue(scroll: scroll, now: now) ?? (nil, nil)
 }
-enum TerminalSelectionBridge {
-  static func begin(core pointer: OpaquePointer, action: TerminalSelectionAction) -> TerminalSelectionProgress {
+package enum TerminalSelectionBridge {
+  package static func begin(core pointer: OpaquePointer, action: TerminalSelectionAction) -> TerminalSelectionProgress {
     core(pointer)!.beginSelection(action)
   }
-  static func advance(core pointer: OpaquePointer) -> TerminalSelectionProgress { core(pointer)!.advanceSelection() }
-  static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelSelection() }
+  package static func advance(core pointer: OpaquePointer) -> TerminalSelectionProgress { core(pointer)!.advanceSelection() }
+  package static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelSelection() }
 }
-enum TerminalPresentedContentBridge {
-  static func begin(core pointer: OpaquePointer, content: TerminalPresentedContent) -> TerminalPresentedContentProgress {
+package enum TerminalPresentedContentBridge {
+  package static func begin(core pointer: OpaquePointer, content: TerminalPresentedContent) -> TerminalPresentedContentProgress {
     core(pointer)!.beginPresentedContent(content)
   }
-  static func advance(core pointer: OpaquePointer) -> TerminalPresentedContentProgress { core(pointer)!.advancePresentedContent() }
-  static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelPresentedContent() }
+  package static func advance(core pointer: OpaquePointer) -> TerminalPresentedContentProgress { core(pointer)!.advancePresentedContent() }
+  package static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelPresentedContent() }
 }
-enum TerminalResizeBridge {
-  static func begin(core pointer: OpaquePointer, columns: Int, rows: Int,
+package enum TerminalResizeBridge {
+  package static func begin(core pointer: OpaquePointer, columns: Int, rows: Int,
                     cellWidth: Int, cellHeight: Int) -> TerminalResizeProgress {
     core(pointer)!.beginResize(TerminalResizeGeometry(columns: columns, rows: rows,
       cellWidth: cellWidth, cellHeight: cellHeight))
   }
-  static func advance(core pointer: OpaquePointer) -> TerminalResizeProgress { core(pointer)!.advanceResize() }
-  static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelResize() }
+  package static func advance(core pointer: OpaquePointer) -> TerminalResizeProgress { core(pointer)!.advanceResize() }
+  package static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelResize() }
 }
 private func inputCharacter(_ scalar: UInt32) -> Character? {
   guard scalar != 0, let value = UnicodeScalar(scalar) else { return nil }
   return Character(String(value))
 }
 typealias BytesCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void
-typealias ClipboardCallback = @convention(c) (UnsafeMutableRawPointer?, UInt64, UnsafePointer<UInt8>?, Int) -> Void
+package typealias ClipboardCallback = @convention(c) (UnsafeMutableRawPointer?, UInt64, UnsafePointer<UInt8>?, Int) -> Void
 typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int, UnsafePointer<TerminalCellView>?, Int, UnsafePointer<UInt8>?, Int) -> Void
 
 @_cdecl("terminal_abi_version") func swift_terminal_abi_version() -> UInt32 { 1 }

@@ -1,6 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+import TerminalInterop
+@testable import TerminalSession
 
 /// Presented-content validation against the core: issued identities, row proofs,
 /// stable history, bounded validation and cancellation.

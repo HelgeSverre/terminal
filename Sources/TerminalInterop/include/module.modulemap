@@ -1,0 +1,4 @@
+module TerminalInterop {
+  header "Bridge.h"
+  export *
+}

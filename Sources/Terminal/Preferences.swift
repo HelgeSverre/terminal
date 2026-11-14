@@ -1,4 +1,6 @@
 import Foundation
+import TerminalCore
+import TerminalSession
 
 enum PaneInactiveDim: Int, CaseIterable {
   case off = 0
@@ -222,14 +224,21 @@ struct TerminalPreferences {
   }
 }
 
-struct TerminalSessionConfiguration {
-  let historyRows: Int
-  let followTailOnInput: Bool
-  let selectionWordProfile: TerminalSelectionWordProfile
-  init(historyRows: Int = 50_000, followTailOnInput: Bool = true,
-       selectionWordProfile: TerminalSelectionWordProfile = .standard) {
-    self.historyRows = min(50_000, max(0, historyRows))
-    self.followTailOnInput = followTailOnInput
-    self.selectionWordProfile = selectionWordProfile
+extension LaunchSpec {
+  /// The login shell in the starting directory the preferences name, started
+  /// through the launcher this bundle carries.
+  static var shell: LaunchSpec {
+    .loginShell(
+      cwd: TerminalPreferences.load().launchDirectory,
+      launcher: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher").path)
   }
+  func inheritingDirectory(_ location: String?) -> Self {
+    Self(executable: executable, arguments: arguments,
+         cwd: TerminalPreferences.load().launchDirectory(inheriting: location), launcher: launcher)
+  }
+}
+
+extension Session {
+  /// What a pane split from this one starts: the shell, in this pane's directory.
+  @MainActor var siblingLaunch: LaunchSpec { .shell.inheritingDirectory(deliveredDirectory) }
 }

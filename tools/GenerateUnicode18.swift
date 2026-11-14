@@ -6,7 +6,7 @@ import CryptoKit
     let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
     let fixture = root.appendingPathComponent("tools/unicode/GraphemeBreakTest-18.0.0.txt")
     let source = root.appendingPathComponent("tools/unicode/grapheme-ranges-18.0.0.txt")
-    let output = root.appendingPathComponent("Sources/Terminal/Text/Unicode18GraphemeTables.swift")
+    let output = root.appendingPathComponent("Sources/TerminalCore/Text/Unicode18GraphemeTables.swift")
     let digest = SHA256.hash(data: try Data(contentsOf: fixture)).map { String(format: "%02x", $0) }.joined()
     guard digest == "b0cf047ee94485bbdc846de2b902f5f8a815f6b674f9d04223cddadd91c9df31" else { fatalError("fixture checksum changed: \(digest)") }
     let records = try Data(contentsOf: source)

@@ -2,6 +2,8 @@ import CryptoKit
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 @Suite enum Unicode18CorpusTests {
   private static let root = TestEnvironment.repository

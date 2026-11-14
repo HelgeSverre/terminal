@@ -1,5 +1,7 @@
 import AppKit
 import QuartzCore
+import TerminalCore
+import TerminalSession
 
 final class TerminalCanvasView: NSView, NSTextInputClient {
   let automationID = UUID().uuidString

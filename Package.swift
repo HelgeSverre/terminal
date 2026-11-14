@@ -3,8 +3,6 @@ import PackageDescription
 
 // Compiles the app, its launcher and the developer tool, and builds the test
 // suites. `just build` assembles the app bundle around the compiled program.
-let bridgingHeader = Context.packageDirectory + "/Sources/Terminal/Interop/Bridge.h"
-
 // Code that only the tests reach is compiled in when the suites are built
 // (`just unit-test` sets the variable) and left out of the app.
 let testHooks: [SwiftSetting] = Context.environment["TERMINAL_TEST_HOOKS"] == nil ? [] : [
@@ -19,18 +17,23 @@ let package = Package(
     .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1"),
   ],
   targets: [
+    // The C declarations of the emulator's interface, and the PTY spawn.
+    .target(name: "TerminalInterop", path: "Sources/TerminalInterop"),
+    // The emulator: parser, document, reflow, selection, search and text
+    // width. No window system, no process handling.
     .target(
-      name: "TerminalInterop", path: "Sources/Terminal/Interop", publicHeadersPath: ".",
-      cSettings: [.unsafeFlags(["-Wall", "-Wextra", "-Werror"])]),
+      name: "TerminalCore", dependencies: ["TerminalInterop"], path: "Sources/TerminalCore",
+      swiftSettings: [.swiftLanguageMode(.v5)] + testHooks),
+    // A terminal with a child process on a PTY: reading, writing, resizing
+    // and the order of everything that touches the emulator.
+    .target(
+      name: "TerminalSession", dependencies: ["TerminalCore", "TerminalInterop"], path: "Sources/TerminalSession",
+      swiftSettings: [.swiftLanguageMode(.v5)] + testHooks),
     .executableTarget(
       name: "TerminalApp",
-      dependencies: ["TerminalInterop", .product(name: "Sparkle", package: "Sparkle")],
+      dependencies: ["TerminalSession", "TerminalCore", "TerminalInterop", .product(name: "Sparkle", package: "Sparkle")],
       path: "Sources/Terminal",
-      exclude: ["Interop"],
-      swiftSettings: [
-        .swiftLanguageMode(.v5),
-        .unsafeFlags(["-import-objc-header", bridgingHeader, "-disable-bridging-pch"]),
-      ] + testHooks,
+      swiftSettings: [.swiftLanguageMode(.v5)] + testHooks,
       // Where the bundle keeps the frameworks it carries.
       linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]),
     // The helper every PTY child is started through.
@@ -46,7 +49,7 @@ let package = Package(
       swiftSettings: [.swiftLanguageMode(.v5)]),
     .testTarget(
       name: "TerminalTests",
-      dependencies: ["TerminalApp", "TerminalLauncher"],
+      dependencies: ["TerminalApp", "TerminalSession", "TerminalCore", "TerminalInterop", "TerminalLauncher"],
       path: "Tests/TerminalTests",
-      swiftSettings: [.swiftLanguageMode(.v5), .unsafeFlags(["-import-objc-header", bridgingHeader, "-disable-bridging-pch"])]),
+      swiftSettings: [.swiftLanguageMode(.v5)]),
   ])

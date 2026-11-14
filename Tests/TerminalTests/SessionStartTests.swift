@@ -1,6 +1,8 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 @Suite @MainActor struct SessionStartTests {
   private func screen(_ snapshot: TerminalSnapshot) -> String {

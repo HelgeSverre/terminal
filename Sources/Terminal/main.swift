@@ -1,4 +1,6 @@
 import AppKit
+import TerminalInterop
+import TerminalSession
 
 /// A smoke run must never observe or mutate the user's clipboard. The report
 /// path already belongs to the fixture, so it is a stable private-board scope.
@@ -132,7 +134,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   private func makePane(launch: LaunchSpec? = nil) -> TerminalCanvasView {
     let pane = TerminalCanvasView(
       frame: .zero,
-      session: Session(launch: initialLaunch ?? diagnosticSplitLaunch ?? launch, startsAtFirstGrid: true))
+      session: Session(launch: initialLaunch ?? diagnosticSplitLaunch ?? launch ?? .shell, startsAtFirstGrid: true))
     initialLaunch = nil
     pane.onStatus = { [weak self, weak pane] text in
       NSLog("Session: %@", text)

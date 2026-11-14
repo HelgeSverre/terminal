@@ -1,5 +1,6 @@
 import AppKit
 import QuartzCore
+import TerminalSession
 
 /// Exercises nested pane structural edits and their minimum-size invariants.
 /// It owns only explicit `/bin/sh` sessions and stores geometry—not terminal

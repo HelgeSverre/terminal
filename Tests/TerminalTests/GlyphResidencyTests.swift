@@ -4,6 +4,8 @@ import Metal
 import Testing
 import simd
 @testable import TerminalApp
+@testable import TerminalCore
+@testable import TerminalSession
 
 private struct ShaderQuad {
   var rect: SIMD4<Float>

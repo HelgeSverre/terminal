@@ -1,6 +1,9 @@
 import Foundation
 import Testing
 @testable import TerminalApp
+@testable import TerminalCore
+import TerminalInterop
+@testable import TerminalSession
 
 // ABI-level scheduling and invariant checks copied from the production semantic
 // contract. These deliberately never reach into TerminalEmulator directly.

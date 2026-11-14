@@ -1,6 +1,6 @@
 import Foundation
 
-enum TerminalPresentedContentProgress {
+package enum TerminalPresentedContentProgress {
   case pending
   case accepted
   case rejected(TerminalSelectionFailure)
