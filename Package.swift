@@ -72,6 +72,8 @@ let package = Package(
     // What another app embeds.
     .library(name: "TerminalUI", targets: ["TerminalUI"]),
     .library(name: "TerminalHost", targets: ["TerminalHost"]),
+    // The emulator alone: bytes in, screen text and replies out.
+    .library(name: "TerminalEngine", targets: ["TerminalEngine"]),
     // The helper every session starts its child through; an embedding app
     // carries it in its bundle.
     .executable(name: "TerminalLauncher", targets: ["TerminalLauncher"]),

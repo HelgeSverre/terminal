@@ -45,14 +45,35 @@ targets: [
 | --- | --- |
 | `TerminalUI` | `TerminalCanvasView`, `TerminalRendering`, `ClipboardAccess`, `TerminalViewConfiguration`, `TerminalEditMenu`. Carries the fonts and the shader source as package resources. |
 | `TerminalHost` | `TerminalSession`, `LaunchSpec`, `SessionEnd`, `TerminalSessionConfiguration` |
+| `TerminalEngine` | `HeadlessTerminal`: the emulator alone, with no window and no process |
 | `TerminalLauncher` | The helper executable every session starts its child through |
 
 As a dependency the package brings no dependencies of its own: the app, its
 updater and the test suites are part of the manifest only in this
 repository.
 
-The emulator (`TerminalEngine`) is linked in by both libraries. It has no public
-interface of its own yet.
+## The emulator on its own
+
+`HeadlessTerminal` takes the bytes a program wrote and gives back the screen
+as text and the terminal's replies. It needs no AppKit, no Metal and no
+launcher, so it suits tests, recordings, and a host that has its own
+transport and does its own drawing.
+
+```swift
+import TerminalEngine
+
+let terminal = HeadlessTerminal(columns: 80, rows: 24)!
+terminal.feed("\u{1b}[1mhello\u{1b}[0m\r\n")       // or feed(Data)
+transport.write(terminal.takeReplies())              // answers to the program's queries
+if let screen = terminal.screen() {                  // nil while the program holds the display back
+  print(screen.text, screen.cursorRow, screen.cursorColumn, screen.title)
+}
+terminal.resize(columns: 120, rows: 40)              // reflows
+```
+
+An instance is used from one thread at a time. The screen is text, the
+cursor, the title, the alternate-screen flag and the reported directory;
+colors, styles, history and selection are not public yet.
 
 ## Show a terminal
 
@@ -185,8 +206,8 @@ The fonts keep their own licenses; see the
 - **Feeding bytes without a child process.** `TerminalSession` always starts a
   program on a PTY. An SSH client or a replay tool needs a session over its
   own transport.
-- **The emulator on its own.** `TerminalEngine` has no public interface for
-  headless use.
+- **More of the emulator.** `HeadlessTerminal` gives text only: no colors
+  or styles per cell, no history, no selection, no key encoding.
 - **A launch without the helper.** The host must carry `TerminalLauncher`.
 - **Other platforms.** macOS on Apple Silicon is the only tested target.
   There is no iOS view and no SwiftUI wrapper; wrap `TerminalCanvasView` in

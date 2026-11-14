@@ -101,6 +101,9 @@ is not part of the library by design.
 - **Defect 19:** as another app's dependency the package has no dependencies
   of its own and no app, tool or test targets, and never compiles the test
   hooks. The manifest tells by its location in a `checkouts` directory.
+- **Headless engine, first step:** `HeadlessTerminal` in the `TerminalEngine`
+  product feeds bytes and returns screen text and replies. Cell styles,
+  history and a session over a host's transport are still missing.
 - **Mode 2027:** a query is answered "permanently set". A layout by code
   point width is not built; see `BUGS.md`.
 
