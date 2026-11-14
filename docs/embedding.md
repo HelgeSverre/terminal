@@ -133,6 +133,18 @@ from (`TERM_SESSION_ID`, `KITTY_*`, `TMUX` and the like). `environment` names
 variables for the child and replaces any of these, so a host sets its own
 `TERM_PROGRAM` there.
 
+### Shell integration
+
+For an interactive zsh (`zsh` or `zsh -l`), the launch looks for
+`../Resources/ShellIntegration/zsh/.zshenv` beside the launcher's directory.
+When it is there, zsh starts through it: the user's own configuration is
+loaded as usual, and the shell marks its prompts and reports its working
+directory, which is what `session.workingDirectory` reads. A host that
+wants this copies `Resources/Terminal/ShellIntegration/zsh` from this
+repository to `Contents/Resources/ShellIntegration/zsh` in its bundle, with
+the launcher in `Contents/MacOS`. Without the directory, zsh starts
+unchanged. No other shell is wrapped.
+
 ### Lifetime
 
 A session serves one view; creating a second view on it stops the program
@@ -262,6 +274,15 @@ Programs may write the clipboard with OSC 52 through the `ClipboardAccess`
 the view was given; a view created with `clipboard: nil` refuses those writes
 and copies nothing. [Clipboard protocol](osc52-clipboard.md) describes the
 policy.
+
+## Accessibility identifiers
+
+The view and the find bar carry fixed identifiers for interface tests:
+`no.helgesverre.terminal.pane.<UUID>` on each terminal view,
+`no.helgesverre.terminal.selection-notice`, and
+`no.helgesverre.terminal.find` with `.query`, `.count`, `.previous`, `.next`
+and `.close` beneath it. A host may replace them with
+`setAccessibilityIdentifier` on the views it owns.
 
 ## Resources
 

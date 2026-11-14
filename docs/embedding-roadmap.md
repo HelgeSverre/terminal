@@ -85,7 +85,9 @@ is not part of the library by design.
 - **Defect 7, in part:** the libraries no longer read the host's command
   line, and `LaunchSpec.environment` lets a host set `TERM_PROGRAM` and any
   other variable. The zsh integration lookup and the accessibility
-  identifiers are unchanged. `EarlyChild` touches `UserDefaults` only when the
+  identifiers are kept and documented in `embedding.md`: the lookup does
+  nothing unless the host ships the directory, and fixed identifiers are
+  what a host's interface tests need. `EarlyChild` touches `UserDefaults` only when the
   app starts an early child, which a host never does.
 - **Defect 8:** the parser's classes are exempt from dynamic exclusivity
   checks in the source, so the package build needs no flag. The same host
