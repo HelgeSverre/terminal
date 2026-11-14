@@ -171,8 +171,11 @@ The fonts keep their own licenses; see the
 - **Zsh shell integration.** The app's integration scripts are part of its
   bundle and are not applied in an embedding app.
 
-[SwiftTerm compared](swiftterm-comparison.md) describes how this differs from
-the established library for the same job.
+[The embedding roadmap](embedding-roadmap.md) lists the defects in this
+interface, what SwiftTerm and libghostty offer instead, and the order of work.
+[SwiftTerm compared](swiftterm-comparison.md) covers that library in detail,
+and a [throughput comparison](../reports/swiftterm-throughput-2026-11-14/README.md)
+measures both as embedded libraries.
 
 ## Layout of the package
 
