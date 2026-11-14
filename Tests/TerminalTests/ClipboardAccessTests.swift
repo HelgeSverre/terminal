@@ -4,6 +4,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 /// Serialized: every test writes to a private named pasteboard and the
 /// tests share the helpers below.

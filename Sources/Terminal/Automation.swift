@@ -1,4 +1,5 @@
 import AppKit
+import TerminalView
 
 /// The deliberately small AppleScript boundary. It resolves a stable pane
 /// identifier to the existing UI/session owner and never treats screen output

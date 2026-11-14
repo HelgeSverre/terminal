@@ -4,6 +4,7 @@ import Testing
 @testable import TerminalCore
 import TerminalInterop
 @testable import TerminalSession
+@testable import TerminalView
 
 // Exercise the decoder through the C ABI as well as directly. These tests
 // only collect core-owned requests and never touch a system pasteboard.

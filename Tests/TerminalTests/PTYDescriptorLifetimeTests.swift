@@ -3,6 +3,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 @Suite struct PTYDescriptorLifetimeTests {
   final class Observations: @unchecked Sendable {

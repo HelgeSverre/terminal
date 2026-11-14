@@ -4,6 +4,7 @@ import Testing
 @testable import TerminalCore
 import TerminalInterop
 @testable import TerminalSession
+@testable import TerminalView
 
 // Public ABI regressions for kitty graphics.
 // Each case is its own test so a failure cannot hide the remaining red

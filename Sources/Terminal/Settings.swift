@@ -1,4 +1,5 @@
 import AppKit
+import TerminalView
 
 // A separate native utility window keeps the terminal usable while editing settings.
 final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {

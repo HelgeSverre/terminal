@@ -1,6 +1,7 @@
 import AppKit
 import TerminalInterop
 import TerminalSession
+import TerminalView
 
 /// A smoke run must never observe or mutate the user's clipboard. The report
 /// path already belongs to the fixture, so it is a stable private-board scope.
@@ -132,9 +133,16 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   }
 
   private func makePane(launch: LaunchSpec? = nil) -> TerminalCanvasView {
+    let delegate = NSApp.delegate as? AppDelegate
     let pane = TerminalCanvasView(
       frame: .zero,
-      session: Session(launch: initialLaunch ?? diagnosticSplitLaunch ?? launch ?? .shell, startsAtFirstGrid: true))
+      session: Session(launch: initialLaunch ?? diagnosticSplitLaunch ?? launch ?? .shell, startsAtFirstGrid: true),
+      rendering: delegate?.rendering, clipboard: delegate?.clipboardAccess,
+      configuration: TerminalPreferences.load().view)
+    pane.onFocused = { [weak pane] in
+      guard let pane else { return }
+      (NSApp.delegate as? AppDelegate)?.rememberFocus(pane)
+    }
     initialLaunch = nil
     pane.onStatus = { [weak self, weak pane] text in
       NSLog("Session: %@", text)
@@ -605,7 +613,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
   func applyPreferences(_ preferences: TerminalPreferences) {
     preferences.save()
-    windows.lazy.flatMap(\.panes).forEach { $0.applyPreferences(preferences) }
+    windows.lazy.flatMap(\.panes).forEach { $0.apply(preferences.view) }
     windows.forEach { $0.applyPanePresentationPreferences(preferences) }
     preferencesWindow?.reload()
   }

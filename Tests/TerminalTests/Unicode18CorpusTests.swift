@@ -4,6 +4,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 @Suite enum Unicode18CorpusTests {
   private static let root = TestEnvironment.repository

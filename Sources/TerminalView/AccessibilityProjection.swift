@@ -2,28 +2,28 @@ import AppKit
 import TerminalCore
 import TerminalSession
 
-typealias TerminalLinkActivationHandler = @MainActor (VisibleLinkProjection.Activation) -> Bool
+package typealias TerminalLinkActivationHandler = @MainActor (VisibleLinkProjection.Activation) -> Bool
 
 /// A bounded UTF-16 projection of the displayed immutable grid. No terminal-owner or GPU calls.
-struct AccessibilityProjection {
+package struct AccessibilityProjection {
   private struct StyledRange {
-    var range: NSRange
-    let style: CellStyle?
+    package var range: NSRange
+    package let style: CellStyle?
   }
-  struct Span {
-    let range: NSRange
-    let row: Int
-    let column: Int
-    let cells: Int
-    let gridStart: Int
-    let gridEnd: Int
+  package struct Span {
+    package let range: NSRange
+    package let row: Int
+    package let column: Int
+    package let cells: Int
+    package let gridStart: Int
+    package let gridEnd: Int
   }
-  let text: String
-  let lines: [NSRange]
-  let spans: [Span]
-  let columns: Int
-  let gridCount: Int
-  let truncated: Bool
+  package let text: String
+  package let lines: [NSRange]
+  package let spans: [Span]
+  package let columns: Int
+  package let gridCount: Int
+  package let truncated: Bool
   private let palette: CellPalette
   private let styles: [StyledRange]
   private let characters: NSString
@@ -34,16 +34,16 @@ struct AccessibilityProjection {
   private let selectionPresentation: TerminalSelectionPresentation?
   private let visibleLinks: VisibleLinkProjection
   private struct LinkMapping {
-    let occurrence: VisibleLinkProjection.Occurrence
-    let ranges: [NSRange]
-    let fullyProjected: Bool
+    package let occurrence: VisibleLinkProjection.Occurrence
+    package let ranges: [NSRange]
+    package let fullyProjected: Bool
   }
   /// Ordered once at construction, so AX queries do not rescan every span for
   /// every visible URL.
   private let linkMappings: [LinkMapping]
   private let links = Links()
-  var length: Int { characters.length }
-  init(snapshot: TerminalSnapshot, limit: Int = 262_144) {
+  package var length: Int { characters.length }
+  package init(snapshot: TerminalSnapshot, limit: Int = 262_144) {
     columns = snapshot.cols
     gridCount = snapshot.cols * snapshot.rows.count
     selectionPresentation = Self.validSelectionPresentation(in: snapshot)
@@ -121,11 +121,11 @@ struct AccessibilityProjection {
       return item.ranges.isEmpty ? nil : item
     }
   }
-  func valid(_ range: NSRange) -> Bool {
+  package func valid(_ range: NSRange) -> Bool {
     range.location != NSNotFound && range.location >= 0 && range.length >= 0
       && range.location <= length && range.length <= length - range.location
   }
-  func string(in range: NSRange) -> String? {
+  package func string(in range: NSRange) -> String? {
     guard valid(range) else { return nil }
     return characters.substring(with: range)
   }
@@ -136,7 +136,7 @@ struct AccessibilityProjection {
   /// as separate ranges instead of taking their enclosing union: AX selected
   /// text must never imply that an unselected cell was selected.  The core
   /// owns capture/validation; this is only the bounded, displayed projection.
-  func selectedRanges() -> [NSRange] {
+  package func selectedRanges() -> [NSRange] {
     cachedSelectedRanges
   }
   private static func selectedRanges(
@@ -239,7 +239,7 @@ struct AccessibilityProjection {
 
   /// AX's selected-text value is the concatenation of its selected character
   /// ranges.  In particular, it is not a substring spanning rectangular gaps.
-  func selectedText() -> String? {
+  package func selectedText() -> String? {
     let ranges = selectedRanges()
     guard !ranges.isEmpty else { return nil }
     return ranges.compactMap { string(in: $0) }.joined()
@@ -249,7 +249,7 @@ struct AccessibilityProjection {
   /// endpoints. A single range is linear. Several ranges are accepted only
   /// when they are the rows of one physical rectangle; unsupported disjoint
   /// shapes are rejected instead of enclosing unselected terminal cells.
-  func presentedRange(
+  package func presentedRange(
     for ranges: [NSRange]
   ) -> (start: TerminalSelectionHit, end: TerminalSelectionHit, mode: TerminalSelectionMode)? {
     guard !ranges.isEmpty, ranges.allSatisfy({ $0.length > 0 && valid($0) }),
@@ -368,13 +368,13 @@ struct AccessibilityProjection {
     }
     return lower
   }
-  func styleRange(for index: Int) -> NSRange {
+  package func styleRange(for index: Int) -> NSRange {
     guard index >= 0, index < length else { return NSRange(location: NSNotFound, length: 0) }
     let offset = styleIndex(at: index)
     return offset < styles.count ? styles[offset].range : NSRange(location: NSNotFound, length: 0)
   }
   @MainActor
-  func attributedString(
+  package func attributedString(
     in range: NSRange, fontSize: CGFloat, parent: NSView, activate: @escaping TerminalLinkActivationHandler
   ) -> NSAttributedString? {
     guard let value = string(in: range), fontSize.isFinite, fontSize > 0 else { return nil }
@@ -438,21 +438,21 @@ struct AccessibilityProjection {
   /// Pure formatting callers get inert AX links; Canvas supplies the only
   /// handler that can enqueue an owner-validated activation.
   @MainActor
-  func attributedString(in range: NSRange, fontSize: CGFloat, parent: NSView) -> NSAttributedString? {
+  package func attributedString(in range: NSRange, fontSize: CGFloat, parent: NSView) -> NSAttributedString? {
     attributedString(in: range, fontSize: fontSize, parent: parent, activate: { _ in false })
   }
   /// Virtual children for the AX tree.  They deliberately use the same cache
   /// as attributed text so an agent can resolve a child and a character-range
   /// link to the identical AX object.
   @MainActor
-  func linkElements(parent: NSView, activate: @escaping TerminalLinkActivationHandler) -> [AccessibleTerminalLink] {
+  package func linkElements(parent: NSView, activate: @escaping TerminalLinkActivationHandler) -> [AccessibleTerminalLink] {
     linkMappings.compactMap { mapping in
       guard mapping.fullyProjected else { return nil }
       return links.element(occurrence: mapping.occurrence, ranges: mapping.ranges, parent: parent, activate: activate)
     }
   }
   @MainActor
-  func linkElements(parent: NSView) -> [AccessibleTerminalLink] {
+  package func linkElements(parent: NSView) -> [AccessibleTerminalLink] {
     linkElements(parent: parent, activate: { _ in false })
   }
   /// AppKit exports weak AX references. Keep virtual links alive for the
@@ -462,7 +462,7 @@ struct AccessibilityProjection {
     private var elements: [Int: AccessibleTerminalLink] = [:]
     nonisolated init() {}
 
-    func element(
+    package func element(
       occurrence: VisibleLinkProjection.Occurrence, ranges: [NSRange], parent: NSView,
       activate: @escaping TerminalLinkActivationHandler
     ) -> AccessibleTerminalLink {
@@ -481,21 +481,21 @@ struct AccessibilityProjection {
     CGColor(colorSpace: CGColorSpace(name: CGColorSpace.linearSRGB)!,
       components: [CGFloat(value.x), CGFloat(value.y), CGFloat(value.z), CGFloat(value.w)])!
   }
-  func range(for index: Int) -> NSRange {
+  package func range(for index: Int) -> NSRange {
     guard index >= 0, index < length else { return NSRange(location: NSNotFound, length: 0) }
     return spans.first { NSLocationInRange(index, $0.range) }?.range
       ?? NSRange(location: NSNotFound, length: 0)
   }
-  func line(for index: Int) -> Int {
+  package func line(for index: Int) -> Int {
     guard index >= 0, index <= length else { return -1 }
     if index == length { return max(0, lines.count - 1) }
     return lines.firstIndex { NSLocationInRange(index, $0) } ?? -1
   }
-  func range(forLine line: Int) -> NSRange {
+  package func range(forLine line: Int) -> NSRange {
     guard lines.indices.contains(line) else { return NSRange(location: NSNotFound, length: 0) }
     return lines[line]
   }
-  func textRange(gridStart: Int, gridEnd: Int) -> NSRange {
+  package func textRange(gridStart: Int, gridEnd: Int) -> NSRange {
     let lower = max(0, min(gridStart, gridEnd))
     let upper = min(gridCount, max(gridStart, gridEnd))
     let a = spans.first { $0.gridEnd > lower }?.range.location ?? length
@@ -503,7 +503,7 @@ struct AccessibilityProjection {
     let b = spans.last { $0.gridStart < upper }.map { NSMaxRange($0.range) } ?? a
     return NSRange(location: a, length: max(0, b - a))
   }
-  func gridRange(for range: NSRange) -> Range<Int>? {
+  package func gridRange(for range: NSRange) -> Range<Int>? {
     guard valid(range) else { return nil }
     let first = spans.first { NSMaxRange($0.range) > range.location }
     let a = first?.gridStart ?? gridCount
@@ -511,7 +511,7 @@ struct AccessibilityProjection {
     let last = spans.last { $0.range.location < NSMaxRange(range) }
     return a..<max(a, last?.gridEnd ?? a)
   }
-  func spans(for range: NSRange) -> [Span] {
+  package func spans(for range: NSRange) -> [Span] {
     guard valid(range) else { return [] }
     if range.length == 0 {
       if let span = spans.first(where: { NSMaxRange($0.range) > range.location }) { return [span] }
@@ -528,7 +528,7 @@ struct AccessibilityProjection {
     }
     return spans.filter { NSIntersectionRange($0.range, range).length > 0 }
   }
-  func occurrence(atGrid index: Int) -> VisibleLinkProjection.Occurrence? {
+  package func occurrence(atGrid index: Int) -> VisibleLinkProjection.Occurrence? {
     visibleLinks.occurrence(atGrid: index)
   }
   private static func linkMapping(
@@ -600,13 +600,13 @@ struct AccessibilityProjection {
 /// A link reference in an AX attributed string. It remains a lightweight AX
 /// object; only Canvas may enqueue its immutable activation with the owner.
 @MainActor
-final class AccessibleTerminalLink: NSAccessibilityElement {
-  let occurrence: VisibleLinkProjection.Occurrence
+package final class AccessibleTerminalLink: NSAccessibilityElement {
+  package let occurrence: VisibleLinkProjection.Occurrence
   private let ranges: [NSRange]
   private weak var owner: NSView?
   private let activate: TerminalLinkActivationHandler
 
-  init(
+  package init(
     occurrence: VisibleLinkProjection.Occurrence, ranges: [NSRange], parent: NSView,
     activate: @escaping TerminalLinkActivationHandler
   ) {
@@ -620,14 +620,14 @@ final class AccessibleTerminalLink: NSAccessibilityElement {
     setAccessibilityLabel(occurrence.label)
     setAccessibilityURL(occurrence.target)
   }
-  override func accessibilityParent() -> Any? { owner }
-  override func accessibilityFrame() -> NSRect {
+  package override func accessibilityParent() -> Any? { owner }
+  package override func accessibilityFrame() -> NSRect {
     guard let owner else { return .zero }
     let frame = ranges.reduce(into: NSRect.null) { $0 = $0.union(owner.accessibilityFrame(for: $1)) }
     return frame.isNull ? .zero : frame
   }
-  override func isAccessibilityEnabled() -> Bool { owner?.window != nil }
-  override func accessibilityPerformPress() -> Bool {
+  package override func isAccessibilityEnabled() -> Bool { owner?.window != nil }
+  package override func accessibilityPerformPress() -> Bool {
     guard let owner, owner.window != nil, !ranges.isEmpty, let activation = occurrence.activation else { return false }
     return activate(activation)
   }

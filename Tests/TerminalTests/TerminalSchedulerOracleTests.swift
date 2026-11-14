@@ -4,6 +4,7 @@ import Testing
 @testable import TerminalCore
 import TerminalInterop
 @testable import TerminalSession
+@testable import TerminalView
 
 // ABI-level scheduling and invariant checks copied from the production semantic
 // contract. These deliberately never reach into TerminalEmulator directly.

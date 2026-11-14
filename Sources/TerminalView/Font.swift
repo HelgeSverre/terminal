@@ -3,10 +3,10 @@ import CoreText
 
 // Owns font files, face selection and the icon cascade. Both layout and drawing
 // resolve from bundled descriptors, independently of fonts installed on the Mac.
-enum TerminalFont {
-  static let family = "Obel Mono"
+package enum TerminalFont {
+  package static let family = "Obel Mono"
   private static let resources: [String: CTFontDescriptor] = {
-    guard let root = Bundle.main.resourceURL?.appendingPathComponent("Fonts") else { return [:] }
+    guard let root = TerminalResources.bundle.resourceURL?.appendingPathComponent("Fonts") else { return [:] }
     var result: [String: CTFontDescriptor] = [:]
     for name in ["Regular", "Bold", "Italic", "BoldItalic", "Symbols"] {
       let path = name == "Symbols"
@@ -20,8 +20,8 @@ enum TerminalFont {
     }
     return result
   }()
-  static func appKit(size: CGFloat) -> NSFont { core(size: size) as NSFont }
-  static func core(size: CGFloat, bold: Bool = false, italic: Bool = false) -> CTFont {
+  package static func appKit(size: CGFloat) -> NSFont { core(size: size) as NSFont }
+  package static func core(size: CGFloat, bold: Bool = false, italic: Bool = false) -> CTFont {
     let face = bold ? (italic ? "BoldItalic" : "Bold") : (italic ? "Italic" : "Regular")
     let base: CTFont
     if let descriptor = resources[face] {
@@ -37,14 +37,14 @@ enum TerminalFont {
     return CTFontCreateWithFontDescriptor(cascade, size, nil)
   }
   private static let icons = Set(iconCodepoints)
-  struct Bitmap {
-    var pixels: [UInt8]
-    let missing: Bool
-    let fonts: [String]
-    let glyphIDs: [CGGlyph]
-    let clipped: Bool
+  package struct Bitmap {
+    package var pixels: [UInt8]
+    package let missing: Bool
+    package let fonts: [String]
+    package let glyphIDs: [CGGlyph]
+    package let clipped: Bool
   }
-  static func rasterize(_ text: String, font: CTFont, width: Int, height: Int) -> Bitmap {
+  package static func rasterize(_ text: String, font: CTFont, width: Int, height: Int) -> Bitmap {
     var selected = font
     var icon = false
     if text.unicodeScalars.count == 1, let scalar = text.unicodeScalars.first,
@@ -99,7 +99,7 @@ enum TerminalFont {
     return Bitmap(pixels: pixels, missing: missing, fonts: fonts, glyphIDs: glyphIDs, clipped: clipped)
   }
   // Enumerate the actual shipped cmap, including supplementary-plane icons.
-  static let iconCodepoints: [UInt32] = {
+  package static let iconCodepoints: [UInt32] = {
     guard let descriptor = resources["Symbols"] else { return [] }
     let set = CTFontCopyCharacterSet(CTFontCreateWithFontDescriptor(descriptor, 14, nil))
     return (0...0x10ffff).compactMap {

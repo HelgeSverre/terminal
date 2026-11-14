@@ -4,6 +4,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 /// Serialized as a precaution: preferences persist through UserDefaults. The
 /// tests use defaults held in memory and never touch the user's own.

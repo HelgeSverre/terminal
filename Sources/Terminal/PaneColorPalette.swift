@@ -1,4 +1,5 @@
 import AppKit
+import TerminalView
 
 extension PaneChromeColor {
   var nsColor: NSColor {

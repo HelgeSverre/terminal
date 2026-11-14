@@ -3,6 +3,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 @Suite struct PTYReadBrokerTests {
   final class Log: @unchecked Sendable {

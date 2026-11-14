@@ -3,6 +3,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 /// Source-exact regressions for unicode-width 0.2.3's non-CJK string mode.
 @Suite enum TerminalWidthTests {

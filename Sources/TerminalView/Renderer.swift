@@ -54,7 +54,7 @@ private struct SurfaceImageKey: Hashable {
 // command queue and glyph cache. A pane receives only an opaque surface lease.
 // Rendering state, GPU submissions, and (eventually) glyph residency therefore
 // have one place to enforce lifetime and process-wide resource rules.
-final class TerminalRendering: @unchecked Sendable {
+package final class TerminalRendering: @unchecked Sendable {
   final class SurfaceLease: @unchecked Sendable {
     fileprivate let id = UUID()
     private let completionLock = NSLock()
@@ -225,7 +225,7 @@ final class TerminalRendering: @unchecked Sendable {
     guard idleQuadBuffers.count < Self.idleQuadBufferLimit else { return }
     idleQuadBuffers.append(buffer)
   }
-  init() throws {
+  package init() throws {
     guard let gpu = MTLCreateSystemDefaultDevice(), let commands = gpu.makeCommandQueue() else {
       throw RendererError.noDevice
     }
@@ -237,7 +237,7 @@ final class TerminalRendering: @unchecked Sendable {
     atlasPages = pressureSmoke ? 4 : 2
     directGlyphBudget = fallbackBudgetSmoke ? 0 : 8 * 1024 * 1024
     directGlyphLimit = fallbackBudgetSmoke ? 0 : 1024
-    guard let libraryURL = Bundle.main.url(forResource: "Terminal", withExtension: "metallib")
+    guard let libraryURL = TerminalResources.bundle.url(forResource: "Terminal", withExtension: "metallib")
     else { throw RendererError.noShaders }
     let library = try gpu.makeLibrary(URL: libraryURL)
     let descriptor = MTLRenderPipelineDescriptor()
@@ -1024,7 +1024,7 @@ final class TerminalRendering: @unchecked Sendable {
   }
 }
 
-final class RendererMetrics: @unchecked Sendable {
+package final class RendererMetrics: @unchecked Sendable {
   private static let lock = NSLock()
   private static var count: UInt64 = 0
   private static var mismatchedDrawables: UInt64 = 0
@@ -1127,12 +1127,12 @@ final class RendererMetrics: @unchecked Sendable {
     mismatchedPresents += 1
     lock.unlock()
   }
-  static func mismatchedPresentations() -> UInt64 {
+  package static func mismatchedPresentations() -> UInt64 {
     lock.lock()
     defer { lock.unlock() }
     return mismatchedPresents
   }
-  static func staleFrameDropCount() -> UInt64 {
+  package static func staleFrameDropCount() -> UInt64 {
     lock.lock()
     defer { lock.unlock() }
     return droppedStaleFrames
@@ -1182,12 +1182,12 @@ final class RendererMetrics: @unchecked Sendable {
     peakAtlasPages = max(peakAtlasPages, UInt64(count))
     lock.unlock()
   }
-  static func submissions() -> UInt64 {
+  package static func submissions() -> UInt64 {
     lock.lock()
     defer { lock.unlock() }
     return count
   }
-  static func report() -> [String: Any] {
+  package static func report() -> [String: Any] {
     lock.lock()
     defer { lock.unlock() }
     return [

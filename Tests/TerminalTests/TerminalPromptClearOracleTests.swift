@@ -4,6 +4,7 @@ import Testing
 @testable import TerminalCore
 import TerminalInterop
 @testable import TerminalSession
+@testable import TerminalView
 
 // Production OSC 133 prompt/reflow and Command-K display-clear cases run via
 // the Swift C ABI, not a document helper.

@@ -4,6 +4,7 @@ import Foundation
 @testable import TerminalCore
 import TerminalInterop
 @testable import TerminalSession
+@testable import TerminalView
 
 // Row/cell data crosses as length-delimited typed views. Only small window/image
 // metadata uses JSON. All views are copied on the owner before the callback returns.

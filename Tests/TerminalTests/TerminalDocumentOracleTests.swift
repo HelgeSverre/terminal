@@ -4,6 +4,7 @@ import Testing
 @testable import TerminalCore
 import TerminalInterop
 @testable import TerminalSession
+@testable import TerminalView
 
 // Nine executable margin integration scenarios. These cross the C-shaped emulator seam, not a helper grid: snapshots
 // therefore prove that protocol parsing mutates the canonical rich document.

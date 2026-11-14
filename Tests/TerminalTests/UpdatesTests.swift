@@ -2,6 +2,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 @Suite struct UpdatesTests {
   /// Only a released copy started the ordinary way looks for updates.

@@ -4,7 +4,7 @@ import AppKit
 /// terminal copies, pastes and selects its own text, and a text field's
 /// editor (the find query, Settings, the pane color hex) also cuts, deletes,
 /// undoes and redoes.
-enum TerminalEditMenu {
+package enum TerminalEditMenu {
   /// Key equivalents of the text-only items: Undo, Redo and Cut. A menu takes
   /// a key equivalent even while its item is disabled, so the focused
   /// terminal claims these first (`TerminalCanvasView.performKeyEquivalent`)
@@ -21,7 +21,7 @@ enum TerminalEditMenu {
     return textOnlyKeys.contains { $0.key == key && $0.modifiers == modifiers }
   }
 
-  static func make() -> NSMenu {
+  package static func make() -> NSMenu {
     let menu = NSMenu(title: "Edit")
     func add(_ title: String, _ action: Selector, _ key: String,
       _ modifiers: NSEvent.ModifierFlags = [.command]) {

@@ -29,9 +29,14 @@ let package = Package(
     .target(
       name: "TerminalSession", dependencies: ["TerminalCore", "TerminalInterop"], path: "Sources/TerminalSession",
       swiftSettings: [.swiftLanguageMode(.v5)] + testHooks),
+    // The AppKit view of a session: Metal drawing, keyboard and mouse input,
+    // selection, find and accessibility.
+    .target(
+      name: "TerminalView", dependencies: ["TerminalSession", "TerminalCore"], path: "Sources/TerminalView",
+      swiftSettings: [.swiftLanguageMode(.v5)] + testHooks),
     .executableTarget(
       name: "TerminalApp",
-      dependencies: ["TerminalSession", "TerminalCore", "TerminalInterop", .product(name: "Sparkle", package: "Sparkle")],
+      dependencies: ["TerminalView", "TerminalSession", "TerminalCore", "TerminalInterop", .product(name: "Sparkle", package: "Sparkle")],
       path: "Sources/Terminal",
       swiftSettings: [.swiftLanguageMode(.v5)] + testHooks,
       // Where the bundle keeps the frameworks it carries.
@@ -49,7 +54,7 @@ let package = Package(
       swiftSettings: [.swiftLanguageMode(.v5)]),
     .testTarget(
       name: "TerminalTests",
-      dependencies: ["TerminalApp", "TerminalSession", "TerminalCore", "TerminalInterop", "TerminalLauncher"],
+      dependencies: ["TerminalApp", "TerminalView", "TerminalSession", "TerminalCore", "TerminalInterop", "TerminalLauncher"],
       path: "Tests/TerminalTests",
       swiftSettings: [.swiftLanguageMode(.v5)]),
   ])

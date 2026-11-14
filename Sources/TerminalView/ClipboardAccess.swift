@@ -1,7 +1,7 @@
 import AppKit
 import TerminalSession
 
-enum ClipboardAccessDecision {
+package enum ClipboardAccessDecision {
   case allow, deny
 }
 
@@ -9,23 +9,23 @@ enum ClipboardAccessDecision {
 // write the clipboard without asking: this is a personal terminal, and a
 // prompt per write (or per pane) only got in the way. `decide` stays as a
 // seam so tests can hold or deny a request.
-final class ClipboardAccess {
-  typealias DecisionHandler = (
+package final class ClipboardAccess {
+  package typealias DecisionHandler = (
     ClipboardWriteRequest, NSWindow?, @escaping (ClipboardAccessDecision) -> Void
   ) -> (() -> Void)?
   private final class Pending {
-    let request: ClipboardWriteRequest
-    weak var window: NSWindow?
-    var cancelled = false
-    var dismiss: (() -> Void)?
-    var writePermit: UInt64?
-    var pasteboardChangeCount: Int?
-    init(_ request: ClipboardWriteRequest, window: NSWindow?) {
+    package let request: ClipboardWriteRequest
+    package weak var window: NSWindow?
+    package var cancelled = false
+    package var dismiss: (() -> Void)?
+    package var writePermit: UInt64?
+    package var pasteboardChangeCount: Int?
+    package init(_ request: ClipboardWriteRequest, window: NSWindow?) {
       self.request = request
       self.window = window
     }
   }
-  static let maximumPending = 4
+  package static let maximumPending = 4
   private let pasteboard: NSPasteboard
   private let decide: DecisionHandler
   private var queued: [Pending] = []
@@ -35,7 +35,7 @@ final class ClipboardAccess {
   /// single ordering point for OSC 52 decisions and explicit user copies.
   private var latestWritePermit: UInt64 = 0
 
-  init(
+  package init(
     pasteboard: NSPasteboard = .general, decide: @escaping DecisionHandler = ClipboardAccess.allow
   ) {
     precondition(Thread.isMainThread)
@@ -43,7 +43,7 @@ final class ClipboardAccess {
     self.decide = decide
   }
 
-  func request(_ request: ClipboardWriteRequest, from window: NSWindow?) {
+  package func request(_ request: ClipboardWriteRequest, from window: NSWindow?) {
     precondition(Thread.isMainThread)
     guard request.isLive, !deniedSessions.contains(request.sessionID) else {
       request.resolve(false) { _ in }
@@ -65,7 +65,7 @@ final class ClipboardAccess {
   /// Explicit copy is a local user action, so it never prompts. The terminal
   /// owner produces immutable text asynchronously; this bridge alone decides
   /// whether that completion may still change the host pasteboard.
-  func copy(from session: Session, selectionRevision: UInt64) {
+  package func copy(from session: Session, selectionRevision: UInt64) {
     precondition(Thread.isMainThread)
     // `Session.selection` rejects synchronously before it schedules any main
     // completion. Do not supersede an already allowed OSC 52 write unless the
@@ -84,7 +84,7 @@ final class ClipboardAccess {
     observedChangeCount = pasteboard.changeCount
   }
 
-  func cancel(sessionID: UUID) {
+  package func cancel(sessionID: UUID) {
     precondition(Thread.isMainThread)
     queued.removeAll { pending in
       guard pending.request.sessionID == sessionID else { return false }
@@ -150,7 +150,7 @@ final class ClipboardAccess {
   }
 
   /// The default decision: every write is allowed, at once and without a prompt.
-  static func allow(
+  package static func allow(
     request: ClipboardWriteRequest, window: NSWindow?, completion: @escaping (ClipboardAccessDecision) -> Void
   ) -> (() -> Void)? {
     completion(.allow)

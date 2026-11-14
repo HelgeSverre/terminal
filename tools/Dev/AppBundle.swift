@@ -115,7 +115,7 @@ enum AppBundle {
   }
 
   /// The package's library targets, each before the ones that import it.
-  static let libraryModules = ["TerminalCore", "TerminalSession"]
+  static let libraryModules = ["TerminalCore", "TerminalSession", "TerminalView"]
 
   private static func swiftSources(in directory: String) throws -> [String] {
     let root = Repository.path(directory)

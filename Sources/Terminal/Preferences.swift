@@ -1,6 +1,7 @@
 import Foundation
 import TerminalCore
 import TerminalSession
+import TerminalView
 
 enum PaneInactiveDim: Int, CaseIterable {
   case off = 0
@@ -146,6 +147,9 @@ struct TerminalPreferences {
     let path = (startingDirectory as NSString).expandingTildeInPath
     if path == Self.home { return "~" }
     return path.hasPrefix(Self.home + "/") ? "~" + path.dropFirst(Self.home.count) : startingDirectory
+  }
+  var view: TerminalViewConfiguration {
+    TerminalViewConfiguration(fontSize: fontSize, optionSendsEscape: optionSendsEscape, session: session)
   }
   var session: TerminalSessionConfiguration {
     TerminalSessionConfiguration(historyRows: historyRows, followTailOnInput: followTailOnInput,

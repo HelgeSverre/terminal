@@ -12,8 +12,8 @@ enum FindBarResult: Equatable {
 
 /// The find bar docked over the top of a pane. It owns presentation and key
 /// handling only; the pane's canvas runs the search and reports each result.
-final class FindBarView: NSView, NSTextFieldDelegate {
-  static let height: CGFloat = 30
+package final class FindBarView: NSView, NSTextFieldDelegate {
+  package static let height: CGFloat = 30
 
   private final class QueryField: NSTextField {
     var onFocusChange: ((Bool) -> Void)?
@@ -94,7 +94,7 @@ final class FindBarView: NSView, NSTextFieldDelegate {
   }
 
   required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
-  override var isFlipped: Bool { true }
+  package override var isFlipped: Bool { true }
 
   private func configure(_ button: NSButton, symbol: String, label: String, hint: String,
     identifier: String, action: Selector) {
@@ -171,7 +171,7 @@ final class FindBarView: NSView, NSTextFieldDelegate {
     needsDisplay = true
   }
 
-  override func layout() {
+  package override func layout() {
     super.layout()
     let side: CGFloat = 22
     var right = bounds.width - 4
@@ -195,7 +195,7 @@ final class FindBarView: NSView, NSTextFieldDelegate {
       width: max(0, fieldEnd - fieldX), height: fieldHeight)
   }
 
-  override func draw(_ dirtyRect: NSRect) {
+  package override func draw(_ dirtyRect: NSRect) {
     TerminalTheme.color(TerminalTheme.raised).setFill()
     bounds.fill()
     TerminalTheme.color(TerminalTheme.border).setFill()
@@ -205,12 +205,12 @@ final class FindBarView: NSView, NSTextFieldDelegate {
   }
 
   // The bar covers the canvas; a click on its chrome belongs to the query.
-  override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
+  package override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
 
-  func controlTextDidChange(_ notification: Notification) { onQuery?(field.stringValue) }
-  func controlTextDidEndEditing(_ notification: Notification) { setFieldFocused(false) }
+  package func controlTextDidChange(_ notification: Notification) { onQuery?(field.stringValue) }
+  package func controlTextDidEndEditing(_ notification: Notification) { setFieldFocused(false) }
 
-  func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+  package func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
     switch NSStringFromSelector(selector) {
     case "insertNewline:", "insertLineBreak:", "insertNewlineIgnoringFieldEditor:":
       onStep?(!(NSApp?.currentEvent?.modifierFlags.contains(.shift) ?? false))

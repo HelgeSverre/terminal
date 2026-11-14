@@ -4,6 +4,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 // Synthetic bitmaps give deterministic dimensions/materials, while exercising
 // the production bounded worker, callback, owner queue and upload boundaries.

@@ -2,6 +2,7 @@ import AppKit
 import Darwin
 import TerminalCore
 import TerminalSession
+import TerminalView
 
 @MainActor enum CloseSmokeTest {
   static func start(window: TerminalWindow, path: String) {

@@ -5,6 +5,7 @@ import Testing
 @testable import TerminalCore
 import TerminalInterop
 @testable import TerminalSession
+@testable import TerminalView
 
 private final class Capture { var data = Data() }
 @Suite struct KeyMapTests {

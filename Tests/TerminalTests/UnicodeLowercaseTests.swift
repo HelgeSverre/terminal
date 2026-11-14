@@ -4,6 +4,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 @Suite enum UnicodeLowercaseTests {
   private static let expectedUnicodeVersion = "17.0.0"

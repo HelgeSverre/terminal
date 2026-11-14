@@ -56,7 +56,7 @@ enum NativeKeyMap {
   }
   // Host editing bindings match the macOS Ghostty defaults. These are consumed
   // actions, so their physical releases must not leak into negotiated key events.
-  static func route(_ event: NSEvent) -> Route {
+  static func route(_ event: NSEvent, optionSendsEscape optionEsc: Bool = false) -> Route {
     let flags = modifiers(event.modifierFlags)
     switch (event.keyCode, flags) {
     case (123, 8): return .shortcut("\u{01}")
@@ -66,7 +66,6 @@ enum NativeKeyMap {
     case (124, 2): return .shortcut("\u{1b}f")
     default: break
     }
-    let optionEsc = TerminalPreferences.load().optionSendsEscape
     let nativeOption = flags & 2 != 0 && !optionEsc && flags & (4 | 8) == 0
     if let key = special[event.keyCode], !(nativeOption && isTextKeypad(key)) {
       return .encoded(keyEvent(event, key: key, modifiers: flags))

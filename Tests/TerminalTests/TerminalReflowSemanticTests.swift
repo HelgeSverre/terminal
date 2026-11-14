@@ -5,6 +5,7 @@ import Testing
 @testable import TerminalCore
 import TerminalInterop
 @testable import TerminalSession
+@testable import TerminalView
 
 /// Reflow semantics of the document and the resize bridge. Serialized: several
 /// tests fill or inspect the process-wide reflow reservation ledger.

@@ -6,6 +6,7 @@ import simd
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 private struct ShaderQuad {
   var rect: SIMD4<Float>

@@ -3,6 +3,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 /// Keyboard use of the pane color palette: one Tab stop for the grid, arrows
 /// that preview, Return or Space to keep, Escape to cancel.

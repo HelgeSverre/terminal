@@ -2,6 +2,7 @@ import Foundation
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 /// Where the tests find what the package built beside them.
 enum TestEnvironment {

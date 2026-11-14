@@ -3,6 +3,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 // This exercises the document's ownership seam directly.  An immutable
 // screen value retained by a publisher must survive both an in-place document

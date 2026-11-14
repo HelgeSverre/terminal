@@ -3,6 +3,7 @@ import Testing
 @testable import TerminalApp
 @testable import TerminalCore
 @testable import TerminalSession
+@testable import TerminalView
 
 /// Trackpad deltas add up to whole lines; nothing is lost between events.
 @Suite enum ScrollAccumulatorTests {

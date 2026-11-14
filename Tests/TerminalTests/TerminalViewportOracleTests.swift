@@ -4,6 +4,7 @@ import Testing
 @testable import TerminalCore
 import TerminalInterop
 @testable import TerminalSession
+@testable import TerminalView
 
 // Seven viewport scenarios, executed through the emulator ABI.
 @Suite enum TerminalViewportOracleTests {
