@@ -18,6 +18,7 @@ struct RenderRequest {
   let linkUnderline: [Range<Int>]
   var colors = TerminalColorScheme.standard
   var fontFamily: String? = nil
+  var ligatures = false
 }
 private struct Quad {
   var rect: SIMD4<Float>
@@ -37,6 +38,7 @@ private struct GlyphKey: Hashable {
   let height: Int
   let pointSize: Int
   let fontIdentity: String
+  var ligatures = false
 }
 private struct Glyph {
   let uv: SIMD4<Float>
@@ -620,7 +622,8 @@ public final class TerminalRendering: @unchecked Sendable {
   private func glyph(_ key: GlyphKey, cells: Int, request: RenderRequest) -> GlyphLookup {
     let recipe = GlyphRasterRecipe(text: key.text, width: request.cellWidth * cells,
       height: request.cellHeight, pointSize: key.pointSize, bold: key.bold, italic: key.italic,
-      fontIdentity: key.fontIdentity, backingScale: 1, family: request.fontFamily)
+      fontIdentity: key.fontIdentity, backingScale: 1, family: request.fontFamily,
+      ligatures: key.ligatures)
     if let resident = glyphResidency.resolve(recipe) {
       return .resident(Glyph(uv: resident.uv, width: resident.width, atlasPage: nil,
         texture: resident.texture, kind: resident.kind, heap: nil, legacyID: nil))
@@ -724,6 +727,9 @@ public final class TerminalRendering: @unchecked Sendable {
       for (r, row) in snap.rows.enumerated() {
         let currentSearch = currentSearchRows[r]
         let otherSearch = otherSearchRows[r]
+        // The column after the ligature run being drawn; its later cells
+        // draw no glyph of their own.
+        var ligatureEnd = 0
         for (c, cell) in row.cells.enumerated() {
           let x = request.inset + c * request.cellWidth
           let y = request.inset + r * request.cellHeight
@@ -775,7 +781,43 @@ public final class TerminalRendering: @unchecked Sendable {
                 tint.w *= shape.coverage
                 rect(x + shape.x, y + shape.y, shape.width, shape.height, tint)
               }
-            } else {
+            } else { ligatureCell: do {
+              if c < ligatureEnd { break ligatureCell }
+              let cellFont = cell.style.bold ? (cell.style.italic ? boldItalicFont : boldFont)
+                : (cell.style.italic ? italicFont : font)
+              if request.ligatures, cells == 1, TerminalFont.joinsLigatures(cell.text) {
+                // A run of ligature characters in one style is shaped as one
+                // glyph over its cells, so the font can join `->` or `!=`.
+                var end = c + 1
+                var run = cell.text
+                while end < row.cells.count, end - c < 8, row.cells[end].style == cell.style,
+                      TerminalFont.joinsLigatures(row.cells[end].text) {
+                  run += row.cells[end].text
+                  end += 1
+                }
+                if end - c > 1 {
+                  let joined = GlyphKey(
+                    text: run, cells: end - c, bold: cell.style.bold, italic: cell.style.italic,
+                    width: request.cellWidth * (end - c), height: request.cellHeight,
+                    pointSize: Int(request.fontSize.rounded()),
+                    fontIdentity: CTFontCopyPostScriptName(cellFont) as String, ligatures: true)
+                  switch glyph(joined, cells: end - c, request: request) {
+                  case .resident(let glyph):
+                    appendGlyph(
+                      Quad(
+                        rect: SIMD4(Float(x), Float(y), Float(glyph.width), Float(request.cellHeight)),
+                        uv: glyph.uv, color: glyph.kind == .color ? SIMD4(1, 1, 1, 1) : fg), glyph)
+                    ligatureEnd = end
+                    break ligatureCell
+                  case .inFlight:
+                    RendererMetrics.recordInFlightGlyph()
+                    ligatureEnd = end
+                    break ligatureCell
+                  // Without room for the run, its cells are drawn one by one.
+                  case .unavailable: break
+                  }
+                }
+              }
               let displayText =
                 cell.text.unicodeScalars.first.map { CharacterSet.nonBaseCharacters.contains($0) }
                   == true ? "◌" + cell.text : cell.text
@@ -783,9 +825,7 @@ public final class TerminalRendering: @unchecked Sendable {
                 text: displayText, cells: cells, bold: cell.style.bold, italic: cell.style.italic,
                 width: request.cellWidth * cells, height: request.cellHeight,
                 pointSize: Int(request.fontSize.rounded()),
-                fontIdentity: CTFontCopyPostScriptName(
-                  cell.style.bold ? (cell.style.italic ? boldItalicFont : boldFont)
-                    : (cell.style.italic ? italicFont : font)) as String)
+                fontIdentity: CTFontCopyPostScriptName(cellFont) as String)
               switch glyph(key, cells: cells, request: request) {
               case .resident(let glyph):
                 appendGlyph(
@@ -805,7 +845,7 @@ public final class TerminalRendering: @unchecked Sendable {
                 rect(x + span - 1, y, 1, request.cellHeight, fg)
                 RendererMetrics.recordSubstituteGlyphFallback()
               }
-            }
+            } }
             let gridIndex = r * snap.cols + c
             while linkSegment < request.linkUnderline.count,
               request.linkUnderline[linkSegment].upperBound <= gridIndex {

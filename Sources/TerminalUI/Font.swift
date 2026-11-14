@@ -55,6 +55,16 @@ package enum TerminalFont {
     return CTFontCreateWithFontDescriptor(cascade, size, nil)
   }
   private static let icons = Set(iconCodepoints)
+  /// The characters programming fonts join into ligatures: `->`, `!=`,
+  /// `===`, `|>` and the like. Letters and digits are left alone, so `fi`
+  /// in a word is never joined.
+  private static let ligatureCharacters = Set("!#$%&*+-./:;<=>?@\\^_|~".utf8)
+  /// Whether `text` is one character that can be part of a ligature.
+  package static func joinsLigatures(_ text: String) -> Bool {
+    var bytes = text.utf8.makeIterator()
+    guard let first = bytes.next(), bytes.next() == nil else { return false }
+    return ligatureCharacters.contains(first)
+  }
   package struct Bitmap {
     package var pixels: [UInt8]
     package let missing: Bool
@@ -62,7 +72,8 @@ package enum TerminalFont {
     package let glyphIDs: [CGGlyph]
     package let clipped: Bool
   }
-  package static func rasterize(_ text: String, font: CTFont, width: Int, height: Int) -> Bitmap {
+  package static func rasterize(_ text: String, font: CTFont, width: Int, height: Int,
+                                ligatures: Bool = false) -> Bitmap {
     var selected = font
     var icon = false
     if text.unicodeScalars.count == 1, let scalar = text.unicodeScalars.first,
@@ -73,7 +84,7 @@ package enum TerminalFont {
     }
     func line(_ value: CTFont) -> CTLine {
       CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [
-        .font: value, .foregroundColor: NSColor.white, .ligature: 0]))
+        .font: value, .foregroundColor: NSColor.white, .ligature: ligatures ? 1 : 0]))
     }
     var shaped = line(selected)
     var bounds = CTLineGetBoundsWithOptions(shaped, .useGlyphPathBounds)

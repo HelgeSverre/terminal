@@ -28,6 +28,32 @@ import Testing
     #expect(icon.fonts.allSatisfy { !$0.hasPrefix("Menlo") }, "\(icon.fonts)")
   }
 
+  @Test func onlyPunctuationJoinsLigatures() {
+    for text in ["-", ">", "=", "!", "|", ":", ".", "/", "*", "&", "~", "\\"] {
+      #expect(TerminalFont.joinsLigatures(text), "\(text)")
+    }
+    for text in ["f", "i", "0", " ", "", "->", "é", "猫", "(", "{", "\"", ","] {
+      #expect(!TerminalFont.joinsLigatures(text), "\(text)")
+    }
+  }
+
+  /// A run shaped as one line lets a font with ligatures substitute its
+  /// glyphs; the same characters shaped one by one stay as they are.
+  @Test func aRunIsShapedAsOneLine() throws {
+    let name = "JetBrains Mono"
+    let font = TerminalFont.core(size: 28, family: name)
+    // The font is not part of macOS; without it there is nothing to shape.
+    guard (CTFontCopyFamilyName(font) as String) == name else { return }
+    func glyphs(_ text: String) -> [CGGlyph] {
+      TerminalFont.rasterize(text, font: font, width: 17 * text.count, height: 40, ligatures: true).glyphIDs
+    }
+    #expect(glyphs("->") != glyphs("-") + glyphs(">"), "the arrow has glyphs of its own")
+    #expect(glyphs("!=") != glyphs("!") + glyphs("="))
+    #expect(glyphs("-(") == glyphs("-") + glyphs("("), "no ligature, no change")
+    let arrow = TerminalFont.rasterize("->", font: font, width: 34, height: 40, ligatures: true)
+    #expect(!arrow.missing && !arrow.clipped)
+  }
+
   @Test func aViewMeasuresItsGridInTheChosenFamily() {
     final class Idle: TerminalTransport {
       func start(_ connection: TerminalConnection, columns: Int, rows: Int) {}

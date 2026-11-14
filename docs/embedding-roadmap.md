@@ -122,6 +122,9 @@ is not part of the library by design.
   `ClipboardAccess(writingTo:deciding:)` asks the host about each OSC 52
   write. `session.paste`, `contentInset` and chrome colored from the scheme
   followed.
+- **Ligatures:** `TerminalViewConfiguration.ligatures` shapes runs of
+  punctuation as one glyph. Verified by reading back frames in JetBrains
+  Mono with the setting off and on.
 - **Swift 6 hosts:** both examples compile in the Swift 6 language mode
   without warnings, which guards the public interface for such hosts. The
   libraries themselves are still Swift 5 mode.

@@ -260,6 +260,15 @@ Mac does not have, it gives the bundled Obel Mono. A family without a bold
 or italic face draws its regular one. Icons the family lacks come from the
 bundled symbols font. Views with different families share one renderer.
 
+### Ligatures
+
+`configuration.ligatures`, off unless set, joins runs of punctuation when
+the font has ligatures for them: `->`, `=>`, `!=`, `===`, `|>`. The bundled
+Obel Mono has none, so name a `fontFamily` that does, such as
+`"JetBrains Mono"` or `"Cascadia Code"`. A run is at most eight cells, ends
+where the style changes, and keeps the width of its cells; letters and
+digits are never joined.
+
 ### Colors
 
 `TerminalColorScheme` names the text color, the background, the sixteen ANSI
@@ -344,7 +353,7 @@ The fonts keep their own licenses; see the
 - **A stable interface.** Nothing here is versioned yet. Depend on a commit
   or on `main`, and expect changes.
 - **The rest of the look.** The find bar and the selection notice take
-  their colors from the scheme but keep their shape. Ligatures are not drawn.
+  their colors from the scheme but keep their shape.
 - **More of the emulator.** `HeadlessTerminal` has no selection and no
   search.
 - **A launch without the helper.** The host must carry `TerminalLauncher`.

@@ -17,6 +17,8 @@ struct GlyphRasterRecipe: Hashable {
   let backingScale: Int
   /// The host's font family; nil is the bundled one.
   var family: String? = nil
+  /// A run of several cells shaped as one, so the font may join it.
+  var ligatures = false
 }
 
 enum GlyphRasterKind { case mask, color }
@@ -88,7 +90,8 @@ final class GlyphRasterWorker: @unchecked Sendable {
     // PostScript face here would drop the Symbols/fallback cascade.
     let font = TerminalFont.core(
       size: CGFloat(recipe.pointSize), bold: recipe.bold, italic: recipe.italic, family: recipe.family)
-    let bitmap = TerminalFont.rasterize(recipe.text, font: font, width: recipe.width, height: recipe.height)
+    let bitmap = TerminalFont.rasterize(
+      recipe.text, font: font, width: recipe.width, height: recipe.height, ligatures: recipe.ligatures)
     // CoreText's resolved runs are authoritative. Preserve RGBA whenever the
     // result is not plainly white coverage; uncertain data stays color.
     var mask = true

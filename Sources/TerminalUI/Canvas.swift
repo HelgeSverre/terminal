@@ -555,7 +555,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
         fontSize: fontPoints * scale,
         focused: focused, marked: marked.string,
         linkUnderline: hoveredLink?.gridSegments ?? [], colors: configuration.session.colors,
-        fontFamily: configuration.fontFamily))
+        fontFamily: configuration.fontFamily, ligatures: configuration.ligatures))
     }
   }
   @discardableResult private func send(
