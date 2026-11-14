@@ -58,6 +58,10 @@ TerminalProcess helge_terminal_spawn_environment(const char *,const char *,const
 void helge_terminal_set_program_version(const char *);
 bool helge_terminal_validate(Terminal *);
 bool helge_terminal_has_work(Terminal *);
+/* Default foreground and background as 0xRRGGBB, then sixteen ANSI colors. */
+void helge_terminal_set_colors(Terminal *,uint32_t,uint32_t,const uint32_t *);
+/* BEL characters parsed since the last call. */
+uint32_t helge_terminal_take_bells(Terminal *);
 void helge_terminal_set_history_limit(Terminal *,uint32_t);
 void helge_terminal_set_history_byte_limit(Terminal *,uint64_t);
 bool helge_terminal_image_rgba(Terminal *,uint32_t,uint64_t,void *,void (*)(void *,const uint8_t *,size_t));

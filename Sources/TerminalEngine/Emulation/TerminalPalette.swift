@@ -8,6 +8,8 @@ struct TerminalPalette {
     let red: UInt8
     let green: UInt8
     let blue: UInt8
+    init(red: UInt8, green: UInt8, blue: UInt8) { self.red = red; self.green = green; self.blue = blue }
+    init(_ rgb: UInt32) { red = UInt8((rgb >> 16) & 255); green = UInt8((rgb >> 8) & 255); blue = UInt8(rgb & 255) }
 
     var snapshotValue: [Int] { [Int(red), Int(green), Int(blue)] }
 
@@ -25,11 +27,23 @@ struct TerminalPalette {
   private var entries: [RGB]
   private var defaultForeground: RGB
   private var defaultBackground: RGB
+  /// What a reset returns to: the host's scheme.
+  private var scheme = TerminalColorScheme.standard
 
   init() {
-    entries = Self.defaultEntries()
-    defaultForeground = Self.initialForeground
-    defaultBackground = Self.initialBackground
+    entries = Self.entries(for: scheme)
+    defaultForeground = RGB(scheme.foreground)
+    defaultBackground = RGB(scheme.background)
+  }
+
+  /// Makes `value` the colors to start from. A color the program has set
+  /// for itself is kept; the others change now.
+  mutating func setScheme(_ value: TerminalColorScheme) {
+    let old = Self.entries(for: scheme), new = Self.entries(for: value)
+    for slot in 0..<16 where entries[slot] == old[slot] { entries[slot] = new[slot] }
+    if defaultForeground == RGB(scheme.foreground) { defaultForeground = RGB(value.foreground) }
+    if defaultBackground == RGB(scheme.background) { defaultBackground = RGB(value.background) }
+    scheme = value
   }
 
   var snapshotPalette: [[Int]] { entries.map(\.snapshotValue) }
@@ -37,9 +51,9 @@ struct TerminalPalette {
   var snapshotDefaultBackground: [Int] { defaultBackground.snapshotValue }
 
   mutating func reset() {
-    entries = Self.defaultEntries()
-    defaultForeground = Self.initialForeground
-    defaultBackground = Self.initialBackground
+    entries = Self.entries(for: scheme)
+    defaultForeground = RGB(scheme.foreground)
+    defaultBackground = RGB(scheme.background)
   }
 
   /// Applies the OSC color commands implemented by the compatibility core.
@@ -77,7 +91,7 @@ struct TerminalPalette {
       return []
 
     case "104":
-      let defaults = Self.defaultEntries()
+      let defaults = Self.entries(for: scheme)
       if value.isEmpty {
         entries = defaults
       } else {
@@ -92,20 +106,10 @@ struct TerminalPalette {
     }
   }
 
-  private static let initialForeground = RGB(red: 230, green: 230, blue: 230)
-  private static let initialBackground = RGB(red: 10, green: 10, blue: 11)
-
-  private static func defaultEntries() -> [RGB] {
-    var palette = [
-      RGB(red: 27, green: 28, blue: 31), RGB(red: 239, green: 68, blue: 68),
-      RGB(red: 34, green: 197, blue: 94), RGB(red: 250, green: 204, blue: 21),
-      RGB(red: 96, green: 165, blue: 250), RGB(red: 192, green: 132, blue: 252),
-      RGB(red: 34, green: 211, blue: 238), RGB(red: 212, green: 212, blue: 216),
-      RGB(red: 107, green: 111, blue: 118), RGB(red: 248, green: 113, blue: 113),
-      RGB(red: 74, green: 222, blue: 128), RGB(red: 253, green: 224, blue: 71),
-      RGB(red: 147, green: 197, blue: 253), RGB(red: 216, green: 180, blue: 254),
-      RGB(red: 103, green: 232, blue: 249), RGB(red: 250, green: 250, blue: 250),
-    ]
+  /// The 256 colors: the scheme's sixteen, the color cube and the grays.
+  private static func entries(for scheme: TerminalColorScheme) -> [RGB] {
+    let sixteen = scheme.ansi.count == 16 ? scheme.ansi : TerminalColorScheme.standardANSI
+    var palette = sixteen.map { RGB($0) }
     for red: UInt8 in [0, 95, 135, 175, 215, 255] {
       for green: UInt8 in [0, 95, 135, 175, 215, 255] {
         for blue: UInt8 in [0, 95, 135, 175, 215, 255] {

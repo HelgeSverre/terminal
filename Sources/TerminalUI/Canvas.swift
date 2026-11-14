@@ -46,13 +46,20 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   private var fontPoints: CGFloat = 14
   private var focused = false
   private var tracking: NSTrackingArea?
-  private weak var findBar: FindBarView?
+  private weak var findBar: TerminalFindBar?
   // Invalidates completions of superseded queries and of a closed bar.
   private var findGeneration = 0
   private var findPending = false
   package var onStatus: ((String) -> Void)?
   public var onTitle: ((String) -> Void)?
   public var onActivated: (() -> Void)?
+  /// Called when the user opens a link (Command-click). Return true when
+  /// the host has dealt with it; otherwise, and when unset, the view opens
+  /// it with the workspace.
+  public var onOpenLink: ((URL) -> Bool)?
+  /// Called with the context menu before it is shown, holding Copy and
+  /// Paste. The host adds, removes or reorders items.
+  public var onContextMenu: ((NSMenu) -> Void)?
   /// Called when this view has become the window's first responder.
   public var onFocused: (() -> Void)?
   package var onObservedSnapshot: ((TerminalSnapshot) -> Void)?
@@ -369,7 +376,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     let admitted = session.activateLink(activation) { [weak self] result in
       switch result {
       case .success(let target):
-        NSWorkspace.shared.open(target)
+        if self?.onOpenLink?(target) != true { NSWorkspace.shared.open(target) }
       case .failure(let failure):
         self?.showSelectionNotice(failure)
       }
@@ -544,7 +551,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
         inset: insetPixels, cellWidth: cellWidth, cellHeight: cellHeight,
         fontSize: fontPoints * scale,
         focused: focused, marked: marked.string,
-        linkUnderline: hoveredLink?.gridSegments ?? []))
+        linkUnderline: hoveredLink?.gridSegments ?? [], colors: configuration.session.colors))
     }
   }
   @discardableResult private func send(
@@ -789,6 +796,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
       let menu = NSMenu()
       menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "")
       menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "")
+      onContextMenu?(menu)
       NSMenu.popUpContextMenu(menu, with: event, for: self)
     }
   }
@@ -829,6 +837,19 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
       session.scroll(lines)
     }
   }
+  /// Whether text is selected.
+  public var hasSelection: Bool { snapshot.map { $0.selection.phase != .none } ?? false }
+  /// The selected text, as Copy would put it on the pasteboard. Gives nil
+  /// when nothing is selected or the selection changed before it was read.
+  public func selectedText(_ completion: @escaping @MainActor (String?) -> Void) {
+    guard let value = snapshot, value.selection.phase != .none else { return completion(nil) }
+    let admitted = session.selection(.copy(expectedSelectionRevision: value.selection.revision)) { result in
+      completion((try? result.get()) ?? nil)
+    }
+    if !admitted { completion(nil) }
+  }
+  /// Removes the selection.
+  public func clearSelection() { _ = session.selection(.clear) }
   @objc public func copy(_ sender: Any?) {
     guard let value = snapshot, value.selection.phase != .none, let clipboard else { return }
     clipboard.copy(from: session, selectionRevision: value.selection.revision)
@@ -867,23 +888,26 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     fontPoints = 14
     updateGeometry()
   }
-  /// The pane presentation owns the bar's place in the layout; the canvas
-  /// owns what it searches.
-  package func attach(findBar: FindBarView) {
+  /// Gives the view a find bar, which the Find actions then open. The host
+  /// owns the bar's place in the layout: add it as a sibling over the top
+  /// edge of this view, `TerminalFindBar.height` tall. It hides itself.
+  public func attach(findBar: TerminalFindBar) {
     self.findBar = findBar
     findBar.onQuery = { [weak self] query in self?.runFind(query) }
     findBar.onStep = { [weak self] older in self?.stepFind(older: older) }
     findBar.onClose = { [weak self] in self?.closeFind() }
   }
-  @objc func find(_ sender: Any?) {
+  /// Opens the attached find bar. Without one, nothing happens; a host with
+  /// its own search interface calls `TerminalSession.search` instead.
+  @objc public func find(_ sender: Any?) {
     guard let findBar else { return }
     let reopening = findBar.isHidden
     findBar.open()
     // Closing cleared the decorations; an earlier query is searched again.
     if reopening { runFind(findBar.query) }
   }
-  @objc func findNext(_ sender: Any?) { stepFind(older: true) }
-  @objc func findPrevious(_ sender: Any?) { stepFind(older: false) }
+  @objc public func findNext(_ sender: Any?) { stepFind(older: true) }
+  @objc public func findPrevious(_ sender: Any?) { stepFind(older: false) }
   private func runFind(_ query: String) {
     findGeneration += 1
     guard let findBar else { return }

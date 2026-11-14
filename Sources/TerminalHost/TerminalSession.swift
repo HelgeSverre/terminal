@@ -3,9 +3,15 @@ import TerminalEngine
 import TerminalInterop
 
 private final class ImageCapture { var data: Data? }
-package enum HistorySearchOutcome: Equatable {
+/// How a search of the screen and its history ended.
+public enum HistorySearchOutcome: Equatable, Sendable {
+  /// `found`: the newest match is selected and scrolled into view.
+  /// `missing`: nothing matches. `changed`: output kept arriving while the
+  /// search ran; ask again. `cancelled`: a newer search or a close replaced
+  /// it. `invalidQuery`: empty, or longer than 4096 bytes of UTF-8.
+  /// `resourceLimit`: a row is too large to search.
   case found, missing, changed, cancelled, invalidQuery, resourceLimit
-  package var message: String {
+  public var message: String {
     switch self {
     case .found: return "Match found"
     case .missing: return "No match"
@@ -19,10 +25,10 @@ package enum HistorySearchOutcome: Equatable {
 
 /// One-based position counted from the newest match. `capped` reports that
 /// matches older than the retention bound are not included in `total`.
-package struct HistorySearchPosition: Equatable {
-  package let index: Int
-  package let total: Int
-  package let capped: Bool
+public struct HistorySearchPosition: Equatable, Sendable {
+  public let index: Int
+  public let total: Int
+  public let capped: Bool
 }
 
 /// The children every session has started and not yet reaped, including those
@@ -439,6 +445,9 @@ public final class TerminalSession: @unchecked Sendable {
     guard let location = deliveredDirectory, let url = URL(string: location), url.isFileURL else { return nil }
     return url
   }
+  /// The program rang the bell (BEL). Bells that arrive together are
+  /// reported once. The terminal makes no sound of its own.
+  public var onBell: (@MainActor () -> Void)?
   /// Called once when the child could not be started.
   public var onLaunchFailure: (@MainActor (SessionLaunchFailure) -> Void)?
   /// Whether a view shows this session. A session serves one view.
@@ -529,7 +538,7 @@ public final class TerminalSession: @unchecked Sendable {
   nonisolated(unsafe) private static var abandoned: Set<Int32> = []
   private static var now: UInt64 { DispatchTime.now().uptimeNanoseconds / 1_000_000 }
   private var writeBytes: Int { writes.reduce(0) { $0 + $1.remaining } }
-  package typealias SearchCompletion = @MainActor (HistorySearchOutcome, HistorySearchPosition?) -> Void
+  public typealias SearchCompletion = @MainActor (HistorySearchOutcome, HistorySearchPosition?) -> Void
   // This module owns worker scheduling, latest-query replacement, bounded work,
   // retries, lifetime and source validation. Canvas only submits a query and
   // receives an outcome; it never reconstructs history positions or epochs.
@@ -995,6 +1004,9 @@ public final class TerminalSession: @unchecked Sendable {
       if used > 0 { lastParseNs = DispatchTime.now().uptimeNanoseconds }
       drainReplies()
       drainClipboardWrites()
+      if helge_terminal_take_bells(core) > 0 {
+        DispatchQueue.main.async { [weak self] in self?.onBell?() }
+      }
       if offset + used < bytes.count || helge_terminal_has_work(core) {
         // The partially consumed output lease remains at the ingress head.
         complete = false
@@ -1168,6 +1180,11 @@ public final class TerminalSession: @unchecked Sendable {
         finishLink(cost: cost, completion: completion, result: .failure(failure))
       }
     case .configure(let value):
+      if value.colors != configuration.colors, value.colors.ansi.count == 16 {
+        value.colors.ansi.withUnsafeBufferPointer {
+          helge_terminal_set_colors(core, value.colors.foreground, value.colors.background, $0.baseAddress)
+        }
+      }
       configuration = value
       helge_terminal_set_history_limit(core, UInt32(value.historyRows))
       // Configuration is semantic FIFO state: a later word gesture observes
@@ -1549,9 +1566,10 @@ public final class TerminalSession: @unchecked Sendable {
   package func find(_ query: String, completion: @escaping @MainActor (HistorySearchOutcome) -> Void) {
     search(query) { outcome, _ in completion(outcome) }
   }
-  /// Replaces any search in flight. A hit selects the newest match and
-  /// reports its position among all retained matches.
-  package func search(_ query: String, completion: @escaping SearchCompletion) {
+  /// Searches the screen and its history for `query`, matching
+  /// case. Replaces any search in flight. A hit selects the newest match,
+  /// marks the others and reports its position among all retained matches.
+  public func search(_ query: String, completion: @escaping SearchCompletion) {
     readBroker.submit { [self] in
       guard !closed else {
         DispatchQueue.main.async { completion(.cancelled, nil) }
@@ -1562,7 +1580,7 @@ public final class TerminalSession: @unchecked Sendable {
   }
   /// Moves to the adjacent match of the accepted search, wrapping at the ends.
   /// Nil means no accepted match is still valid; the caller searches again.
-  package func searchNavigate(older: Bool, completion: @escaping @MainActor (HistorySearchPosition?) -> Void) {
+  public func searchNavigate(older: Bool, completion: @escaping @MainActor (HistorySearchPosition?) -> Void) {
     readBroker.submit { [self] in
       guard !closed else {
         DispatchQueue.main.async { completion(nil) }
@@ -1572,7 +1590,7 @@ public final class TerminalSession: @unchecked Sendable {
     }
   }
   /// Cancels any search in flight and removes the match decorations.
-  package func searchClear() {
+  public func searchClear() {
     readBroker.submit { [self] in
       guard !closed else { return }
       enqueue(.searchClear)

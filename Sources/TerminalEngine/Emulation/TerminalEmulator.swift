@@ -137,6 +137,9 @@ private final class TerminalEmulator {
   @exclusivity(unchecked) private var tabs: [Bool]
   @exclusivity(unchecked) private var tabsCleared = false
   @exclusivity(unchecked) private var revision: UInt64 = 1
+  /// BEL characters since the host last asked.
+  @exclusivity(unchecked) private var bells: UInt32 = 0
+  func takeBells() -> UInt32 { defer { bells = 0 }; return bells }
   @exclusivity(unchecked) private var geometryEpoch: UInt64 = 1
   // TerminalDocument deliberately restarts row IDs after a hard reset. Keep a
   // monotonic identity generation so a pending search cannot mistake a fresh
@@ -497,7 +500,7 @@ private final class TerminalEmulator {
             continue
           }
           parser = .escape
-        case 0x00...0x07: finishDecodedText(); if byte == 0x07 { /* bell belongs to host */ }
+        case 0x00...0x07: finishDecodedText(); if byte == 0x07 { bells &+= 1 }
         case 0x08: finishDecodedText(); backspace()
         case 0x09: finishDecodedText(); tab()
         case 0x0a, 0x0b, 0x0c: finishDecodedText(); lineFeed()
@@ -1583,6 +1586,7 @@ private final class TerminalEmulator {
     }
     return graphics.visible(alternate: usingAlternate, positions: positions, height: rowCount)
   }
+  func setColorScheme(_ value: TerminalColorScheme) { palette.setScheme(value); changed(document: false) }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
   func setHistoryByteLimit(_ value: Int) { historyByteLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
   func clearDisplay() -> UInt32 {
@@ -2130,6 +2134,11 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
 @_cdecl("helge_terminal_finish") func swift_terminal_finish(_ pointer: OpaquePointer?) { core(pointer)?.finish() }
 @_cdecl("helge_terminal_validate") func swift_terminal_validate(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.isValid() ?? false }
 @_cdecl("helge_terminal_has_work") func swift_terminal_has_work(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.hasPendingWork ?? false }
+@_cdecl("helge_terminal_set_colors") func swift_terminal_set_colors(_ pointer: OpaquePointer?, _ foreground: UInt32, _ background: UInt32, _ ansi: UnsafePointer<UInt32>?) {
+  guard let ansi else { return }
+  core(pointer)?.setColorScheme(TerminalColorScheme(foreground: foreground, background: background, ansi: Array(UnsafeBufferPointer(start: ansi, count: 16))))
+}
+@_cdecl("helge_terminal_take_bells") func swift_terminal_take_bells(_ pointer: OpaquePointer?) -> UInt32 { core(pointer)?.takeBells() ?? 0 }
 @_cdecl("helge_terminal_set_history_limit") func swift_terminal_set_history_limit(_ pointer: OpaquePointer?, _ limit: UInt32) { core(pointer)?.setHistoryLimit(Int(limit)) }
 @_cdecl("helge_terminal_set_history_byte_limit") func swift_terminal_set_history_byte_limit(_ pointer: OpaquePointer?, _ limit: UInt64) { core(pointer)?.setHistoryByteLimit(limit > UInt64(Int.max) ? Int.max : Int(limit)) }
 @_cdecl("helge_terminal_history_bytes") func swift_terminal_history_bytes(_ pointer: OpaquePointer?) -> UInt64 { core(pointer)?.historyBytes() ?? 0 }

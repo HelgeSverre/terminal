@@ -108,6 +108,13 @@ is not part of the library by design.
   a host's `TerminalTransport` (SSH, serial, replay). The session reads and
   writes one end of a socket pair, so the read, write and flow-control code
   is the PTY's; the local process is not itself a transport.
+- **Search, selection and find:** `TerminalSession.search`, `searchNavigate`
+  and `searchClear`, the view's `hasSelection`, `selectedText` and
+  `clearSelection`, and an attachable `TerminalFindBar` are public.
+- **Colors:** `TerminalColorScheme` in the session configuration sets the
+  text color, background, sixteen ANSI colors, cursor and selection.
+- **Hooks:** `view.onOpenLink`, `view.onContextMenu` and `session.onBell`.
+  The clipboard decision for OSC 52 is still the view's own.
 - **Mode 2027:** a query is answered "permanently set". A layout by code
   point width is not built; see `BUGS.md`.
 

@@ -62,6 +62,14 @@ public final class HeadlessTerminal {
 
   /// Changes the grid and reflows the text. Returns false for a size the
   /// terminal does not accept; the old size then stands.
+  /// Sets the colors the terminal starts from and reports to programs
+  /// that ask (OSC 4, 10 and 11).
+  public func setColors(_ colors: TerminalColorScheme) {
+    let ansi = colors.ansi.count == 16 ? colors.ansi : TerminalColorScheme.standardANSI
+    ansi.withUnsafeBufferPointer {
+      helge_terminal_set_colors(core, colors.foreground, colors.background, $0.baseAddress)
+    }
+  }
   @discardableResult public func resize(columns: Int, rows: Int) -> Bool {
     guard columns > 0, rows > 0, columns <= 4096, rows <= 4096,
       helge_terminal_resize(core, UInt32(columns), UInt32(rows))

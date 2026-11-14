@@ -12,8 +12,10 @@ enum FindBarResult: Equatable {
 
 /// The find bar docked over the top of a pane. It owns presentation and key
 /// handling only; the pane's canvas runs the search and reports each result.
-package final class FindBarView: NSView, NSTextFieldDelegate {
-  package static let height: CGFloat = 30
+/// A host creates one, places it and hands it to
+/// `TerminalCanvasView.attach(findBar:)`.
+public final class TerminalFindBar: NSView, NSTextFieldDelegate {
+  public static let height: CGFloat = 30
 
   private final class QueryField: NSTextField {
     var onFocusChange: ((Bool) -> Void)?
@@ -45,7 +47,7 @@ package final class FindBarView: NSView, NSTextFieldDelegate {
 
   var query: String { field.stringValue }
 
-  override init(frame frameRect: NSRect) {
+  public override init(frame frameRect: NSRect = .zero) {
     super.init(frame: frameRect)
     isHidden = true
     setAccessibilityElement(true)
@@ -93,8 +95,8 @@ package final class FindBarView: NSView, NSTextFieldDelegate {
     apply(.idle)
   }
 
-  required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
-  package override var isFlipped: Bool { true }
+  public required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
+  public override var isFlipped: Bool { true }
 
   private func configure(_ button: NSButton, symbol: String, label: String, hint: String,
     identifier: String, action: Selector) {
@@ -171,7 +173,7 @@ package final class FindBarView: NSView, NSTextFieldDelegate {
     needsDisplay = true
   }
 
-  package override func layout() {
+  public override func layout() {
     super.layout()
     let side: CGFloat = 22
     var right = bounds.width - 4
@@ -195,7 +197,7 @@ package final class FindBarView: NSView, NSTextFieldDelegate {
       width: max(0, fieldEnd - fieldX), height: fieldHeight)
   }
 
-  package override func draw(_ dirtyRect: NSRect) {
+  public override func draw(_ dirtyRect: NSRect) {
     TerminalTheme.color(TerminalTheme.raised).setFill()
     bounds.fill()
     TerminalTheme.color(TerminalTheme.border).setFill()
@@ -205,12 +207,12 @@ package final class FindBarView: NSView, NSTextFieldDelegate {
   }
 
   // The bar covers the canvas; a click on its chrome belongs to the query.
-  package override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
+  public override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
 
-  package func controlTextDidChange(_ notification: Notification) { onQuery?(field.stringValue) }
-  package func controlTextDidEndEditing(_ notification: Notification) { setFieldFocused(false) }
+  public func controlTextDidChange(_ notification: Notification) { onQuery?(field.stringValue) }
+  public func controlTextDidEndEditing(_ notification: Notification) { setFieldFocused(false) }
 
-  package func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+  public func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
     switch NSStringFromSelector(selector) {
     case "insertNewline:", "insertLineBreak:", "insertNewlineIgnoringFieldEditor:":
       onStep?(!(NSApp?.currentEvent?.modifierFlags.contains(.shift) ?? false))

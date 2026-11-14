@@ -16,6 +16,7 @@ struct RenderRequest {
   let focused: Bool
   let marked: String
   let linkUnderline: [Range<Int>]
+  var colors = TerminalColorScheme.standard
 }
 private struct Quad {
   var rect: SIMD4<Float>
@@ -741,8 +742,8 @@ public final class TerminalRendering: @unchecked Sendable {
             && snap.selection.segments[selectionSegment].row == r
             && snap.selection.segments[selectionSegment].start <= c
           if selected {
-            bg = TerminalTheme.linear(TerminalTheme.selection)
-            fg = TerminalTheme.linear(TerminalTheme.text)
+            bg = TerminalTheme.linear(request.colors.selectionBackground)
+            fg = TerminalTheme.linear(request.colors.selectionForeground)
           }
           if bg != baseBackground {
             backgrounds.append(
@@ -832,7 +833,7 @@ public final class TerminalRendering: @unchecked Sendable {
       let y = request.inset + snap.cursor.row * request.cellHeight
       let tint =
         request.focused
-        ? TerminalTheme.linear(TerminalTheme.accent, alpha: 0.65)
+        ? TerminalTheme.linear(request.colors.cursor, alpha: 0.65)
         : TerminalTheme.linear(TerminalTheme.muted, alpha: 0.25)
       switch snap.cursor.shape {
       case 3, 4: rect(x, y + request.cellHeight - 2, request.cellWidth, 2, tint)

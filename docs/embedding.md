@@ -182,6 +182,9 @@ All callbacks run on the main thread.
 | `view.onTitle` | The program set the window title |
 | `view.onActivated` | The view is becoming the window's first responder |
 | `view.onFocused` | The view has become first responder, one main-queue turn later |
+| `view.onOpenLink` | The user opened a link with Command-click. Return true when the host has dealt with it; otherwise the view opens it with the workspace. |
+| `view.onContextMenu` | The context menu, holding Copy and Paste, before it is shown; the host changes its items |
+| `session.onBell` | The program rang the bell. The terminal makes no sound of its own. |
 | `session.onStatus` | A line of text about the session's life, for a log |
 | `session.onLaunchFailure` | The child could not be started. `SessionLaunchFailure` says why: `.invalidArguments`, `.spawn(errno:)`, or `.stage(_:errno:)` with the launcher's failing step, such as `.execute` for a missing program or `.workingDirectory` for a missing directory. |
 | `session.onEnd` | The child has exited and its last output is on screen. `SessionEnd` carries `exitedCleanly`, `exitCode` or `terminatingSignal`, and `seconds`, the run time in seconds. |
@@ -190,6 +193,9 @@ All callbacks run on the main thread.
 | `session.rawInput(_:)` | Send bytes to the child as if typed |
 | `session.scroll(_:)` | Move the view over the history by lines; positive is toward older output |
 | `view.visibleText` | The text on screen, one line per row |
+| `view.hasSelection`, `view.selectedText(_:)`, `view.clearSelection()` | Whether text is selected, the selected text as Copy would give it, and removing the selection |
+| `session.search(_:completion:)` | Search the screen and its history, matching case. A hit selects the newest match and gives its one-based position and the number of matches. |
+| `session.searchNavigate(older:completion:)`, `session.searchClear()` | Step to the next match; remove the search |
 | `view.gridSize` | The columns and rows the view holds |
 | `session.clearDisplay()` | Clear the display, as the app's Clear Screen command does |
 | `session.close()` | End the session and its child |
@@ -197,19 +203,51 @@ All callbacks run on the main thread.
 
 `TerminalViewConfiguration` holds the font size in points, whether Option
 sends Escape, and a `TerminalSessionConfiguration`: the history limit in rows
-(at most 50,000) and whether typing scrolls back to the newest output.
+(at most 50,000), whether typing scrolls back to the newest output, and the
+colors.
+
+### Colors
+
+`TerminalColorScheme` names the text color, the background, the sixteen ANSI
+colors, the cursor and the selection, each as `0xRRGGBB`. Unnamed ones keep
+Helge Terminal's values.
+
+```swift
+var configuration = TerminalViewConfiguration()
+configuration.session.colors = TerminalColorScheme(
+  foreground: 0x586e75, background: 0xfdf6e3, cursor: 0x268bd2,
+  selectionBackground: 0xeee8d5, selectionForeground: 0x586e75)
+view.apply(configuration)      // or pass it to the view's initializer
+```
+
+Programs that ask for the colors (OSC 4, 10, 11) are told these. A color a
+program has set for itself is kept when the scheme changes, and a terminal
+reset returns to the scheme.
 
 ## Menus
 
 Copy, Paste, Select All, Cancel Paste and Clear Screen are ordinary responder
 actions on the view (`copy(_:)`, `paste(_:)`, `selectAll(_:)`,
-`cancelPaste(_:)`, `clearScreen(_:)`). `TerminalEditMenu.make()` returns an Edit menu wired to them. Its
-Find items do nothing in an embedding app until a host can attach a find bar:
+`cancelPaste(_:)`, `clearScreen(_:)`), and so are Find, Find Next and Find
+Previous. `TerminalEditMenu.make()` returns an Edit menu wired to them:
 
 ```swift
 let edit = NSMenuItem()
 edit.submenu = TerminalEditMenu.make()
 NSApp.mainMenu?.addItem(edit)
+```
+
+The Find actions open a `TerminalFindBar`, which the host creates, places
+over the top edge of the terminal view and attaches. It stays hidden until
+Find is chosen. A host with its own search interface leaves it out and calls
+`session.search` instead.
+
+```swift
+let findBar = TerminalFindBar()
+findBar.frame = NSRect(x: 0, y: 0, width: view.frame.width, height: TerminalFindBar.height)
+findBar.autoresizingMask = [.width]
+container.addSubview(findBar)          // above the terminal view, in a flipped container
+view.attach(findBar: findBar)
 ```
 
 Programs may write the clipboard with OSC 52 through the `ClipboardAccess`
@@ -230,10 +268,8 @@ The fonts keep their own licenses; see the
 
 - **A stable interface.** Nothing here is versioned yet. Depend on a commit
   or on `main`, and expect changes.
-- **Theme and font choice.** Colors and the font are the app's own; a host
-  can set only the font size.
-- **The find bar.** The Find action needs the app's find bar, which a host
-  cannot attach yet.
+- **Font choice.** The font is Obel Mono; a host can set only its size.
+  The find bar, the selection notice and the inset keep the app's look.
 - **More of the emulator.** `HeadlessTerminal` gives text only: no colors
   or styles per cell, no history, no selection, no key encoding.
 - **A launch without the helper.** The host must carry `TerminalLauncher`.

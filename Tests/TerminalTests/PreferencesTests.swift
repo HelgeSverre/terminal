@@ -233,7 +233,7 @@ import Testing
     // height from the grid, so opening it cannot reflow the terminal.
     let findBar = panePresentation.findBar
     #expect(findBar.isHidden)
-    #expect(findBar.frame == NSRect(x: 0, y: 20, width: 320, height: FindBarView.height))
+    #expect(findBar.frame == NSRect(x: 0, y: 20, width: 320, height: TerminalFindBar.height))
     var findSteps: [Bool] = []
     var findClosed = 0
     findBar.onStep = { findSteps.append($0) }

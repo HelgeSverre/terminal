@@ -8,7 +8,7 @@ final class TerminalPanePresentationView: NSView {
   let canvas: NSView
   /// Docked over the top rows of the canvas rather than above it: opening the
   /// bar must not resize the grid, which would reflow and drop the matches.
-  let findBar = FindBarView()
+  let findBar = TerminalFindBar()
   private let header = PaneHeaderView()
   private var tracking: NSTrackingArea?
   private var showsHeader = false
@@ -114,7 +114,7 @@ final class TerminalPanePresentationView: NSView {
     let height = showsHeader ? Self.headerHeight : 0
     header.frame = NSRect(x: 0, y: 0, width: bounds.width, height: height)
     canvas.frame = NSRect(x: 0, y: height, width: bounds.width, height: max(0, bounds.height - height))
-    findBar.frame = NSRect(x: 0, y: height, width: bounds.width, height: FindBarView.height)
+    findBar.frame = NSRect(x: 0, y: height, width: bounds.width, height: TerminalFindBar.height)
   }
 
   override func updateTrackingAreas() {

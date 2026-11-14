@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TerminalEngine
 @testable import TerminalHost
 
 /// A far end that records what the session asks of it.
@@ -54,6 +55,47 @@ private struct LinkDown: Error {}
     // The terminal's own replies go to the far end too.
     transport.connection?.receive(Data("\u{1b}[6n".utf8))
     #expect(await TestEnvironment.wait { transport.sent.hasSuffix("\u{1b}[2;1R") }, "\(transport.sent.debugDescription)")
+  }
+
+  /// Search and colors through the public interface, with no process.
+  @Test func aHostSearchesAndColorsASession() async {
+    let transport = RecordingTransport()
+    let session = TerminalSession(transport: transport)
+    defer { session.close() }
+    #expect(await TestEnvironment.wait { transport.connection != nil })
+    transport.connection?.receive(Data("needle one\r\nhay\r\nneedle two\r\n".utf8))
+
+    var outcome: HistorySearchOutcome?
+    var position: HistorySearchPosition?
+    var asked = false
+    #expect(await TestEnvironment.wait {
+      // A search that ran before all the output was parsed is asked again.
+      if !asked || outcome == .changed || outcome == .missing || (outcome == .found && position?.total != 2) {
+        asked = true
+        outcome = nil
+        position = nil
+        session.search("needle") { outcome = $0; position = $1 }
+      }
+      return outcome == .found && position?.total == 2
+    })
+    #expect(position == HistorySearchPosition(index: 1, total: 2, capped: false))
+    var stepped: HistorySearchPosition?
+    session.searchNavigate(older: true) { stepped = $0 }
+    #expect(await TestEnvironment.wait { stepped?.index == 2 })
+    var missing: HistorySearchOutcome?
+    session.search("absent") { outcome, _ in missing = outcome }
+    #expect(await TestEnvironment.wait { missing == .missing })
+    session.searchClear()
+
+    var bells = 0
+    session.onBell = { bells += 1 }
+    // The BEL that ends an OSC is not a bell.
+    transport.connection?.receive(Data("\u{1b}]2;title\u{07}ding\u{07}".utf8))
+    #expect(await TestEnvironment.wait { bells == 1 })
+
+    session.configure(TerminalSessionConfiguration(colors: TerminalColorScheme(background: 0xfdf6e3)))
+    transport.connection?.receive(Data("\u{1b}]11;?\u{1b}\\".utf8))
+    #expect(await TestEnvironment.wait { transport.sent.contains("]11;rgb:fdfd/f6f6/e3e3") }, "\(transport.sent.debugDescription)")
   }
 
   @Test func aResizeReachesTheTransport() async {
