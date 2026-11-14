@@ -113,6 +113,9 @@ is not part of the library by design.
   `clearSelection`, and an attachable `TerminalFindBar` are public.
 - **Colors:** `TerminalColorScheme` in the session configuration sets the
   text color, background, sixteen ANSI colors, cursor and selection.
+- **Font:** `TerminalViewConfiguration.fontFamily` names an installed
+  family for a view. Verified by tests of face selection and measurement;
+  no screenshot was taken.
 - **Hooks:** `view.onOpenLink`, `view.onContextMenu` and `session.onBell`.
   The clipboard decision for OSC 52 is still the view's own.
 - **Mode 2027:** a query is answered "permanently set". A layout by code

@@ -252,7 +252,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     return children
   }
   public override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
-    accessible?.attributedString(in: range, fontSize: fontPoints, parent: self, activate: { [weak self] activation in
+    accessible?.attributedString(in: range, fontSize: fontPoints, fontFamily: configuration.fontFamily, parent: self, activate: { [weak self] activation in
       self?.activateLink(activation) ?? false
     })
   }
@@ -440,7 +440,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   /// canvas still has a zero frame. Keep font metrics independent of bounds so
   /// a requested startup grid does not use the seed cell dimensions.
   private func updateMetrics() {
-    let font = TerminalFont.appKit(size: fontPoints)
+    let font = TerminalFont.appKit(size: fontPoints, family: configuration.fontFamily)
     cellWidth = max(
       1, Int(ceil(("M" as NSString).size(withAttributes: [.font: font]).width * scale)))
     cellHeight = max(1, Int(ceil((font.ascender - font.descender + 3) * scale)))
@@ -476,7 +476,8 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
       layer.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
     }
     guard let (cols, rows) = gridForBounds else { return }
-    rendering?.prewarm(cellWidth: cellWidth, cellHeight: cellHeight, fontSize: fontPoints * scale)
+    rendering?.prewarm(
+      cellWidth: cellWidth, cellHeight: cellHeight, fontSize: fontPoints * scale, family: configuration.fontFamily)
     session.resize(cols: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
     positionSelectionNotice()
     inputContext?.invalidateCharacterCoordinates()
@@ -551,7 +552,8 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
         inset: insetPixels, cellWidth: cellWidth, cellHeight: cellHeight,
         fontSize: fontPoints * scale,
         focused: focused, marked: marked.string,
-        linkUnderline: hoveredLink?.gridSegments ?? [], colors: configuration.session.colors))
+        linkUnderline: hoveredLink?.gridSegments ?? [], colors: configuration.session.colors,
+        fontFamily: configuration.fontFamily))
     }
   }
   @discardableResult private func send(

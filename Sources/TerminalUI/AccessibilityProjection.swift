@@ -375,7 +375,8 @@ package struct AccessibilityProjection {
   }
   @MainActor
   package func attributedString(
-    in range: NSRange, fontSize: CGFloat, parent: NSView, activate: @escaping TerminalLinkActivationHandler
+    in range: NSRange, fontSize: CGFloat, fontFamily: String? = nil, parent: NSView,
+    activate: @escaping TerminalLinkActivationHandler
   ) -> NSAttributedString? {
     guard let value = string(in: range), fontSize.isFinite, fontSize > 0 else { return nil }
     let result = NSMutableAttributedString(string: value)
@@ -388,7 +389,7 @@ package struct AccessibilityProjection {
       let foreground = style.conceal ? colors.background : colors.foreground
       let traits = (style.bold ? 1 : 0) | (style.italic ? 2 : 0)
       if fonts[traits] == nil {
-        let font = TerminalFont.core(size: fontSize, bold: style.bold, italic: style.italic) as NSFont
+        let font = TerminalFont.core(size: fontSize, bold: style.bold, italic: style.italic, family: fontFamily) as NSFont
         fonts[traits] = [
           NSAccessibility.FontAttributeKey.fontName.rawValue: font.fontName,
           NSAccessibility.FontAttributeKey.fontFamily.rawValue: font.familyName ?? font.fontName,

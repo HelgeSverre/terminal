@@ -2,6 +2,11 @@ import AppKit
 import TerminalHost
 import TerminalUI
 
+/// Holds the terminal with its find bar over the top edge.
+final class Container: NSView {
+  override var isFlipped: Bool { true }
+}
+
 /// One window holding one terminal that runs the login shell.
 final class Host: NSObject, NSApplicationDelegate {
   private var window: NSWindow?
@@ -24,7 +29,17 @@ final class Host: NSObject, NSApplicationDelegate {
     let window = NSWindow(
       contentRect: NSRect(origin: .zero, size: view.contentSize(columns: 100, rows: 30)),
       styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
-    window.contentView = view
+    // The Find menu items open this bar; the view runs the search.
+    let container = Container(frame: NSRect(origin: .zero, size: window.contentLayoutRect.size))
+    view.frame = container.bounds
+    view.autoresizingMask = [.width, .height]
+    let findBar = TerminalFindBar()
+    findBar.frame = NSRect(x: 0, y: 0, width: container.bounds.width, height: TerminalFindBar.height)
+    findBar.autoresizingMask = [.width]
+    container.addSubview(view)
+    container.addSubview(findBar)
+    view.attach(findBar: findBar)
+    window.contentView = container
     window.title = "Embedded terminal"
     window.center()
     window.makeKeyAndOrderFront(nil)

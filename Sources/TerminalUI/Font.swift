@@ -20,11 +20,29 @@ package enum TerminalFont {
     }
     return result
   }()
-  package static func appKit(size: CGFloat) -> NSFont { core(size: size) as NSFont }
-  package static func core(size: CGFloat, bold: Bool = false, italic: Bool = false) -> CTFont {
+  package static func appKit(size: CGFloat, family: String? = nil) -> NSFont {
+    core(size: size, family: family) as NSFont
+  }
+  /// The face of an installed family, or nil when the Mac has no such
+  /// family. A family without the bold or italic face gives its regular one.
+  private static func installed(_ name: String, size: CGFloat, bold: Bool, italic: Bool) -> CTFont? {
+    let descriptor = CTFontDescriptorCreateWithAttributes([kCTFontFamilyNameAttribute: name] as CFDictionary)
+    let regular = CTFontCreateWithFontDescriptor(descriptor, size, nil)
+    guard (CTFontCopyFamilyName(regular) as String).caseInsensitiveCompare(name) == .orderedSame else { return nil }
+    var traits: CTFontSymbolicTraits = []
+    if bold { traits.insert(.traitBold) }
+    if italic { traits.insert(.traitItalic) }
+    guard !traits.isEmpty else { return regular }
+    return CTFontCreateCopyWithSymbolicTraits(regular, size, nil, traits, [.traitBold, .traitItalic]) ?? regular
+  }
+  /// `family` names an installed fixed-pitch family; nil, or a name the Mac
+  /// does not have, gives the bundled Obel Mono.
+  package static func core(size: CGFloat, bold: Bool = false, italic: Bool = false, family: String? = nil) -> CTFont {
     let face = bold ? (italic ? "BoldItalic" : "Bold") : (italic ? "Italic" : "Regular")
     let base: CTFont
-    if let descriptor = resources[face] {
+    if let family, family != Self.family, let chosen = installed(family, size: size, bold: bold, italic: italic) {
+      base = chosen
+    } else if let descriptor = resources[face] {
       base = CTFontCreateWithFontDescriptor(descriptor, size, nil)
     } else {
       let selected = CTFontCreateWithName(("ObelMono-" + face) as CFString, size, nil)

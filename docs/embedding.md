@@ -201,10 +201,18 @@ All callbacks run on the main thread.
 | `session.close()` | End the session and its child |
 | `view.apply(_:)` | Change the configuration of a running view |
 
-`TerminalViewConfiguration` holds the font size in points, whether Option
-sends Escape, and a `TerminalSessionConfiguration`: the history limit in rows
+`TerminalViewConfiguration` holds the font size in points, the font family,
+whether Option sends Escape, and a `TerminalSessionConfiguration`: the history limit in rows
 (at most 50,000), whether typing scrolls back to the newest output, and the
 colors.
+
+### Font
+
+`fontFamily` names an installed fixed-pitch family, such as `"Menlo"` or
+`"SF Mono"`; the grid is measured from it. Left nil, or naming a family the
+Mac does not have, it gives the bundled Obel Mono. A family without a bold
+or italic face draws its regular one. Icons the family lacks come from the
+bundled symbols font. Views with different families share one renderer.
 
 ### Colors
 
@@ -268,8 +276,8 @@ The fonts keep their own licenses; see the
 
 - **A stable interface.** Nothing here is versioned yet. Depend on a commit
   or on `main`, and expect changes.
-- **Font choice.** The font is Obel Mono; a host can set only its size.
-  The find bar, the selection notice and the inset keep the app's look.
+- **The rest of the look.** The find bar, the selection notice and the
+  inset keep the app's look. Ligatures are not drawn.
 - **More of the emulator.** `HeadlessTerminal` gives text only: no colors
   or styles per cell, no history, no selection, no key encoding.
 - **A launch without the helper.** The host must carry `TerminalLauncher`.

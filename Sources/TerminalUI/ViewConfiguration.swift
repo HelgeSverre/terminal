@@ -6,12 +6,17 @@ import TerminalHost
 public struct TerminalViewConfiguration {
   /// The font size, in points.
   public var fontSize: CGFloat
+  /// An installed fixed-pitch font family, such as "Menlo" or "SF Mono".
+  /// Nil, or a family the Mac does not have, gives the bundled Obel Mono.
+  /// Icons the family lacks still come from the bundled symbols font.
+  public var fontFamily: String?
   /// Whether Option sends Escape before the key instead of composing a character.
   public var optionSendsEscape: Bool
   public var session: TerminalSessionConfiguration
-  public init(fontSize: CGFloat = 14, optionSendsEscape: Bool = false,
+  public init(fontSize: CGFloat = 14, fontFamily: String? = nil, optionSendsEscape: Bool = false,
        session: TerminalSessionConfiguration = TerminalSessionConfiguration()) {
     self.fontSize = fontSize
+    self.fontFamily = fontFamily
     self.optionSendsEscape = optionSendsEscape
     self.session = session
   }

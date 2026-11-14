@@ -17,6 +17,7 @@ struct RenderRequest {
   let marked: String
   let linkUnderline: [Range<Int>]
   var colors = TerminalColorScheme.standard
+  var fontFamily: String? = nil
 }
 private struct Quad {
   var rect: SIMD4<Float>
@@ -197,6 +198,7 @@ public final class TerminalRendering: @unchecked Sendable {
   private let directGlyphLimit: Int
   private var metrics = SIMD2<Int>(0, 0)
   private var fontSize: CGFloat = 0
+  private var fontFamily: String?
   private var font: CTFont
   private var boldFont: CTFont
   private var italicFont: CTFont
@@ -618,7 +620,7 @@ public final class TerminalRendering: @unchecked Sendable {
   private func glyph(_ key: GlyphKey, cells: Int, request: RenderRequest) -> GlyphLookup {
     let recipe = GlyphRasterRecipe(text: key.text, width: request.cellWidth * cells,
       height: request.cellHeight, pointSize: key.pointSize, bold: key.bold, italic: key.italic,
-      fontIdentity: key.fontIdentity, backingScale: 1)
+      fontIdentity: key.fontIdentity, backingScale: 1, family: request.fontFamily)
     if let resident = glyphResidency.resolve(recipe) {
       return .resident(Glyph(uv: resident.uv, width: resident.width, atlasPage: nil,
         texture: resident.texture, kind: resident.kind, heap: nil, legacyID: nil))
@@ -630,25 +632,25 @@ public final class TerminalRendering: @unchecked Sendable {
   }
   /// Queues printable ASCII in the regular and bold faces for these cell
   /// metrics, so a new pane's first prompt does not wait on the worker.
-  func prewarm(cellWidth: Int, cellHeight: Int, fontSize: CGFloat) {
+  func prewarm(cellWidth: Int, cellHeight: Int, fontSize: CGFloat, family: String? = nil) {
     executor.async { [weak self] in
       guard let self else { return }
-      let key = PrewarmKey(cellWidth: cellWidth, cellHeight: cellHeight, fontSize: fontSize)
+      let key = PrewarmKey(cellWidth: cellWidth, cellHeight: cellHeight, fontSize: fontSize, family: family)
       guard prewarmed.insert(key).inserted else { return }
       let pointSize = Int(fontSize.rounded())
       var recipes: [GlyphRasterRecipe] = []
       for bold in [false, true] {
-        let identity = CTFontCopyPostScriptName(TerminalFont.core(size: fontSize, bold: bold)) as String
+        let identity = CTFontCopyPostScriptName(TerminalFont.core(size: fontSize, bold: bold, family: family)) as String
         for scalar in 0x20...0x7E {
           recipes.append(GlyphRasterRecipe(
             text: String(Unicode.Scalar(UInt8(scalar))), width: cellWidth, height: cellHeight,
-            pointSize: pointSize, bold: bold, italic: false, fontIdentity: identity, backingScale: 1))
+            pointSize: pointSize, bold: bold, italic: false, fontIdentity: identity, backingScale: 1, family: family))
         }
       }
       glyphResidency.prewarm(recipes)
     }
   }
-  private struct PrewarmKey: Hashable { let cellWidth: Int; let cellHeight: Int; let fontSize: CGFloat }
+  private struct PrewarmKey: Hashable { let cellWidth: Int; let cellHeight: Int; let fontSize: CGFloat; let family: String? }
   private var prewarmed: Set<PrewarmKey> = []
   private func draw(
     _ request: RenderRequest, drawable: CAMetalDrawable, surface: SurfaceLease, generation: UInt64
@@ -663,13 +665,15 @@ public final class TerminalRendering: @unchecked Sendable {
         frameLegacyIDs.forEach { glyphResidency.releaseLegacyTexture($0) }
       }
     }
-    if metrics != SIMD2(request.cellWidth, request.cellHeight) || fontSize != request.fontSize {
+    if metrics != SIMD2(request.cellWidth, request.cellHeight) || fontSize != request.fontSize
+      || fontFamily != request.fontFamily {
       metrics = SIMD2(request.cellWidth, request.cellHeight)
       fontSize = request.fontSize
-      font = TerminalFont.core(size: fontSize)
-      boldFont = TerminalFont.core(size: fontSize, bold: true)
-      italicFont = TerminalFont.core(size: fontSize, italic: true)
-      boldItalicFont = TerminalFont.core(size: fontSize, bold: true, italic: true)
+      fontFamily = request.fontFamily
+      font = TerminalFont.core(size: fontSize, family: fontFamily)
+      boldFont = TerminalFont.core(size: fontSize, bold: true, family: fontFamily)
+      italicFont = TerminalFont.core(size: fontSize, italic: true, family: fontFamily)
+      boldItalicFont = TerminalFont.core(size: fontSize, bold: true, italic: true, family: fontFamily)
       // Glyph keys include metrics and font identity, so a pane changing font
       // no longer invalidates resident glyphs used by other panes.
     }
