@@ -98,7 +98,7 @@ import Testing
     #expect(await TestEnvironment.wait { (try? String(contentsOf: file, encoding: .utf8))?.hasSuffix("\n") == true })
     let child = try #require(Int32((try String(contentsOf: file, encoding: .utf8)).trimmingCharacters(in: .whitespacesAndNewlines)))
     #expect(kill(child, 0) == 0, "the child runs while its session lives")
-    weak let released = session
+    weak var released = session
     session = nil
     #expect(await TestEnvironment.wait(seconds: 2) { released == nil }, "something still holds the session")
     // A child that is dead but not reaped still answers `kill`.
