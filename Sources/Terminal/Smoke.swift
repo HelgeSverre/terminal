@@ -196,8 +196,13 @@ import TerminalView
   }
   private func runCommand() {
     guard let pane = controller.panes.first else { return }
+    // The smoke drives the user's own login shell. Its commands must not
+    // reach the user's history file: zsh-autosuggestions would offer them
+    // back, and this one holds emoji whose width zsh counts differently from
+    // a terminal. The leading space and the unset each cover a setup where
+    // the other does not.
     pane.insertText(
-      #"printf '\033[2J\033[H\033[31mRED\033[0m Unicode: 猫 é 👩🏽‍💻 🇳🇴\nSTARTUP_PWD=%s\nSMOKE_SENTINEL\n' "$PWD""#,
+      #" unset HISTFILE; printf '\033[2J\033[H\033[31mRED\033[0m Unicode: 猫 é 👩🏽‍💻 🇳🇴\nSTARTUP_PWD=%s\nSMOKE_SENTINEL\n' "$PWD""#,
       replacementRange: NSRange(location: NSNotFound, length: 0))
     pane.doCommand(by: NSSelectorFromString("insertNewline:"))
   }

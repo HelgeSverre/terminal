@@ -96,7 +96,7 @@ import TerminalCore
   }
   private func setupProbe() {
       stage = 1
-      let setup = #"HISTFILE=/dev/null; typeset _ht_probe_number=0; function _ht_edit_probe() { ((_ht_probe_number++)); zle -I; print -r -- "HT_EDIT_BUFFER_${_ht_probe_number}:<${BUFFER}>:${CURSOR}"; zle redisplay; }; zle -N _ht_edit_probe; bindkey '^X^V' _ht_edit_probe; printf 'HT_EDIT_READY\n'"#
+      let setup = #" unset HISTFILE; typeset _ht_probe_number=0; function _ht_edit_probe() { ((_ht_probe_number++)); zle -I; print -r -- "HT_EDIT_BUFFER_${_ht_probe_number}:<${BUFFER}>:${CURSOR}"; zle redisplay; }; zle -N _ht_edit_probe; bindkey '^X^V' _ht_edit_probe; printf 'HT_EDIT_READY\n'"#
       controller.panes.first?.insertText(setup, replacementRange: NSRange(location: NSNotFound, length: 0))
       key(36, "\r")
   }
