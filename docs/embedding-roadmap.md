@@ -122,6 +122,8 @@ is not part of the library by design.
   `ClipboardAccess(writingTo:deciding:)` asks the host about each OSC 52
   write. `session.paste`, `contentInset` and chrome colored from the scheme
   followed.
+- **Keys:** `TerminalKey` with `session.send(_:modifiers:)`,
+  `session.send(text:)` and `HeadlessTerminal.encode(_:modifiers:)`.
 - **Mode 2027:** a real mode. Reset lays text out by code point width;
   the host chooses the starting state with `graphemeClustering`. The app's
   default is still clustering; see `BUGS.md`.

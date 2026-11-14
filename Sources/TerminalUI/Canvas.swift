@@ -377,7 +377,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     let admitted = session.activateLink(activation) { [weak self] result in
       switch result {
       case .success(let target):
-        if self?.onOpenLink?(target) != true { NSWorkspace.shared.open(target) }
+        self?.open(target)
       case .failure(let failure):
         self?.showSelectionNotice(failure)
       }
@@ -795,13 +795,24 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
       requestSelection(.commit)
     } else { _ = reportMouse(event, button: 0, release: true) }
   }
+  /// The context menu as the host has left it.
+  func contextMenu() -> NSMenu {
+    let menu = NSMenu()
+    menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "")
+    menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "")
+    onContextMenu?(menu)
+    return menu
+  }
+  /// Hands a validated link to the host, or opens it. Returns whether the
+  /// view opened it itself.
+  @discardableResult func open(_ target: URL) -> Bool {
+    if onOpenLink?(target) == true { return false }
+    NSWorkspace.shared.open(target)
+    return true
+  }
   public override func rightMouseDown(with event: NSEvent) {
     if !reportMouse(event, button: 2, release: false) {
-      let menu = NSMenu()
-      menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "")
-      menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "")
-      onContextMenu?(menu)
-      NSMenu.popUpContextMenu(menu, with: event, for: self)
+      NSMenu.popUpContextMenu(contextMenu(), with: event, for: self)
     }
   }
   public override func rightMouseUp(with event: NSEvent) {

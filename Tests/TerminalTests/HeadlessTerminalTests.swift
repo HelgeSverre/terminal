@@ -127,6 +127,32 @@ import TerminalEngine
     #expect(try #require(terminal.screen()).cursorColumn == 6)
   }
 
+  @Test func keysAreEncodedForTheProgramsModes() throws {
+    let terminal = try #require(HeadlessTerminal(columns: 20, rows: 4))
+    func bytes(_ key: TerminalKey, _ modifiers: TerminalKeyModifiers = []) -> String {
+      String(decoding: terminal.encode(key, modifiers: modifiers), as: UTF8.self)
+    }
+    #expect(bytes(.up) == "\u{1b}[A")
+    #expect(bytes(.enter) == "\r")
+    #expect(bytes(.backspace) == "\u{7f}")
+    #expect(bytes(.tab, .shift) == "\u{1b}[Z")
+    #expect(bytes(.function(5)) == "\u{1b}[15~")
+    #expect(bytes(.left, .control) == "\u{1b}[1;5D")
+    #expect(bytes(.character("c"), .control) == "\u{03}")
+    #expect(bytes(.character("b"), .option) == "\u{1b}b")
+    #expect(bytes(.character("a")) == "a")
+    #expect(bytes(.character("a"), .shift) == "A")
+    #expect(bytes(.function(13)).isEmpty)
+    // Application cursor keys.
+    terminal.feed("\u{1b}[?1h")
+    #expect(bytes(.up) == "\u{1b}OA")
+    terminal.feed("\u{1b}[?1l")
+    // The Kitty keyboard protocol, disambiguating escape codes.
+    terminal.feed("\u{1b}[>1u")
+    #expect(bytes(.character("c"), .control) == "\u{1b}[99;5u")
+    #expect(bytes(.escape) == "\u{1b}[27;1u", "this encoder always writes the modifier field")
+  }
+
   @Test func resizeReflowsAndRejectsNonsense() throws {
     let terminal = try #require(HeadlessTerminal(columns: 10, rows: 4))
     terminal.feed("0123456789abcde")

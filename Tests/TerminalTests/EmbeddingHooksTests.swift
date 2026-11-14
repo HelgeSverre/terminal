@@ -61,6 +61,46 @@ import TerminalEngine
     }, "\(line.sent.debugDescription)")
   }
 
+  @Test func aHostSendsKeysWithoutAnEvent() async {
+    let line = Line()
+    let session = TerminalSession(transport: line)
+    defer { session.close() }
+    #expect(await TestEnvironment.wait { line.connection != nil })
+    #expect(session.send(text: "ls"))
+    #expect(session.send(.enter))
+    #expect(session.send(.character("c"), modifiers: .control))
+    #expect(session.send(.up))
+    #expect(!session.send(.function(13)))
+    #expect(await TestEnvironment.wait { line.sent == "ls\r\u{03}\u{1b}[A" }, "\(line.sent.debugDescription)")
+    // The program asks for application cursor keys; the same key changes.
+    line.connection?.receive(Data("\u{1b}[?1h".utf8))
+    #expect(await TestEnvironment.wait {
+      session.send(.up)
+      return line.sent.hasSuffix("\u{1b}OA")
+    }, "\(line.sent.debugDescription)")
+  }
+
+  /// The context menu reaches the host before it is shown. The test stops
+  /// there: showing a menu would block on the user.
+  @Test func theHostEditsTheContextMenuAndDecidesLinks() {
+    let session = TerminalSession(transport: Line())
+    defer { session.close() }
+    let view = TerminalCanvasView(frame: .zero, session: session, rendering: nil, clipboard: nil)
+    var titles: [String] = []
+    view.onContextMenu = { menu in
+      titles = menu.items.map(\.title)
+      menu.addItem(withTitle: "Host item", action: nil, keyEquivalent: "")
+    }
+    let menu = view.contextMenu()
+    #expect(titles == ["Copy", "Paste"])
+    #expect(menu.items.map(\.title) == ["Copy", "Paste", "Host item"])
+
+    var opened: [URL] = []
+    view.onOpenLink = { opened.append($0); return true }
+    #expect(view.open(URL(string: "https://example.com/a")!) == false, "the host took it")
+    #expect(opened.map(\.absoluteString) == ["https://example.com/a"])
+  }
+
   @Test func theViewGivesItsSelectionAndItsMenuToTheHost() async {
     let line = Line()
     let session = TerminalSession(transport: line)

@@ -1393,6 +1393,20 @@ public final class TerminalSession: @unchecked Sendable {
     }
     return true
   }
+  /// Presses `key` with `modifiers`, encoded for the program's current
+  /// modes. Returns false for a key the terminal does not know (F13 and
+  /// up) or when input is closed or busy.
+  @discardableResult public func send(_ key: TerminalKey, modifiers: TerminalKeyModifiers = []) -> Bool {
+    guard let code = key.code else { return false }
+    let character = key.character
+    let shifted = modifiers.contains(.shift) ? character.uppercased() : ""
+    return input(TerminalKeyEvent(
+      text: modifiers.contains(.shift) ? character.uppercased() : character, logical: character,
+      shifted: shifted, baseLayout: character, legacyText: modifiers.contains(.shift) ? shifted : character,
+      key: code, modifiers: modifiers.rawValue, event: 0))
+  }
+  /// Types `text`, as the keyboard would.
+  @discardableResult public func send(text: String) -> Bool { input(text) }
   /// Sends text as a paste: bracketed when the program asked for that, and
   /// with line ends as a paste has them. At most 1 MiB; returns false when
   /// the text was not accepted.

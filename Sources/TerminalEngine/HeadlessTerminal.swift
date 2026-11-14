@@ -106,6 +106,28 @@ public final class HeadlessTerminal {
     return true
   }
 
+  /// The bytes `key` sends to the program in the terminal's current modes,
+  /// for a host to write to its transport. Empty for a key the terminal
+  /// does not know.
+  public func encode(_ key: TerminalKey, modifiers: TerminalKeyModifiers = []) -> Data {
+    guard let code = key.code else { return Data() }
+    final class Box { var data = Data() }
+    let box = Box()
+    let character = key.character
+    let shifted = modifiers.contains(.shift) ? character.uppercased() : ""
+    let committed = modifiers.contains(.shift) ? shifted : character
+    _ = helge_terminal_input_with_metadata(
+      core, character, code, modifiers.rawValue, 0, committed, committed,
+      shifted.unicodeScalars.count == 1 ? shifted.unicodeScalars.first!.value : 0,
+      character.unicodeScalars.count == 1 ? character.unicodeScalars.first!.value : 0,
+      Unmanaged.passUnretained(box).toOpaque()
+    ) { context, bytes, count in
+      guard let context, let bytes, count > 0 else { return }
+      Unmanaged<Box>.fromOpaque(context).takeUnretainedValue().data.append(bytes, count: count)
+    }
+    return box.data
+  }
+
   /// What the terminal has to say back to the program since the last call:
   /// answers to status and attribute queries. A host with a transport writes
   /// these to it.

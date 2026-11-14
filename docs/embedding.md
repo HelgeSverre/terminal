@@ -82,8 +82,10 @@ An instance is used from one thread at a time. A `Screen` holds:
 | `historyRows` | Rows kept above the screen |
 
 `screen(scrolledBack: n)` gives the window `n` rows into the history without
-moving the terminal, `setColors(_:)` sets the colors programs are told, and
-`setGraphemeClustering(_:)` sets the state mode 2027 starts in.
+moving the terminal, `setColors(_:)` sets the colors programs are told,
+`setGraphemeClustering(_:)` sets the state mode 2027 starts in, and
+`encode(_:modifiers:)` gives the bytes a key sends in the terminal's current
+modes, for the host to write to its transport.
 Selection and key encoding are not public here.
 
 ## Show a terminal
@@ -214,6 +216,8 @@ All callbacks run on the main thread.
 | `session.processIdentifier` | The child's process ID, once it has started |
 | `session.workingDirectory` | The directory the child last reported with OSC 7 |
 | `session.rawInput(_:)` | Send bytes to the child as if typed |
+| `session.send(_:modifiers:)` | Press a `TerminalKey` (arrows, Home, End, Page Up and Down, Insert, Delete, Backspace, Tab, Enter, Escape, F1 to F12, or a character key) with Shift, Option, Control or Command, encoded for the program's current modes |
+| `session.send(text:)` | Type text, as the keyboard would |
 | `session.paste(_:)` | Send text as a paste, bracketed when the program asked for that; at most 1 MiB |
 | `session.scroll(_:)` | Move the view over the history by lines; positive is toward older output |
 | `view.visibleText` | The text on screen, one line per row |
@@ -334,8 +338,8 @@ The fonts keep their own licenses; see the
   or on `main`, and expect changes.
 - **The rest of the look.** The find bar and the selection notice take
   their colors from the scheme but keep their shape. Ligatures are not drawn.
-- **More of the emulator.** `HeadlessTerminal` has no selection, no search
-  and no key encoding; a host sends bytes of its own making.
+- **More of the emulator.** `HeadlessTerminal` has no selection and no
+  search.
 - **A launch without the helper.** The host must carry `TerminalLauncher`.
 - **Other platforms.** macOS on Apple Silicon is the only tested target.
   There is no iOS view and no SwiftUI wrapper; wrap `TerminalCanvasView` in
