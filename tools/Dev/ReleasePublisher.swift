@@ -120,6 +120,7 @@ enum ReleasePublisher {
     @discardableResult
     func validate(output: String, githubOutput: String? = nil) throws -> Metadata {
       let version = try bundleVersion()
+      _ = try releaseNotes(version: version)
       let tag = "v\(version)"
       let event = environment["GITHUB_EVENT_NAME"] ?? ""
       let ref = environment["GITHUB_REF"] ?? ""
@@ -218,7 +219,9 @@ enum ReleasePublisher {
         FeedElement("sparkle:version", text: try field("CFBundleVersion")),
         FeedElement("sparkle:shortVersionString", text: shortVersion),
         FeedElement("sparkle:minimumSystemVersion", text: try field("LSMinimumSystemVersion")),
-        FeedElement("sparkle:releaseNotesLink",
+        FeedElement("description", text: try releaseNotes(version: metadata.version),
+                    attributes: [("sparkle:format", "markdown")]),
+        FeedElement("sparkle:fullReleaseNotesLink",
                     text: "https://github.com/\(terminalRepository)/releases/tag/\(metadata.tag)"),
         FeedElement("enclosure", attributes: [
           ("url", "https://github.com/\(terminalRepository)/releases/download/\(metadata.tag)/\(zipName)"),
@@ -255,6 +258,7 @@ enum ReleasePublisher {
       let metadata = try readMetadata(path)
       guard metadata.publish else { throw Failure("metadata does not authorize publishing") }
       try verifySource(metadata)
+      _ = try releaseNotes(version: metadata.version)
       let assets = try verifiedManifest(metadata, releaseDirectory)
       let names = assets.map(\.name) + integrityFiles
       // All verification above happens before this first GitHub mutation.
@@ -280,6 +284,19 @@ enum ReleasePublisher {
         try runChecked(["gh", "release", "edit", metadata.tag, "--repo", terminalRepository, "--draft=false"])
       }
       try updateTap(metadata, assets.first { $0.name.hasSuffix(".zip") })
+    }
+
+    /// One versioned source for both the updater and the GitHub release body.
+    func releaseNotes(version: String) throws -> String {
+      guard isVersion(version) else { throw Failure("invalid release notes version") }
+      let path = root + "/release-notes/\(version).md"
+      guard isRegularFile(path, followingLinks: false),
+            let data = FileManager.default.contents(atPath: path),
+            let notes = String(data: data, encoding: .utf8),
+            !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        throw Failure("missing or empty UTF-8 release notes: release-notes/\(version).md")
+      }
+      return notes
     }
 
     private func bundleVersion() throws -> String {
@@ -406,7 +423,7 @@ enum ReleasePublisher {
     private func createDraftRelease(_ metadata: Metadata) throws {
       try withTemporaryDirectory("release-notes-") { directory in
         let notes = directory + "/release-notes.md"
-        try write("Helge Terminal \(metadata.tag)\n", to: notes)
+        try write(try releaseNotes(version: metadata.version), to: notes)
         // The tag exists and names the commit; the release is made from it.
         // Naming the commit as the target instead makes GitHub refuse the
         // workflow's token whenever the default branch has since changed a
@@ -688,7 +705,8 @@ enum ReleasePublisher {
       self.children = children
       self.attributes = attributes
     }
-    init(_ name: String, text: String) {
+    init(_ name: String, text: String, attributes: [(String, String)] = []) {
+      self.attributes = attributes
       self.name = name
       self.text = text
     }

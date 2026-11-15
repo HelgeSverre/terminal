@@ -8,7 +8,9 @@ That cask update also refreshes [tap.helgesver.re](https://tap.helgesver.re/).
 ## Publish a version
 
 Set `CFBundleShortVersionString` and increment `CFBundleVersion` in
-`Resources/Terminal/Info.plist`. Commit the tested changes to `main`, then tag that commit:
+`Resources/Terminal/Info.plist`. Write nonempty UTF-8 Markdown release notes in
+`release-notes/X.Y.Z.md` for that version, using short headings and bullets for
+user-visible changes. Keep published versions’ notes unchanged. Commit the tested changes to `main`, then tag that commit:
 
 ```shell
 git tag vX.Y.Z
@@ -79,6 +81,11 @@ after the ZIP is notarized and before the checksums are recorded. It lists the
 release's ZIP with its size and an Ed25519 signature, and is published, and
 covered by `release-manifest.json` and `SHA256SUMS`, like the ZIP. The app
 accepts an update only if the signature matches `SUPublicEDKey` in `Info.plist`.
+
+The appcast embeds the version’s Markdown notes directly in its description,
+so the updater shows a simple changelog without loading GitHub’s page. The same
+file supplies the GitHub release body. GitHub remains the separate version-history
+link. Validation rejects missing or empty notes before building.
 
 The private key is in Helge's **Personal** 1Password vault, in the item
 **Terminal Release Signing**. The repository secret `SPARKLE_PRIVATE_KEY` holds

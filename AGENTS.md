@@ -139,3 +139,13 @@ For notarization or signing-credential changes, read [docs/releasing.md](docs/re
 Save credentials and recovery details in Helge's **Personal** 1Password vault
 before using new or changed credentials for notarization. Verify the stored
 secrets by reading them back; shared certificate backups may be referenced.
+
+## Release notes
+
+Before tagging a release or running the release workflow manually, write and
+commit nonempty UTF-8 Markdown notes in `release-notes/X.Y.Z.md`, matching
+`CFBundleShortVersionString`. Describe user-visible changes with short headings
+and bullets. The release publisher uses this file for both Sparkle’s embedded
+changelog and the GitHub release body; release validation requires it. Keep
+notes for published versions unchanged, and add a new file for each version.
+Read [docs/releasing.md](docs/releasing.md) when preparing a release.

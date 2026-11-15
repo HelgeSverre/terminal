@@ -4,6 +4,30 @@ import Testing
 @testable import dev
 
 @Suite struct ReleasePublisherTests {
+  @Test("release notes: missing, empty, and invalid UTF-8 notes fail validation") func invalidNotesFailValidation() throws {
+    try withFixture { fixture in
+      let path = fixture.root + "/release-notes/1.2.3.md"
+      try FileManager.default.removeItem(atPath: path)
+      for content: Data? in [nil, Data(" \n\t".utf8), Data([0xFF])] {
+        if let content { try content.write(to: URL(fileURLWithPath: path)) }
+        let error = try #require(throws: Failure.self) {
+          try fixture.publishing.validate(output: fixture.metadata)
+        }
+        #expect(error.message.contains("release-notes/1.2.3.md"))
+        #expect(!FileManager.default.fileExists(atPath: fixture.metadata))
+        #expect(fixture.gitHub.calls.isEmpty)
+      }
+    }
+  }
+
+  @Test("release notes: the GitHub release receives the same Markdown") func githubReceivesNotes() throws {
+    try withFixture { fixture in
+      try fixture.prepareRelease()
+      try fixture.publish()
+      #expect(fixture.gitHub.createdNotes == fixture.read(fixture.root + "/release-notes/1.2.3.md"))
+    }
+  }
+
   @Test("release publisher: validate accepts a matching tag and writes safe metadata") func validateAcceptsAMatchingTagAnd() throws {
     try withFixture { fixture in
       let githubOutput = fixture.root + "/github-output"
@@ -295,12 +319,14 @@ import Testing
         "<title>Helge Terminal 1.2.3</title>", "<pubDate>Thu, 01 Jan 1970 00:00:00 +0000</pubDate>",
         "<sparkle:version>42</sparkle:version>", "<sparkle:shortVersionString>1.2.3</sparkle:shortVersionString>",
         "<sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>",
-        "<sparkle:releaseNotesLink>https://github.com/HelgeSverre/terminal/releases/tag/v1.2.3</sparkle:releaseNotesLink>",
+        "<sparkle:fullReleaseNotesLink>https://github.com/HelgeSverre/terminal/releases/tag/v1.2.3</sparkle:fullReleaseNotesLink>",
         "url=\"https://github.com/HelgeSverre/terminal/releases/download/v1.2.3/\(zipName)\"",
         "length=\"3\"", "type=\"application/octet-stream\"",
       ] {
         #expect(text.contains(expected), "missing \(expected) in: \(text)")
       }
+      #expect(text.contains("<description sparkle:format=\"markdown\">## Changes\n- Fixed &lt;resize&gt; &amp; scrolling.\n</description>"))
+      #expect(!text.contains("<sparkle:releaseNotesLink>"))
       // Ed25519 signing in CryptoKit is randomized, so the signature is checked by verifying it.
       let signature = try #require(LinePattern("sparkle:edSignature=\"([^\"]+)\"").first(in: text)?.groups[0])
       #expect(UpdateKey.verify(signature: signature, of: Data("zip".utf8),
@@ -428,6 +454,8 @@ final class FakeGitHub {
 
     """
 
+  var createdNotes: String?
+
   var caskVersion: String? { LinePattern("version \"([^\"]+)\"").first(in: caskText)?.groups[0] }
   var assets: [[String: Any]] { release?["assets"] as? [[String: Any]] ?? [] }
 
@@ -458,6 +486,9 @@ final class FakeGitHub {
       }
       return CommandResult(output: String(decoding: data, as: UTF8.self))
     case ["release", "create", "v1.2.3"]:
+      if let index = command.firstIndex(of: "--notes-file") {
+        createdNotes = try? String(contentsOfFile: command[index + 1], encoding: .utf8)
+      }
       if release == nil {
         // GitHub records the default branch as the target of a release
         // made from an existing tag.
@@ -513,6 +544,8 @@ private final class Fixture {
 
   init(root: String) throws {
     self.root = root
+    try FileManager.default.createDirectory(atPath: root + "/release-notes", withIntermediateDirectories: true)
+    try write("## Changes\n- Fixed <resize> & scrolling.\n", to: root + "/release-notes/1.2.3.md")
     try FileManager.default.createDirectory(atPath: root + "/Resources/Terminal", withIntermediateDirectories: true)
     try write("<plist version=\"1.0\"><dict><key>CFBundleShortVersionString</key><string>1.2.3</string></dict></plist>\n",
               to: root + "/Resources/Terminal/Info.plist")
