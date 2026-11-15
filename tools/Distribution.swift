@@ -152,7 +152,7 @@ struct Distribution {
     _ = try run(signing + [app.appendingPathComponent("Contents/MacOS/TerminalLauncher").path])
     _ = try run(signing + ["--entitlements", entitlements, app.path])
     _ = try run(["codesign", "--verify", "--strict", "--deep", app.path])
-    let archive = output.appendingPathComponent("HelgeTerminal-\(version)-arm64.zip")
+    let archive = output.appendingPathComponent("HelgeTerminal-\(version)-universal.zip")
     if files.fileExists(atPath: archive.path) { try files.removeItem(at: archive) }
     _ = try run(["ditto", "-c", "-k", "--keepParent", "--sequesterRsrc", app.path, archive.path])
     if operation == "release", let profile = config.notaryProfile {

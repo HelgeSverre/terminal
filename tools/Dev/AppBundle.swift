@@ -36,8 +36,10 @@ enum AppBundle {
     try Console.step("Icon, shader and terminfo") {
       try icon(into: scratch + "/Terminal.icns")
       let intermediate = scratch + "/Terminal.air"
-      try Console.quietly(["xcrun", "-sdk", "macosx", "metal", "-c", Repository.path("Sources/TerminalUI/Resources/Terminal.metal"),
-                           "-o", intermediate])
+      // For the oldest macOS the app runs on: the compiler otherwise picks
+      // the newest shader language, which an older system refuses to load.
+      try Console.quietly(["xcrun", "-sdk", "macosx", "metal", "-mmacosx-version-min=" + minimumSystem,
+                           "-c", Repository.path("Sources/TerminalUI/Resources/Terminal.metal"), "-o", intermediate])
       try Console.quietly(["xcrun", "-sdk", "macosx", "metallib", intermediate, "-o", resources + "/Terminal.metallib"])
       try Console.quietly(["/usr/bin/tic", "-x", "-o", resources + "/terminfo",
                            Repository.path("Resources/Terminal/Terminal.terminfo")])
@@ -51,7 +53,7 @@ enum AppBundle {
       try Console.quietly(["/usr/bin/ditto", Repository.path("Resources/Terminal/ShellIntegration"),
                            resources + "/ShellIntegration"])
       try Console.quietly(["/usr/bin/ditto", Repository.path("Sources/TerminalUI/Resources/Fonts"), resources + "/Fonts"])
-      try embedUpdater(into: frameworks)
+      try embedUpdater(into: frameworks, universal: configuration == .release)
       // Ad hoc: a local build is signed for this machine only.
       try Console.quietly(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", frameworks + "/Sparkle.framework"])
       try Console.quietly(["/usr/bin/codesign", "--force", "--sign", "-", programs + "/TerminalLauncher"])
@@ -83,19 +85,37 @@ enum AppBundle {
   /// module but generate code on many threads, one unit per file, and that
   /// measured 9% slower on truecolor output than a single unit. Dynamic
   /// exclusivity checks are off as well: on the parser's hot path they cost
-  /// a quarter of throughput. Returns the directory holding the two programs.
+  /// a quarter of throughput.
+  ///
+  /// The release runs on Apple silicon and on Intel: each architecture is
+  /// compiled on its own and the two are joined into universal programs.
+  /// Returns the directory holding the two programs.
   private static func compileWholeModule(into directory: String) throws -> String {
     try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
     // The package fetches the updater; this build only links against it.
     try Console.quietly(["swift", "package", "--package-path", Repository.root, "--scratch-path", packageDirectory, "resolve"])
-    let warnings = ["-Wall", "-Wextra", "-Werror", "-mmacosx-version-min=15.0"]
+    let slices = try releaseArchitectures.map { try compileWholeModule(for: $0, into: directory + "/" + $0) }
+    for program in ["TerminalApp", "TerminalLauncher"] {
+      try Console.quietly(["/usr/bin/lipo", "-create"] + slices.map { $0 + "/" + program }
+        + ["-output", directory + "/" + program])
+    }
+    return directory
+  }
+
+  /// The architectures a release holds and the oldest macOS it runs on.
+  static let releaseArchitectures = ["arm64", "x86_64"]
+  static let minimumSystem = "14.0"
+
+  private static func compileWholeModule(for architecture: String, into directory: String) throws -> String {
+    try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+    let warnings = ["-Wall", "-Wextra", "-Werror", "-arch", architecture, "-mmacosx-version-min=" + minimumSystem]
     let interop = Repository.path("Sources/TerminalInterop")
     let spawn = directory + "/Spawn.o"
     try Console.quietly(["xcrun", "clang"] + warnings + ["-I", interop + "/include", "-c", interop + "/Spawn.c", "-o", spawn])
     try Console.quietly(["xcrun", "clang"] + warnings
       + [Repository.path("Sources/TerminalLauncher/Launcher.c"), "-o", directory + "/TerminalLauncher"])
     let compile = ["xcrun", "swiftc", "-swift-version", "5", "-O", "-whole-module-optimization",
-                   "-enforce-exclusivity=unchecked", "-target", "arm64-apple-macosx15.0",
+                   "-enforce-exclusivity=unchecked", "-target", "\(architecture)-apple-macosx\(minimumSystem)",
                    "-package-name", "terminal", "-I", interop + "/include", "-I", directory]
     var objects = [spawn]
     for module in libraryModules {
@@ -128,9 +148,9 @@ enum AppBundle {
   private static let updaterFramework = packageDirectory
     + "/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 
-  /// Copies the updater into the bundle, reduced to what this app ships:
-  /// Apple Silicon code and no headers. That halves it, to about 1.5 MB.
-  private static func embedUpdater(into frameworks: String) throws {
+  /// Copies the updater into the bundle without its headers. A release
+  /// keeps both architectures; a development build keeps this Mac's only.
+  private static func embedUpdater(into frameworks: String, universal: Bool) throws {
     let destination = frameworks + "/Sparkle.framework"
     try? FileManager.default.removeItem(atPath: destination)
     try FileManager.default.createDirectory(atPath: frameworks, withIntermediateDirectories: true)
@@ -139,7 +159,12 @@ enum AppBundle {
       try? FileManager.default.removeItem(atPath: destination + "/" + name)
       try? FileManager.default.removeItem(atPath: destination + "/Versions/B/" + name)
     }
-    guard let found = FileManager.default.enumerator(atPath: destination) else { return }
+    guard !universal, let found = FileManager.default.enumerator(atPath: destination) else { return }
+    #if arch(arm64)
+    let host = "arm64", other = "x86_64"
+    #else
+    let host = "x86_64", other = "arm64"
+    #endif
     for case let relative as String in found {
       let path = destination + "/" + relative
       var isDirectory: ObjCBool = false
@@ -147,9 +172,9 @@ enum AppBundle {
         (try? FileManager.default.destinationOfSymbolicLink(atPath: path)) == nil,
         FileManager.default.isExecutableFile(atPath: path),
         let architectures = try? runCommand(["/usr/bin/lipo", "-archs", path]), architectures.succeeded,
-        architectures.output.contains("x86_64")
+        architectures.output.contains(other), architectures.output.contains(host)
       else { continue }
-      try Console.quietly(["/usr/bin/lipo", "-thin", "arm64", path, "-output", path])
+      try Console.quietly(["/usr/bin/lipo", "-thin", host, path, "-output", path])
     }
   }
 

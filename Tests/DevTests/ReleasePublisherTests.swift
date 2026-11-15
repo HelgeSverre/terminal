@@ -70,7 +70,7 @@ import Testing
 
       #expect(fixture.gitHub.release?["isDraft"] as? Bool == false, "release is published")
       let names = fixture.gitHub.assets.compactMap { $0["name"] as? String }.sorted()
-      #expect(names == ["HelgeTerminal-1.2.3-arm64.zip", "SHA256SUMS", "release-manifest.json"], "got: \(names)")
+      #expect(names == ["HelgeTerminal-1.2.3-universal.zip", "SHA256SUMS", "release-manifest.json"], "got: \(names)")
       #expect(fixture.gitHub.caskVersion == "1.2.3", "cask is updated")
       #expect(fixture.gitHub.puts == 1, "cask is written once, got \(fixture.gitHub.puts)")
     }
@@ -81,7 +81,7 @@ import Testing
       try fixture.prepareRelease()
       fixture.gitHub.release = [
         "tagName": "v1.2.3", "targetCommitish": sha, "isDraft": false,
-        "assets": [["name": "HelgeTerminal-1.2.3-arm64.zip", "digest": "sha256:" + String(repeating: "0", count: 64),
+        "assets": [["name": "HelgeTerminal-1.2.3-universal.zip", "digest": "sha256:" + String(repeating: "0", count: 64),
                     "size": 3]] as [[String: Any]],
       ]
       let message = try #require(throws: Failure.self) { try fixture.publish() }.message
@@ -163,7 +163,7 @@ import Testing
       }
       let assets = try fixture.publishing.manifest(metadata: fixture.metadata,
                                                   releaseDirectory: fixture.releaseDirectory)
-      #expect(assets.map(\.name).sorted() == ["HelgeTerminal-1.2.3-arm64.zip"],
+      #expect(assets.map(\.name).sorted() == ["HelgeTerminal-1.2.3-universal.zip"],
                  "got: \(assets.map(\.name))")
 
       try fixture.write("", to: fixture.releaseDirectory + "/stray.txt")
@@ -290,7 +290,7 @@ import Testing
       #expect(result == .written(fixture.releaseDirectory + "/appcast.xml"), "got: \(result)")
 
       let text = fixture.read(fixture.releaseDirectory + "/appcast.xml")
-      let zipName = "HelgeTerminal-1.2.3-arm64.zip"
+      let zipName = "HelgeTerminal-1.2.3-universal.zip"
       for expected in [
         "<title>Helge Terminal 1.2.3</title>", "<pubDate>Thu, 01 Jan 1970 00:00:00 +0000</pubDate>",
         "<sparkle:version>42</sparkle:version>", "<sparkle:shortVersionString>1.2.3</sparkle:shortVersionString>",
@@ -383,14 +383,14 @@ import Testing
       try fixture.publisher(fixture.signing(key)).appcast(metadata: fixture.metadata,
                                                            releaseDirectory: fixture.releaseDirectory)
       let assets = try fixture.publishing.manifest(metadata: fixture.metadata, releaseDirectory: fixture.releaseDirectory)
-      #expect(assets.map(\.name) == ["HelgeTerminal-1.2.3-arm64.zip", "appcast.xml"], "got: \(assets.map(\.name))")
+      #expect(assets.map(\.name) == ["HelgeTerminal-1.2.3-universal.zip", "appcast.xml"], "got: \(assets.map(\.name))")
       let sums = fixture.read(fixture.releaseDirectory + "/SHA256SUMS")
       #expect(sums == assets.map(\.checksumLine).joined(separator: "\n") + "\n", "got: \(sums)")
       #expect(fixture.read(fixture.releaseDirectory + "/release-manifest.json").contains("\"appcast.xml\""))
 
       try fixture.publish()
       let names = fixture.gitHub.assets.compactMap { $0["name"] as? String }.sorted()
-      #expect(names == ["HelgeTerminal-1.2.3-arm64.zip", "SHA256SUMS", "appcast.xml", "release-manifest.json"],
+      #expect(names == ["HelgeTerminal-1.2.3-universal.zip", "SHA256SUMS", "appcast.xml", "release-manifest.json"],
               "got: \(names)")
     }
   }
@@ -502,7 +502,7 @@ private final class Fixture {
   let gitHub = FakeGitHub()
   var metadata: String { root + "/metadata.json" }
   var releaseDirectory: String { root + "/dist/release" }
-  var zip: String { releaseDirectory + "/HelgeTerminal-1.2.3-arm64.zip" }
+  var zip: String { releaseDirectory + "/HelgeTerminal-1.2.3-universal.zip" }
 
   let tagEnvironment = ["GITHUB_EVENT_NAME": "push", "GITHUB_REF": "refs/tags/v1.2.3", "GITHUB_SHA": sha]
   var publishingEnvironment: [String: String] {

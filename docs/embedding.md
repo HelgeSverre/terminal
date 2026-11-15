@@ -26,7 +26,7 @@ not cover.
 
 | | |
 | --- | --- |
-| Platform | macOS 14 or later, AppKit. Apple silicon is what the test suite and the app's releases run on. On an Intel Mac (MacBookPro16,1, macOS 14.8.7) rendering and a child process on a PTY were checked by hand with cross-compiled builds; the test suite has not run there. |
+| Platform | macOS 14 or later, AppKit. Apple silicon is what the test suite runs on; the app's releases are universal. On an Intel Mac (MacBookPro16,1, macOS 14.8.7) rendering and a child process on a PTY were checked by hand with cross-compiled builds; the test suite has not run there. |
 | Swift tools | 6.0. A host may use the Swift 5 or the Swift 6 language mode; the libraries themselves are compiled in Swift 5 mode. |
 | Graphics | A Metal device |
 | Sandbox | The app must be allowed to start child processes. A sandboxed app can show the view but cannot usefully run a login shell. |

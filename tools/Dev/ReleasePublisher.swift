@@ -203,7 +203,7 @@ enum ReleasePublisher {
       let shortVersion = try field("CFBundleShortVersionString")
       guard shortVersion == metadata.version else { throw Failure("CFBundleShortVersionString differs from metadata") }
 
-      let zipPath = releaseDirectory + "/HelgeTerminal-\(metadata.version)-arm64.zip"
+      let zipPath = releaseDirectory + "/HelgeTerminal-\(metadata.version)-universal.zip"
       guard isRegularFile(zipPath, followingLinks: false), let archive = FileManager.default.contents(atPath: zipPath) else {
         throw Failure("missing release asset \((zipPath as NSString).lastPathComponent)")
       }
@@ -299,7 +299,7 @@ enum ReleasePublisher {
     /// is neither an asset nor a known by-product of the build is refused, so
     /// a stray file cannot be published or hide a missing one.
     private func expectedAssets(_ metadata: Metadata, _ releaseDirectory: String) throws -> [Asset] {
-      let required = assetSuffixes.map { "HelgeTerminal-\(metadata.version)-arm64.\($0)" }
+      let required = assetSuffixes.map { "HelgeTerminal-\(metadata.version)-universal.\($0)" }
       var isDirectory: ObjCBool = false
       guard FileManager.default.fileExists(atPath: releaseDirectory, isDirectory: &isDirectory), isDirectory.boolValue,
             let actual = try? FileManager.default.contentsOfDirectory(atPath: releaseDirectory) else {
