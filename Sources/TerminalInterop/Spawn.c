@@ -12,6 +12,8 @@
 #include <locale.h>
 #include <langinfo.h>
 #include <xlocale.h>
+#include <signal.h>
+#include <sys/stat.h>
 #include <CoreFoundation/CFLocale.h>
 #include <CoreFoundation/CFString.h>
 extern char **environ;
@@ -76,7 +78,7 @@ static int make_environment(const char *launcher,const char *executable,char *co
     size_t extras=0;while(extra&&extra[extras])extras++;
     out->values=calloc(count+9+extras,sizeof(char *));if(!out->values)return ENOMEM;
     const char *name=strrchr(executable,'/');name=name?name+1:executable;
-    const char *parent=strrchr(launcher,'/');
+    const char *parent=launcher?strrchr(launcher,'/'):NULL;
     int wrap=!strcmp(name,"zsh")&&(argc==1||(argc==2&&!strcmp(argv[1],"-l")))&&parent;
     char shim[PATH_MAX],entry[PATH_MAX];
     if(wrap){
@@ -117,8 +119,59 @@ static int make_environment(const char *launcher,const char *executable,char *co
 TerminalProcess helge_terminal_spawn_args(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[]){
     return helge_terminal_spawn_environment(launcher,executable,cwd,cols,rows,target_argv,NULL);
 }
+// Starts the program with no helper. posix_spawn itself makes the child a
+// session leader, opens the PTY as its standard streams (the first terminal
+// a session leader opens becomes its controlling terminal), changes
+// directory and resets signals: the launcher's steps, done by the kernel.
+// A failed step cannot be told apart afterwards, so the directory and the
+// program are checked first.
+static TerminalProcess spawn_direct(const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[],char *const extra_environment[]){
+    TerminalProcess out={-1,-1,-1,0,0};int master=-1,slave=-1,p[2]={-1,-1};
+    struct winsize size={.ws_row=rows,.ws_col=cols};
+    struct stat directory;
+    if(stat(cwd,&directory)<0){out.error=errno;out.stage=3;return out;}
+    if(!S_ISDIR(directory.st_mode)){out.error=ENOTDIR;out.stage=3;return out;}
+    if(access(executable,X_OK)<0){out.error=errno;out.stage=5;return out;}
+    if(openpty(&master,&slave,NULL,NULL,&size)<0){out.error=errno;return out;}
+    char name[PATH_MAX];
+    int error=ttyname_r(slave,name,sizeof name);
+    if(!error&&pipe(p)<0)error=errno;
+    if(error){out.error=error;goto cleanup;}
+    size_t argc=0;while(argc<4096&&target_argv[argc])argc++;
+    size_t extras=0;while(extra_environment&&extra_environment[extras])extras++;
+    char *pwd=NULL;char **extra=calloc(extras+2,sizeof(char *));
+    if(argc==4096)error=E2BIG;
+    else if(!extra||asprintf(&pwd,"PWD=%s",cwd)<0){error=ENOMEM;pwd=NULL;}
+    else{extra[0]=pwd;for(size_t i=0;i<extras;i++)extra[i+1]=extra_environment[i];}
+    posix_spawn_file_actions_t actions;posix_spawnattr_t attr;
+    int have_actions=0,have_attr=0;
+    if(!error){error=posix_spawn_file_actions_init(&actions);have_actions=!error;}
+    if(!error){error=posix_spawnattr_init(&attr);have_attr=!error;}
+    if(!error)error=posix_spawn_file_actions_addopen(&actions,0,name,O_RDWR,0);
+    if(!error)error=posix_spawn_file_actions_adddup2(&actions,0,1);
+    if(!error)error=posix_spawn_file_actions_adddup2(&actions,0,2);
+    if(!error)error=posix_spawn_file_actions_addchdir_np(&actions,cwd);
+    sigset_t none,all;sigemptyset(&none);sigfillset(&all);sigdelset(&all,SIGKILL);sigdelset(&all,SIGSTOP);
+    if(!error)error=posix_spawnattr_setsigmask(&attr,&none);
+    if(!error)error=posix_spawnattr_setsigdefault(&attr,&all);
+    if(!error)error=posix_spawnattr_setflags(&attr,POSIX_SPAWN_SETSID|POSIX_SPAWN_SETSIGMASK|POSIX_SPAWN_SETSIGDEF|POSIX_SPAWN_CLOEXEC_DEFAULT);
+    SpawnEnvironment env={0};
+    if(!error)error=make_environment(NULL,executable,target_argv,argc,extra,&env);
+    if(!error){error=posix_spawn(&out.pid,executable,&actions,&attr,target_argv,env.values);if(error)out.stage=5;}
+    destroy_environment(&env);free(extra);free(pwd);
+    if(have_attr)posix_spawnattr_destroy(&attr);
+    if(have_actions)posix_spawn_file_actions_destroy(&actions);
+    if(error){out.error=error;out.pid=-1;goto cleanup;}
+    fcntl(master,F_SETFD,FD_CLOEXEC);fcntl(master,F_SETFL,fcntl(master,F_GETFL)|O_NONBLOCK);
+    fcntl(p[0],F_SETFD,FD_CLOEXEC);fcntl(p[0],F_SETFL,fcntl(p[0],F_GETFL)|O_NONBLOCK);
+    // Nothing writes the status pipe: its end of file says the launch is over.
+    out.master=master;master=-1;out.status=p[0];p[0]=-1;
+cleanup:
+    if(master>=0)close(master);if(slave>=0)close(slave);if(p[0]>=0)close(p[0]);if(p[1]>=0)close(p[1]);return out;
+}
 TerminalProcess helge_terminal_spawn_environment(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[],char *const extra_environment[]){
-    TerminalProcess out={-1,-1,-1,0};int master=-1,slave=-1,p[2]={-1,-1};
+    if(!launcher||!*launcher)return spawn_direct(executable,cwd,cols,rows,target_argv,extra_environment);
+    TerminalProcess out={-1,-1,-1,0,0};int master=-1,slave=-1,p[2]={-1,-1};
     struct winsize size={.ws_row=rows,.ws_col=cols};
     if(openpty(&master,&slave,NULL,NULL,&size)<0){out.error=errno;return out;}
     if(pipe(p)<0){out.error=errno;goto cleanup;}

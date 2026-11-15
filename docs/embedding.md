@@ -13,7 +13,7 @@ mode:
 
 ```shell
 cd Examples/Embedding
-swift build && swift build --product TerminalLauncher
+swift build
 .build/debug/EmbeddingExample
 .build/debug/ReplayExample            # or with a file of recorded output
 ```
@@ -53,7 +53,7 @@ targets: [
 | `TerminalUI` | `TerminalCanvasView`, `TerminalRendering`, `ClipboardAccess`, `TerminalViewConfiguration`, `TerminalEditMenu`. Carries the fonts and the shader source as package resources. |
 | `TerminalHost` | `TerminalSession`, `LaunchSpec`, `SessionEnd`, `TerminalSessionConfiguration` |
 | `TerminalEngine` | `HeadlessTerminal`: the emulator alone, with no window and no process |
-| `TerminalLauncher` | The helper executable every session starts its child through |
+| `TerminalLauncher` | An optional helper executable that starts a session's child, as the app does |
 
 As a dependency the package brings no dependencies of its own: the app, its
 updater and the test suites are part of the manifest only in this
@@ -106,9 +106,9 @@ import TerminalUI
 let rendering = try TerminalRendering()
 let clipboard = ClipboardAccess(writingTo: .general)
 
-// Once per terminal. `launcherPath` is where the app keeps the launcher; see below.
+// Once per terminal.
 let session = TerminalSession(
-  launch: .loginShell(cwd: NSHomeDirectory(), launcher: launcherPath),
+  launch: .loginShell(cwd: NSHomeDirectory()),
   startsAtFirstGrid: true)
 let view = TerminalCanvasView(
   frame: .zero, session: session, rendering: rendering, clipboard: clipboard,
@@ -127,24 +127,26 @@ has its first size, so the shell draws its first prompt at the right width.
 `view.contentSize(columns:rows:)` gives the view size for a grid, for sizing a
 window before it is shown.
 
-### The launcher
+### Starting the child
 
-A session starts its child through a small helper, `TerminalLauncher`. The
-helper makes the PTY the child's controlling terminal, changes to the working
-directory, resets signal handling and then runs the program. When one of
-those steps fails, the session reports which.
+A session starts its child itself: on a new PTY that is the child's
+controlling terminal, in the working directory asked for, with signal
+handling reset. Nothing has to be added to the host's bundle. When the
+program or the directory is missing, `onLaunchFailure` says which.
 
-The package cannot place the helper in your app, so the host passes its path
-in the `LaunchSpec`. Build it with `swift build --product TerminalLauncher`
-and copy it into the bundle, for example into `Contents/MacOS`, and sign it
-with the app.
+The app starts its children through a small helper, `TerminalLauncher`,
+which does the same steps in a process of its own. A host may do so too by
+passing the helper's path as `launcher:`; it must then build the helper
+(`swift build --product TerminalLauncher`), copy it into its bundle and sign
+it. The zsh [shell integration](#shell-integration) is found beside the
+helper, so it needs one.
 
 ### What to run
 
 | Launch | Runs |
 | --- | --- |
-| `LaunchSpec.loginShell(cwd:launcher:)` | `$SHELL -l`, or `/bin/zsh -l` when `SHELL` is unset |
-| `LaunchSpec(executable:arguments:cwd:launcher:environment:)` | Any program. `arguments` includes the program name as its first element. |
+| `LaunchSpec.loginShell(cwd:)` | `$SHELL -l`, or `/bin/zsh -l` when `SHELL` is unset |
+| `LaunchSpec(executable:arguments:cwd:environment:)` | Any program. `arguments` includes the program name as its first element. |
 
 The child inherits the host's environment with `TERM=xterm-256color`,
 `COLORTERM=truecolor` and `TERM_PROGRAM=HelgeTerminal` set, and with the
@@ -177,7 +179,7 @@ call `onEnd`.
 ### A session without a local process
 
 An SSH client, a serial console or a replay tool gives the session a
-transport instead of a launch. No launcher is needed.
+transport instead of a launch.
 
 ```swift
 final class Channel: TerminalTransport {
@@ -359,7 +361,8 @@ The fonts keep their own licenses; see the
   their colors from the scheme but keep their shape.
 - **More of the emulator.** `HeadlessTerminal` has no selection and no
   search.
-- **A launch without the helper.** The host must carry `TerminalLauncher`.
+- **Shell integration without the helper.** The zsh integration is only
+  found beside `TerminalLauncher`.
 - **Other platforms.** No iOS. Intel Macs and macOS 14 have had a manual
   check only; see Requirements.
   There is no iOS view and no SwiftUI wrapper; wrap `TerminalCanvasView` in

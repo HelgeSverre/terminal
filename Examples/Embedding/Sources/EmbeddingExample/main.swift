@@ -17,11 +17,7 @@ final class Host: NSObject, NSApplicationDelegate {
     // One renderer serves every terminal view of the app.
     do { rendering = try TerminalRendering() } catch { NSLog("No renderer: \(error)") }
 
-    // The child is started through the launcher, which this example expects
-    // beside its own executable: `swift build --product TerminalLauncher`.
-    let launcher = Bundle.main.executableURL!.deletingLastPathComponent().appendingPathComponent("TerminalLauncher").path
-    let session = TerminalSession(
-      launch: .loginShell(cwd: NSHomeDirectory(), launcher: launcher), startsAtFirstGrid: true)
+    let session = TerminalSession(launch: .loginShell(cwd: NSHomeDirectory()), startsAtFirstGrid: true)
     let view = TerminalCanvasView(
       frame: .zero, session: session, rendering: rendering, clipboard: clipboard,
       configuration: TerminalViewConfiguration(fontSize: 13))

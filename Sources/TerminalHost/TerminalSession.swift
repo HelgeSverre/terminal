@@ -139,7 +139,8 @@ public struct SessionEnd {
 /// Why a session's child did not start. After `engineUnavailable`,
 /// `invalidArguments` or `spawn` there is no child and the session never
 /// reports an end. After `stage` or `handshake` the launcher itself exits,
-/// and the end follows as for any child.
+/// and the end follows as for any child; a launch without a launcher has no
+/// child after `stage` and reports no end.
 public enum SessionLaunchFailure: Error, Equatable, Sendable {
   /// What the launcher was doing when it failed.
   public enum Stage: Int32, Sendable {
@@ -162,14 +163,16 @@ public struct LaunchSpec: Equatable {
   public let executable: String
   public let arguments: [String]
   public let cwd: String
-  public let launcher: String
+  /// The path of the `TerminalLauncher` helper, or nil to start the program
+  /// with no helper.
+  public let launcher: String?
   /// Variables set for the child, replacing what it would otherwise get.
   /// The child inherits the host's environment, with `TERM`, `COLORTERM`,
   /// `TERM_PROGRAM` and `LANG` set by the terminal and the variables that
   /// describe another terminal removed. `TERM_PROGRAM` is `HelgeTerminal`
   /// unless named here.
   public var environment: [String: String] = [:]
-  public init(executable: String, arguments: [String], cwd: String, launcher: String,
+  public init(executable: String, arguments: [String], cwd: String, launcher: String? = nil,
               environment: [String: String] = [:]) {
     self.executable = executable
     self.arguments = arguments
@@ -198,7 +201,7 @@ public struct LaunchSpec: Equatable {
     }
   }
   /// The user's login shell, started with `-l`.
-  public static func loginShell(cwd: String, launcher: String) -> LaunchSpec {
+  public static func loginShell(cwd: String, launcher: String? = nil) -> LaunchSpec {
     let executable = loginShellPath
     return LaunchSpec(executable: executable, arguments: [executable, "-l"], cwd: cwd, launcher: launcher)
   }
@@ -832,7 +835,14 @@ public final class TerminalSession: @unchecked Sendable {
     let adopted = EarlyChild.adopt(spec)
     let child = adopted ?? spec.spawn(columns: columns, rows: rows)
     guard child.error == 0 else {
-      return fail(.spawn(errno: child.error), "Launch failed: \(String(cString:strerror(child.error)))")
+      let reason = String(cString: strerror(child.error))
+      // Without a launcher the failing step is known here, and no child follows.
+      guard child.stage == 0 else {
+        stopAcceptingInput()
+        return fail(.stage(SessionLaunchFailure.Stage(rawValue: child.stage), errno: child.error),
+                    "Launch stage \(child.stage) failed: \(reason)")
+      }
+      return fail(.spawn(errno: child.error), "Launch failed: \(reason)")
     }
     master = child.master
     pid = child.pid

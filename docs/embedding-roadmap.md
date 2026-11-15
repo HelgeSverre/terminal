@@ -122,6 +122,9 @@ is not part of the library by design.
   `ClipboardAccess(writingTo:deciding:)` asks the host about each OSC 52
   write. `session.paste`, `contentInset` and chrome colored from the scheme
   followed.
+- **No launcher needed:** a `LaunchSpec` without `launcher` starts the child
+  with `posix_spawn` alone: a new session, the PTY as controlling terminal,
+  the working directory and default signals. The app keeps its helper.
 - **macOS 14 and Intel:** the package's minimum is macOS 14. On Intel the
   renderer aborted at startup, because Metal there allows no CPU-written
   texture in a heap; it now uses managed textures without heaps where the

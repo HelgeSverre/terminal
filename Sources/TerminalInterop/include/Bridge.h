@@ -50,8 +50,11 @@ bool helge_terminal_search_position(Terminal *,uint32_t *,uint32_t *,bool *);
 bool helge_terminal_search_navigate(Terminal *,bool,uint32_t *,uint32_t *,bool *);
 void helge_terminal_search_clear(Terminal *);
 void helge_terminal_finish(Terminal *);
-typedef struct {int master;int status;int pid;int error;} TerminalProcess;
+/* `stage` is set with `error` when a launch without a launcher fails at a
+ * step the launcher would have named: 3 working directory, 5 execute. */
+typedef struct {int master;int status;int pid;int error;int stage;} TerminalProcess;
 TerminalProcess helge_terminal_spawn_args(const char *,const char *,const char *,uint16_t,uint16_t,char *const []);
+/* A NULL or empty launcher starts the program directly, with no helper. */
 /* The same, with "NAME=value" entries that replace the child's variables of
  * those names; the last argument is NULL-terminated or NULL. */
 TerminalProcess helge_terminal_spawn_environment(const char *,const char *,const char *,uint16_t,uint16_t,char *const [],char *const []);
