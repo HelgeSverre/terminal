@@ -29,5 +29,8 @@
 /reports/fuzz-*.bin
 /reports/esctest.json
 /reports/esctest.log
-/.build-ios/
-/.build-xc/
+# Build output of any package in the tree, from SwiftPM or Xcode.
+.build/
+.build-*/
+.swiftpm/
+DerivedData/
