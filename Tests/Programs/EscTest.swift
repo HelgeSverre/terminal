@@ -64,10 +64,13 @@ import TerminalInterop
         if count == 0 || (count < 0 && errno != EAGAIN && errno != EINTR) { break }   // The PTY is closed.
         var offset = 0
         while offset < max(0, count) || helge_terminal_has_work(core) {
+          // A turn that only finished a repeat consumes nothing and is
+          // progress; the rest of this read still has to be fed.
+          let repeating = helge_terminal_has_work(core)
           let used = buffer.withUnsafeBufferPointer { helge_terminal_feed(core, $0.baseAddress! + offset, max(0, count) - offset, now) }
           offset += used
           helge_terminal_replies(core, Unmanaged.passUnretained(writer).toOpaque(), collect)
-          if used == 0 && !helge_terminal_has_work(core) { break }
+          if used == 0 && !repeating { break }
         }
         now += 1
       } else if !process.isRunning { break }
