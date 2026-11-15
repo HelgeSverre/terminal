@@ -30,7 +30,11 @@ import Testing
     session.onEnd = { end = $0 }
     #expect(await TestEnvironment.wait { end != nil })
     #expect(end?.exitCode == 7)
-    _ = await TestEnvironment.wait { text().contains("FDS<") }
+    // The last frame is published after the end is reported, and later
+    // still on a busy machine: wait for the whole last line.
+    #expect(await TestEnvironment.wait(seconds: 15) {
+      text().range(of: "FDS<").map { text()[$0.upperBound...].contains(">") } == true
+    }, "\(text().suffix(200))")
     let shown = text().replacingOccurrences(of: "\n", with: "")
     func between(_ open: String, _ close: String = ">") -> String? {
       guard let start = shown.range(of: open), let end = shown[start.upperBound...].range(of: close) else { return nil }
