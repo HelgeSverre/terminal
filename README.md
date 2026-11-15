@@ -6,7 +6,7 @@
 ![Swift and Metal](https://img.shields.io/badge/Swift-Metal-222326)
 
 A macOS terminal with Swift emulation, AppKit windows, and Metal rendering.
-Split panes, run terminal applications, and display Kitty graphics in a minimal
+Split panes, run terminal applications, and display images (Kitty, Sixel, iTerm2) in a minimal
 window with bundled Obel Mono. Runs on Apple silicon and Intel Macs with macOS 14 or later.
 
 ![Terminal showing colored file listings and source changes](assets/screenshots/overview.png)
@@ -69,7 +69,7 @@ the line. Hold Cmd over a URL to underline it, then Cmd-click to open it. Scroll
 back to read earlier output; typing returns to the live screen.
 
 The terminal handles Unicode text, true color, mouse reporting, OSC 8 links,
-OSC 52 clipboard requests, and Kitty images. Accessibility exposes pane text,
+OSC 52 clipboard requests, and images (Kitty graphics, Sixel and iTerm2). Accessibility exposes pane text,
 ranges, selections, and links. AppleScript can send text, manage panes, read the
 screen, and update settings.
 

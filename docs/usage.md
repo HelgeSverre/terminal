@@ -123,8 +123,17 @@ Shells receive `TERM=xterm-256color`, `COLORTERM=truecolor`, and
 `TERM_PROGRAM=HelgeTerminal`. The [terminfo guide](terminfo.md) explains that
 compatibility choice and the bundled capability description.
 
-Kitty direct graphics accepts bounded RGB, RGBA, and PNG uploads, including
-zlib compression, chunking, placement, layering, and common deletion actions.
+Three image protocols are shown, all within one 64 MiB budget and up to
+4096 pixels a side:
+
+- Kitty graphics: RGB, RGBA and PNG, zlib compression, chunking, data in the
+  escape code, a file, a temporary file or shared memory, image numbers,
+  placement, layering, every deletion selector, and Unicode placeholders, as
+  tmux and Neovim image plugins use. Animation and placements relative to
+  another placement are not supported.
+- Sixel, which the terminal reports in its device attributes.
+- iTerm2 inline images (`OSC 1337 ; File=…;inline=1`) in any format macOS
+  decodes, sized in cells, pixels or percent.
 OSC 52 clipboard writes are allowed without asking and have payload limits;
 clipboard reads are denied. See the [clipboard policy](osc52-clipboard.md).
 
