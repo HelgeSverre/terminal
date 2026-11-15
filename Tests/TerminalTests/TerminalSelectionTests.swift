@@ -317,6 +317,23 @@ import TerminalInterop
     guard case .completed = result else { Issue.record("released word worker must complete selection"); return }
     #expect(copy(core) == "élève/path", "delayed worker preserves Unicode word and soft-wrap boundaries")
   }
+  /// A word job's slot is free again once its work is done, even while the
+  /// finished selection, and so the job, is still held.
+  @Test static func finishedWordJobsDoNotHoldTheirSlots() {
+    var cores: [OpaquePointer] = []
+    defer { cores.forEach { helge_terminal_destroy($0) } }
+    TerminalSelection.withRetirementPausedForTesting {
+      for index in 0..<12 {
+        let core = helge_terminal_create(16, 3)!
+        cores.append(core)
+        feed(core, "word\(index) next")
+        guard case .completed = perform(core, .begin(hit(snapshot(core), row: 0, column: 1), granularity: .word)) else {
+          Issue.record("word selection \(index) refused"); return
+        }
+        #expect(copy(core) == "word\(index)")
+      }
+    }
+  }
   @Test static func wordSelection() {
     let core = helge_terminal_create(8, 4)!
     defer { helge_terminal_destroy(core) }

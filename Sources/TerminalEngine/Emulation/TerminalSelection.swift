@@ -574,20 +574,22 @@ private final class TerminalWordCapture {
     private static let slots = DispatchSemaphore(value: 4)
     private let lock = NSLock()
     private var cancelled = false
-    private var admitted = false
     private var value: Result<NSRange, TerminalSelectionFailure>?
     var result: Result<NSRange, TerminalSelectionFailure>? { lock.lock(); defer { lock.unlock() }; return value }
     func cancel() { lock.lock(); cancelled = true; lock.unlock() }
     private var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
     init?(text: String, target: Int, punctuation: String) {
       guard Self.slots.wait(timeout: .now()) == .success else { return nil }
-      admitted = true
       Self.queue.async { [self] in
+        // The slots bound the work waiting for the worker, so one is given
+        // back when this job's work is done. Waiting for the job object to
+        // be released instead held it until a low-priority queue got round
+        // to that, and under load a later word selection was then refused.
+        defer { Self.slots.signal() }
         let result = segment(text, target: target, punctuation: punctuation)
         lock.lock(); value = cancelled ? .failure(.cancelled) : result; lock.unlock()
       }
     }
-    deinit { if admitted { Self.slots.signal() } }
     private func segment(_ text: String, target: Int, punctuation: String) -> Result<NSRange, TerminalSelectionFailure> {
       struct Token { var range: NSRange; var lastConnector: Bool; var wordOrConnector: Bool; var whitespace: Bool }
       let source = text as NSString

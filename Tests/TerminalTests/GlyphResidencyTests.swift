@@ -43,6 +43,14 @@ private struct ShaderQuad {
     return (device, onePage + max(4096, onePage / 16))
   }
 
+  /// Brings a managed texture's CPU copy up to date with what the GPU drew,
+  /// so that it can be read back. Shared textures need no such step.
+  static func synchronize(_ texture: MTLTexture, in command: MTLCommandBuffer) {
+    guard texture.storageMode == .managed, let blit = command.makeBlitCommandEncoder() else { return }
+    blit.synchronize(resource: texture)
+    blit.endEncoding()
+  }
+
   /// The production shader library: the app bundle's metallib when a build left
   /// one in `dist/`, otherwise the same shader compiled from its source.
   static func productionLibrary(device: MTLDevice) -> MTLLibrary? {
@@ -209,7 +217,7 @@ private struct ShaderQuad {
     encoder.setVertexBytes(&extent, length: MemoryLayout<SIMD2<Float>>.stride, index: 1)
     encoder.setFragmentTexture(mask, index: 0)
     encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: 3)
-    encoder.endEncoding(); command.commit(); command.waitUntilCompleted()
+    encoder.endEncoding(); synchronize(target, in: command); command.commit(); command.waitUntilCompleted()
     var rendered = [UInt8](repeating: 0, count: 12)
     target.getBytes(&rendered, bytesPerRow: 12, from: MTLRegionMake2D(0, 0, 3, 1), mipmapLevel: 0)
     // Attachment bytes are BGRA sRGB.  Linear 0/.5/1 coverage becomes
@@ -241,7 +249,7 @@ private struct ShaderQuad {
       colorEncoder.setVertexBytes(&oneExtent, length: MemoryLayout<SIMD2<Float>>.stride, index: 1)
       colorEncoder.setFragmentTexture(color, index: 0)
       colorEncoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: 1)
-      colorEncoder.endEncoding(); colorCommand.commit(); colorCommand.waitUntilCompleted()
+      colorEncoder.endEncoding(); synchronize(output, in: colorCommand); colorCommand.commit(); colorCommand.waitUntilCompleted()
       var bytes = [UInt8](repeating: 0, count: 4)
       output.getBytes(&bytes, bytesPerRow: 4, from: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0)
       return bytes
