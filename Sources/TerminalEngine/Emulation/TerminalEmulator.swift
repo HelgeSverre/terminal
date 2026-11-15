@@ -17,7 +17,7 @@ private func decSpecialGraphics(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
   return mapping[scalar.value].flatMap(Unicode.Scalar.init) ?? scalar
 }
 
-private enum VTParserState { case ground, escape, charset(Int), escapeIntermediate(UInt8), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool) }
+private enum VTParserState { case ground, escape, charset(Int), escapeIntermediate(UInt8), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool), inlineImage(InlineImageDecoder, escaped: Bool), dcsHeader, sixel(SixelDecoder, escaped: Bool) }
 
 private final class TerminalSearchToken {
   // The task contains only immutable page snapshots while it is with the
@@ -584,6 +584,10 @@ private final class TerminalEmulator {
           if sequence == "52;c;" {
             parser = .osc52(OSC52Decoder(acceptingWrites: pendingClipboardRequests.count < 4), escaped: false)
             sequence = ""
+          } else if sequence == "1337;File=" {
+            // An iTerm2 inline image: megabytes of base64, read as it comes.
+            parser = .inlineImage(InlineImageDecoder(), escaped: false)
+            sequence = ""
           }
         }
         else { parser = .discardString(escaped: false, osc: true); sequence = "" }
@@ -608,6 +612,31 @@ private final class TerminalEmulator {
           _ = decoder.push(byte)
           parser = .osc52(decoder, escaped: false)
         }
+      case .inlineImage(let decoder, let escaped):
+        if byte == 0x18 || byte == 0x1a { parser = .ground }
+        else if byte == 0x07 || (escaped && byte == 0x5c) {
+          parser = .ground
+          if let image = decoder.finish() { showInlineImage(image.request, width: image.width, height: image.height, rgba: image.rgba) }
+        } else if byte == 0x1b { parser = .inlineImage(decoder, escaped: true) }
+        else if escaped { parser = .escape; handleEscapedByte(byte) }
+        else { decoder.push(byte) }
+      case .dcsHeader:
+        // `DCS P1 ; P2 ; P3 q` begins a Sixel picture. Every other device
+        // control string is consumed up to its terminator and ignored.
+        if byte == 0x18 || byte == 0x1a { parser = .ground }
+        else if byte == 0x71 { parser = .sixel(SixelDecoder(), escaped: false) }
+        else if (0x30...0x3b).contains(byte) { break }
+        else { parser = .discardString(escaped: byte == 0x1b, osc: false) }
+      case .sixel(let decoder, let escaped):
+        if byte == 0x18 || byte == 0x1a { parser = .ground }
+        else if escaped && byte == 0x5c {
+          parser = .ground
+          if let picture = decoder.finish() {
+            showPicture(width: picture.width, height: picture.height, rgba: picture.rgba, columns: 0, rows: 0, below: true)
+          }
+        } else if byte == 0x1b { parser = .sixel(decoder, escaped: true) }
+        else if escaped { parser = .escape; handleEscapedByte(byte) }
+        else { decoder.push(byte) }
       case .apc:
         if byte == 0x18 || byte == 0x1a { graphics.abort(); sequence = ""; parser = .ground }
         else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
@@ -674,9 +703,10 @@ private final class TerminalEmulator {
     case 0x5b: csiBytes.removeAll(keepingCapacity: true); csiUTF8Count = 0; parser = .csi
     case 0x5d: sequence = ""; parser = .osc
     case 0x5f: sequence = ""; parser = .apc
-    // DCS, SOS and PM carry strings this terminal does not interpret. They
-    // are consumed up to ST so their bodies never reach the screen.
-    case 0x50, 0x58, 0x5e: parser = .discardString(escaped: false, osc: false)
+    case 0x50: parser = .dcsHeader
+    // SOS and PM carry strings this terminal does not interpret. They are
+    // consumed up to ST so their bodies never reach the screen.
+    case 0x58, 0x5e: parser = .discardString(escaped: false, osc: false)
     case 0x28: parser = .charset(0)
     case 0x29: parser = .charset(1)
     // Other intermediates (`ESC #`, `ESC *`, `ESC %`, `ESC SP` …) take a
@@ -982,9 +1012,8 @@ private final class TerminalEmulator {
     // Secondary device attributes: a VT220-class terminal, firmware version
     // 10, no ROM cartridge. Primary attributes otherwise.
     case 0x63 where first == 0x3e: clearsPending = false; replies.append(contentsOf: "\u{1b}[>1;10;0c".utf8)
-    // VT220 with ANSI color. Sixel (4) is not implemented, so it is not
-    // advertised: programs that trust DA1 would send it.
-    case 0x63: clearsPending = false; replies.append(contentsOf: "\u{1b}[?62;22c".utf8)
+    // VT220 with Sixel graphics (4) and ANSI color (22).
+    case 0x63: clearsPending = false; replies.append(contentsOf: "\u{1b}[?62;4;22c".utf8)
     case 0x70 where last == 0x24:
       clearsPending = false
       let mode = params.first ?? 0
@@ -1358,6 +1387,57 @@ private final class TerminalEmulator {
       moved.pendingWrap = false
       screen = moved
     }
+  }
+  /// Shows a decoded picture at the cursor and moves the cursor past it.
+  /// The screen scrolls as the picture needs, so all of it stays visible
+  /// (it is anchored to its first row, which scrolls with the text).
+  /// `below` leaves the cursor on the line after the picture, in the column
+  /// it began in, as Sixel does; otherwise it ends on the picture's last
+  /// row, to its right, as iTerm2's inline images do.
+  private func showPicture(width: Int, height: Int, rgba: Data, columns wanted: Int, rows wantedRows: Int, below: Bool) {
+    pruneGraphicsAnchors()
+    let s = screen
+    guard s.rows.indices.contains(s.cursorRow), let cells = graphics.show(
+      width: width, height: height, rgba: rgba, columns: wanted, rows: wantedRows,
+      context: KittyGraphicsContext(
+        alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
+        cellWidth: cellPixelWidth, cellHeight: cellPixelHeight))
+    else { return }
+    resetClusterBoundary()
+    for _ in 0..<(below ? cells.rows : cells.rows - 1) { index(reverse: false) }
+    var moved = screen
+    moved.cursorColumn = below ? s.cursorColumn : min(columns - 1, s.cursorColumn + cells.columns)
+    moved.pendingWrap = false
+    screen = moved
+    changed()
+  }
+  /// Turns an inline image's `width` and `height` into cells. A picture
+  /// wider than the room to the right of the cursor is scaled to fit it.
+  private func showInlineImage(_ request: InlineImageDecoder.Request, width: Int, height: Int, rgba: Data) {
+    let cellWidth = max(1, cellPixelWidth), cellHeight = max(1, cellPixelHeight)
+    func cells(_ size: InlineImageDecoder.Size, of total: Int, cell: Int) -> Int? {
+      switch size {
+      case .automatic: return nil
+      case .cells(let count): return count
+      case .pixels(let pixels): return max(1, (pixels + cell - 1) / cell)
+      case .percent(let percent): return max(1, total * percent / 100)
+      }
+    }
+    let room = max(1, columns - screen.cursorColumn)
+    var wide = cells(request.width, of: columns, cell: cellWidth) ?? 0
+    var tall = cells(request.height, of: rowCount, cell: cellHeight) ?? 0
+    if wide == 0, tall == 0 {
+      if (width + cellWidth - 1) / cellWidth > room { wide = room }
+    } else if wide > 0, tall > 0, request.preservesAspectRatio {
+      // The largest size of the picture's shape inside the box asked for.
+      let boxWidth = wide * cellWidth, boxHeight = tall * cellHeight
+      if boxWidth * height <= boxHeight * width {
+        tall = max(1, (boxWidth * height / width + cellHeight - 1) / cellHeight)
+      } else {
+        wide = max(1, (boxHeight * width / height + cellWidth - 1) / cellWidth)
+      }
+    }
+    showPicture(width: width, height: height, rgba: rgba, columns: min(wide, 4096), rows: min(tall, 4096), below: false)
   }
   private func enqueueClipboard(_ data: Data) {
     guard data.count <= OSC52Decoder.maximumDecodedBytes, pendingClipboardRequests.count < 4 else { return }

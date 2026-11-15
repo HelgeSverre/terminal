@@ -495,7 +495,7 @@ import TerminalInterop
       // The commands that share those final bytes still work.
       #expect(observed("\u{1b}[S").rows != untouched.rows, "CSI S scrolls")
       #expect(observed("\u{1b}[?J").rows != untouched.rows, "DECSED erases")
-      #expect(observed("\u{1b}[c").replies == "\u{1b}[?62;22c", "primary device attributes")
+      #expect(observed("\u{1b}[c").replies == "\u{1b}[?62;4;22c", "primary device attributes")
       #expect(observed("\u{1b}[>c").replies == "\u{1b}[>1;10;0c", "secondary device attributes")
       #expect(observed("\u{1b}[?u").replies == "\u{1b}[?0u", "keyboard flags query")
       #expect(observed("\u{1b}[?69$p").replies == "\u{1b}[?69;2$y", "DECRQM for a private mode")
@@ -952,7 +952,7 @@ import TerminalInterop
   // attributes must not advertise features the terminal lacks.
   @Test static func deviceReplies() {
     let expected: [(String, String, String)] = [
-      ("\u{1b}[c", "\u{1b}[?62;22c", "DA1 without sixel"),
+      ("\u{1b}[c", "\u{1b}[?62;4;22c", "DA1 with sixel"),
       ("\u{1b}[3;5H\u{1b}[?6n", "\u{1b}[?3;5R", "DECXCPR keeps its marker"),
       ("\u{1b}[3;5H\u{1b}[6n", "\u{1b}[3;5R", "CPR has no marker"),
       ("\u{1b}[?2004$p", "\u{1b}[?2004;2$y", "DECRQM reset private mode"),
@@ -984,7 +984,7 @@ import TerminalInterop
     let screens: [(String, [String], String)] = [
       ("a\(e)P1zhello\(e)\\b", ["ab", "", ""], "DCS body is not printed"),
       ("a\(e)P+q544e\(e)\\b", ["ab", "", ""], "XTGETTCAP is not printed"),
-      ("a\(e)Pq#0;2;0;0;0~~-\(e)\\b", ["ab", "", ""], "sixel data is not printed"),
+      ("a\(e)Pq#0;2;0;0;0~~-\(e)\\b", ["a", " b", ""], "a sixel picture is drawn, not printed, and text continues below it"),
       ("a\(e)Ptmux;\(e)\(e)]0;t\u{7}\(e)\\b", ["ab", "", ""], "tmux passthrough is consumed whole"),
       ("a\(e)Xhello\(e)\\b", ["ab", "", ""], "SOS body is not printed"),
       ("a\(e)^hello\(e)\\b", ["ab", "", ""], "PM body is not printed"),

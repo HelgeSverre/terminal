@@ -130,6 +130,33 @@ final class KittyGraphicsStore {
     }.sorted { ($0.z, $0.image, $0.placement) < ($1.z, $1.image, $1.placement) }
   }
 
+  /// Shows a picture another protocol decoded (Sixel, an iTerm2 inline
+  /// image) at the cursor, over `columns` by `rows` cells; zero for both
+  /// means its natural size. It becomes an image like any other here, so
+  /// the storage budget, scrolling and erasing treat it the same. Returns
+  /// the cells it covers, or nil when there is no room for it.
+  func show(width: Int, height: Int, rgba: Data, columns: Int, rows: Int,
+            context: KittyGraphicsContext) -> (columns: Int, rows: Int)? {
+    guard width > 0, height > 0, width <= Self.maximumImageDimension, height <= Self.maximumImageDimension,
+      rgba.count == width * height * 4, rgba.count <= Self.maximumImageBytes, serial < UInt64.max - 1,
+      let id = (1...Int(UInt32.max)).reversed().first(where: { images[UInt32($0)] == nil })
+    else { return nil }
+    let generation = serial + 1
+    let image = Image(id: UInt32(id), generation: generation, alternate: context.alternate,
+      width: width, height: height, rgba: rgba)
+    var fields: [Character: String] = [:]
+    if columns > 0 { fields["c"] = String(columns) }
+    if rows > 0 { fields["r"] = String(rows) }
+    guard (try? makeRoom(replacing: image.id, size: rgba.count)) != nil,
+      let (placement, _) = try? layout(fields, image: image, context: context, serial: generation + 1),
+      placements.count < Self.maximumPlacements
+    else { return nil }
+    serial = generation + 1
+    images[image.id] = image; bytes += rgba.count
+    placements.append(placement)
+    return (placement.cells[0], placement.cells[1])
+  }
+
   // `packet` is G<header>;<base64>, without the APC delimiters.
   func consume(_ packet: Data, context: KittyGraphicsContext, now: UInt64) -> KittyGraphicsOutcome {
     guard packet.first == Character("G").asciiValue else { return KittyGraphicsOutcome() }

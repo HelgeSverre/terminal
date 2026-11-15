@@ -23,10 +23,28 @@ public final class HeadlessTerminal {
     /// Every cell of every row, with its colors resolved. A wide character
     /// is followed by a cell with `isContinuation` set and no text.
     public let cells: [[Cell]]
+    /// The pictures on screen: Kitty graphics, Sixel and iTerm2 inline
+    /// images, in drawing order.
+    public let images: [Image]
     /// Rows that have scrolled off the top and are kept.
     public let historyRows: Int
     /// The rows joined by newlines.
     public var text: String { rows.joined(separator: "\n") }
+  }
+
+  /// A picture placed on the grid. `row` may be negative when its top has
+  /// scrolled off. Its pixels come from `pixels(of:)`.
+  public struct Image: Equatable, Sendable {
+    public let row: Int
+    public let column: Int
+    /// The cells it covers.
+    public let columns: Int
+    public let rows: Int
+    /// The size of the picture itself, in pixels.
+    public let pixelWidth: Int
+    public let pixelHeight: Int
+    fileprivate let id: UInt32
+    fileprivate let generation: UInt64
   }
 
   /// One cell of the grid.
@@ -106,6 +124,26 @@ public final class HeadlessTerminal {
     return true
   }
 
+  /// A picture's pixels: four bytes each, red, green, blue and alpha, row
+  /// by row, alpha not premultiplied. Nil once the picture is gone.
+  public func pixels(of image: Image) -> Data? {
+    final class Box { var data: Data? }
+    let box = Box()
+    let found = helge_terminal_image_rgba(core, image.id, image.generation, Unmanaged.passUnretained(box).toOpaque()) {
+      context, bytes, count in
+      guard let context, let bytes else { return }
+      Unmanaged<Box>.fromOpaque(context).takeUnretainedValue().data = Data(bytes: bytes, count: count)
+    }
+    return found ? box.data : nil
+  }
+
+  /// Tells the terminal how large a cell is drawn, in pixels. Pictures are
+  /// laid out in cells from it; 8 by 16 is assumed until it is set.
+  @discardableResult public func setCellSize(width: Int, height: Int) -> Bool {
+    guard width > 0, height > 0, width <= 512, height <= 512 else { return false }
+    return helge_terminal_resize_pixels(core, UInt32(columns), UInt32(rows), UInt32(width), UInt32(height))
+  }
+
   /// The bytes `key` sends to the program in the terminal's current modes,
   /// for a host to write to its transport. Empty for a key the terminal
   /// does not know.
@@ -180,7 +218,12 @@ public final class HeadlessTerminal {
     return Screen(
       rows: lines, cursorRow: snapshot.cursor.row, cursorColumn: snapshot.cursor.col, title: snapshot.title,
       isAlternateScreen: snapshot.alternate, workingDirectory: snapshot.cwd,
-      cells: cells, historyRows: snapshot.history_rows)
+      cells: cells,
+      images: snapshot.images.map {
+        Image(row: $0.row, column: $0.col, columns: $0.columns, rows: $0.rows,
+              pixelWidth: $0.width, pixelHeight: $0.height, id: $0.image, generation: $0.generation)
+      },
+      historyRows: snapshot.history_rows)
   }
 
   private static var now: UInt64 { DispatchTime.now().uptimeNanoseconds / 1_000_000 }
