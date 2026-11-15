@@ -109,7 +109,12 @@ enum FontCatalog {
     } else if text.contains("GLYPH_END_\(page)_DONE") {
       pending = true
       let seen = Set(text.unicodeScalars.map { $0.value })
-      if !points.allSatisfy({ seen.contains($0) }) { failures.append("page \(page) lost grid characters") }
+      let lost = points.filter { !seen.contains($0) }
+      if !lost.isEmpty {
+        // Name some, so a failure on another Mac says which characters.
+        let sample = lost.prefix(8).map { "U+" + String($0, radix: 16, uppercase: true) }.joined(separator: " ")
+        failures.append("page \(page) lost \(lost.count) grid characters: \(sample)")
+      }
       verified += points.count
       awaitRenderedPage(snapshot.revision)
     }
