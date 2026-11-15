@@ -1659,8 +1659,23 @@ public final class TerminalSession: @unchecked Sendable {
       Unmanaged<ImageCapture>.fromOpaque(context).takeUnretainedValue().data = Data(
         bytes: bytes, count: count)
     }
+  /// An animated image on screen needs a frame published when its next
+  /// frame is due, whether or not output arrives.
+  private var animationPublishScheduled = false
+  private func scheduleAnimationFrame() {
+    guard !animationPublishScheduled, !closed, let core else { return }
+    let delay = helge_terminal_next_frame_delay(core, Self.now)
+    guard delay >= 0 else { return }
+    animationPublishScheduled = true
+    queue.asyncAfter(deadline: .now() + .milliseconds(Int(max(4, min(delay, 10_000))))) { [weak self] in
+      guard let self else { return }
+      self.animationPublishScheduled = false
+      self.publish()
+    }
+  }
   private func publish() {
     guard !closed else { return }
+    defer { scheduleAnimationFrame() }
     streamStatistics?.publishCalls += 1
     let snapshotStarted = streamStatistics == nil ? 0 : DispatchTime.now().uptimeNanoseconds
     let result = SnapshotBridge.readView(core, now: Self.now)

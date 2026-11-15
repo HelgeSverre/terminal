@@ -17,12 +17,12 @@ import TerminalInterop
       _ = helge_terminal_resize_pixels(core, 40, 10, 10, 20)
     }
     deinit { helge_terminal_destroy(core) }
-    func feed(_ text: String) {
+    func feed(_ text: String, at now: UInt64 = 0) {
       let bytes = Array(text.utf8)
       bytes.withUnsafeBufferPointer { buffer in
         var offset = 0
         while offset < buffer.count || helge_terminal_has_work(core) {
-          let count = helge_terminal_feed(core, buffer.baseAddress!.advanced(by: offset), buffer.count - offset, 0)
+          let count = helge_terminal_feed(core, buffer.baseAddress!.advanced(by: offset), buffer.count - offset, now)
           offset += count
           if count == 0 && !helge_terminal_has_work(core) { break }
         }
@@ -212,6 +212,89 @@ import TerminalInterop
       parent = id
     }
     #expect(terminal.replies().contains("ETOODEEP"))
+  }
+
+  /// One 1-by-1 pixel of RGBA.
+  private func dot(_ r: UInt8, _ g: UInt8, _ b: UInt8) -> String { Data([r, g, b, 255]).base64EncodedString() }
+  private func frameColor(_ terminal: Terminal, at now: UInt64) -> [UInt8]? {
+    guard let shown = swiftTerminalSnapshot(terminal.core, scroll: nil, now: now).snapshot?.images.first else { return nil }
+    final class Box { var data = Data() }
+    let box = Box()
+    _ = helge_terminal_image_rgba(terminal.core, shown.image, shown.generation, Unmanaged.passUnretained(box).toOpaque()) {
+      context, bytes, count in
+      guard let context, let bytes else { return }
+      Unmanaged<Box>.fromOpaque(context).takeUnretainedValue().data = Data(bytes: bytes, count: count)
+    }
+    return Array(box.data.prefix(4))
+  }
+
+  @Test func framesPlayInTurnAndLoop() {
+    let terminal = Terminal()
+    // A red pixel, then a green frame shown for 100 ms and a blue one for 50 ms.
+    terminal.feed("\(esc)_Ga=T,i=4,f=32,s=1,v=1,q=2;\(dot(255, 0, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,z=100,q=2;\(dot(0, 255, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,z=50;\(dot(0, 0, 255))\(esc)\\")
+    #expect(terminal.replies() == "\(esc)_Gi=4;OK\(esc)\\")
+    #expect(frameColor(terminal, at: 0) == [255, 0, 0, 255], "stopped until told to run")
+    #expect(helge_terminal_next_frame_delay(terminal.core, 0) == -1)
+
+    // Run from frame 1 (red, 40 ms by default) at time 1000: loops for ever.
+    terminal.feed("\(esc)_Ga=a,i=4,s=3,q=2\(esc)\\", at: 1000)
+    #expect(frameColor(terminal, at: 1000) == [255, 0, 0, 255])
+    #expect(helge_terminal_next_frame_delay(terminal.core, 1000) == 40)
+    #expect(frameColor(terminal, at: 1040) == [0, 255, 0, 255])
+    #expect(frameColor(terminal, at: 1139) == [0, 255, 0, 255])
+    #expect(frameColor(terminal, at: 1140) == [0, 0, 255, 255])
+    #expect(frameColor(terminal, at: 1190) == [255, 0, 0, 255], "back to the first frame")
+    #expect(frameColor(terminal, at: 1000 + 190 * 1000 + 45) == [0, 255, 0, 255], "a thousand loops later")
+
+    // Stop on a chosen frame.
+    terminal.feed("\(esc)_Ga=a,i=4,s=1,c=3,q=2\(esc)\\", at: 400_000)
+    #expect(frameColor(terminal, at: 500_000) == [0, 0, 255, 255])
+    #expect(helge_terminal_next_frame_delay(terminal.core, 500_000) == -1)
+  }
+
+  @Test func loadingWaitsOnTheLastFrameAndLoopsCanBeCounted() {
+    let terminal = Terminal()
+    terminal.feed("\(esc)_Ga=T,i=4,f=32,s=1,v=1,q=2;\(dot(255, 0, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,z=100,q=2;\(dot(0, 255, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=a,i=4,s=2,q=2\(esc)\\")
+    #expect(frameColor(terminal, at: 10_000) == [0, 255, 0, 255], "waits on the last frame")
+    // Two loops: red 40, green 100, red 40, green 100, then it stays green.
+    terminal.feed("\(esc)_Ga=a,i=4,s=3,c=1,v=3,q=2\(esc)\\", at: 20_000)
+    #expect(frameColor(terminal, at: 20_000 + 150) == [255, 0, 0, 255], "second time round")
+    #expect(frameColor(terminal, at: 20_000 + 285) == [0, 255, 0, 255])
+    #expect(frameColor(terminal, at: 20_000 + 400) == [0, 255, 0, 255])
+    #expect(helge_terminal_next_frame_delay(terminal.core, 20_400) == -1)
+  }
+
+  @Test func framesAreBuiltOnABaseAndComposed() throws {
+    let terminal = Terminal()
+    // A 2-by-1 image: red, red.
+    terminal.feed("\(esc)_Ga=T,i=4,f=32,s=2,v=1,q=2;\(Data([255, 0, 0, 255, 255, 0, 0, 255]).base64EncodedString())\(esc)\\")
+    // Frame 2: frame 1 with a blue pixel at x=1.
+    terminal.feed("\(esc)_Ga=f,i=4,c=1,x=1,f=32,s=1,v=1,q=2;\(dot(0, 0, 255))\(esc)\\")
+    // Frame 3: transparent, half-transparent green at x=0.
+    terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,q=2;\(Data([0, 255, 0, 128]).base64EncodedString())\(esc)\\")
+    // Compose frame 2's blue pixel onto frame 3 at x=0, blending.
+    terminal.feed("\(esc)_Ga=c,i=4,r=2,c=3,x=1,y=0,X=0,Y=0,w=1,h=1,q=2\(esc)\\")
+    func frame(_ number: Int) -> [UInt8] {
+      terminal.feed("\(esc)_Ga=a,i=4,s=1,c=\(number),q=2\(esc)\\")
+      final class Box { var data = Data() }
+      let box = Box()
+      let shown = swiftTerminalSnapshot(terminal.core, scroll: nil, now: 0).snapshot!.images[0]
+      _ = helge_terminal_image_rgba(terminal.core, shown.image, shown.generation, Unmanaged.passUnretained(box).toOpaque()) {
+        context, bytes, count in
+        guard let context, let bytes else { return }
+        Unmanaged<Box>.fromOpaque(context).takeUnretainedValue().data = Data(bytes: bytes, count: count)
+      }
+      return Array(box.data)
+    }
+    #expect(frame(2) == [255, 0, 0, 255, 0, 0, 255, 255])
+    #expect(frame(3) == [0, 0, 255, 255, 0, 0, 0, 0], "an opaque pixel covers what is below")
+    #expect(frame(1) == [255, 0, 0, 255, 255, 0, 0, 255], "the base frame is unchanged")
+    terminal.feed("\(esc)_Gi=4,a=f,r=9,f=32,s=1,v=1;\(dot(0, 0, 0))\(esc)\\")
+    #expect(terminal.replies().contains("ENOENT"), "a frame that does not exist")
   }
 
   @Test func theTerminalSaysWhatItSupports() {

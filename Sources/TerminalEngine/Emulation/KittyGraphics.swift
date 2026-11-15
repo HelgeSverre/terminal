@@ -81,6 +81,35 @@ final class KittyGraphicsStore {
     let rgba: Data
     /// The number a program gave it with `I`, or 0.
     var number: UInt32 = 0
+    /// Frames after the first, which is `rgba`.
+    var frames: [Frame] = []
+    var animation = Animation()
+    var totalBytes: Int { rgba.count + frames.reduce(0) { $0 + $1.rgba.count } }
+    var frameCount: Int { 1 + frames.count }
+    func pixels(ofFrame index: Int) -> Data { index == 0 ? rgba : frames[index - 1].rgba }
+    func generation(ofFrame index: Int) -> UInt64 { index == 0 ? generation : frames[index - 1].generation }
+    /// How long a frame is shown, in milliseconds; zero for one skipped.
+    func gap(ofFrame index: Int) -> UInt64 {
+      let value = index == 0 ? animation.firstGap : frames[index - 1].gap
+      return value < 0 ? 0 : value == 0 ? 40 : UInt64(value)
+    }
+  }
+  private struct Frame {
+    var rgba: Data
+    let generation: UInt64
+    var gap: Int
+  }
+  /// How an image's frames play. `state` is 1 stopped, 2 running until the
+  /// last frame and waiting there for more, 3 running in loops.
+  private struct Animation {
+    var state = 1
+    var current = 0
+    /// When `current` began to show, in the emulator's milliseconds.
+    var since: UInt64 = 0
+    var firstGap = 0
+    /// 0 loops for ever; otherwise how many times the frames play.
+    var loops = 0
+    var loopsDone = 0
   }
   private struct Placement {
     let image: UInt32
@@ -111,6 +140,9 @@ final class KittyGraphicsStore {
   }
 
   private var images: [UInt32: Image] = [:]
+  /// The emulator's clock, in milliseconds, as of the last tick.
+  private var now: UInt64 = 0
+  private static let maximumFrames = 1000
   private var placements: [Placement] = []
   private var pending: Upload?
   private var serial: UInt64 = 0
@@ -120,11 +152,13 @@ final class KittyGraphicsStore {
   var hasPlacements: Bool { !placements.isEmpty }
   var hasVirtualPlacements: Bool { placements.contains { $0.virtual } }
   func imageRGBA(id: UInt32, generation: UInt64) -> Data? {
-    guard let image = images[id], image.generation == generation else { return nil }
-    return image.rgba
+    guard let image = images[id] else { return nil }
+    if image.generation == generation { return image.rgba }
+    return image.frames.first { $0.generation == generation }?.rgba
   }
   func abort() { pending = nil }
   func tick(now: UInt64) {
+    self.now = now
     guard let upload = pending else { return }
     if now > upload.lastChunk && now - upload.lastChunk > 10_000 || now > upload.started && now - upload.started > 60_000 { pending = nil }
   }
@@ -134,7 +168,7 @@ final class KittyGraphicsStore {
     if removeResources {
       let live = Set(placements.map(\.image))
       images = images.filter { $0.value.alternate != alternate || live.contains($0.key) }
-      bytes = images.values.reduce(0) { $0 + $1.rgba.count }
+      bytes = images.values.reduce(0) { $0 + $1.totalBytes }
       pending = nil
     }
   }
@@ -171,7 +205,7 @@ final class KittyGraphicsStore {
       guard !placement.virtual, placement.alternate == alternate, let image = images[placement.image],
             let (row, column) = origin(of: placement, positions: positions),
             row < height, row + placement.cells[1] > 0 else { return nil }
-      return KittyImagePlacement(image: placement.image, generation: image.generation, width: image.width,
+      return KittyImagePlacement(image: placement.image, generation: image.generation(ofFrame: shownFrame(image.id)), width: image.width,
         height: image.height, source: placement.source, row: row, column: column,
         columns: placement.cells[0], rows: placement.cells[1], offset: placement.offset,
         natural: placement.natural, z: placement.z, placement: placement.serial)
@@ -235,7 +269,7 @@ final class KittyGraphicsStore {
     let width = Int((Double(x1 - x0) * scale).rounded()), height = Int((Double(y1 - y0) * scale).rounded())
     guard width > 0, height > 0 else { return nil }
     return KittyImagePlacement(
-      image: image.id, generation: image.generation, width: image.width, height: image.height,
+      image: image.id, generation: image.generation(ofFrame: shownFrame(image.id)), width: image.width, height: image.height,
       source: [source[0] + x0, source[1] + y0, x1 - x0, y1 - y0],
       row: screenRow, column: screenColumn, columns: count, rows: 1,
       offset: [Int((destinationX - Double(column) * cw).rounded()), Int((destinationY - Double(row) * ch).rounded())],
@@ -277,7 +311,12 @@ final class KittyGraphicsStore {
         if numbered != 0 { fields["i"] = String(image.id) }
         return outcome(fields: fields, result: place(fields, image: image, context: context))
       }
-      guard action == "t" || action == "T" || action == "q" else { return outcome(fields: incoming, result: .failure(.unsupported)) }
+      if action == "a" || action == "c" {
+        var fields = incoming
+        let result = target(&fields).flatMap { id in action == "a" ? control(id, incoming) : compose(id, incoming) }
+        return outcome(fields: fields, result: result)
+      }
+      guard ["t", "T", "q", "f"].contains(action) else { return outcome(fields: incoming, result: .failure(.unsupported)) }
       upload = Upload(fields: incoming, bytes: Data(), started: now, lastChunk: now)
     }
     let more: Bool
@@ -344,6 +383,12 @@ final class KittyGraphicsStore {
       let data = try KittyTransport.read(upload.fields, payload: upload.bytes, limit: Self.maximumImageBytes)
       let decoded = try decode(upload.fields, bytes: data)
       if upload.fields["a"] == "q" { return .success(nil) }
+      if upload.fields["a"] == "f" {
+        var fields = upload.fields
+        let result = target(&fields).flatMap { addFrame($0, fields: upload.fields, decoded: decoded) }
+        if let id = fields["i"].flatMap(UInt32.init) { resolvedID = id }
+        return result
+      }
       var id = (try? number(upload.fields, "i", default: 0)) ?? 0
       let numbered = UInt32((try? number(upload.fields, "I", default: 0)) ?? 0)
       if id == 0 {
@@ -358,7 +403,7 @@ final class KittyGraphicsStore {
       if upload.fields["a"] == "T" { _ = try layout(upload.fields, image: image, context: context, serial: generation) }
       try makeRoom(replacing: UInt32(id), size: image.rgba.count)
       serial = generation
-      if let old = images[UInt32(id)] { bytes -= old.rgba.count }
+      if let old = images[UInt32(id)] { bytes -= old.totalBytes }
       images[UInt32(id)] = image; bytes += image.rgba.count
       placements.removeAll { $0.image == UInt32(id) }
       pruneOrphans()
@@ -366,6 +411,187 @@ final class KittyGraphicsStore {
     } catch let error as KittyGraphicsError { return .failure(error) }
       catch { return .failure(.invalid) }
   }
+  /// The image a frame or animation command is about, by `i` or `I`. A
+  /// number is turned into its id in `fields`, for the reply.
+  private func target(_ fields: inout [Character: String]) -> Result<UInt32, KittyGraphicsError> {
+    let id = UInt32((try? number(fields, "i", default: 0)) ?? 0)
+    let numbered = UInt32((try? number(fields, "I", default: 0)) ?? 0)
+    if numbered != 0 {
+      guard let image = image(numbered: numbered) else { return .failure(.notFound) }
+      fields["i"] = String(image.id)
+      return .success(image.id)
+    }
+    return images[id] == nil ? .failure(.notFound) : .success(id)
+  }
+
+  /// RGBA pixel helpers on a frame of the image's size.
+  private static func blend(_ canvas: inout Data, width: Int, height: Int, pixels: Data, pixelWidth: Int,
+                            pixelHeight: Int, at x: Int, _ y: Int, from sourceX: Int = 0, _ sourceY: Int = 0,
+                            replace: Bool) {
+    canvas.withUnsafeMutableBytes { target in
+      pixels.withUnsafeBytes { source in
+        let out = target.bindMemory(to: UInt8.self), input = source.bindMemory(to: UInt8.self)
+        for row in 0..<pixelHeight where y + row >= 0 && y + row < height && sourceY + row < pixelHeight {
+          for column in 0..<pixelWidth where x + column >= 0 && x + column < width {
+            let from = ((sourceY + row) * pixelWidth + sourceX + column) * 4
+            let to = ((y + row) * width + x + column) * 4
+            guard from + 3 < input.count else { continue }
+            let alpha = Int(input[from + 3])
+            if replace || alpha == 255 {
+              for channel in 0..<4 { out[to + channel] = input[from + channel] }
+            } else if alpha > 0 {
+              // Straight alpha over straight alpha.
+              let below = Int(out[to + 3]), outAlpha = alpha + below * (255 - alpha) / 255
+              for channel in 0..<3 {
+                let value = (Int(input[from + channel]) * alpha + Int(out[to + channel]) * below * (255 - alpha) / 255)
+                out[to + channel] = UInt8(outAlpha == 0 ? 0 : min(255, value / outAlpha))
+              }
+              out[to + 3] = UInt8(min(255, outAlpha))
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /// `a=f`: a new frame (or, with `r`, an existing one edited) made from a
+  /// base frame `c` (or the background color `Y`) with the data put at
+  /// `x`,`y`, blended unless `X=1`. `z` is how long it shows.
+  private func addFrame(_ id: UInt32, fields: [Character: String], decoded: (width: Int, height: Int, rgba: Data))
+    -> Result<(Int, Int)?, KittyGraphicsError> {
+    guard var image = images[id] else { return .failure(.notFound) }
+    guard let edit = try? number(fields, "r", default: 0), let base = try? number(fields, "c", default: 0),
+      let x = try? number(fields, "x", default: 0), let y = try? number(fields, "y", default: 0),
+      let replace = try? number(fields, "X", default: 0), let background = UInt32(fields["Y"] ?? "0"),
+      let gap = Int32(fields["z"] ?? "0") else { return .failure(.invalid) }
+    guard edit <= image.frameCount, base <= image.frameCount else { return .failure(.notFound) }
+    var canvas: Data
+    if edit > 0 { canvas = image.pixels(ofFrame: edit - 1) }
+    else if base > 0 { canvas = image.pixels(ofFrame: base - 1) }
+    else {
+      let color: [UInt8] = [UInt8(background >> 24), UInt8(background >> 16 & 255), UInt8(background >> 8 & 255), UInt8(background & 255)]
+      canvas = Data((0..<(image.width * image.height)).flatMap { _ in color })
+    }
+    Self.blend(&canvas, width: image.width, height: image.height, pixels: decoded.rgba, pixelWidth: decoded.width,
+               pixelHeight: decoded.height, at: x, y, replace: replace == 1)
+    guard serial < UInt64.max else { return .failure(.noSpace) }
+    if edit > 0 {
+      if edit == 1 {
+        let old = image.rgba.count
+        image = Image(id: image.id, generation: serial + 1, alternate: image.alternate, width: image.width,
+          height: image.height, rgba: canvas, number: image.number, frames: image.frames, animation: image.animation)
+        bytes += canvas.count - old
+      } else {
+        image.frames[edit - 2] = Frame(rgba: canvas, generation: serial + 1, gap: gap == 0 ? image.frames[edit - 2].gap : Int(gap))
+      }
+      serial += 1
+    } else {
+      guard image.frameCount < Self.maximumFrames else { return .failure(.noSpace) }
+      // Room for one more frame; the image itself is never evicted for it.
+      do { try makeRoom(replacing: id, size: image.totalBytes + canvas.count) } catch { return .failure(.noSpace) }
+      serial += 1
+      image.frames.append(Frame(rgba: canvas, generation: serial, gap: Int(gap)))
+      bytes += canvas.count
+    }
+    images[id] = image
+    return .success(nil)
+  }
+
+  /// `a=a`: `s` sets the state, `c` the frame shown, `r` with `z` one
+  /// frame's gap, and `v` the number of loops.
+  private func control(_ id: UInt32, _ fields: [Character: String]) -> Result<(Int, Int)?, KittyGraphicsError> {
+    guard var image = images[id] else { return .failure(.notFound) }
+    guard let state = try? number(fields, "s", default: 0), state <= 3,
+      let current = try? number(fields, "c", default: 0), current <= image.frameCount,
+      let frame = try? number(fields, "r", default: 0), frame <= image.frameCount,
+      let loops = try? number(fields, "v", default: 0), let gap = Int32(fields["z"] ?? "0")
+    else { return .failure(.invalid) }
+    // The frame playing now becomes the starting point for what follows.
+    image.animation.current = shownFrame(id)
+    image.animation.since = now
+    if frame > 0, fields["z"] != nil {
+      if frame == 1 { image.animation.firstGap = Int(gap) } else { image.frames[frame - 2].gap = Int(gap) }
+    }
+    if current > 0 { image.animation.current = current - 1 }
+    if loops > 0 { image.animation.loops = loops == 1 ? 0 : loops - 1; image.animation.loopsDone = 0 }
+    if state > 0 { image.animation.state = state }
+    images[id] = image
+    return .success(nil)
+  }
+
+  /// `a=c`: copies a `w` by `h` rectangle at `x`,`y` of frame `r` to `X`,`Y`
+  /// of frame `c`, blended unless `C=1`.
+  private func compose(_ id: UInt32, _ fields: [Character: String]) -> Result<(Int, Int)?, KittyGraphicsError> {
+    guard var image = images[id] else { return .failure(.notFound) }
+    guard let from = try? number(fields, "r", default: 1), let to = try? number(fields, "c", default: 1),
+      (1...image.frameCount).contains(from), (1...image.frameCount).contains(to),
+      let x = try? number(fields, "x", default: 0), let y = try? number(fields, "y", default: 0),
+      let targetX = try? number(fields, "X", default: 0), let targetY = try? number(fields, "Y", default: 0),
+      let width = try? number(fields, "w", default: 0), let height = try? number(fields, "h", default: 0),
+      let replace = try? number(fields, "C", default: 0) else { return .failure(.invalid) }
+    let w = width == 0 ? image.width - x : width, h = height == 0 ? image.height - y : height
+    guard x + w <= image.width, y + h <= image.height, targetX + w <= image.width, targetY + h <= image.height,
+      w > 0, h > 0, serial < UInt64.max else { return .failure(.invalid) }
+    var canvas = image.pixels(ofFrame: to - 1)
+    let source = image.pixels(ofFrame: from - 1)
+    // Only the rectangle: rows of the source frame starting at x, y.
+    var rectangle = Data(capacity: w * h * 4)
+    for row in 0..<h {
+      let start = ((y + row) * image.width + x) * 4
+      rectangle.append(source[start..<(start + w * 4)])
+    }
+    Self.blend(&canvas, width: image.width, height: image.height, pixels: rectangle, pixelWidth: w, pixelHeight: h,
+               at: targetX, targetY, replace: replace == 1)
+    serial += 1
+    if to == 1 {
+      image = Image(id: image.id, generation: serial, alternate: image.alternate, width: image.width, height: image.height,
+        rgba: canvas, number: image.number, frames: image.frames, animation: image.animation)
+    } else { image.frames[to - 2] = Frame(rgba: canvas, generation: serial, gap: image.frames[to - 2].gap) }
+    images[id] = image
+    return .success(nil)
+  }
+
+  /// The frame an image shows now, advancing a running animation by the
+  /// time since its frame began.
+  private func shownFrame(_ id: UInt32) -> Int {
+    guard let image = images[id], image.frameCount > 1 else { return 0 }
+    return playback(image).frame
+  }
+  /// The frame shown at `now`, and when the next one is due (nil when none is).
+  private func playback(_ image: Image) -> (frame: Int, next: UInt64?) {
+    let animation = image.animation
+    let count = image.frameCount
+    var frame = min(animation.current, count - 1)
+    guard animation.state != 1, count > 1 else { return (frame, nil) }
+    var start = animation.since
+    let total = (0..<count).reduce(UInt64(0)) { $0 + image.gap(ofFrame: $1) }
+    guard total > 0 else { return (frame, nil) }
+    // `loops` plays through that many times, so one fewer wrap to the start.
+    var loopsLeft = animation.state == 3 && animation.loops > 0 ? max(0, animation.loops - 1 - animation.loopsDone) : -1
+    // Whole loops at once, so a long-running animation costs no more to place.
+    if animation.state == 3, loopsLeft < 0, now > start, (now - start) > total * 2 {
+      start += (now - start) / total * total - total
+    }
+    var steps = 0
+    while steps < 100_000 {
+      steps += 1
+      let gap = image.gap(ofFrame: frame)
+      if frame == count - 1 {
+        if animation.state == 2 { return (frame, nil) }      // Waits for more frames.
+        if loopsLeft == 0 { return (frame, nil) }
+      }
+      if start + gap > now { return (frame, start + gap) }
+      start += gap
+      if frame == count - 1 { frame = 0; if loopsLeft > 0 { loopsLeft -= 1 } } else { frame += 1 }
+    }
+    return (frame, nil)
+  }
+  /// The earliest time an animation on screen changes frame.
+  func nextFrameTime(alternate: Bool) -> UInt64? {
+    let shown = Set(placements.filter { $0.virtual || $0.alternate == alternate }.map(\.image))
+    return shown.compactMap { id in images[id].flatMap { $0.frameCount > 1 ? playback($0).next : nil } }.min()
+  }
+
   private func decode(_ values: [Character: String], bytes: Data) throws -> (width: Int, height: Int, rgba: Data) {
     let format = try number(values, "f", default: 32)
     if format == 100 {
@@ -615,18 +841,18 @@ final class KittyGraphicsStore {
     if kind == "I" || kind == "N", placement == 0 { touched.insert(image) }
     if kind.isUppercase {
       for id in touched where !placements.contains(where: { $0.image == id }) {
-        if let removed = images.removeValue(forKey: id) { bytes -= removed.rgba.count }
+        if let removed = images.removeValue(forKey: id) { bytes -= removed.totalBytes }
       }
     }
     return .success(nil)
   }
   private func makeRoom(replacing id: UInt32, size: Int) throws {
-    let replaced = images[id]?.rgba.count ?? 0
+    let replaced = images[id]?.totalBytes ?? 0
     while bytes - replaced + size > Self.maximumStorageBytes || (images[id] == nil && images.count >= Self.maximumImages) {
       guard let victim = images.values.filter({ candidate in
         candidate.id != id && !placements.contains(where: { $0.image == candidate.id })
       }).min(by: { $0.generation < $1.generation }) else { throw KittyGraphicsError.noSpace }
-      bytes -= victim.rgba.count; images.removeValue(forKey: victim.id)
+      bytes -= victim.totalBytes; images.removeValue(forKey: victim.id)
     }
   }
   private func outcome(fields: [Character: String], result: Result<(Int, Int)?, KittyGraphicsError>) -> KittyGraphicsOutcome {
@@ -648,7 +874,7 @@ final class KittyGraphicsStore {
     guard let id = try? number(fields, "i", default: 0), id != 0,
           (try? number(fields, "q", default: 0)) == 0,
           let feature = fields["e"], feature.utf8.count == 1 else { return nil }
-    guard ["t", "T", "p", "d"].contains(feature) else { return outcome(fields: fields, result: .success(nil)).reply }
+    guard ["t", "T", "p", "d", "f", "a", "c"].contains(feature) else { return outcome(fields: fields, result: .success(nil)).reply }
     let supported = fields.keys.sorted().compactMap { key -> String? in
       let value = fields[key]!
       switch key {

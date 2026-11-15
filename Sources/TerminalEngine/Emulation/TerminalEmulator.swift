@@ -1804,6 +1804,12 @@ private final class TerminalEmulator {
     if code == 0 || code == 200 { return text.unicodeScalars.first.map { .character(Character($0)) } }
     return nil
   }
+  /// When the next animation frame on screen is due, in the emulator's
+  /// milliseconds, or nil when nothing on screen is animating.
+  func nextFrameTime(now: UInt64) -> UInt64? {
+    tick(now)
+    return graphics.nextFrameTime(alternate: usingAlternate)
+  }
   func takeReplies() -> Data { defer { replies.removeAll(keepingCapacity: true) }; return replies }
   func takeClipboardRequests() -> [(UInt64, Data)] {
     defer { clipboardRequests.removeAll(keepingCapacity: true) }
@@ -2285,6 +2291,10 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
   core(pointer)?.setColorScheme(TerminalColorScheme(foreground: foreground, background: background, ansi: Array(UnsafeBufferPointer(start: ansi, count: 16))))
 }
 @_cdecl("helge_terminal_set_grapheme_clustering") func swift_terminal_set_grapheme_clustering(_ pointer: OpaquePointer?, _ enabled: Bool) { core(pointer)?.setGraphemeClusteringDefault(enabled) }
+@_cdecl("helge_terminal_next_frame_delay") func swift_terminal_next_frame_delay(_ pointer: OpaquePointer?, _ now: UInt64) -> Int64 {
+  guard let due = core(pointer)?.nextFrameTime(now: now) else { return -1 }
+  return Int64(due > now ? due - now : 0)
+}
 @_cdecl("helge_terminal_take_bells") func swift_terminal_take_bells(_ pointer: OpaquePointer?) -> UInt32 { core(pointer)?.takeBells() ?? 0 }
 @_cdecl("helge_terminal_set_history_limit") func swift_terminal_set_history_limit(_ pointer: OpaquePointer?, _ limit: UInt32) { core(pointer)?.setHistoryLimit(Int(limit)) }
 @_cdecl("helge_terminal_set_history_byte_limit") func swift_terminal_set_history_byte_limit(_ pointer: OpaquePointer?, _ limit: UInt64) { core(pointer)?.setHistoryByteLimit(limit > UInt64(Int.max) ? Int.max : Int(limit)) }

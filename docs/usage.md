@@ -129,8 +129,10 @@ Three image protocols are shown, all within one 64 MiB budget and up to
 - Kitty graphics: RGB, RGBA and PNG, zlib compression, chunking, data in the
   escape code, a file, a temporary file or shared memory, image numbers,
   placement, layering, every deletion selector, and Unicode placeholders, as
-  tmux and Neovim image plugins use, and placements relative to another
-  placement. Animation is not supported.
+  tmux and Neovim image plugins use, placements relative to another
+  placement, and animation: frames built on a base frame, composition, and
+  playback that stops, waits on the last frame or loops a set number of
+  times. Up to 1,000 frames an image, within the same budget.
 - Sixel, which the terminal reports in its device attributes.
 - iTerm2 inline images (`OSC 1337 ; File=…;inline=1`) in any format macOS
   decodes, sized in cells, pixels or percent.
