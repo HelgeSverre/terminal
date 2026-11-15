@@ -135,6 +135,9 @@ is not part of the library by design.
 - **Bundled fonts:** JetBrains Mono, Fira Code, Hack and IBM Plex Mono come
   with the package; `TerminalFonts` lists them and the installed families.
   The app's Settings has a font menu and a ligatures checkbox.
+- **Conformance evidence:** esctest2 runs in CI against the emulator, gated
+  on a known-good list (320 of 567 cases pass), and a fuzzer runs 150 cases
+  in the suite and two minutes in CI. See `docs/conformance.md`.
 - **Ligatures:** `TerminalViewConfiguration.ligatures` shapes runs of
   punctuation as one glyph. Verified by reading back frames in JetBrains
   Mono with the setting off and on.

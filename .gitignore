@@ -27,3 +27,5 @@
 /.build/
 /reports/fuzz-current-seed
 /reports/fuzz-*.bin
+/reports/esctest.json
+/reports/esctest.log

@@ -925,6 +925,8 @@ private final class TerminalEmulator {
     case (nil, 0x21), (nil, 0x24): return final == 0x70
     case (nil, 0x22), (nil, 0x20): return final == 0x71
     case (0x3f, 0x24): return final == 0x70
+    // DECRQCRA.
+    case (nil, 0x2a): return final == 0x79
     default: return false
     }
   }
@@ -970,6 +972,10 @@ private final class TerminalEmulator {
       s.cursorColumn = s.cursorColumn >= left ? left : 0
     case 0x47: s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + n - 1)
     case 0x64: s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + n - 1)
+    // HPA, HPR and VPR do what CHA, CUF and CUD do, as in xterm.
+    case 0x60: s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + n - 1)
+    case 0x61: s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, s.cursorColumn + n)
+    case 0x65: moveCursorVertically(&s, up: false, count: n)
     case 0x48, 0x66: s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + max(0, (params.first ?? 1) - 1)); s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + max(0, (params.dropFirst().first ?? 1) - 1))
     case 0x4a: eraseDisplay(params.first ?? 0, selective: privateMode); changedActiveScreen = true
     case 0x4b: eraseLine(params.first ?? 0); changedActiveScreen = true
@@ -1008,12 +1014,45 @@ private final class TerminalEmulator {
         else if action == 3 { s.keyboardFlags &= ~flags }
       }
       else { originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false }
-    case 0x6e: clearsPending = false; if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = s.cursorRow + 1 - (originMode ? s.topMargin : 0); let column = s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0); replies.append(contentsOf: "\u{1b}[\(privateMode ? "?" : "")\(row);\(column)R".utf8) }
+    case 0x6e: clearsPending = false; if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = max(1, s.cursorRow + 1 - (originMode ? s.topMargin : 0)); let column = max(1, s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0)); replies.append(contentsOf: "\u{1b}[\(privateMode ? "?" : "")\(row);\(column)R".utf8) }
     // Secondary device attributes: a VT220-class terminal, firmware version
     // 10, no ROM cartridge. Primary attributes otherwise.
     case 0x63 where first == 0x3e: clearsPending = false; replies.append(contentsOf: "\u{1b}[>1;10;0c".utf8)
     // VT220 with Sixel graphics (4) and ANSI color (22).
     case 0x63: clearsPending = false; replies.append(contentsOf: "\u{1b}[?62;4;22c".utf8)
+    // DECRQCRA: the checksum of a rectangle's characters, as xterm (patch
+    // 334 and later) gives it: their code points summed, an empty cell
+    // counted as a space, modulo 65536. Coordinates follow origin mode.
+    // XTWINOPS reports, the ones that only read: the text area in pixels
+    // (14), a cell in pixels (16), the text area in cells (18) and the
+    // screen in cells (19, the same here). Changing the window is not done.
+    case 0x74 where first != 0x3e && last != 0x24:
+      clearsPending = false
+      switch params.first ?? 0 {
+      case 14: replies.append(contentsOf: "\u{1b}[4;\(rowCount * cellPixelHeight);\(columns * cellPixelWidth)t".utf8)
+      case 16: replies.append(contentsOf: "\u{1b}[6;\(cellPixelHeight);\(cellPixelWidth)t".utf8)
+      case 18, 19: replies.append(contentsOf: "\u{1b}[\((params.first ?? 18) == 18 ? 8 : 9);\(rowCount);\(columns)t".utf8)
+      default: break
+      }
+    case 0x79 where last == 0x2a:
+      clearsPending = false
+      func value(_ index: Int, _ fallback: Int) -> Int { index < params.count && params[index] > 0 ? params[index] : fallback }
+      let originRow = originMode ? s.topMargin : 0, originColumn = originMode && leftRightMargins ? s.leftMargin : 0
+      let lastRow = originMode ? s.bottomMargin : rowCount - 1, lastColumn = originMode && leftRightMargins ? s.rightMargin : columns - 1
+      let top = min(lastRow, originRow + value(2, 1) - 1), left = min(lastColumn, originColumn + value(3, 1) - 1)
+      let bottom = min(lastRow, originRow + value(4, lastRow - originRow + 1) - 1)
+      let right = min(lastColumn, originColumn + value(5, lastColumn - originColumn + 1) - 1)
+      var sum: UInt32 = 0
+      if top <= bottom, left <= right {
+        for row in top...bottom where s.rows.indices.contains(row) {
+          for column in left...right where column < s.rows[row].count {
+            let cell = s.rows[row].cell(column)
+            if cell.kind == 3 { continue }
+            sum &+= cell.text.unicodeScalars.first.map { $0.value } ?? 0x20
+          }
+        }
+      }
+      replies.append(contentsOf: "\u{1b}P\(params.first ?? 0)!~\(String(format: "%04X", sum & 0xffff))\u{1b}\\".utf8)
     case 0x70 where last == 0x24:
       clearsPending = false
       let mode = params.first ?? 0

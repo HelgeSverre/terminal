@@ -52,6 +52,14 @@ jobs:
           just "${{ github.event.inputs.test_target || 'test' }}" 2>&1 | tee reports/ci-tests.txt
       - name: Verify the application bundle
         run: just verify
+      - name: Run esctest against the emulator
+        if: ${{ !github.event.inputs.test_target || github.event.inputs.test_target == 'test' }}
+        run: |
+          set -o pipefail
+          just esctest 2>&1 | tee reports/esctest-ci.txt
+      - name: Fuzz the emulator for two minutes
+        if: ${{ !github.event.inputs.test_target || github.event.inputs.test_target == 'test' }}
+        run: just fuzz 120
       - name: Collect glyph residency crash report
         if: always()
         run: |
@@ -63,5 +71,8 @@ jobs:
           name: macos-test-results
           path: |
             reports/ci-tests.txt
+            reports/esctest.json
+            reports/esctest.log
+            reports/fuzz-current-seed
             reports/crash-reports
             reports/gpu-policy

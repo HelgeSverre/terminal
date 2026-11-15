@@ -153,6 +153,32 @@ import TerminalEngine
     #expect(bytes(.escape) == "\u{1b}[27;1u", "this encoder always writes the modifier field")
   }
 
+  @Test func aRectanglesChecksumIsReported() throws {
+    let terminal = try #require(HeadlessTerminal(columns: 10, rows: 4))
+    terminal.feed("AB\r\nC")
+    func checksum(_ arguments: String) -> String {
+      terminal.feed("\u{1b}[\(arguments)*y")
+      return String(decoding: terminal.takeReplies(), as: UTF8.self)
+    }
+    #expect(checksum("7;1;1;1;1;1") == "\u{1b}P7!~0041\u{1b}\\", "one cell: A")
+    #expect(checksum("1;1;1;1;2;2") == "\u{1b}P1!~00E6\u{1b}\\", "A + B + C + an empty cell as a space")
+    #expect(checksum("2;1;4;1;4") == String(format: "\u{1b}P2!~%04X\u{1b}\\", 0x20 * 10), "defaults run to the edge")
+    // In origin mode the rectangle counts from the scrolling region.
+    terminal.feed("\u{1b}[2;4r\u{1b}[?6h")
+    #expect(checksum("3;1;1;1;1;1") == "\u{1b}P3!~0043\u{1b}\\", "row 1 of the region is C's row")
+  }
+
+  @Test func theWindowSizeIsReported() throws {
+    let terminal = try #require(HeadlessTerminal(columns: 30, rows: 7))
+    #expect(terminal.setCellSize(width: 9, height: 18))
+    func ask(_ query: String) -> String { terminal.feed("\u{1b}[\(query)t"); return String(decoding: terminal.takeReplies(), as: UTF8.self) }
+    #expect(ask("18") == "\u{1b}[8;7;30t")
+    #expect(ask("19") == "\u{1b}[9;7;30t")
+    #expect(ask("14") == "\u{1b}[4;126;270t")
+    #expect(ask("16") == "\u{1b}[6;18;9t")
+    #expect(ask("8;10;10") == "", "the window is not resized")
+  }
+
   @Test func resizeReflowsAndRejectsNonsense() throws {
     let terminal = try #require(HeadlessTerminal(columns: 10, rows: 4))
     terminal.feed("0123456789abcde")

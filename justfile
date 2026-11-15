@@ -10,6 +10,7 @@ swift_test := "TERMINAL_TEST_HOOKS=1 swift test -c release -Xswiftc -enable-test
 
 # The emulator's sources, for the few programs still compiled directly.
 emulator_sources := "-package-name terminal -I Sources/TerminalInterop/include Sources/TerminalEngine/Text/*.swift Sources/TerminalEngine/Emulation/*.swift"
+esctest_commit := "2798f12"
 spawn_object := "xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=14.0 -I Sources/TerminalInterop/include -c Sources/TerminalInterop/Spawn.c -o target/native/Spawn.o"
 
 [private]
@@ -373,6 +374,24 @@ metal-upload-probe:
 [private]
 _terminfo-test: _terminfo-probe _dev
     target/native/dev terminfo-smoke
+
+# Run esctest2 against the emulator and compare with the known-good list.
+[group('test')]
+esctest *options: _esctest-build
+    target/native/esctest target/esctest2 Tests/Conformance/esctest-known-good.txt reports/esctest.json {{options}}
+
+# Run esctest2 and make the known-good list the cases that pass now.
+[group('test')]
+esctest-update: _esctest-build
+    target/native/esctest target/esctest2 Tests/Conformance/esctest-known-good.txt reports/esctest.json --update
+
+# esctest2 is GPL-2.0 and not kept here: it is fetched at a fixed commit.
+[private]
+@_esctest-build:
+    mkdir -p target/native reports Tests/Conformance
+    if [[ ! -d target/esctest2/.git ]]; then git clone -q https://github.com/ThomasDickey/esctest2.git target/esctest2; fi
+    git -C target/esctest2 checkout -q {{esctest_commit}} 2>/dev/null || (git -C target/esctest2 fetch -q && git -C target/esctest2 checkout -q {{esctest_commit}})
+    xcrun swiftc -swift-version 5 -O {{emulator_sources}} Tests/Programs/EscTest.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/esctest
 
 # Fuzz the emulator for a number of seconds, with Address Sanitizer and
 # exclusivity checks. Heavy: one at a time, like the test suite.
