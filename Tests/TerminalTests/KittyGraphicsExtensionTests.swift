@@ -180,6 +180,40 @@ import TerminalInterop
     #expect(terminal.images.count == 2)
   }
 
+  @Test func aPlacementCanHangFromAnother() throws {
+    let terminal = Terminal()
+    terminal.feed("\(esc)[3;5H" + transmit("i=1,p=1,q=2"))           // parent at row 2, column 4
+    terminal.feed("\(esc)[1;1H" + transmit("i=2,p=1,P=1,Q=1,H=3,V=-1,q=2"))
+    let cursor = swiftTerminalSnapshot(terminal.core, scroll: nil, now: 0).snapshot!.cursor
+    #expect(cursor.row == 0 && cursor.col == 0, "a relative placement does not move the cursor")
+    let child = try #require(terminal.images.first { $0.image == 2 })
+    #expect(child.row == 1 && child.col == 7)
+    // A grandchild, then the parent moves: both follow.
+    terminal.feed(transmit("i=3,p=1,P=2,Q=1,H=1,V=1,q=2"))
+    #expect(terminal.images.first { $0.image == 3 }.map { [$0.row, $0.col] } == [2, 8])
+    terminal.feed("\(esc)[6;1H\(esc)_Ga=p,i=1,p=1,q=2\(esc)\\")
+    #expect(terminal.images.first { $0.image == 2 }.map { [$0.row, $0.col] } == [4, 3])
+    #expect(terminal.images.first { $0.image == 3 }.map { [$0.row, $0.col] } == [5, 4])
+    // Deleting the parent takes its children with it.
+    terminal.feed("\(esc)_Ga=d,d=i,i=1,q=2\(esc)\\")
+    #expect(terminal.images.isEmpty)
+  }
+
+  @Test func relativePlacementsAreChecked() {
+    let terminal = Terminal()
+    terminal.feed(transmit("i=1,p=1,q=2"))
+    terminal.feed(transmit("i=2,p=1,P=9,Q=9"))
+    #expect(terminal.replies().contains("ENOPARENT"))
+    terminal.feed("\(esc)_Ga=p,i=1,p=1,P=1,Q=1\(esc)\\")
+    #expect(terminal.replies().contains("ECYCLE"), "a placement cannot hang from itself")
+    var parent = 1
+    for id in 2...9 {
+      terminal.feed(transmit("i=\(id),p=1,P=\(parent),Q=1,H=1"))
+      parent = id
+    }
+    #expect(terminal.replies().contains("ETOODEEP"))
+  }
+
   @Test func theTerminalSaysWhatItSupports() {
     let terminal = Terminal()
     terminal.feed("\(esc)_Gi=31,a=q,e=t,t=f,U=1,I=2;\(esc)\\")

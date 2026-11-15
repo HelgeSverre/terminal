@@ -45,9 +45,12 @@ struct KittyGraphicsOutcome {
 }
 
 enum KittyGraphicsError: Error, Equatable {
-  case invalid, unsupported, tooLarge, noSpace, notFound
+  case invalid, unsupported, tooLarge, noSpace, notFound, noParent, tooDeep, cycle
   var wire: String {
     switch self {
+    case .noParent: return "ENOPARENT:parent placement not found"
+    case .tooDeep: return "ETOODEEP:too many levels of relative placement"
+    case .cycle: return "ECYCLE:relative placement would form a cycle"
     case .invalid: return "EINVAL:invalid graphics command or image data"
     case .unsupported: return "ENOTSUP:unsupported graphics feature or transport"
     case .tooLarge: return "E2BIG:image exceeds configured limits"
@@ -83,7 +86,7 @@ final class KittyGraphicsStore {
     let image: UInt32
     let id: UInt32
     let serial: UInt64
-    let alternate: Bool
+    var alternate: Bool
     let row: UInt64
     let column: Int
     let source: [Int]
@@ -93,6 +96,12 @@ final class KittyGraphicsStore {
     let z: Int
     /// Shown only where the screen holds Unicode placeholders for it.
     var virtual = false
+    /// For a placement relative to another (P and Q): that placement's
+    /// image and id, and the offset from its top left corner in cells.
+    var parentImage: UInt32 = 0
+    var parentID: UInt32 = 0
+    var parentOffset = [0, 0]
+    var isRelative: Bool { parentImage != 0 }
   }
   private struct Upload {
     var fields: [Character: String]
@@ -129,13 +138,41 @@ final class KittyGraphicsStore {
       pending = nil
     }
   }
-  func pruneAnchors(retaining rows: Set<UInt64>) { placements.removeAll { !$0.virtual && !rows.contains($0.row) } }
+  func pruneAnchors(retaining rows: Set<UInt64>) {
+    // A relative placement goes with its parent, not with a row of its own.
+    placements.removeAll { !$0.virtual && !$0.isRelative && !rows.contains($0.row) }
+    pruneOrphans()
+  }
+  /// The placement a relative one hangs from.
+  private func parent(of placement: Placement) -> Placement? {
+    placements.first { $0.image == placement.parentImage && $0.id == placement.parentID }
+  }
+  /// A placement's top left cell: its own anchor, or its parent's plus its
+  /// offset. Nil when it hangs from nothing on this screen.
+  private func origin(of placement: Placement, positions: [UInt64: Int], depth: Int = 0) -> (row: Int, column: Int)? {
+    guard placement.isRelative else {
+      guard !placement.virtual, let row = positions[placement.row] else { return nil }
+      return (row, placement.column)
+    }
+    guard depth < Self.maximumRelativeDepth, let parent = parent(of: placement),
+      let base = origin(of: parent, positions: positions, depth: depth + 1) else { return nil }
+    return (base.row + placement.parentOffset[1], base.column + placement.parentOffset[0])
+  }
+  private static let maximumRelativeDepth = 8
+  /// Removes relative placements whose parent is gone, and theirs in turn.
+  private func pruneOrphans() {
+    while let index = placements.firstIndex(where: { $0.isRelative && parent(of: $0) == nil }) {
+      placements.remove(at: index)
+    }
+  }
+
   func visible(alternate: Bool, positions: [UInt64: Int], height: Int) -> [KittyImagePlacement] {
     placements.compactMap { placement in
       guard !placement.virtual, placement.alternate == alternate, let image = images[placement.image],
-            let row = positions[placement.row], row < height, row + placement.cells[1] > 0 else { return nil }
+            let (row, column) = origin(of: placement, positions: positions),
+            row < height, row + placement.cells[1] > 0 else { return nil }
       return KittyImagePlacement(image: placement.image, generation: image.generation, width: image.width,
-        height: image.height, source: placement.source, row: row, column: placement.column,
+        height: image.height, source: placement.source, row: row, column: column,
         columns: placement.cells[0], rows: placement.cells[1], offset: placement.offset,
         natural: placement.natural, z: placement.z, placement: placement.serial)
     }.sorted { ($0.z, $0.image, $0.placement) < ($1.z, $1.image, $1.placement) }
@@ -285,10 +322,6 @@ final class KittyGraphicsStore {
   }
   private func validateTransport(_ values: [Character: String]) throws {
     if values["I"] != nil && values["i"] != nil { throw KittyGraphicsError.invalid }
-    // Placements relative to another placement are not supported.
-    for key: Character in ["P", "Q"] {
-      if try number(values, key, default: 0) != 0 { throw KittyGraphicsError.unsupported }
-    }
     guard try number(values, "U", default: 0) <= 1 else { throw KittyGraphicsError.invalid }
     let type = values["t"] ?? "d"
     guard ["d", "f", "t", "s"].contains(type) else { throw KittyGraphicsError.unsupported }
@@ -328,6 +361,7 @@ final class KittyGraphicsStore {
       if let old = images[UInt32(id)] { bytes -= old.rgba.count }
       images[UInt32(id)] = image; bytes += image.rgba.count
       placements.removeAll { $0.image == UInt32(id) }
+      pruneOrphans()
       return upload.fields["a"] == "T" ? place(upload.fields, image: image, context: context) : .success(nil)
     } catch let error as KittyGraphicsError { return .failure(error) }
       catch { return .failure(.invalid) }
@@ -498,9 +532,31 @@ final class KittyGraphicsStore {
     let movement = try number(values, "C", default: 0)
     guard movement <= 1 else { throw KittyGraphicsError.invalid }
     let virtual = try number(values, "U", default: 0) == 1
-    let placement = Placement(image: image.id, id: UInt32(id), serial: serial, alternate: context.alternate,
+    var placement = Placement(image: image.id, id: UInt32(id), serial: serial, alternate: context.alternate,
       row: context.row, column: context.column, source: [x, y, width, height], cells: [c, r], offset: [ox, oy], natural: natural, z: Int(z),
       virtual: virtual)
+    let parentImage = try number(values, "P", default: 0), parentID = try number(values, "Q", default: 0)
+    if parentImage != 0 || parentID != 0 {
+      // Relative to another placement, H and V cells from its top left.
+      guard parentImage != 0, parentID != 0, !virtual,
+        let h = Int32(values["H"] ?? "0"), let v = Int32(values["V"] ?? "0"),
+        abs(Int(h)) <= 4096, abs(Int(v)) <= 4096 else { throw KittyGraphicsError.invalid }
+      guard let found = placements.first(where: { $0.image == UInt32(parentImage) && $0.id == UInt32(parentID) }) else {
+        throw KittyGraphicsError.noParent
+      }
+      if parentImage == Int(image.id) && parentID == id { throw KittyGraphicsError.cycle }
+      var ancestor: Placement? = found, depth = 1
+      while let current = ancestor, current.isRelative {
+        if current.parentImage == image.id && current.parentID == UInt32(id) { throw KittyGraphicsError.cycle }
+        depth += 1
+        guard depth < Self.maximumRelativeDepth else { throw KittyGraphicsError.tooDeep }
+        ancestor = parent(of: current)
+      }
+      placement.parentImage = UInt32(parentImage); placement.parentID = UInt32(parentID)
+      placement.parentOffset = [Int(h), Int(v)]
+      placement.alternate = found.alternate
+      return (placement, nil)
+    }
     return (placement, movement == 0 && !virtual ? (c, r) : nil)
   }
   private func place(_ values: [Character: String], image: Image, context: KittyGraphicsContext) -> Result<(Int, Int)?, KittyGraphicsError> {
@@ -510,7 +566,7 @@ final class KittyGraphicsStore {
       let (placement, advance) = try layout(values, image: image, context: context, serial: nextSerial)
       if placement.id != 0 { placements.removeAll { $0.image == placement.image && $0.id == placement.id } }
       guard placements.count < Self.maximumPlacements else { throw KittyGraphicsError.noSpace }
-      serial = nextSerial; placements.append(placement); return .success(advance)
+      serial = nextSerial; placements.append(placement); pruneOrphans(); return .success(advance)
     } catch let error as KittyGraphicsError { return .failure(error) }
       catch { return .failure(.invalid) }
   }
@@ -555,6 +611,7 @@ final class KittyGraphicsStore {
       if matches { touched.insert(old.image) }
       return matches
     }
+    pruneOrphans()
     if kind == "I" || kind == "N", placement == 0 { touched.insert(image) }
     if kind.isUppercase {
       for id in touched where !placements.contains(where: { $0.image == id }) {
@@ -598,7 +655,7 @@ final class KittyGraphicsStore {
       case "f": guard ["24", "32", "100"].contains(value) else { return nil }
       case "t": guard ["d", "f", "t", "s"].contains(value) else { return nil }
       case "U": guard value == "1" else { return nil }
-      case "I", "p": break
+      case "I", "p", "P", "Q", "H", "V": break
       case "o": guard value == "z" else { return nil }
       case "C": guard value == "1" else { return nil }
       case "s", "v", "c", "r", "x", "y", "w", "h", "X", "Y", "z": break

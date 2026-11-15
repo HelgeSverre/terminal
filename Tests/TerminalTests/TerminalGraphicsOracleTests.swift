@@ -86,14 +86,16 @@ import TerminalInterop
     #expect(images(core).isEmpty && replies(core).contains("E2BIG"))
   }}
   @Test static func transportFields() {
-    // U=1 (Unicode placeholders) is supported; see KittyGraphicsExtensionTests.
+    // Placeholders and relative placements are supported; see
+    // KittyGraphicsExtensionTests. A parent named by only one of P and Q,
+    // an id with a number, and q=3 are refused as invalid.
     for field in ["P=1", "Q=1", "I=0", "q=3"] { withTerminal { core in
       feed(core, command("a=T,f=24,s=1,v=1,i=1,C=1", [1, 2, 3])); let original = images(core)[0]
       _ = replies(core)
       feed(core, command("a=T,f=24,s=1,v=1,i=1,C=1,\(field)", [4, 5, 6]))
       #expect(images(core)[0]["generation"] as? Int == original["generation"] as? Int)
       // An id and a number together are refused like a bad value.
-      #expect(replies(core).contains(field == "q=3" || field == "I=0" ? "EINVAL" : "ENOTSUP"))
+      #expect(replies(core).contains("EINVAL"))
     }}
   }
   @Test static func retiredAnchorCap() { withTerminal { core in
