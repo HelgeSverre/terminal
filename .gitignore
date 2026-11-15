@@ -25,3 +25,5 @@
 /reports/selection-smoke.json
 /assets/screenshots/.*.capture.json
 /.build/
+/reports/fuzz-current-seed
+/reports/fuzz-*.bin

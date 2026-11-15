@@ -374,6 +374,22 @@ metal-upload-probe:
 _terminfo-test: _terminfo-probe _dev
     target/native/dev terminfo-smoke
 
+# Fuzz the emulator for a number of seconds, with Address Sanitizer and
+# exclusivity checks. Heavy: one at a time, like the test suite.
+[group('test')]
+fuzz seconds="60" seed="": _fuzz-build
+    target/native/fuzz {{seconds}} {{seed}}
+
+# Run one fuzz case again and keep its bytes in reports/.
+[group('test')]
+fuzz-replay seed: _fuzz-build
+    target/native/fuzz replay {{seed}}
+
+[private]
+@_fuzz-build:
+    mkdir -p target/native
+    xcrun swiftc -swift-version 5 -O -g -sanitize=address -enforce-exclusivity=checked -D FUZZ_PROGRAM {{emulator_sources}} Tests/TerminalTests/TerminalFuzzer.swift Tests/Programs/Fuzz.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/fuzz
+
 [private]
 @_terminfo-probe:
     mkdir -p target/native
