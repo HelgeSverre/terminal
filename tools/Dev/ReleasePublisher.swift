@@ -407,8 +407,12 @@ enum ReleasePublisher {
       try withTemporaryDirectory("release-notes-") { directory in
         let notes = directory + "/release-notes.md"
         try write("Helge Terminal \(metadata.tag)\n", to: notes)
+        // The tag exists and names the commit; the release is made from it.
+        // Naming the commit as the target instead makes GitHub refuse the
+        // workflow's token whenever the default branch has since changed a
+        // workflow file ("Resource not accessible by integration").
         try runChecked(["gh", "release", "create", metadata.tag, "--repo", terminalRepository,
-                        "--target", metadata.sourceSHA, "--draft", "--title", metadata.tag,
+                        "--verify-tag", "--draft", "--title", metadata.tag,
                         "--notes-file", notes])
       }
     }
@@ -421,8 +425,11 @@ enum ReleasePublisher {
       guard release["tagName"] as? String == metadata.tag else {
         throw Failure("release tag differs: \(inspect(release["tagName"]))")
       }
+      // A release made from its tag records the default branch's name as
+      // its target; only a commit recorded there can disagree.
       let target = release["targetCommitish"] as? String ?? ""
-      guard target.isEmpty || sameSHA(target, metadata.sourceSHA) else {
+      let namesCommit = target.count == 40 && target.allSatisfy(\.isHexDigit)
+      guard !namesCommit || sameSHA(target, metadata.sourceSHA) else {
         throw Failure("release target differs: \(target)")
       }
       let remote = remoteAssets(release)

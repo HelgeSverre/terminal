@@ -104,7 +104,8 @@ private final class ResidencyScenario: @unchecked Sendable {
   static func capacity(device: MTLDevice, _ format: MTLPixelFormat, _ width: Int, _ height: Int) -> Int {
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format,
       width: width, height: height, mipmapped: false)
-    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    descriptor.storageMode = TextureStorage.mode(for: device); descriptor.usage = .shaderRead
+    guard device.hasUnifiedMemory else { return GlyphResidency.heapCapacity(device: device, descriptor: descriptor) }
     let heapDescriptor = MTLHeapDescriptor()
     heapDescriptor.storageMode = .shared
     heapDescriptor.size = device.heapTextureSizeAndAlign(descriptor: descriptor).size

@@ -459,7 +459,9 @@ final class FakeGitHub {
       return CommandResult(output: String(decoding: data, as: UTF8.self))
     case ["release", "create", "v1.2.3"]:
       if release == nil {
-        release = ["tagName": "v1.2.3", "targetCommitish": sha, "isDraft": true, "assets": [[String: Any]]()]
+        // GitHub records the default branch as the target of a release
+        // made from an existing tag.
+        release = ["tagName": "v1.2.3", "targetCommitish": "main", "isDraft": true, "assets": [[String: Any]]()]
       }
       return CommandResult()
     case ["release", "upload", "v1.2.3"]:

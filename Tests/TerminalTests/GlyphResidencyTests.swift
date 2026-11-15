@@ -27,7 +27,13 @@ private struct ShaderQuad {
     }
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
       width: 1024, height: 1024, mipmapped: false)
-    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    descriptor.storageMode = TextureStorage.mode(for: device); descriptor.usage = .shaderRead
+    // A Mac whose GPU has its own memory has no heaps for these textures;
+    // the residency charges its own estimate of a page there.
+    guard device.hasUnifiedMemory else {
+      let page = GlyphResidency.heapCapacity(device: device, descriptor: descriptor)
+      return (device, page + max(4096, page / 16))
+    }
     let onePage = Int(device.heapTextureSizeAndAlign(descriptor: descriptor).size)
     let capabilityHeap = MTLHeapDescriptor()
     capabilityHeap.storageMode = .shared
@@ -122,7 +128,7 @@ private struct ShaderQuad {
     guard let (device, _) = fixture() else { return }
     let maskDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
       width: 3, height: 1, mipmapped: false)
-    maskDescriptor.storageMode = .shared
+    maskDescriptor.storageMode = TextureStorage.mode(for: device)
     guard let mask = device.makeTexture(descriptor: maskDescriptor) else { Issue.record("mask texture"); return }
     let coverage: [UInt8] = [0, 128, 255]
     coverage.withUnsafeBytes { mask.replace(region: MTLRegionMake2D(0, 0, 3, 1), mipmapLevel: 0,
@@ -132,7 +138,7 @@ private struct ShaderQuad {
     #expect(readCoverage == coverage)
     let colorDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
       width: 1, height: 1, mipmapped: false)
-    colorDescriptor.storageMode = .shared
+    colorDescriptor.storageMode = TextureStorage.mode(for: device)
     guard let color = device.makeTexture(descriptor: colorDescriptor) else { Issue.record("color texture"); return }
     let rgba: [UInt8] = [64, 32, 16, 128]
     rgba.withUnsafeBytes { color.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0,
@@ -147,7 +153,7 @@ private struct ShaderQuad {
     guard let (device, _) = fixture() else { return }
     let maskDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r8Unorm,
       width: 3, height: 1, mipmapped: false)
-    maskDescriptor.storageMode = .shared
+    maskDescriptor.storageMode = TextureStorage.mode(for: device)
     guard let mask = device.makeTexture(descriptor: maskDescriptor) else { Issue.record("mask texture"); return }
     let coverage: [UInt8] = [0, 128, 255]
     coverage.withUnsafeBytes { mask.replace(region: MTLRegionMake2D(0, 0, 3, 1), mipmapLevel: 0,
@@ -157,7 +163,7 @@ private struct ShaderQuad {
     #expect(readCoverage == coverage)
     let colorDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
       width: 1, height: 1, mipmapped: false)
-    colorDescriptor.storageMode = .shared
+    colorDescriptor.storageMode = TextureStorage.mode(for: device)
     guard let color = device.makeTexture(descriptor: colorDescriptor) else { Issue.record("color texture"); return }
     let rgba: [UInt8] = [64, 32, 16, 128]
     rgba.withUnsafeBytes { color.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0,
@@ -173,7 +179,7 @@ private struct ShaderQuad {
     else { Issue.record("production metallib unavailable"); return }
     let targetDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm_srgb,
       width: 3, height: 1, mipmapped: false)
-    targetDescriptor.storageMode = .shared; targetDescriptor.usage = [.renderTarget, .shaderRead]
+    targetDescriptor.storageMode = TextureStorage.mode(for: device); targetDescriptor.usage = [.renderTarget, .shaderRead]
     guard let target = device.makeTexture(descriptor: targetDescriptor),
       let queue = device.makeCommandQueue()
     else { Issue.record("offscreen target"); return }
@@ -215,7 +221,7 @@ private struct ShaderQuad {
     func renderColor(background: Double, tintAlpha: Float) -> [UInt8]? {
       let oneDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm_srgb,
         width: 1, height: 1, mipmapped: false)
-      oneDescriptor.storageMode = .shared; oneDescriptor.usage = [.renderTarget, .shaderRead]
+      oneDescriptor.storageMode = TextureStorage.mode(for: device); oneDescriptor.usage = [.renderTarget, .shaderRead]
       guard let output = device.makeTexture(descriptor: oneDescriptor),
         let colorCommand = queue.makeCommandBuffer()
       else { Issue.record("color output"); return nil }
