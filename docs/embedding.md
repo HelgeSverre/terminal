@@ -26,7 +26,7 @@ not cover.
 
 | | |
 | --- | --- |
-| Platform | macOS 15 or later, AppKit |
+| Platform | macOS 14 or later, AppKit. Apple silicon is what the test suite and the app's releases run on. On an Intel Mac (MacBookPro16,1, macOS 14.8.7) rendering and a child process on a PTY were checked by hand with cross-compiled builds; the test suite has not run there. |
 | Swift tools | 6.0. A host may use the Swift 5 or the Swift 6 language mode; the libraries themselves are compiled in Swift 5 mode. |
 | Graphics | A Metal device |
 | Sandbox | The app must be allowed to start child processes. A sandboxed app can show the view but cannot usefully run a login shell. |
@@ -360,7 +360,8 @@ The fonts keep their own licenses; see the
 - **More of the emulator.** `HeadlessTerminal` has no selection and no
   search.
 - **A launch without the helper.** The host must carry `TerminalLauncher`.
-- **Other platforms.** macOS on Apple Silicon is the only tested target.
+- **Other platforms.** No iOS. Intel Macs and macOS 14 have had a manual
+  check only; see Requirements.
   There is no iOS view and no SwiftUI wrapper; wrap `TerminalCanvasView` in
   an `NSViewRepresentable` for SwiftUI.
 - **Zsh shell integration.** The app's integration scripts are part of its

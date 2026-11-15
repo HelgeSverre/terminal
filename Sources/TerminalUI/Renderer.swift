@@ -259,7 +259,7 @@ public final class TerminalRendering: @unchecked Sendable {
     imagePipeline = try gpu.makeRenderPipelineState(descriptor: descriptor)
     let legacyDescriptor = MTLTextureDescriptor.texture2DDescriptor(
       pixelFormat: .rgba8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
-    legacyDescriptor.storageMode = .shared; legacyDescriptor.usage = .shaderRead
+    legacyDescriptor.storageMode = TextureStorage.mode(for: device); legacyDescriptor.usage = .shaderRead
     // The denial smoke leaves room for exactly the legacy solid texel atlas
     // that keeps allocation-free outlines visible.  It deliberately leaves
     // no native mask/direct heap capacity, so its result is a real global
@@ -527,11 +527,11 @@ public final class TerminalRendering: @unchecked Sendable {
   private func appendAtlasPage() -> Int? {
     guard atlases.count < atlasPages else { return nil }
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: atlasSize, height: atlasSize, mipmapped: false)
-    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    descriptor.storageMode = TextureStorage.mode(for: device); descriptor.usage = .shaderRead
     guard let allocation = glyphResidency.makeLegacyTexture(descriptor) else { return nil }
     let atlas = allocation.texture
     atlases.append(atlas); atlasX.append(4); atlasY.append(0); shelves.append(0)
-    atlasHeaps.append(allocation.heap)
+    if let heap = allocation.heap { atlasHeaps.append(heap) }
     var white: [UInt8] = [255, 255, 255, 255]
     white.withUnsafeMutableBytes { atlas.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: $0.baseAddress!, bytesPerRow: 4) }
     RendererMetrics.recordAtlasPages(atlases.count)
@@ -593,7 +593,7 @@ public final class TerminalRendering: @unchecked Sendable {
   private func directGlyph(_ key: GlyphKey, width: Int, height: Int, limited: Bool = true) -> Glyph? {
     guard !limited || (!directGlyphExhausted && directGlyphCount < directGlyphLimit) else { return nil }
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
-    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    descriptor.storageMode = TextureStorage.mode(for: device); descriptor.usage = .shaderRead
     guard let allocation = glyphResidency.makeLegacyTexture(descriptor) else {
       if limited { directGlyphExhausted = true }
       return nil
@@ -942,7 +942,7 @@ public final class TerminalRendering: @unchecked Sendable {
       let descriptor = MTLTextureDescriptor.texture2DDescriptor(
         pixelFormat: .rgba8Unorm_srgb, width: placement.width, height: placement.height,
         mipmapped: false)
-      descriptor.storageMode = .shared
+      descriptor.storageMode = TextureStorage.mode(for: device)
       descriptor.usage = .shaderRead
       if let texture = device.makeTexture(descriptor: descriptor) {
         pixels.data.withUnsafeBytes {

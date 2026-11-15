@@ -5,7 +5,7 @@ import PackageDescription
 // a login shell, and a window that replays a recording through a transport. See docs/embedding.md.
 let package = Package(
   name: "EmbeddingExample",
-  platforms: [.macOS(.v15)],
+  platforms: [.macOS(.v14)],
   dependencies: [.package(name: "Terminal", path: "../..")],
   targets: [
     .executableTarget(

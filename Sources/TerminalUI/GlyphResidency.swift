@@ -1,5 +1,13 @@
 import Foundation
 import Metal
+
+/// Where a texture the CPU writes lives. Apple silicon shares memory with
+/// the GPU; a Mac with a separate GPU keeps a managed copy on each side.
+enum TextureStorage {
+  static func mode(for device: MTLDevice) -> MTLStorageMode {
+    device.hasUnifiedMemory ? .shared : .managed
+  }
+}
 import simd
 import Darwin
 
@@ -19,7 +27,7 @@ struct GlyphLease {
 final class GlyphResidency: @unchecked Sendable {
   struct LegacyTexture {
     let id: UUID
-    let heap: MTLHeap
+    let heap: MTLHeap?
     let texture: MTLTexture
     let capacity: Int
   }
@@ -42,7 +50,7 @@ final class GlyphResidency: @unchecked Sendable {
   private struct Page {
     let id: UUID
     let kind: PageKind
-    let heap: MTLHeap
+    let heap: MTLHeap?
     let texture: MTLTexture
     let capacity: Int
     var x: Int = 1
@@ -113,6 +121,14 @@ final class GlyphResidency: @unchecked Sendable {
   // rounded to a VM page on this target, so charge the maximum granularity
   // before creating one. This value matches MTLHeap.size for our descriptors.
   static func heapCapacity(device: MTLDevice, descriptor: MTLTextureDescriptor) -> Int {
+    // Without unified memory there is no heap to ask; charge the pixels,
+    // rounded up to whole pages.
+    guard device.hasUnifiedMemory else {
+      let bytesPerPixel = descriptor.pixelFormat == .r8Unorm ? 1 : 4
+      let page = Int(getpagesize())
+      let bytes = descriptor.width * descriptor.height * bytesPerPixel
+      return bytes > 0 ? (bytes + page - 1) / page * page : 0
+    }
     let requirement = device.heapTextureSizeAndAlign(descriptor: descriptor)
     guard requirement.size > 0, requirement.align > 0 else { return 0 }
     let granularity = max(requirement.align, Int(getpagesize()))
@@ -291,7 +307,7 @@ final class GlyphResidency: @unchecked Sendable {
     let recipe = result.recipe
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: kind.format,
       width: recipe.width, height: recipe.height, mipmapped: false)
-    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    descriptor.storageMode = TextureStorage.mode(for: device); descriptor.usage = .shaderRead
     let available = makeLegacyTexture(descriptor)
     // Do not retire cached GPU allocations when another CPU reservation
     // would prevent their replacement anyway. Its callback will wake us.
@@ -412,13 +428,8 @@ final class GlyphResidency: @unchecked Sendable {
       deniedAllocations &+= 1
       return nil
     }
-    let heapDescriptor = MTLHeapDescriptor()
-    heapDescriptor.storageMode = descriptor.storageMode
-    heapDescriptor.size = capacity
-    guard let heap = device.makeHeap(descriptor: heapDescriptor) else { return nil }
-    let actual = Int(heap.size)
-    guard residentBytes + reservations + actual <= byteBudget,
-      let texture = heap.makeTexture(descriptor: descriptor)
+    guard let (heap, texture, actual) = Self.allocate(descriptor, capacity: capacity, on: device),
+      residentBytes + reservations + actual <= byteBudget
     else { deniedAllocations &+= 1; return nil }
     residentBytes += actual
     legacyBridgeBytes += actual
@@ -482,10 +493,27 @@ final class GlyphResidency: @unchecked Sendable {
     return (page, point.0, point.1)
   }
 
+  /// A texture of `capacity` bytes and what holds it. With unified memory
+  /// (Apple silicon) that is a heap of its own, whose size is the charge.
+  /// A Mac with a separate GPU allows no CPU-written texture in a heap, so
+  /// there the device makes the texture and the estimate is the charge.
+  private static func allocate(_ descriptor: MTLTextureDescriptor, capacity: Int, on device: MTLDevice)
+    -> (heap: MTLHeap?, texture: MTLTexture, bytes: Int)? {
+    guard device.hasUnifiedMemory else {
+      return device.makeTexture(descriptor: descriptor).map { (nil, $0, capacity) }
+    }
+    let heapDescriptor = MTLHeapDescriptor()
+    heapDescriptor.storageMode = descriptor.storageMode
+    heapDescriptor.size = capacity
+    guard let heap = device.makeHeap(descriptor: heapDescriptor),
+      let texture = heap.makeTexture(descriptor: descriptor) else { return nil }
+    return (heap, texture, Int(heap.size))
+  }
+
   private func createPage(_ kind: PageKind) -> Page? {
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: kind.format, width: kind.side,
                                                                 height: kind.side, mipmapped: false)
-    descriptor.storageMode = .shared
+    descriptor.storageMode = TextureStorage.mode(for: device)
     descriptor.usage = .shaderRead
     let capacity = Self.heapCapacity(device: device, descriptor: descriptor)
     // Account capacity before heap allocation.  A failed allocation never
@@ -494,13 +522,8 @@ final class GlyphResidency: @unchecked Sendable {
       deniedAllocations &+= 1
       return nil
     }
-    let heapDescriptor = MTLHeapDescriptor()
-    heapDescriptor.storageMode = .shared
-    heapDescriptor.size = capacity
-    guard let heap = device.makeHeap(descriptor: heapDescriptor) else { return nil }
-    let actualCapacity = Int(heap.size)
-    guard residentBytes + reservations + actualCapacity <= byteBudget,
-          let texture = heap.makeTexture(descriptor: descriptor) else {
+    guard let (heap, texture, actualCapacity) = Self.allocate(descriptor, capacity: capacity, on: device),
+          residentBytes + reservations + actualCapacity <= byteBudget else {
       deniedAllocations &+= 1
       return nil
     }
@@ -592,7 +615,7 @@ final class GlyphResidency: @unchecked Sendable {
   func testingLegacyReleaseExactlyOnce() -> Bool {
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
       width: 8, height: 8, mipmapped: false)
-    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    descriptor.storageMode = TextureStorage.mode(for: device); descriptor.usage = .shaderRead
     guard let allocation = makeLegacyTexture(descriptor) else { return false }
     let charged = diagnostics().residentBytes
     releaseLegacyTexture(allocation.id)
@@ -604,7 +627,7 @@ final class GlyphResidency: @unchecked Sendable {
   func testingLegacyHeapDropsWithLease() -> Bool {
     let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
       width: 8, height: 8, mipmapped: false)
-    descriptor.storageMode = .shared; descriptor.usage = .shaderRead
+    descriptor.storageMode = TextureStorage.mode(for: device); descriptor.usage = .shaderRead
     weak var weakHeap: MTLHeap?
     var id: UUID?
     autoreleasepool {

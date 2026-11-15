@@ -67,7 +67,7 @@ let application: [Target] = [
 
 let package = Package(
   name: "Terminal",
-  platforms: [.macOS(.v15)],
+  platforms: [.macOS(.v14)],
   products: [
     // What another app embeds.
     .library(name: "TerminalUI", targets: ["TerminalUI"]),

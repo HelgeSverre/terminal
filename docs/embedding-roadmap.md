@@ -122,6 +122,12 @@ is not part of the library by design.
   `ClipboardAccess(writingTo:deciding:)` asks the host about each OSC 52
   write. `session.paste`, `contentInset` and chrome colored from the scheme
   followed.
+- **macOS 14 and Intel:** the package's minimum is macOS 14. On Intel the
+  renderer aborted at startup, because Metal there allows no CPU-written
+  texture in a heap; it now uses managed textures without heaps where the
+  GPU has its own memory. Checked on one Intel Mac by reading back frames
+  and running a child on a PTY. The app's releases stay Apple silicon,
+  macOS 15.
 - **Bundled fonts:** JetBrains Mono, Fira Code, Hack and IBM Plex Mono come
   with the package; `TerminalFonts` lists them and the installed families.
   The app's Settings has a font menu and a ligatures checkbox.
