@@ -86,12 +86,14 @@ import TerminalInterop
     #expect(images(core).isEmpty && replies(core).contains("E2BIG"))
   }}
   @Test static func transportFields() {
-    for field in ["U=1", "P=1", "Q=1", "I=0", "q=3"] { withTerminal { core in
+    // U=1 (Unicode placeholders) is supported; see KittyGraphicsExtensionTests.
+    for field in ["P=1", "Q=1", "I=0", "q=3"] { withTerminal { core in
       feed(core, command("a=T,f=24,s=1,v=1,i=1,C=1", [1, 2, 3])); let original = images(core)[0]
       _ = replies(core)
       feed(core, command("a=T,f=24,s=1,v=1,i=1,C=1,\(field)", [4, 5, 6]))
       #expect(images(core)[0]["generation"] as? Int == original["generation"] as? Int)
-      #expect(replies(core).contains(field == "q=3" ? "EINVAL" : "ENOTSUP"))
+      // An id and a number together are refused like a bad value.
+      #expect(replies(core).contains(field == "q=3" || field == "I=0" ? "EINVAL" : "ENOTSUP"))
     }}
   }
   @Test static func retiredAnchorCap() { withTerminal { core in
@@ -202,7 +204,7 @@ import TerminalInterop
     _ = replies(core)
     for packet in [command("a=T,f=24,s=4294967295,v=4294967295,i=1", [1, 2, 3]),
                    command("a=T,f=24,s=2,v=2,i=1", [1, 2, 3]),
-                   command("a=T,f=100,t=f,i=1", [1]), "\u{1b}_Ga=T,f=24,s=1,v=1,i=1;%%%\u{1b}\\"] {
+                   command("a=T,f=100,t=x,i=1", [1]), "\u{1b}_Ga=T,f=24,s=1,v=1,i=1;%%%\u{1b}\\"] {
       feed(core, packet); #expect(images(core)[0]["generation"] as? Int == original["generation"] as? Int)
     }
     let errors = replies(core); #expect(errors.contains("E2BIG") && errors.contains("EINVAL") && errors.contains("ENOTSUP"))
@@ -275,7 +277,7 @@ import TerminalInterop
   @Test static func featureQuery() { withTerminal { core in
     feed(core, "\u{1b}_Ga=q,i=10,e=T,U=1,C=1,t=d,f=24\u{1b}\\")
     let reply = replies(core)
-    #expect(reply.contains("e=T") && reply.contains("C=1") && !reply.contains("U=1"))
+    #expect(reply.contains("e=T") && reply.contains("C=1") && reply.contains("U=1"), "Unicode placeholders are supported")
     feed(core, command("a=q,f=24,s=1,v=1,i=2,q=1", [1, 2, 3]))
     #expect(replies(core).isEmpty && images(core).isEmpty)
   }}

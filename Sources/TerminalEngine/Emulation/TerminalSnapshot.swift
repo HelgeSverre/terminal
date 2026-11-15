@@ -198,6 +198,8 @@ package struct ImagePlacementSnapshot: Decodable, Equatable {
   package let natural: Bool
   package let z: Int
   package let placement: UInt64
+  /// The drawn size in pixels, when it is not fitted to the cells.
+  package var extent: [Int]? = nil
   package var key: ImageKey { ImageKey(id: image, generation: generation) }
 }
 package final class ImagePixels: @unchecked Sendable {

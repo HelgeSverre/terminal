@@ -763,7 +763,9 @@ public final class TerminalRendering: @unchecked Sendable {
                   Float(x), Float(y), Float(request.cellWidth), Float(request.cellHeight)),
                 uv: whiteUV, color: bg))
           }
-          if !cell.text.isEmpty && !cell.style.conceal && cell.kind != "Continuation" {
+          // A Kitty image placeholder shows its image, never a glyph of its own.
+          let placeholder = cell.text.unicodeScalars.first?.value == KittyPlaceholder.character
+          if !cell.text.isEmpty && !cell.style.conceal && cell.kind != "Continuation" && !placeholder {
             let cells = cell.kind == "Lead2" ? 2 : 1
             if cell.text == "▀" {
               rect(x, y, request.cellWidth, request.cellHeight / 2, fg)
@@ -1017,8 +1019,8 @@ public final class TerminalRendering: @unchecked Sendable {
         }
         let sourceW = Float(p.source[2])
         let sourceH = Float(p.source[3])
-        let boxW = p.natural ? sourceW : Float(p.columns * request.cellWidth - p.offset[0])
-        let boxH = p.natural ? sourceH : Float(p.rows * request.cellHeight - p.offset[1])
+        let boxW = p.extent.map { Float($0[0]) } ?? (p.natural ? sourceW : Float(p.columns * request.cellWidth - p.offset[0]))
+        let boxH = p.extent.map { Float($0[1]) } ?? (p.natural ? sourceH : Float(p.rows * request.cellHeight - p.offset[1]))
         let factor = min(boxW / sourceW, boxH / sourceH)
         let width = sourceW * factor
         let height = sourceH * factor

@@ -15,6 +15,9 @@ struct KittyGraphicsContext {
   let column: Int
   let cellWidth: Int
   let cellHeight: Int
+  /// The ids of the rows on screen, top to bottom, for commands that name
+  /// a cell.
+  var screenRows: [UInt64] = []
 }
 
 struct KittyImagePlacement: Equatable {
@@ -31,6 +34,9 @@ struct KittyImagePlacement: Equatable {
   let natural: Bool
   let z: Int
   let placement: UInt64
+  /// The size the picture is drawn at, in pixels, when it is not to be
+  /// fitted to its cells: a slice of an image behind Unicode placeholders.
+  var extent: [Int]? = nil
 }
 
 struct KittyGraphicsOutcome {
@@ -70,6 +76,8 @@ final class KittyGraphicsStore {
     let width: Int
     let height: Int
     let rgba: Data
+    /// The number a program gave it with `I`, or 0.
+    var number: UInt32 = 0
   }
   private struct Placement {
     let image: UInt32
@@ -83,6 +91,8 @@ final class KittyGraphicsStore {
     let offset: [Int]
     let natural: Bool
     let z: Int
+    /// Shown only where the screen holds Unicode placeholders for it.
+    var virtual = false
   }
   private struct Upload {
     var fields: [Character: String]
@@ -99,6 +109,7 @@ final class KittyGraphicsStore {
 
   var accountedBytes: Int { bytes + (pending?.bytes.count ?? 0) }
   var hasPlacements: Bool { !placements.isEmpty }
+  var hasVirtualPlacements: Bool { placements.contains { $0.virtual } }
   func imageRGBA(id: UInt32, generation: UInt64) -> Data? {
     guard let image = images[id], image.generation == generation else { return nil }
     return image.rgba
@@ -118,10 +129,10 @@ final class KittyGraphicsStore {
       pending = nil
     }
   }
-  func pruneAnchors(retaining rows: Set<UInt64>) { placements.removeAll { !rows.contains($0.row) } }
+  func pruneAnchors(retaining rows: Set<UInt64>) { placements.removeAll { !$0.virtual && !rows.contains($0.row) } }
   func visible(alternate: Bool, positions: [UInt64: Int], height: Int) -> [KittyImagePlacement] {
     placements.compactMap { placement in
-      guard placement.alternate == alternate, let image = images[placement.image],
+      guard !placement.virtual, placement.alternate == alternate, let image = images[placement.image],
             let row = positions[placement.row], row < height, row + placement.cells[1] > 0 else { return nil }
       return KittyImagePlacement(image: placement.image, generation: image.generation, width: image.width,
         height: image.height, source: placement.source, row: row, column: placement.column,
@@ -157,6 +168,48 @@ final class KittyGraphicsStore {
     return (placement.cells[0], placement.cells[1])
   }
 
+  /// The slice of an image that a run of placeholder cells shows: cells
+  /// `column`..<`column + count` of the placement's row `row`, drawn at
+  /// screen row `screenRow` from screen column `screenColumn`. The image is
+  /// fitted into the placement's cells, keeping its shape, and centered.
+  func placeholderSlice(_ cell: KittyPlaceholder.Cell, row: Int, column: Int, count: Int,
+                        screenRow: Int, screenColumn: Int, alternate: Bool,
+                        cellWidth: Int, cellHeight: Int) -> KittyImagePlacement? {
+    guard let image = images[cell.image], let placement = placements.last(where: {
+      $0.virtual && $0.image == cell.image && (cell.placement == 0 || $0.id == cell.placement)
+    }) else { return nil }
+    let cw = Double(max(1, cellWidth)), ch = Double(max(1, cellHeight))
+    let source = placement.source
+    let boxWidth = Double(placement.cells[0]) * cw, boxHeight = Double(placement.cells[1]) * ch
+    let scale = min(boxWidth / Double(source[2]), boxHeight / Double(source[3]))
+    let drawnX = (boxWidth - Double(source[2]) * scale) / 2, drawnY = (boxHeight - Double(source[3]) * scale) / 2
+    // The part of the drawn image inside these cells, in box pixels.
+    let left = max(Double(column) * cw, drawnX), right = min(Double(column + count) * cw, drawnX + Double(source[2]) * scale)
+    let top = max(Double(row) * ch, drawnY), bottom = min(Double(row + 1) * ch, drawnY + Double(source[3]) * scale)
+    guard right > left, bottom > top else { return nil }
+    // Whole image pixels, so neighbouring slices meet without a seam: each
+    // takes every pixel it touches, and they overlap by less than one.
+    let x0 = max(0, Int(((left - drawnX) / scale).rounded(.down)))
+    let x1 = min(source[2], Int(((right - drawnX) / scale).rounded(.up)))
+    let y0 = max(0, Int(((top - drawnY) / scale).rounded(.down)))
+    let y1 = min(source[3], Int(((bottom - drawnY) / scale).rounded(.up)))
+    guard x1 > x0, y1 > y0 else { return nil }
+    let destinationX = drawnX + Double(x0) * scale, destinationY = drawnY + Double(y0) * scale
+    let width = Int((Double(x1 - x0) * scale).rounded()), height = Int((Double(y1 - y0) * scale).rounded())
+    guard width > 0, height > 0 else { return nil }
+    return KittyImagePlacement(
+      image: image.id, generation: image.generation, width: image.width, height: image.height,
+      source: [source[0] + x0, source[1] + y0, x1 - x0, y1 - y0],
+      row: screenRow, column: screenColumn, columns: count, rows: 1,
+      offset: [Int((destinationX - Double(column) * cw).rounded()), Int((destinationY - Double(row) * ch).rounded())],
+      natural: false, z: placement.z, placement: placement.serial, extent: [width, height])
+  }
+
+  /// The newest image a program numbered `number`.
+  private func image(numbered number: UInt32) -> Image? {
+    images.values.filter { $0.number == number }.max { $0.generation < $1.generation }
+  }
+
   // `packet` is G<header>;<base64>, without the APC delimiters.
   func consume(_ packet: Data, context: KittyGraphicsContext, now: UInt64) -> KittyGraphicsOutcome {
     guard packet.first == Character("G").asciiValue else { return KittyGraphicsOutcome() }
@@ -179,8 +232,13 @@ final class KittyGraphicsStore {
       if action == "d" { return outcome(fields: incoming, result: delete(incoming, context: context)) }
       if action == "p" {
         let id = UInt32((try? number(incoming, "i", default: 0)) ?? 0)
-        guard let image = images[id] else { return outcome(fields: incoming, result: .failure(.notFound)) }
-        return outcome(fields: incoming, result: place(incoming, image: image, context: context))
+        let numbered = UInt32((try? number(incoming, "I", default: 0)) ?? 0)
+        guard let image = numbered != 0 ? self.image(numbered: numbered) : images[id] else {
+          return outcome(fields: incoming, result: .failure(.notFound))
+        }
+        var fields = incoming
+        if numbered != 0 { fields["i"] = String(image.id) }
+        return outcome(fields: fields, result: place(fields, image: image, context: context))
       }
       guard action == "t" || action == "T" || action == "q" else { return outcome(fields: incoming, result: .failure(.unsupported)) }
       upload = Upload(fields: incoming, bytes: Data(), started: now, lastChunk: now)
@@ -202,7 +260,11 @@ final class KittyGraphicsStore {
     } catch let error as KittyGraphicsError { return outcome(fields: upload.fields, result: .failure(error)) }
       catch { return outcome(fields: upload.fields, result: .failure(.invalid)) }
     if more { pending = upload; return KittyGraphicsOutcome() }
-    return outcome(fields: upload.fields, result: finish(upload, context: context))
+    resolvedID = 0
+    let result = finish(upload, context: context)
+    var fields = upload.fields
+    if fields["I"] != nil, resolvedID != 0 { fields["i"] = String(resolvedID) }
+    return outcome(fields: fields, result: result)
   }
 
   private func fields(_ header: Data) -> [Character: String]? {
@@ -222,12 +284,16 @@ final class KittyGraphicsStore {
     return Int(value)
   }
   private func validateTransport(_ values: [Character: String]) throws {
-    if values["I"] != nil { throw KittyGraphicsError.unsupported }
-    for key: Character in ["U", "P", "Q"] {
+    if values["I"] != nil && values["i"] != nil { throw KittyGraphicsError.invalid }
+    // Placements relative to another placement are not supported.
+    for key: Character in ["P", "Q"] {
       if try number(values, key, default: 0) != 0 { throw KittyGraphicsError.unsupported }
     }
+    guard try number(values, "U", default: 0) <= 1 else { throw KittyGraphicsError.invalid }
     let type = values["t"] ?? "d"
-    guard type == "d" else { throw KittyGraphicsError.unsupported }
+    guard ["d", "f", "t", "s"].contains(type) else { throw KittyGraphicsError.unsupported }
+    // A file, a temporary file or shared memory is named in one chunk.
+    if type != "d", try number(values, "m", default: 0) != 0 { throw KittyGraphicsError.invalid }
     if let compression = values["o"], compression != "z" { throw KittyGraphicsError.unsupported }
     let format = try number(values, "f", default: 32)
     guard format == 24 || format == 32 || format == 100 else { throw KittyGraphicsError.unsupported }
@@ -238,11 +304,15 @@ final class KittyGraphicsStore {
       guard width * height * 4 <= Self.maximumImageBytes else { throw KittyGraphicsError.tooLarge }
     }
   }
+  /// The id `finish` gave an image the program numbered, for the reply.
+  private var resolvedID: UInt32 = 0
   private func finish(_ upload: Upload, context: KittyGraphicsContext) -> Result<(Int, Int)?, KittyGraphicsError> {
     do {
-      let decoded = try decode(upload.fields, bytes: upload.bytes)
+      let data = try KittyTransport.read(upload.fields, payload: upload.bytes, limit: Self.maximumImageBytes)
+      let decoded = try decode(upload.fields, bytes: data)
       if upload.fields["a"] == "q" { return .success(nil) }
       var id = (try? number(upload.fields, "i", default: 0)) ?? 0
+      let numbered = UInt32((try? number(upload.fields, "I", default: 0)) ?? 0)
       if id == 0 {
         guard let available = (1...Int(UInt32.max)).reversed().first(where: { images[UInt32($0)] == nil }) else { throw KittyGraphicsError.noSpace }
         id = available
@@ -250,7 +320,8 @@ final class KittyGraphicsStore {
       guard serial < UInt64.max else { throw KittyGraphicsError.noSpace }
       let generation = serial + 1
       let image = Image(id: UInt32(id), generation: generation, alternate: context.alternate, width: decoded.width,
-        height: decoded.height, rgba: decoded.rgba)
+        height: decoded.height, rgba: decoded.rgba, number: numbered)
+      resolvedID = UInt32(id)
       if upload.fields["a"] == "T" { _ = try layout(upload.fields, image: image, context: context, serial: generation) }
       try makeRoom(replacing: UInt32(id), size: image.rgba.count)
       serial = generation
@@ -426,9 +497,11 @@ final class KittyGraphicsStore {
     guard let z = Int32(values["z"] ?? "0") else { throw KittyGraphicsError.invalid }
     let movement = try number(values, "C", default: 0)
     guard movement <= 1 else { throw KittyGraphicsError.invalid }
+    let virtual = try number(values, "U", default: 0) == 1
     let placement = Placement(image: image.id, id: UInt32(id), serial: serial, alternate: context.alternate,
-      row: context.row, column: context.column, source: [x, y, width, height], cells: [c, r], offset: [ox, oy], natural: natural, z: Int(z))
-    return (placement, movement == 0 ? (c, r) : nil)
+      row: context.row, column: context.column, source: [x, y, width, height], cells: [c, r], offset: [ox, oy], natural: natural, z: Int(z),
+      virtual: virtual)
+    return (placement, movement == 0 && !virtual ? (c, r) : nil)
   }
   private func place(_ values: [Character: String], image: Image, context: KittyGraphicsContext) -> Result<(Int, Int)?, KittyGraphicsError> {
     do {
@@ -442,18 +515,52 @@ final class KittyGraphicsStore {
       catch { return .failure(.invalid) }
   }
   private func delete(_ values: [Character: String], context: KittyGraphicsContext) -> Result<(Int, Int)?, KittyGraphicsError> {
-    guard let kind = (values["d"] ?? "a").first, (values["d"] ?? "a").count == 1, "aAiIzZ".contains(kind) else { return .failure(.unsupported) }
-    let image = UInt32((try? number(values, "i", default: 0)) ?? 0)
-    guard let rawPlacement = try? number(values, "p", default: 0), let z = Int32(values["z"] ?? "0") else { return .failure(.invalid) }
+    let selector = values["d"] ?? "a"
+    guard selector.count == 1, let kind = selector.first, "aAiInNcCpPqQrRxXyYzZfF".contains(kind) else { return .failure(.unsupported) }
+    // Animation frames are not kept, so there are none to delete.
+    if kind == "f" || kind == "F" { return .success(nil) }
+    guard let rawImage = try? number(values, "i", default: 0), let rawPlacement = try? number(values, "p", default: 0),
+      let x = try? number(values, "x", default: 0), let y = try? number(values, "y", default: 0),
+      let rawNumber = try? number(values, "I", default: 0), let z = Int32(values["z"] ?? "0")
+    else { return .failure(.invalid) }
     let placement = UInt32(rawPlacement)
-    var removeResources = Set<UInt32>()
-    if kind == "I" && placement == 0 { removeResources.insert(image) }
+    var image = UInt32(rawImage)
+    if kind == "n" || kind == "N" {
+      guard let numbered = self.image(numbered: UInt32(rawNumber)) else { return .success(nil) }
+      image = numbered.id
+    }
+    // A placement's cells on screen, when its first row is on screen.
+    func covers(_ old: Placement, column: Int?, row: Int?) -> Bool {
+      guard !old.virtual, old.alternate == context.alternate,
+        let top = context.screenRows.firstIndex(of: old.row) else { return false }
+      if let column, !(old.column..<(old.column + old.cells[0])).contains(column) { return false }
+      if let row, !(top..<(top + old.cells[1])).contains(row) { return false }
+      return true
+    }
+    let cursorRow = context.screenRows.firstIndex(of: context.row)
+    var touched = Set<UInt32>()
     placements.removeAll { old in
       let matches: Bool
-      switch kind { case "i", "I": matches = old.image == image && (placement == 0 || old.id == placement); case "z", "Z": matches = old.alternate == context.alternate && old.z == z; default: matches = old.alternate == context.alternate }
-      if matches { removeResources.insert(old.image) }; return matches
+      switch kind {
+      case "i", "I", "n", "N": matches = old.image == image && (placement == 0 || old.id == placement)
+      case "r", "R": matches = x <= Int(old.image) && Int(old.image) <= y
+      case "c", "C": matches = cursorRow != nil && covers(old, column: context.column, row: cursorRow)
+      case "p", "P": matches = x > 0 && y > 0 && covers(old, column: x - 1, row: y - 1)
+      case "q", "Q": matches = x > 0 && y > 0 && old.z == Int(z) && covers(old, column: x - 1, row: y - 1)
+      case "x", "X": matches = x > 0 && covers(old, column: x - 1, row: nil)
+      case "y", "Y": matches = y > 0 && covers(old, column: nil, row: y - 1)
+      case "z", "Z": matches = !old.virtual && old.alternate == context.alternate && old.z == Int(z)
+      default: matches = !old.virtual && old.alternate == context.alternate
+      }
+      if matches { touched.insert(old.image) }
+      return matches
     }
-    if kind.isUppercase { for id in removeResources where !placements.contains(where: { $0.image == id }) { if let removed = images.removeValue(forKey: id) { bytes -= removed.rgba.count } } }
+    if kind == "I" || kind == "N", placement == 0 { touched.insert(image) }
+    if kind.isUppercase {
+      for id in touched where !placements.contains(where: { $0.image == id }) {
+        if let removed = images.removeValue(forKey: id) { bytes -= removed.rgba.count }
+      }
+    }
     return .success(nil)
   }
   private func makeRoom(replacing id: UInt32, size: Int) throws {
@@ -467,14 +574,16 @@ final class KittyGraphicsStore {
   }
   private func outcome(fields: [Character: String], result: Result<(Int, Int)?, KittyGraphicsError>) -> KittyGraphicsOutcome {
     let id = (try? number(fields, "i", default: 0)) ?? 0, quiet = (try? number(fields, "q", default: 0)) ?? 2
+    let numbered = (try? number(fields, "I", default: 0)) ?? 0
     let reply: Data?
-    if id == 0 || quiet == 2 || (quiet == 1 && result.isSuccess) { reply = nil }
+    if (id == 0 && numbered == 0) || quiet == 2 || (quiet == 1 && result.isSuccess) { reply = nil }
     else {
       let placement = (try? number(fields, "p", default: 0)) ?? 0
-      let suffix = placement == 0 ? "" : ",p=\(placement)"
+      let suffix = (id == 0 ? "" : "i=\(id)") + (numbered == 0 ? "" : (id == 0 ? "" : ",") + "I=\(numbered)")
+        + (placement == 0 ? "" : ",p=\(placement)")
       let value: String
       switch result { case .success: value = "OK"; case .failure(let error): value = error.wire }
-      reply = Data("\u{1b}_Gi=\(id)\(suffix);\(value)\u{1b}\\".utf8)
+      reply = Data("\u{1b}_G\(suffix);\(value)\u{1b}\\".utf8)
     }
     return KittyGraphicsOutcome(reply: reply, advance: (try? result.get()) ?? nil)
   }
@@ -487,7 +596,9 @@ final class KittyGraphicsStore {
       let value = fields[key]!
       switch key {
       case "f": guard ["24", "32", "100"].contains(value) else { return nil }
-      case "t": guard value == "d" else { return nil }
+      case "t": guard ["d", "f", "t", "s"].contains(value) else { return nil }
+      case "U": guard value == "1" else { return nil }
+      case "I", "p": break
       case "o": guard value == "z" else { return nil }
       case "C": guard value == "1" else { return nil }
       case "s", "v", "c", "r", "x", "y", "w", "h", "X", "Y", "z": break

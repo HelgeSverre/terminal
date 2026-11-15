@@ -1377,7 +1377,7 @@ private final class TerminalEmulator {
     let s = screen
     let outcome = graphics.consume(Data(payload.utf8), context: KittyGraphicsContext(
       alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
-      cellWidth: cellPixelWidth, cellHeight: cellPixelHeight), now: clock)
+      cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id)), now: clock)
     if let reply = outcome.reply { replies.append(reply) }
     if let advance = outcome.advance {
       resetClusterBoundary()
@@ -1401,7 +1401,7 @@ private final class TerminalEmulator {
       width: width, height: height, rgba: rgba, columns: wanted, rows: wantedRows,
       context: KittyGraphicsContext(
         alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
-        cellWidth: cellPixelWidth, cellHeight: cellPixelHeight))
+        cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id)))
     else { return }
     resetClusterBoundary()
     for _ in 0..<(below ? cells.rows : cells.rows - 1) { index(reverse: false) }
@@ -1665,7 +1665,59 @@ private final class TerminalEmulator {
       for (index, row) in history.enumerated() { positions[row.id] = index - start }
       for (index, row) in primary.rows.enumerated() { positions[row.id] = history.count + index - start }
     }
-    return graphics.visible(alternate: usingAlternate, positions: positions, height: rowCount)
+    var shown = graphics.visible(alternate: usingAlternate, positions: positions, height: rowCount)
+    if graphics.hasVirtualPlacements { shown += placeholderImages(offset: offset) }
+    return shown
+  }
+  /// The image slices behind the Unicode placeholders on screen. Runs of
+  /// placeholder cells that continue one another become one slice each.
+  private func placeholderImages(offset: Int) -> [KittyImagePlacement] {
+    var rows: [TerminalRow] = []
+    if usingAlternate { rows = alternate.rows } else {
+      let start = history.count - min(offset, history.count)
+      for index in start..<(start + rowCount) {
+        if index < history.count { rows.append(history[index]) }
+        else if index - history.count < primary.rows.count { rows.append(primary.rows[index - history.count]) }
+      }
+    }
+    var result: [KittyImagePlacement] = []
+    for (screenRow, row) in rows.enumerated() {
+      var run: (cell: KittyPlaceholder.Cell, start: Int, count: Int)?
+      var previous: KittyPlaceholder.Cell?
+      func flush() {
+        guard let current = run, let row = current.cell.row, let column = current.cell.column else { run = nil; return }
+        if let slice = graphics.placeholderSlice(
+          current.cell, row: row, column: column, count: current.count, screenRow: screenRow,
+          screenColumn: current.start, alternate: usingAlternate, cellWidth: cellPixelWidth, cellHeight: cellPixelHeight) {
+          result.append(slice)
+        }
+        run = nil
+      }
+      for index in 0..<row.count {
+        let cell = row.cell(index)
+        guard cell.text.unicodeScalars.first?.value == KittyPlaceholder.character,
+          var placeholder = KittyPlaceholder.read(text: cell.text, foreground: cell.style.foreground, underline: cell.style.underline)
+        else { flush(); previous = nil; continue }
+        // A cell without its row or column continues the one to its left.
+        if let left = previous, left.image == placeholder.image, left.placement == placeholder.placement {
+          if placeholder.row == nil { placeholder.row = left.row }
+          if placeholder.column == nil, placeholder.row == left.row { placeholder.column = left.column.map { $0 + 1 } }
+        }
+        if placeholder.row == nil { placeholder.row = 0 }
+        if placeholder.column == nil { placeholder.column = 0 }
+        if let current = run, current.cell.image == placeholder.image, current.cell.placement == placeholder.placement,
+           current.cell.row == placeholder.row, let first = current.cell.column,
+           placeholder.column == first + current.count, current.start + current.count == index {
+          run!.count += 1
+        } else {
+          flush()
+          run = (placeholder, index, 1)
+        }
+        previous = placeholder
+      }
+      flush()
+    }
+    return result
   }
   /// Mode 2027. Set: a grapheme cluster, such as an emoji with a skin tone,
   /// takes the cells of one character. Reset: each code point with a width
@@ -1821,7 +1873,8 @@ private final class TerminalEmulator {
     let images = visibleImages(offset: selected.offset).map {
       ImagePlacementSnapshot(image: $0.image, generation: $0.generation, width: $0.width, height: $0.height,
                              source: $0.source, row: $0.row, col: $0.column, columns: $0.columns,
-                             rows: $0.rows, offset: $0.offset, natural: $0.natural, z: $0.z, placement: $0.placement)
+                             rows: $0.rows, offset: $0.offset, natural: $0.natural, z: $0.z, placement: $0.placement,
+                             extent: $0.extent)
     }
     return (TerminalSnapshot(
       at_prompt: cursor.atPrompt, input_ready: cursor.inputReady, search: search, images: images,
@@ -2156,7 +2209,7 @@ private final class TerminalEmulator {
   private func snapshotMetadata(cursor: TerminalScreen, offset: Int,
                                 followingTail: Bool,
                                 search: (current: [[String: Int]], others: [[String: Int]])) -> [String: Any] {
-    let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement] as [String: Any] }
+    let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement, "extent": image.extent as Any? ?? NSNull()] as [String: Any] }
     var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search.current,"search_matches":search.others,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette.snapshotPalette,"default_fg":palette.snapshotDefaultForeground,"default_bg":palette.snapshotDefaultBackground]
     metadata["cwd"] = currentDirectory as Any? ?? NSNull()
     return metadata
