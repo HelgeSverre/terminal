@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 /// The Edit menu. No item has a target, so the focused view answers: the
@@ -45,3 +46,4 @@ public enum TerminalEditMenu {
     return menu
   }
 }
+#endif

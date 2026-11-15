@@ -5,7 +5,11 @@ import Metal
 /// the GPU; a Mac with a separate GPU keeps a managed copy on each side.
 enum TextureStorage {
   static func mode(for device: MTLDevice) -> MTLStorageMode {
+    #if os(macOS)
     device.hasUnifiedMemory ? .shared : .managed
+    #else
+    .shared   // Every iOS device shares memory with its GPU.
+    #endif
   }
 }
 import simd

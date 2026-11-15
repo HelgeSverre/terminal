@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#else
+import UIKit
+#endif
 import CoreText
 
 // Owns font files, face selection and the icon cascade. Both layout and drawing
@@ -39,9 +43,11 @@ package enum TerminalFont {
       }
     }
   }()
+  #if os(macOS)
   package static func appKit(size: CGFloat, family: String? = nil) -> NSFont {
     core(size: size, family: family) as NSFont
   }
+  #endif
   /// The face of an installed family, or nil when the Mac has no such
   /// family. A family without the bold or italic face gives its regular one.
   private static func installed(_ name: String, size: CGFloat, bold: Bool, italic: Bool) -> CTFont? {
@@ -104,7 +110,8 @@ package enum TerminalFont {
     }
     func line(_ value: CTFont) -> CTLine {
       CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [
-        .font: value, .foregroundColor: NSColor.white, .ligature: ligatures ? 1 : 0]))
+        .font: value, NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 1, alpha: 1),
+        .ligature: ligatures ? 1 : 0]))
     }
     var shaped = line(selected)
     var bounds = CTLineGetBoundsWithOptions(shaped, .useGlyphPathBounds)

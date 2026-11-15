@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 /// Turns scroll-wheel and trackpad deltas into whole lines.
@@ -41,3 +42,4 @@ extension ScrollAccumulator {
       startsGesture: event.phase.contains(.began) || event.phase.contains(.mayBegin))
   }
 }
+#endif

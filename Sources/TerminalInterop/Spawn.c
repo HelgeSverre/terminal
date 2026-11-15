@@ -1,4 +1,6 @@
 #include "Bridge.h"
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
 #include <util.h>
 #include <spawn.h>
 #include <fcntl.h>
@@ -199,3 +201,15 @@ TerminalProcess helge_terminal_spawn_environment(const char *launcher,const char
 cleanup:
     if(master>=0)close(master);if(slave>=0)close(slave);if(p[0]>=0)close(p[0]);if(p[1]>=0)close(p[1]);return out;
 }
+#else
+#include <errno.h>
+// iOS starts no child processes: a session there runs over a transport.
+void helge_terminal_set_program_version(const char *version){(void)version;}
+TerminalProcess helge_terminal_spawn_args(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[]){
+    (void)launcher;(void)executable;(void)cwd;(void)cols;(void)rows;(void)target_argv;
+    TerminalProcess out={-1,-1,-1,ENOTSUP,0};return out;
+}
+TerminalProcess helge_terminal_spawn_environment(const char *launcher,const char *executable,const char *cwd,uint16_t cols,uint16_t rows,char *const target_argv[],char *const extra_environment[]){
+    (void)extra_environment;return helge_terminal_spawn_args(launcher,executable,cwd,cols,rows,target_argv);
+}
+#endif

@@ -461,6 +461,13 @@ public final class TerminalSession: @unchecked Sendable {
     precondition(!hasView, "A TerminalSession serves one TerminalCanvasView")
     hasView = true
   }
+  /// Gives the session up when its view goes, so a new view can show it:
+  /// SwiftUI may make a view again for the same session.
+  @MainActor package func detachView() {
+    hasView = false
+    onSnapshot = nil
+    onViewStatus = nil
+  }
   /// Called once, when the child has exited and its last output is parsed.
   public var onEnd: (@MainActor (SessionEnd) -> Void)?
   package var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?

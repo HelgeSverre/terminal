@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import TerminalEngine
 import TerminalHost
@@ -633,3 +634,4 @@ package final class AccessibleTerminalLink: NSAccessibilityElement {
     return activate(activation)
   }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 /// What the count label beside the query reports.
@@ -251,3 +252,4 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
   @objc func findNext(_ sender: Any?) { onStep?(true) }
   @objc func findPrevious(_ sender: Any?) { onStep?(false) }
 }
+#endif

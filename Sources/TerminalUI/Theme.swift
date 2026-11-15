@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#else
+import UIKit
+#endif
 
 // Shared visual language from Trace/Splash/Glue/Shepherd. Terminal text uses
 // user-installed Obel Mono; surrounding controls retain native macOS typography.
@@ -15,11 +19,13 @@ package enum TerminalTheme {
   package static let danger: UInt32 = 0xf87171
   static let contentInset: CGFloat = 8
   static let windowInset: CGFloat = 24
+  #if os(macOS)
   package static func color(_ rgb: UInt32) -> NSColor {
     NSColor(
       srgbRed: CGFloat((rgb >> 16) & 255) / 255,
       green: CGFloat((rgb >> 8) & 255) / 255, blue: CGFloat(rgb & 255) / 255, alpha: 1)
   }
+  #endif
   static func linear(_ rgb: UInt32, alpha: Float = 1) -> SIMD4<Float> {
     func channel(_ value: UInt32) -> Float {
       let s = Float(value & 255) / 255
@@ -27,12 +33,14 @@ package enum TerminalTheme {
     }
     return SIMD4(channel(rgb >> 16), channel(rgb >> 8), channel(rgb), alpha)
   }
+  #if os(macOS)
   package static func apply(to window: NSWindow) {
     window.appearance = NSAppearance(named: .darkAqua)
     window.backgroundColor = color(surface)
     window.titlebarAppearsTransparent = true
     window.titlebarSeparatorStyle = .line
   }
+  #endif
 }
 
 extension TerminalTheme {

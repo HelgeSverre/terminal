@@ -26,7 +26,7 @@ not cover.
 
 | | |
 | --- | --- |
-| Platform | macOS 14 or later, AppKit. Apple silicon is what the test suite runs on; the app's releases are universal. On an Intel Mac (MacBookPro16,1, macOS 14.8.7) rendering and a child process on a PTY were checked by hand with cross-compiled builds; the test suite has not run there. |
+| Platform | macOS 14 or later with AppKit, or iOS 17 or later with UIKit (a session there runs over a transport; iOS starts no processes). SwiftUI on both. Apple silicon is what the test suite runs on; the app's releases are universal. On an Intel Mac (MacBookPro16,1, macOS 14.8.7) rendering and a child process on a PTY were checked by hand with cross-compiled builds; the test suite has not run there. |
 | Swift tools | 6.0. A host may use the Swift 5 or the Swift 6 language mode; the libraries themselves are compiled in Swift 5 mode. |
 | Graphics | A Metal device |
 | Sandbox | The app must be allowed to start child processes. A sandboxed app can show the view but cannot usefully run a login shell. |
@@ -175,6 +175,33 @@ with a message. `close()` ends the session: the child is sent `SIGHUP`, and
 reference to a session does the same, so a host that drops a view and its
 session does not leave a shell running. After `close()` the session does not
 call `onEnd`.
+
+### SwiftUI and iOS
+
+`TerminalView` shows a session in SwiftUI, on macOS and iOS:
+
+```swift
+struct ContentView: View {
+  let session: TerminalSession          // one per view
+  let rendering: TerminalRendering      // one for the app
+  @State private var title = ""
+  var body: some View {
+    TerminalView(session: session, rendering: rendering)
+      .onTerminalTitle { title = $0 }
+      .navigationTitle(title)
+  }
+}
+```
+
+On iOS, `TerminalCanvasView` is a `UIView`. A tap brings up the keyboard;
+hardware keys such as the arrows, Escape, Tab and Control with a letter go to
+the program encoded for its modes, and a one-finger drag scrolls the
+history. iOS starts no processes, so the session runs over a
+`TerminalTransport` (an SSH library, for one); `LaunchSpec` fails there with
+`.spawn(errno: ENOTSUP)`. `Examples/iOSCheck` runs the view on the
+simulator with `just ios-check`. What the iOS view does not have yet:
+selection, copy and paste, search, links, the find bar and accessibility
+beyond a label.
 
 ### A session without a local process
 
@@ -363,8 +390,8 @@ The fonts keep their own licenses; see the
   search.
 - **Shell integration without the helper.** The zsh integration is only
   found beside `TerminalLauncher`.
-- **Other platforms.** No iOS. Intel Macs and macOS 14 have had a manual
-  check only; see Requirements.
+- **The iOS view is new.** It has no selection, copy and paste, search,
+  links or find bar yet, and has run on the simulator only.
   There is no iOS view and no SwiftUI wrapper; wrap `TerminalCanvasView` in
   an `NSViewRepresentable` for SwiftUI.
 - **Zsh shell integration.** The app's integration scripts are part of its

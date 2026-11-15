@@ -49,6 +49,11 @@ package enum TerminalResources {
     if let compiled = bundle.url(forResource: "Terminal", withExtension: "metallib") {
       return try device.makeLibrary(URL: compiled)
     }
+    // Xcode compiles the package's shader source into the bundle's default
+    // library instead of copying it.
+    if bundle.url(forResource: "default", withExtension: "metallib") != nil {
+      return try device.makeDefaultLibrary(bundle: bundle)
+    }
     guard let source = bundle.url(forResource: "Terminal", withExtension: "metal") else { return nil }
     return try device.makeLibrary(source: String(contentsOf: source, encoding: .utf8), options: nil)
   }

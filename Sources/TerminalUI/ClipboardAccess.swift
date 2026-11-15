@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import TerminalHost
 
@@ -179,3 +180,4 @@ public final class ClipboardAccess {
     return nil
   }
 }
+#endif

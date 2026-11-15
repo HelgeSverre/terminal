@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import QuartzCore
 import TerminalEngine
@@ -171,6 +172,8 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   deinit {
     if let linkModifierMonitor { NSEvent.removeMonitor(linkModifierMonitor) }
     detachRenderingSurface()
+    let session = session
+    MainActor.assumeIsolated { session.detachView() }
   }
   private func display(_ value: TerminalSnapshot) {
     let previousSelectionRevision = snapshot?.selection.revision
@@ -997,3 +1000,4 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     return false
   }
 }
+#endif

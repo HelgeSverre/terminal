@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#else
+import UIKit
+#endif
 
 /// The font families a terminal view can be given as `fontFamily`.
 public enum TerminalFonts {
@@ -12,13 +16,12 @@ public enum TerminalFonts {
   /// bundled ones. Asking walks every installed family, so ask when a
   /// font menu is opened rather than at launch.
   public static func installedFamilies() -> [String] {
-    let manager = NSFontManager.shared
     let bundled = Set(bundledFamilies.map { $0.lowercased() })
-    return manager.availableFontFamilies.filter { family in
-      guard !bundled.contains(family.lowercased()), !family.hasPrefix("."),
-        let font = manager.font(withFamily: family, traits: [], weight: 5, size: 12)
-      else { return false }
-      return font.isFixedPitch
+    let names = (CTFontManagerCopyAvailableFontFamilyNames() as? [String]) ?? []
+    return names.filter { family in
+      guard !bundled.contains(family.lowercased()), !family.hasPrefix(".") else { return false }
+      let font = CTFontCreateWithName(family as CFString, 12, nil)
+      return (CTFontCopyFamilyName(font) as String) == family && CTFontGetSymbolicTraits(font).contains(.traitMonoSpace)
     }.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
   }
 }

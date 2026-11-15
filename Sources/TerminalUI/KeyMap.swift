@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 // macOS virtual key codes from HIToolbox/Events.h. Bridge keypad IDs follow
@@ -153,3 +154,4 @@ enum NativeKeyMap {
   ]
   private static func isTextKeypad(_ code: UInt32) -> Bool { (300...317).contains(code) && code != 315 }
 }
+#endif

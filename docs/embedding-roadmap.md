@@ -135,6 +135,11 @@ is not part of the library by design.
 - **Bundled fonts:** JetBrains Mono, Fira Code, Hack and IBM Plex Mono come
   with the package; `TerminalFonts` lists them and the installed families.
   The app's Settings has a font menu and a ligatures checkbox.
+- **iOS and SwiftUI:** the engine and session build for iOS 17 (sessions
+  over a transport), `TerminalCanvasView` has a UIKit form, and
+  `TerminalView` wraps either for SwiftUI. Checked on the iOS simulator by
+  a test that reads the rendered frame back. Xcode builds compile the
+  shaders into `default.metallib`, which the renderer now loads.
 - **Conformance evidence:** esctest2 runs in CI against the emulator, gated
   on a known-good list (320 of 567 cases pass), and a fuzzer runs 150 cases
   in the suite and two minutes in CI. See `docs/conformance.md`.

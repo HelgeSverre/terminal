@@ -393,6 +393,11 @@ esctest-update: _esctest-build
     git -C target/esctest2 checkout -q {{esctest_commit}} 2>/dev/null || (git -C target/esctest2 fetch -q && git -C target/esctest2 checkout -q {{esctest_commit}})
     xcrun swiftc -swift-version 5 -O {{emulator_sources}} Tests/Programs/EscTest.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/esctest
 
+# Run the terminal view on the iOS simulator: Examples/iOSCheck.
+[group('test')]
+ios-check device="iPhone 16":
+    cd Examples/iOSCheck && xcodebuild test -quiet -scheme iOSCheck-Package -destination "platform=iOS Simulator,name={{device}}" -derivedDataPath .build-xc
+
 # Fuzz the emulator for a number of seconds, with Address Sanitizer and
 # exclusivity checks. Heavy: one at a time, like the test suite.
 [group('test')]
