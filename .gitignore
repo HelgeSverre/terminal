@@ -29,3 +29,5 @@
 /reports/fuzz-*.bin
 /reports/esctest.json
 /reports/esctest.log
+/.build-ios/
+/.build-xc/
