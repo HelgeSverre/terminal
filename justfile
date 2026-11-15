@@ -41,6 +41,11 @@ clean:
 @dev *args: build
     open -n "$TERMINAL_PROJECT_ROOT/dist/Terminal.app" --args "$@"
 
+# Preview the current version’s changelog in Sparkle; no update is installed.
+[group('run')]
+@update-preview: _dev
+    target/native/dev update-preview
+
 # Run the dev build under LLDB.
 [group('run')]
 @debug: build

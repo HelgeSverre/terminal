@@ -55,6 +55,10 @@ let application: [Target] = [
   .executableTarget(
     name: "dev", path: "tools/Dev", exclude: ["KeyEcho.c", "Stamp.c"],
     swiftSettings: [.swiftLanguageMode(.v5)]),
+  .executableTarget(
+    name: "UpdatePreview", dependencies: [.product(name: "Sparkle", package: "Sparkle")],
+    path: "tools/UpdatePreview", swiftSettings: [.swiftLanguageMode(.v5)],
+    linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]),
   .testTarget(
     name: "DevTests", dependencies: ["dev"], path: "Tests/DevTests",
     swiftSettings: [.swiftLanguageMode(.v5)]),

@@ -33,6 +33,19 @@ Manual runs upload signed artifacts to the workflow run and skip GitHub Releases
 and Homebrew. Rerunning a failed tag run resumes publication when the uploaded
 assets match; a changed build needs a new version.
 
+## Preview the update dialog
+
+Run `just update-preview` (or `dev update-preview`) to open Sparkle’s real
+update dialog with the current bundle version’s Markdown notes. This builds a
+separate preview app from the development bundle (including its icon and names),
+uses the production appcast generator, and serves its feed on an ephemeral
+loopback port with isolated updater preferences. All update choices close the preview before
+downloading; the feed contains no installable update. The installed terminal
+and published releases are untouched. Close the window when finished.
+
+The helper’s build products are in `target/update-preview`. Each launch keeps
+its bundle in the user’s Caches directory so it survives checkout cleanup.
+
 ## Credentials
 
 Recovery copies live in Helge's **Personal** 1Password vault:

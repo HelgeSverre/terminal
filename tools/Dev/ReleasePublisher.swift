@@ -212,29 +212,38 @@ enum ReleasePublisher {
       guard UpdateKey.verify(signature: signature, of: archive, publicKey: publicKey) else {
         throw Failure("the update signature does not verify against SUPublicEDKey")
       }
-      let zipName = (zipPath as NSString).lastPathComponent
+      let xml = try appcastXML(metadata: metadata, buildVersion: field("CFBundleVersion"),
+                               minimumSystemVersion: field("LSMinimumSystemVersion"),
+                               archiveBytes: archive.count, signature: signature, now: now)
+      let output = releaseDirectory + "/appcast.xml"
+      try write(xml, to: output)
+      return .written(output)
+    }
+
+    /// Production and preview share every presentation field and the notes source.
+    func appcastXML(metadata: Metadata, buildVersion: String, minimumSystemVersion: String,
+                    archiveBytes: Int, signature: String, now: Date = Date(),
+                    archiveURL: String? = nil) throws -> String {
       let item = FeedElement("item", [
         FeedElement("title", text: "Helge Terminal \(metadata.version)"),
         FeedElement("pubDate", text: rfc822(now)),
-        FeedElement("sparkle:version", text: try field("CFBundleVersion")),
-        FeedElement("sparkle:shortVersionString", text: shortVersion),
-        FeedElement("sparkle:minimumSystemVersion", text: try field("LSMinimumSystemVersion")),
+        FeedElement("sparkle:version", text: buildVersion),
+        FeedElement("sparkle:shortVersionString", text: metadata.version),
+        FeedElement("sparkle:minimumSystemVersion", text: minimumSystemVersion),
         FeedElement("description", text: try releaseNotes(version: metadata.version),
                     attributes: [("sparkle:format", "markdown")]),
         FeedElement("sparkle:fullReleaseNotesLink",
                     text: "https://github.com/\(terminalRepository)/releases/tag/\(metadata.tag)"),
         FeedElement("enclosure", attributes: [
-          ("url", "https://github.com/\(terminalRepository)/releases/download/\(metadata.tag)/\(zipName)"),
-          ("length", String(archive.count)), ("type", "application/octet-stream"),
+          ("url", archiveURL ?? "https://github.com/\(terminalRepository)/releases/download/\(metadata.tag)/HelgeTerminal-\(metadata.version)-universal.zip"),
+          ("length", String(archiveBytes)), ("type", "application/octet-stream"),
           ("sparkle:edSignature", signature),
         ]),
       ])
       let feed = FeedElement("rss", [FeedElement("channel", [FeedElement("title", text: "Helge Terminal"), item])],
                              attributes: [("version", "2.0"),
                                           ("xmlns:sparkle", "http://www.andymatuschak.org/xml-namespaces/sparkle")])
-      let output = releaseDirectory + "/appcast.xml"
-      try write("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" + feed.render() + "\n", to: output)
-      return .written(output)
+      return "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" + feed.render() + "\n"
     }
 
     private func rfc822(_ date: Date) -> String {
