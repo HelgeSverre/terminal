@@ -14,6 +14,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   private var snapshot: TerminalSnapshot?
   private var accessible: AccessibilityProjection?
   private var hoveredLink: VisibleLinkProjection.Occurrence?
+  private var linkTargetPreview: LinkTargetPreview?
   private var linkModifierMonitor: Any?
   private var localLinkPress = false
   private var selectionNotice: NSTextField?
@@ -252,6 +253,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
       self?.activateLink(activation) ?? false
     }) ?? []
     if let selectionNotice { children.append(selectionNotice) }
+    if let linkTargetPreview { children.append(linkTargetPreview) }
     return children
   }
   public override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
@@ -315,6 +317,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     fontPoints = configuration.fontSize
     session.configure(configuration.session)
     findBar?.apply(TerminalChromeColors(configuration.session.colors))
+    updateLinkTargetPreview()
     updateGeometry()
   }
   package func updateFocus() {
@@ -325,6 +328,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
         _ = session.selection(.commit)
       }
       hoveredLink = nil
+      updateLinkTargetPreview()
       releaseOwnedKeys()
       if hasMarkedText() { cancelComposition() }
     }
@@ -355,7 +359,11 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     updateLinkHover(locationInWindow: event.locationInWindow, modifiers: event.modifierFlags)
   }
   public override func mouseExited(with event: NSEvent) {
-    if hoveredLink != nil { hoveredLink = nil; redraw() }
+    if hoveredLink != nil {
+      hoveredLink = nil
+      updateLinkTargetPreview()
+      redraw()
+    }
   }
   public override func cursorUpdate(with event: NSEvent) {
     updateLinkHover(locationInWindow: event.locationInWindow, modifiers: event.modifierFlags)
@@ -389,7 +397,11 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     return admitted
   }
   private func updateLinkHoverForCurrentPointer(modifiers: NSEvent.ModifierFlags) {
-    guard let window else { return }
+    guard let window else {
+      hoveredLink = nil
+      updateLinkTargetPreview()
+      return
+    }
     updateLinkHover(locationInWindow: window.mouseLocationOutsideOfEventStream, modifiers: modifiers)
   }
   private func updateLinkHover(locationInWindow: NSPoint, modifiers: NSEvent.ModifierFlags) {
@@ -398,7 +410,23 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     let value = active && modifiers.contains(.command)
       ? linkOccurrence(locationInWindow: locationInWindow) : nil
     if hoveredLink != value { hoveredLink = value; redraw() }
+    updateLinkTargetPreview(pointer: point)
     if active { (value == nil ? NSCursor.iBeam : NSCursor.pointingHand).set() }
+  }
+  private func updateLinkTargetPreview(pointer: NSPoint? = nil) {
+    guard let target = hoveredLink?.target else {
+      linkTargetPreview?.removeFromSuperview()
+      linkTargetPreview = nil
+      return
+    }
+    let preview = linkTargetPreview ?? LinkTargetPreview(frame: .zero)
+    if linkTargetPreview == nil {
+      linkTargetPreview = preview
+      addSubview(preview)
+    }
+    preview.show(target, colors: TerminalChromeColors(configuration.session.colors))
+    let location = pointer ?? window.map { convert($0.mouseLocationOutsideOfEventStream, from: nil) } ?? .zero
+    preview.position(in: bounds, pointer: location)
   }
   public override func rightMouseDragged(with event: NSEvent) {
     _ = reportMouse(event, button: 34, release: false)
@@ -484,6 +512,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
       cellWidth: cellWidth, cellHeight: cellHeight, fontSize: fontPoints * scale, family: configuration.fontFamily)
     session.resize(cols: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
     positionSelectionNotice()
+    updateLinkTargetPreview()
     inputContext?.invalidateCharacterCoordinates()
     redraw()
   }
