@@ -1,3 +1,4 @@
+#if TERMINAL_DIAGNOSTICS
 import Foundation
 
 /// SplitMix64. The intense resize smoke draws its layout, its resize schedule
@@ -93,3 +94,4 @@ enum SmokeStream {
     return true
   }
 }
+#endif

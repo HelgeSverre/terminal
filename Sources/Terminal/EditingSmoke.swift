@@ -1,3 +1,4 @@
+#if TERMINAL_DIAGNOSTICS
 import AppKit
 import TerminalEngine
 
@@ -164,3 +165,4 @@ import TerminalEngine
     if !CommandLine.arguments.contains("--keep-open") { NSApp.terminate(nil) }
   }
 }
+#endif

@@ -1,3 +1,4 @@
+#if TERMINAL_DIAGNOSTICS
 import AppKit
 import TerminalEngine
 import TerminalUI
@@ -442,3 +443,4 @@ import TerminalUI
     if !CommandLine.arguments.contains("--keep-open") { NSApp.terminate(nil) }
   }
 }
+#endif

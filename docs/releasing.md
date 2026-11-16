@@ -5,6 +5,22 @@ and notarizes the app. A version tag publishes the ZIP, checksums, and artifact 
 `Casks/helge-terminal.rb` in [homebrew-tap](https://github.com/HelgeSverre/homebrew-tap).
 That cask update also refreshes [tap.helgesver.re](https://tap.helgesver.re/).
 
+Tests run on their own runner. Only after they pass does a fresh runner build,
+sign and notarize the release; it installs no Homebrew test tools and restores
+no test cache or artifacts. Each runner compiles the developer tool once,
+replacing the old job's two compilations around cache restoration. The app's
+development and universal release builds still each run once.
+
+The release app excludes smoke-test entry points, `--execute`, font-catalog
+generation, and diagnostic file writers. `just build` enables these with
+`TERMINAL_DIAGNOSTICS`; the test suites enable them as well. For measurements,
+`just diagnostic-build` retains the release build's universal architectures and
+whole-module optimization while enabling those entry points. The benchmark
+recipes use this configuration. Neither the
+universal release build nor a SwiftPM release build without test hooks enables
+them. Working-directory, window-size and background launch options remain
+available.
+
 ## Publish a version
 
 Set `CFBundleShortVersionString` and increment `CFBundleVersion` in

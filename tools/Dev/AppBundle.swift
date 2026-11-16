@@ -1,18 +1,18 @@
 import Foundation
 
-/// Builds the app bundle: `dev bundle development|release`.
+/// Builds the app bundle: `dev bundle development|release|diagnostic`.
 ///
 /// The package compiles the app and its launcher. What a package cannot do
 /// is done here: the icon, the Metal library, the terminfo database, the
 /// bundle's layout and its signature.
 enum AppBundle {
   static let command = Command(
-    name: "bundle", usage: "development|release",
+    name: "bundle", usage: "development|release|diagnostic",
     summary: "Compile the app and assemble dist/Terminal.app.",
     run: run)
 
   enum Configuration: String {
-    case development, release
+    case development, release, diagnostic
 
   }
 
@@ -30,7 +30,8 @@ enum AppBundle {
     }
 
     let products = try Console.step("Compile Terminal (\(configuration.rawValue))") {
-      try configuration == .development ? compileIncrementally() : compileWholeModule(into: scratch + "/release")
+      try configuration == .development ? compileIncrementally()
+        : compileWholeModule(into: scratch + "/" + configuration.rawValue, diagnostics: configuration == .diagnostic)
     }
     let frameworks = app + "/Contents/Frameworks"
     try Console.step("Icon, shader and terminfo") {
@@ -53,7 +54,7 @@ enum AppBundle {
       try Console.quietly(["/usr/bin/ditto", Repository.path("Resources/Terminal/ShellIntegration"),
                            resources + "/ShellIntegration"])
       try Console.quietly(["/usr/bin/ditto", Repository.path("Sources/TerminalUI/Resources/Fonts"), resources + "/Fonts"])
-      try embedUpdater(into: frameworks, universal: configuration == .release)
+      try embedUpdater(into: frameworks, universal: configuration != .development)
       // Ad hoc: a local build is signed for this machine only.
       try Console.quietly(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", frameworks + "/Sparkle.framework"])
       try Console.quietly(["/usr/bin/codesign", "--force", "--sign", "-", programs + "/TerminalLauncher"])
@@ -90,11 +91,13 @@ enum AppBundle {
   /// The release runs on Apple silicon and on Intel: each architecture is
   /// compiled on its own and the two are joined into universal programs.
   /// Returns the directory holding the two programs.
-  private static func compileWholeModule(into directory: String) throws -> String {
+  private static func compileWholeModule(into directory: String, diagnostics: Bool) throws -> String {
     try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
     // The package fetches the updater; this build only links against it.
     try Console.quietly(["swift", "package", "--package-path", Repository.root, "--scratch-path", packageDirectory, "resolve"])
-    let slices = try releaseArchitectures.map { try compileWholeModule(for: $0, into: directory + "/" + $0) }
+    let slices = try releaseArchitectures.map {
+      try compileWholeModule(for: $0, into: directory + "/" + $0, diagnostics: diagnostics)
+    }
     for program in ["TerminalApp", "TerminalLauncher"] {
       try Console.quietly(["/usr/bin/lipo", "-create"] + slices.map { $0 + "/" + program }
         + ["-output", directory + "/" + program])
@@ -106,7 +109,7 @@ enum AppBundle {
   static let releaseArchitectures = ["arm64", "x86_64"]
   static let minimumSystem = "14.0"
 
-  private static func compileWholeModule(for architecture: String, into directory: String) throws -> String {
+  private static func compileWholeModule(for architecture: String, into directory: String, diagnostics: Bool) throws -> String {
     try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
     let warnings = ["-Wall", "-Wextra", "-Werror", "-arch", architecture, "-mmacosx-version-min=" + minimumSystem]
     let interop = Repository.path("Sources/TerminalInterop")
@@ -125,7 +128,7 @@ enum AppBundle {
                                      "-emit-object", "-o", object] + swiftSources(in: "Sources/" + module))
       objects.append(object)
     }
-    try Console.quietly(compile + ["-module-name", "Terminal",
+    try Console.quietly(compile + (diagnostics ? ["-D", "TERMINAL_DIAGNOSTICS"] : []) + ["-module-name", "Terminal",
                          "-F", (updaterFramework as NSString).deletingLastPathComponent, "-framework", "Sparkle",
                          "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
                          "-framework", "AppKit", "-framework", "QuartzCore", "-framework", "Metal",

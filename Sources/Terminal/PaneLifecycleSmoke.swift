@@ -1,3 +1,4 @@
+#if TERMINAL_DIAGNOSTICS
 import AppKit
 import QuartzCore
 import TerminalHost
@@ -553,3 +554,4 @@ import TerminalUI
     }
   }
 }
+#endif

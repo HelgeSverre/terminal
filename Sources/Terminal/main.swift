@@ -3,6 +3,7 @@ import TerminalInterop
 import TerminalHost
 import TerminalUI
 
+#if TERMINAL_DIAGNOSTICS
 /// A smoke run must never observe or mutate the user's clipboard. The report
 /// path already belongs to the fixture, so it is a stable private-board scope.
 func selectionSmokeReportPath() -> String? {
@@ -18,6 +19,7 @@ func paneLifecycleSmokeReportPath() -> String? {
   else { return nil }
   return URL(fileURLWithPath: CommandLine.arguments[index + 1]).standardizedFileURL.path
 }
+#endif
 
 private func terminalMinimumSize(_ view: NSView) -> NSSize {
   if let pane = view as? TerminalPanePresentationView { return pane.minimumSize }
@@ -34,6 +36,7 @@ private func terminalMinimumSize(_ view: NSView) -> NSSize {
       width: max(first.width, second.width), height: first.height + second.height + split.dividerThickness)
 }
 
+#if TERMINAL_DIAGNOSTICS
 func selectionSmokePasteboardName(reportPath: String) -> NSPasteboard.Name {
   var hash: UInt64 = 0xcbf29ce484222325
   for byte in reportPath.utf8 {
@@ -42,6 +45,7 @@ func selectionSmokePasteboardName(reportPath: String) -> NSPasteboard.Name {
   }
   return NSPasteboard.Name("no.helgesverre.terminal.selection-smoke.\(String(hash, radix: 16))")
 }
+#endif
 
 final class TerminalWindow: NSWindowController, NSWindowDelegate {
   private struct PaneTitle {
@@ -66,10 +70,14 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   private var panePresentations: [ObjectIdentifier: TerminalPanePresentationView] = [:]
   init(launch: LaunchSpec? = nil) {
     initialLaunch = launch
+    #if TERMINAL_DIAGNOSTICS
     diagnosticSplitLaunch =
       CommandLine.arguments.contains("--resize-smoke") || paneLifecycleSmokeReportPath() != nil
         || CommandLine.arguments.contains(IntenseResizeSmokeTest.flag)
       ? launch : nil
+    #else
+    diagnosticSplitLaunch = nil
+    #endif
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 1000, height: 680),
       styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false
@@ -162,6 +170,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       }
       if text == "Session finished" {
         if let pane { self?.recordSessionFinished(for: pane) }
+        #if TERMINAL_DIAGNOSTICS
         if CommandLine.arguments.contains("--exit-after-command") {
           let arguments = Array(CommandLine.arguments.prefix { $0 != "--execute" })
           if let index = arguments.firstIndex(of: "--session-statistics-file"), index + 1 < arguments.count, let pane {
@@ -178,6 +187,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
             }
           } else { NSApp.terminate(nil) }
         }
+        #endif
       }
     }
     pane.onTitle = { [weak self, weak pane] title in
@@ -428,12 +438,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var finishedLaunching = false
   private var pendingFileLaunches: [LaunchSpec] = []
   init(rendering setup: RenderingSetup) {
+    #if TERMINAL_DIAGNOSTICS
     if let path = selectionSmokeReportPath() {
       let pasteboard = NSPasteboard(name: selectionSmokePasteboardName(reportPath: path))
       clipboardAccess = ClipboardAccess(pasteboard: pasteboard)
     } else {
       clipboardAccess = ClipboardAccess()
     }
+    #else
+    clipboardAccess = ClipboardAccess()
+    #endif
     renderingSetup = setup
     super.init()
   }
@@ -446,10 +460,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// shell asks again whenever the size changes. The smoke modes that build
   /// their own fixture launch are left to do so.
   static func firstLaunch() -> LaunchSpec? {
+    #if TERMINAL_DIAGNOSTICS
     let arguments = CommandLine.arguments
     if paneLifecycleSmokeReportPath() != nil || arguments.contains("--resize-smoke")
       || arguments.contains(IntenseResizeSmokeTest.flag)
       || arguments.contains("--glyph-smoke") || arguments.contains("--execute") { return nil }
+    #endif
     return .shell
   }
   /// `--background` opens the launch window behind other apps and leaves
@@ -472,7 +488,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let launches = pendingFileLaunches
       pendingFileLaunches.removeAll()
       launches.forEach { openTerminalWindow(launch: $0) }
-    } else if let _ = paneLifecycleSmokeReportPath() {
+    } else {
+      #if TERMINAL_DIAGNOSTICS
+      if !openDiagnosticWindow() { newWindow(nil) }
+      #else
+      newWindow(nil)
+      #endif
+    }
+    if !launchesInBackground { NSApp.activate(ignoringOtherApps: true) }
+    if let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096),
+      let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096),
+      let window = windows.first, let pane = window.panes.first
+    {
+      window.window?.setContentSize(pane.contentSize(columns: columns, rows: rows))
+    }
+    #if TERMINAL_DIAGNOSTICS
+    startDiagnostics()
+    #endif
+    MainActor.assumeIsolated { Updates.shared.checkAtLaunch() }
+  }
+  #if TERMINAL_DIAGNOSTICS
+  @MainActor private func openDiagnosticWindow() -> Bool {
+    if let _ = paneLifecycleSmokeReportPath() {
       let shell = LaunchSpec.shell
       let launch = LaunchSpec(
         executable: "/bin/sh", arguments: ["/bin/sh", "-c", "stty raw -echo; exec /bin/cat"],
@@ -523,15 +560,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.window?.makeKeyAndOrderFront(nil)
       }
     } else {
-      newWindow(nil)
+      return false
     }
-    if !launchesInBackground { NSApp.activate(ignoringOtherApps: true) }
-    if let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096),
-      let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096),
-      let window = windows.first, let pane = window.panes.first
-    {
-      window.window?.setContentSize(pane.contentSize(columns: columns, rows: rows))
-    }
+    return true
+  }
+  @MainActor private func startDiagnostics() {
     if let index = CommandLine.arguments.firstIndex(of: "--self-test"),
       CommandLine.arguments.count > index + 1, let window = windows.first
     {
@@ -570,7 +603,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     {
       IntenseResizeSmokeTest.start(window: window, path: CommandLine.arguments[index + 1])
     }
-    MainActor.assumeIsolated { Updates.shared.checkAtLaunch() }
     if let path = selectionSmokeReportPath(), let window = windows.first {
       SelectionSmokeTest.start(window: window, path: path)
     }
@@ -578,6 +610,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       PaneLifecycleSmokeTest.start(window: window, path: path)
     }
   }
+  #endif
   @objc func newWindow(_ sender: Any?) {
     let window = TerminalWindow()
     windows.append(window)
@@ -741,6 +774,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     tabNavigation.addMenuItems(to: window)
   }
 }
+#if TERMINAL_DIAGNOSTICS
 let catalogArguments = Array(CommandLine.arguments.prefix { $0 != "--execute" })
 if let index = catalogArguments.firstIndex(of: "--font-catalog"),
   catalogArguments.count > index + 1 {
@@ -754,6 +788,7 @@ if let index = catalogArguments.firstIndex(of: "--font-catalog"),
   } catch { fputs("Font catalog failed: \(error)\n", stderr); exit(1) }
 }
 SmokeStream.runIfRequested()
+#endif
 // Children are told which version of this terminal they run in.
 helge_terminal_set_program_version(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
 if let launch = AppDelegate.firstLaunch() {
@@ -763,6 +798,7 @@ if let launch = AppDelegate.firstLaunch() {
 }
 // The libraries take their measurement switches from the app; they do not
 // read its command line.
+#if TERMINAL_DIAGNOSTICS
 do {
   let arguments = Array(CommandLine.arguments.prefix { $0 != "--execute" })
   SessionDiagnostics.collectsStreamStatistics = arguments.contains("--session-statistics-file")
@@ -772,6 +808,7 @@ do {
     RenderingDiagnostics.firstFrameFile = arguments[index + 1]
   }
 }
+#endif
 let application = NSApplication.shared
 // Started only now: touching Metal before the application object exists
 // leaves the first window unable to become key when the app is launched

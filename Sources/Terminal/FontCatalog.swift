@@ -1,3 +1,4 @@
+#if TERMINAL_DIAGNOSTICS
 import AppKit
 import CoreText
 import TerminalEngine
@@ -248,3 +249,4 @@ enum FontCatalog {
     if !CommandLine.arguments.contains("--keep-open") { NSApp.terminate(nil) }
   }
 }
+#endif

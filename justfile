@@ -29,6 +29,11 @@ default:
 @release-build: _dev
     target/native/dev bundle release
 
+# Build with release optimization and diagnostic entry points for benchmarks.
+[group('build')]
+@diagnostic-build: _dev
+    target/native/dev bundle diagnostic
+
 # Remove build outputs (target/, dist/) and stray compiler module files.
 [group('build')]
 clean:
@@ -247,27 +252,27 @@ gallery-panes: build _dev
 
 # Compare the optimized app, Ghostty and Kitty in both orders.
 [group('bench')]
-@benchmark-terminals output="reports/terminal-comparison": release-build _dev
+@benchmark-terminals output="reports/terminal-comparison": diagnostic-build _dev
     target/native/dev compare-terminals "$1"
 
 # Compare warm startup time with Ghostty, Kitty, iTerm2 and Apple Terminal.
 [group('bench')]
-@benchmark-startup output="reports/startup-comparison" rounds="10": release-build _dev
+@benchmark-startup output="reports/startup-comparison" rounds="10": diagnostic-build _dev
     target/native/dev compare-startup dist/Terminal.app "$1" "$2"
 
 # Compare launch to a visible window and to the shell's first output on screen.
 [group('bench')]
-@benchmark-visible-startup output="reports/visible-startup-comparison" rounds="10": release-build _dev
+@benchmark-visible-startup output="reports/visible-startup-comparison" rounds="10": diagnostic-build _dev
     target/native/dev compare-visible-startup dist/Terminal.app "$1" "$2"
 
 # Compare key-to-program latency, idle and under an output flood.
 [group('bench')]
-@benchmark-input-latency output="reports/input-latency-comparison" keys="100": release-build _dev
+@benchmark-input-latency output="reports/input-latency-comparison" keys="100": diagnostic-build _dev
     target/native/dev compare-input-latency dist/Terminal.app "$1" "$2"
 
 # Compare quit time with Ghostty, Kitty, iTerm2 and Apple Terminal.
 [group('bench')]
-@benchmark-shutdown output="reports/shutdown-comparison" rounds="5": release-build _dev
+@benchmark-shutdown output="reports/shutdown-comparison" rounds="5": diagnostic-build _dev
     target/native/dev compare-shutdown dist/Terminal.app "$1" "$2"
 
 [group('bench')]

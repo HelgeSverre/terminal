@@ -124,7 +124,9 @@ guide](docs/architecture.md) explains ownership and resize ordering; the
 ## Development
 
 `just build` produces an incremental development bundle at `dist/Terminal.app`.
-`just release-build` uses whole-module optimization. Neither command launches
+`just release-build` uses whole-module optimization and excludes test and diagnostic
+entry points. `just diagnostic-build` uses the same optimization with those entry
+points enabled for benchmarks. These build commands do not launch
 the app.
 
 | Command | Purpose |

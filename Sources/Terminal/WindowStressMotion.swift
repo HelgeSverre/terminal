@@ -1,3 +1,4 @@
+#if TERMINAL_DIAGNOSTICS
 import AppKit
 
 /// The deterministic geometry behind the optional Cat-window motion stress run.
@@ -200,3 +201,4 @@ enum WindowStressTrajectory {
     ]
   }
 }
+#endif

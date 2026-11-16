@@ -1,3 +1,4 @@
+#if TERMINAL_DIAGNOSTICS
 import AppKit
 import Darwin
 import TerminalEngine
@@ -951,3 +952,4 @@ import TerminalUI
     } catch { NSLog("Cat report failed: %@", String(describing: error)) }
   }
 }
+#endif

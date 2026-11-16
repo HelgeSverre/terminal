@@ -13,31 +13,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Test, sign, and notarize
+  test:
+    name: Test
     runs-on: macos-15
     timeout-minutes: 90
-    outputs:
-      publish: ${{ steps.metadata.outputs.publish }}
-      version: ${{ steps.metadata.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      # The release commands are part of the developer tool. It is compiled
-      # from absolute paths because it locates the repository from them.
-      - name: Build release tool
-        run: |
-          mkdir -p target/native
-          xcrun swiftc -O "$PWD"/tools/Dev/*.swift -o target/native/dev
-
-      - name: Validate version and source
-        id: metadata
-        run: |
-          mkdir -p dist/release
-          target/native/dev release-publisher validate --output dist/release/release-metadata.json
 
       - name: Install test tools
         run: brew install just fish neovim tmux fzf
@@ -53,16 +37,59 @@ jobs:
           path: target
           key: macos-arm64-swift-${{ hashFiles('Sources/**', 'Tests/**', 'Resources/**', 'Benchmarks/**', 'assets/**', 'tools/Dev/**', 'Package.swift', 'justfile') }}
 
-      # A restored cache replaces target/, including the tool built above.
-      - name: Rebuild release tool after cache restore
+      # Compile from this checkout after restoring the test cache.
+      - name: Build test tool after cache restore
         run: |
           mkdir -p target/native
           xcrun swiftc -O "$PWD"/tools/Dev/*.swift -o target/native/dev
+
+      - name: Validate version and source
+        id: metadata
+        run: |
+          mkdir -p dist/release
+          target/native/dev release-publisher validate --output dist/release/release-metadata.json
 
       - name: Run tests
         env:
           TERMINAL_CI_GPU_POLICY: paravirtual
         run: just test
+
+  build:
+    name: Build, sign, and notarize
+    needs: test
+    runs-on: macos-15
+    timeout-minutes: 30
+    outputs:
+      publish: ${{ steps.metadata.outputs.publish }}
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # A fresh runner: no test tools, test artifacts, or test cache.
+      - name: Build release tool
+        run: |
+          mkdir -p target/native
+          xcrun swiftc -O "$PWD"/tools/Dev/*.swift -o target/native/dev
+
+      - name: Validate version and source
+        id: metadata
+        run: |
+          mkdir -p dist/release
+          target/native/dev release-publisher validate --output dist/release/release-metadata.json
+
+      - name: Ensure Metal compiler is available
+        run: |
+          if ! xcrun -sdk macosx metal --version; then
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+
+      - name: Build release app and distribution tool
+        run: |
+          target/native/dev bundle release
+          xcrun swiftc -parse-as-library tools/Distribution.swift -o target/native/distribute
 
       - name: Import release credentials
         env:
@@ -75,10 +102,10 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: target/native/dev release-signing setup >> "$GITHUB_ENV"
 
-      - name: Build, sign, notarize, and validate app
+      - name: Sign, notarize, and validate app
         env:
           APPLE_APPLICATION_SIGNING_IDENTITY: ${{ secrets.APPLE_APPLICATION_SIGNING_IDENTITY }}
-        run: just release
+        run: target/native/distribute release
 
       - name: Sign the update feed
         env:

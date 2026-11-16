@@ -48,7 +48,8 @@ let application: [Target] = [
     name: "TerminalApp",
     dependencies: ["TerminalUI", "TerminalHost", "TerminalEngine", "TerminalInterop", .product(name: "Sparkle", package: "Sparkle")],
     path: "Sources/Terminal",
-    swiftSettings: [.swiftLanguageMode(.v5)] + testHooks,
+    swiftSettings: [.swiftLanguageMode(.v5), .define("TERMINAL_DIAGNOSTICS", .when(configuration: .debug))]
+      + testHooks + (testHooks.isEmpty ? [] : [.define("TERMINAL_DIAGNOSTICS")]),
     // Where the bundle keeps the frameworks it carries.
     linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]),
   // The developer tool, built here for its tests; `just` builds the one it runs.

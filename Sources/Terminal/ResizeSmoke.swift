@@ -1,3 +1,4 @@
+#if TERMINAL_DIAGNOSTICS
 import AppKit
 import TerminalEngine
 import TerminalUI
@@ -384,3 +385,4 @@ import TerminalUI
     NSApp.terminate(nil)
   }
 }
+#endif
