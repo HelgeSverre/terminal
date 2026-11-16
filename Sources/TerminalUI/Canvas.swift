@@ -366,7 +366,9 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     }
   }
   public override func cursorUpdate(with event: NSEvent) {
-    updateLinkHover(locationInWindow: event.locationInWindow, modifiers: event.modifierFlags)
+    // Cursor invalidation must not turn into a synthetic pointer/key transition.
+    // Mouse, modifier and snapshot events maintain the current hover target.
+    (hoveredLink == nil ? NSCursor.iBeam : NSCursor.pointingHand).set()
   }
   public override func resetCursorRects() { addCursorRect(bounds, cursor: .iBeam) }
 
