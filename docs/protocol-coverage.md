@@ -14,7 +14,7 @@ describe their recorded revisions. Tests named below are under `Tests/TerminalTe
 | Placement, crop, offset, layering, cursor movement | `layout`, `visible`; oracle cursor/resize/screen tests and extension deletion tests | Primary width reflow clears placements; scroll-region/clipped-anchor deletion semantics need broader conformance cases |
 | Unicode placeholders | `KittyPlaceholder`, `placeholderSlice`; two extension tests verify slices, color IDs and unmarked continuation | No end-to-end tmux/Neovim or Metal pixel oracle |
 | Relative placements | `origin`, `pruneOrphans`; extension tests cover following/moving/deleting parents, cycles and depth | Maximum depth 8; a virtual placeholder parent is accepted but its child never renders (G4) |
-| Animation frames and playback | `addFrame`, `control`, `playback`; extension tests cover frames, composition, loops, loading and gaps | Up to 1000 frames within shared storage budget; frame deletion is a no-op (G3); loop edits, gapless root behavior and UI scheduling need more coverage |
+| Animation frames and playback | `addFrame`, `control`, `playback`; extension tests cover frames, composition, loops, loading and gaps | Up to 1000 frames within shared storage budget; frame deletion is a no-op (G3); default root gap differs (G7); loop edits and UI scheduling need more coverage |
 | Image/placement deletion | `delete`; extension selectors and oracle cross-screen/cache tests | `f/F` is not implemented; positional selectors do not resolve relative origins (G5) |
 | Queries and quiet replies | `consume`, `featureReply`, `outcome`; oracle query and extension feature tests | Feature replies are not yet action-specific and echo some default/identity keys (G6) |
 | SIXEL | `SixelDecoder`, DCS parser; `TerminalImageTests` covers RGB/HLS, repeat, raster size, scrolling, cropping to limits and DA1 advertisement | Transparent background only; header/raster aspect ratios, P2 background, DECSDM 80 and mode 8452 unsupported; palette resets per image |
@@ -51,8 +51,9 @@ Capability statements above come from this repository's implementation and tests
 | G4 | Relative child of a virtual placement has no resolved origin | Deferred: supply actual placeholder geometry to the placement owner, with tests through emulator snapshots |
 | G5 | Coordinate deletion checks a relative placement's stored cursor anchor rather than its resolved parent origin | Deferred with relative-placement geometry; ordinary selectors are tested, this combination is not |
 | G6 | Feature query replies echo `I` and use one key list for all actions | Deferred query-conformance work; queries cannot yet be treated as an exhaustive capability contract |
+| G7 | `Animation.firstGap=0` passes through the generic 40 ms default, so the root frame is displayed instead of initially gapless | Deferred animation timing work: distinguish the root default from an added frame's default and test state/loop edits with explicit clocks |
 
-G3–G6 remain observable compatibility limitations, not completed fixes. New
+G3–G7 remain observable compatibility limitations, not completed fixes. New
 protocol features are outside this repair batch. Runtime scheduling, PTY/renderer
 redesign, non-macOS builds and complete VT conformance are outside this audit.
 
@@ -77,8 +78,10 @@ wire state differs; do not add a generic protocol abstraction. Keep transport
 separate from placement state. Parser, input encoder, clipboard decoder, session
 cache and renderer retain their existing responsibilities and public interfaces.
 
-The targeted cleanup will remove unused private blend inputs and unused SIXEL
-state after correctness checks. No public embedding interface needs migration.
+The targeted cleanup removes unused private `blend` source-offset inputs and
+unused SIXEL overflow/redundant numeric state. Both blend callers supply a
+complete source rectangle; the decoder finishes numeric fields before drawing.
+These were private baseline interfaces; no public embedding interface changes.
 
 ## Validation and review
 
@@ -97,7 +100,11 @@ Swift Testing with test hooks. One heavy job at a time.
 - Final `just test`, `just verify`, embedding build: pending.
 - Review: three read-only Discover reviewers covered graphics/SIXEL state,
   adjacent protocols/consumers, and report retention/renderer integration.
-  Challenge/Verify and module-depth rounds pending.
+  Sweep A Challenge and Verify passed for `814f7b8` with rotated behavior,
+  consumer and evidence lenses. The baseline missing-frame EINVAL was also
+  confirmed by the red run (distinct from a missing-image ENOENT).
+  Sweep B Discover retained the store/transport/decoder/snapshot/cache owners
+  and selected only unused private inputs/state for removal; Challenge/Verify pending.
 - CI, GUI graphics pixel checks, iOS and sanitizer fuzzing are not yet executed.
 
 Raw local logs are ignored; retain final commands, source revisions and artifact

@@ -28,7 +28,6 @@ final class SixelDecoder {
   private var command: UInt8 = 0
   private var parameters: [Int] = []
   private var number: Int?
-  private var overflowed = false
 
   init() {
     for (index, value) in Self.defaultPalette.enumerated() { palette[index] = Self.pixel(value) }
@@ -123,8 +122,6 @@ final class SixelDecoder {
   private func draw(_ bits: UInt8, count: Int) {
     var repeatCount = count
     if command == 0x21 {
-      if let number { appendParameter(number) }
-      number = nil
       repeatCount = max(1, parameters.first ?? 1)
       command = 0; parameters.removeAll(keepingCapacity: true)
     }
@@ -154,7 +151,7 @@ final class SixelDecoder {
     guard targetStride * targetRows * 4 <= Self.maximumBytes else {
       // Try the exact size before giving up.
       let exactStride = max(stride, newWidth), exactRows = max(rows, newHeight)
-      guard exactStride * exactRows * 4 <= Self.maximumBytes else { overflowed = true; return false }
+      guard exactStride * exactRows * 4 <= Self.maximumBytes else { return false }
       resize(stride: exactStride, rows: exactRows)
       return true
     }

@@ -426,14 +426,13 @@ final class KittyGraphicsStore {
 
   /// RGBA pixel helpers on a frame of the image's size.
   private static func blend(_ canvas: inout Data, width: Int, height: Int, pixels: Data, pixelWidth: Int,
-                            pixelHeight: Int, at x: Int, _ y: Int, from sourceX: Int = 0, _ sourceY: Int = 0,
-                            replace: Bool) {
+                            pixelHeight: Int, at x: Int, _ y: Int, replace: Bool) {
     canvas.withUnsafeMutableBytes { target in
       pixels.withUnsafeBytes { source in
         let out = target.bindMemory(to: UInt8.self), input = source.bindMemory(to: UInt8.self)
-        for row in 0..<pixelHeight where y + row >= 0 && y + row < height && sourceY + row < pixelHeight {
+        for row in 0..<pixelHeight where y + row >= 0 && y + row < height {
           for column in 0..<pixelWidth where x + column >= 0 && x + column < width {
-            let from = ((sourceY + row) * pixelWidth + sourceX + column) * 4
+            let from = (row * pixelWidth + column) * 4
             let to = ((y + row) * width + x + column) * 4
             guard from + 3 < input.count else { continue }
             let alpha = Int(input[from + 3])
@@ -801,7 +800,7 @@ final class KittyGraphicsStore {
   private func delete(_ values: [Character: String], context: KittyGraphicsContext) -> Result<(Int, Int)?, KittyGraphicsError> {
     let selector = values["d"] ?? "a"
     guard selector.count == 1, let kind = selector.first, "aAiInNcCpPqQrRxXyYzZfF".contains(kind) else { return .failure(.unsupported) }
-    // Animation frames are not kept, so there are none to delete.
+    // Frame deletion is not implemented yet; see the protocol coverage audit.
     if kind == "f" || kind == "F" { return .success(nil) }
     guard let rawImage = try? number(values, "i", default: 0), let rawPlacement = try? number(values, "p", default: 0),
       let x = try? number(values, "x", default: 0), let y = try? number(values, "y", default: 0),
