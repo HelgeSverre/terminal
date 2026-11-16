@@ -86,7 +86,7 @@ These were private baseline interfaces; no public embedding interface changes.
 ## Validation and review
 
 Baseline `3ad91fe`, clean main checkout; work performed in a detached scratch
-worktree. Swift 6.2.4, arm64 macOS, repository development bundle plus optimized
+worktree. Swift 6.2.4, arm64 macOS 15.6 (24G84), repository development bundle plus optimized
 Swift Testing with test hooks. One heavy job at a time.
 
 - Baseline `just test` at `3ad91fe`: passed (117 developer, 357 terminal,
@@ -97,15 +97,31 @@ Swift Testing with test hooks. One heavy job at a time.
   command isolation). Green at `814f7b8`: `just unit-test --filter
   KittyGraphicsExtensionTests --filter TerminalImageTests --filter
   TerminalGraphicsOracleTests`, 39 tests in 3 suites passed.
-- Final `just test`, `just verify`, embedding build: pending.
+- Private cleanup at `95c8aba`: the same 39 focused tests passed again.
+- Final `just test` at `95c8aba`: passed (117 developer, 359 terminal and
+  13 glyph tests, plus tooling/terminfo/PTY checks). `just verify` passed.
+  `swift build --package-path Examples/Embedding` built both example hosts.
+  Development app executable SHA-256:
+  `36e15619c80c6a7e9146c5b4db02432c4b040989e43a5ead46443ca0226ecd04`.
+  Optimized `TerminalPackageTests.xctest/Contents/MacOS/TerminalPackageTests` SHA-256:
+  `bf5f8a9ec31f371cdfb6036e9d2ec35251e43e9bbb1acdff78cff8af80eb64e8`.
+- `just esctest` at `95c8aba`: known-good gate passed at pinned `2798f12`;
+  320 passed, 206 failed, 41 known deviations, 0 skipped of 567 cases. This
+  preserves the documented conformance baseline; it is not a full conformance pass.
 - Review: three read-only Discover reviewers covered graphics/SIXEL state,
   adjacent protocols/consumers, and report retention/renderer integration.
   Sweep A Challenge and Verify passed for `814f7b8` with rotated behavior,
   consumer and evidence lenses. The baseline missing-frame EINVAL was also
   confirmed by the red run (distinct from a missing-image ENOENT).
   Sweep B Discover retained the store/transport/decoder/snapshot/cache owners
-  and selected only unused private inputs/state for removal; Challenge/Verify pending.
-- CI, GUI graphics pixel checks, iOS and sanitizer fuzzing are not yet executed.
+  and selected only unused private inputs/state for removal. Three rotated
+  Challenge and Verify reviewers passed that delta (source patch SHA-256
+  `e3d3c6b177f763800c2daf767c7bd210e9f329c4751cea9d49fa81290677be1c`, committed
+  as `95c8aba`); no substantive code changes followed. Report retention and
+  archive links were reviewed; no tracked report was a test fixture.
+- Locally verified. CI, GUI graphics pixel checks, iOS and sanitizer fuzzing
+  are not part of this local verification. Final audit bookkeeping changes
+  only Markdown; source/test/build inputs remain those of `95c8aba`.
 
 Raw local logs are ignored; retain final commands, source revisions and artifact
 identity here instead of adding another report directory to Git.
