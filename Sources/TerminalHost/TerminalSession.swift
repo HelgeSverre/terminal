@@ -87,6 +87,7 @@ package enum EarlyChild {
     // Closing the PTY hangs the unwanted child up.
     close(early.process.master)
     close(early.process.status)
+    TerminalSession.endAbandonedChild(early.process.pid, counted: false)
     return nil
   }
   /// Records the first size a pane settles on, for the next launch.
@@ -516,12 +517,13 @@ public final class TerminalSession: @unchecked Sendable {
     if pid > 0, !reaped { Self.endAbandonedChild(pid) }
   }
   /// Hangs up a child whose session is gone, kills it after two seconds if
-  /// it is still there, and reaps it.
-  private static func endAbandonedChild(_ pid: Int32) {
+  /// it is still there, and reaps it. An unused early child was never added
+  /// to LiveChildren; only an adopted session contributes to that count.
+  fileprivate static func endAbandonedChild(_ pid: Int32, counted: Bool = true) {
     kill(pid, SIGHUP)
     abandonedQueue.async {
       abandoned.insert(pid)
-      reapAbandonedChild(pid, attempt: 0)
+      reapAbandonedChild(pid, attempt: 0, counted: counted)
     }
     abandonedQueue.asyncAfter(deadline: .now() + .seconds(2)) {
       if abandoned.contains(pid) { kill(pid, SIGKILL) }
@@ -530,16 +532,16 @@ public final class TerminalSession: @unchecked Sendable {
   /// On `abandonedQueue`. Asks again every 50 ms until the child can be
   /// reaped: an exit notification can arrive before `waitpid` will answer,
   /// so this polls instead of waiting for one.
-  private static func reapAbandonedChild(_ pid: Int32, attempt: Int) {
+  private static func reapAbandonedChild(_ pid: Int32, attempt: Int, counted: Bool) {
     var status: Int32 = 0
     let result = waitpid(pid, &status, WNOHANG)
     if result == 0, attempt < 200 {
       abandonedQueue.asyncAfter(deadline: .now() + .milliseconds(50)) {
-        reapAbandonedChild(pid, attempt: attempt + 1)
+        reapAbandonedChild(pid, attempt: attempt + 1, counted: counted)
       }
       return
     }
-    if result == pid { LiveChildren.ended() }
+    if result == pid, counted { LiveChildren.ended() }
     abandoned.remove(pid)
   }
   private static let abandonedQueue = DispatchQueue(label: "no.helgesverre.terminal.abandoned-children")

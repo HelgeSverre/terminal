@@ -425,6 +425,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var preferencesWindow: TerminalSettingsWindow?
   private weak var lastFocusedPane: TerminalCanvasView?
   private var terminationRequested = false
+  private var finishedLaunching = false
+  private var pendingFileLaunches: [LaunchSpec] = []
   init(rendering setup: RenderingSetup) {
     if let path = selectionSmokeReportPath() {
       let pasteboard = NSPasteboard(name: selectionSmokePasteboardName(reportPath: path))
@@ -465,7 +467,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     if let renderingError { NSLog("Metal initialization failed: %@", renderingError) }
     NSApp.setActivationPolicy(.regular)
     menu()
-    if let _ = paneLifecycleSmokeReportPath() {
+    finishedLaunching = true
+    if !pendingFileLaunches.isEmpty {
+      let launches = pendingFileLaunches
+      pendingFileLaunches.removeAll()
+      launches.forEach { openTerminalWindow(launch: $0) }
+    } else if let _ = paneLifecycleSmokeReportPath() {
       let shell = LaunchSpec.shell
       let launch = LaunchSpec(
         executable: "/bin/sh", arguments: ["/bin/sh", "-c", "stty raw -echo; exec /bin/cat"],
@@ -576,6 +583,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     windows.append(window)
     window.showWindow(nil)
     window.window?.makeKeyAndOrderFront(nil)
+  }
+  /// Finder and Toolbox use the same open-document Apple event, on both a
+  /// cold launch and an already running app. Queue early events until menus
+  /// and app setup are ready; they replace the otherwise empty first window.
+  func application(_ sender: NSApplication, openFiles filenames: [String]) {
+    sender.reply(toOpenOrPrint: acceptTerminalFiles(filenames) ? .success : .failure)
+  }
+  func application(_ sender: NSApplication, openFile filename: String) -> Bool {
+    acceptTerminalFiles([filename])
+  }
+  private func acceptTerminalFiles(_ filenames: [String]) -> Bool {
+    guard !terminationRequested, !filenames.isEmpty else { return false }
+    do {
+      let launches = try filenames.map {
+        try OpenTerminalFile.launch(path: $0, launcher: LaunchSpec.shell.launcher)
+      }
+      if finishedLaunching { launches.forEach { openTerminalWindow(launch: $0) } }
+      else { pendingFileLaunches.append(contentsOf: launches) }
+      return true
+    } catch {
+      NSApp.presentError(error)
+      return false
+    }
+  }
+  private func openTerminalWindow(launch: LaunchSpec) {
+    let window = TerminalWindow(launch: launch)
+    windows.append(window)
+    if launchesInBackground { window.window?.orderBack(nil) }
+    else {
+      window.showWindow(nil)
+      window.window?.makeKeyAndOrderFront(nil)
+    }
   }
   @objc func newTab(_ sender: Any?) {
     let previous = (NSApp.keyWindow?.windowController as? TerminalWindow)?.window

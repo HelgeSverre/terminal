@@ -110,6 +110,11 @@ verify: build
 
 # ── test ──────────────────────────────────────────────────────────────
 
+# Check Launch Services discovery and command-file delivery in an isolated app.
+[group('test')]
+@terminal-file-smoke: build
+    target/native/dev terminal-file-smoke
+
 # Run every headless test suite.
 [group('test')]
 @test: lint build

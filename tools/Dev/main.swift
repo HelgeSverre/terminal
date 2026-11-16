@@ -24,6 +24,7 @@ let commands = [
   StartupGridSmoke.command,
   AccessibilitySmoke.command,
   AppleScriptSmoke.command,
+  TerminalFileSmoke.command,
   TerminfoSmoke.command,
   CatStress.command,
   TUIStress.command,
