@@ -1,0 +1,7 @@
+◇ Test run started.
+↳ Testing Library Version: 1501
+↳ Target Platform: arm64e-apple-macos14.0
+INFO Codex ready: bracketed=true mouse=1003 sgr=true
+INFO image attached=true path="/var/folders/xr/z75qc4354_v3lm18m65xkz580000gn/T/terminal image 275CABD7-D5EB-42A6-BA08-A8FE33FE716B.png"
+INFO complete SGR report parsed; deliberately split ESC reproduced literal [<35;114;47M
+✔ Test run with 1 test in 1 suite passed after 2.245 seconds.

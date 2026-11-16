@@ -1,0 +1,26 @@
+✔ Test run with 117 tests in 24 suites passed after 33.806 seconds.
+✔ Test run with 357 tests in 57 suites passed after 46.728 seconds.
+✔ Test run with 1 test in 1 suite passed after 0.017 seconds.
+✔ Test run with 12 tests in 2 suites passed after 0.113 seconds.
+PASS PTY locale: LANG=<default> LC_ALL= LC_CTYPE= CODESET=UTF-8
+PASS PTY locale: LANG=<default> LC_ALL= LC_CTYPE= CODESET=UTF-8
+PASS PTY locale: LANG=en_US.UTF-8 LC_ALL= LC_CTYPE= CODESET=UTF-8
+PASS PTY locale: LANG=C LC_ALL= LC_CTYPE= CODESET=US-ASCII
+PASS PTY locale: LANG=en_US.UTF-8 LC_ALL=C LC_CTYPE= CODESET=US-ASCII
+PASS PTY locale: LANG=en_US.UTF-8 LC_ALL= LC_CTYPE=C CODESET=US-ASCII
+PASS PTY locale: LANG=C LC_ALL=en_US.UTF-8 LC_CTYPE=C CODESET=UTF-8
+PASS PTY locale: LANG=C LC_ALL= LC_CTYPE=en_US.UTF-8 CODESET=UTF-8
+PASS PTY locale: LANG=en_US.UTF-8 LC_ALL= LC_CTYPE= CODESET=UTF-8
+PASS PTY locale: LANG=<default> LC_ALL=C LC_CTYPE=en_US.UTF-8 CODESET=US-ASCII
+PASS PTY: 37 123 (41 bytes, child reaped, final output drained)
+PASS PTY: FINAL_SENTINEL (240014 bytes, child reaped, final output drained)
+PASS PTY: exec failure (0 bytes, child reaped, final output drained)
+PASS PTY: cwd failure (0 bytes, child reaped, final output drained)
+PASS PTY: ENV_OK (6 bytes, child reaped, final output drained)
+PASS PTY: FOREIGN_GONE (12 bytes, child reaped, final output drained)
+PASS PTY: VERSION_OK (10 bytes, child reaped, final output drained)
+PASS PTY: BASH_CORPUS_OK (14 bytes, child reaped, final output drained)
+PASS PTY: FISH_CORPUS_OK (14 bytes, child reaped, final output drained)
+PASS PTY: NVIM_CORPUS_OK (5714 bytes, child reaped, final output drained)
+PASS PTY: TMUX_CORPUS_OK (1213 bytes, child reaped, final output drained)
+PASS PTY: FZF_CORPUS_OK (10949 bytes, child reaped, final output drained)

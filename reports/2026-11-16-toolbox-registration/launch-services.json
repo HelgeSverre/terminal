@@ -1,0 +1,22 @@
+{
+  "content_types" : [
+    "com.apple.terminal.shell-script",
+    "public.unix-executable"
+  ],
+  "passed" : true,
+  "receipts" : [
+    {
+      "app_pid" : 31423,
+      "mode" : "cold",
+      "tty" : "\/dev\/ttys012",
+      "working_directory" : "\/Users\/helge\/code\/terminal-toolbox\/target\/native\/file-open-F3B06AC1-84CD-4385-B3CB-909FDB6A7F46"
+    },
+    {
+      "app_pid" : 31423,
+      "mode" : "warm",
+      "tty" : "\/dev\/ttys011",
+      "working_directory" : "\/Users\/helge\/code\/terminal-toolbox\/target\/native\/file-open-F3B06AC1-84CD-4385-B3CB-909FDB6A7F46"
+    }
+  ],
+  "source_bundle" : "\/Users\/helge\/code\/terminal-toolbox\/dist\/Terminal.app"
+}

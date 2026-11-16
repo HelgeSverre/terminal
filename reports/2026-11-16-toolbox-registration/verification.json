@@ -1,0 +1,13 @@
+{
+  "source_commit": "247f364370efab7873c5c3d826d5018faf4a5097",
+  "app_executable_sha256": "44bed2123cd6a7357d50438fde5b676553fac574082435648f1ef6f368d22587",
+  "codex_version": "0.169.0",
+  "codex_executable_sha256": "739cda86e15d30a6e2b40cf8dcbbfb988aaf48b305b27065573bb8e9fd41d002",
+  "passed": [
+    "just test",
+    "target/native/dev terminal-file-smoke",
+    "CodexInputProbeTests with installed native Codex"
+  ],
+  "installed_terminal_changed": false,
+  "original_mouse_fragmentation_cause": "Not established; deliberate 100ms split reproduces suffix"
+}

@@ -122,3 +122,11 @@ tests complete and split mouse reports, then closes and reaps its own child.
 It is skipped by the normal test gate because Codex and account readiness are
 external dependencies. `DropInputTests` provides the deterministic terminal
 wire-format coverage in the normal gate.
+
+## Verification
+
+At implementation commit `247f364`, `just test`, the isolated Launch Services
+smoke, and the installed-Codex probe all passed. The full gate includes 357
+main unit tests, rendering checks, and the PTY corpus. Saved
+[receipts and executable hashes](../reports/2026-11-16-toolbox-registration/verification.json)
+identify the tested artifacts. The installed terminal was left unchanged.
