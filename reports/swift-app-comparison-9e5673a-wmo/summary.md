@@ -3,7 +3,7 @@
 Frozen Swift `9e5673a` was compiled with `-O -whole-module-optimization` and
 the same 2 MiB, three-sample, 100×30 Obel Mono 14 visible-app PTY contract as
 the prior fused WMO pilot. Exact commands and inputs are in
-[build.json](build.json) and [input.sha256](input.sha256). The comparison uses
+[build.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-9e5673a-wmo/build.json) and [input.sha256](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-9e5673a-wmo/input.sha256). The comparison uses
 the version 0.3 driver, whose default four workload labels were independently
 validated by the comparison run.
 
@@ -20,13 +20,13 @@ but the at-least-90% replacement gate remains false for every workload. This
 is optimization evidence, not replacement acceptance.
 
 The source-focused worker passed. The WMO core and native smoke also passed;
-the compact native result is [native-smoke.json](native-smoke.json), while the
+the compact native result is [native-smoke.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-9e5673a-wmo/native-smoke.json), while the
 core result is retained in the raw archive. Each measured app exited naturally
-with no surviving children in [comparison.json](comparison.json).
+with no surviving children in [comparison.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-9e5673a-wmo/comparison.json).
 
 The 512 MiB long-ASCII stack profile passed with natural exits for its app and
 sampler and no surviving children. Its wall and CPU values are diagnostic-only
-because sampling perturbs the run. [profile-long-ascii/profile.json](profile-long-ascii/profile.json)
+because sampling perturbs the run. [profile-long-ascii/profile.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-9e5673a-wmo/profile-long-ascii/profile.json)
 records its app, driver, runner, and raw-sample hashes.
 
 The owner queue contributed 3,756 samples. Within `feed`, `flush` accounted

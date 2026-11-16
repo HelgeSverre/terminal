@@ -33,10 +33,10 @@ Bundle size sums regular files, including bundled fonts and resources; it is
 not compressed package size or APFS allocated disk usage. This run does not
 provide a matched compilation-speed comparison.
 
-Read [comparison.json](comparison.json), [swift.json](swift.json) and
-[rust.json](rust.json) for raw distributions, resource counters, binary hashes
+Read [comparison.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-ca252d0/comparison.json), [swift.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-ca252d0/swift.json) and
+[rust.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-ca252d0/rust.json) for raw distributions, resource counters, binary hashes
 and cleanup evidence. The fixed-clock baseline is in
-[the preceding report](../swift-app-comparison-fb90061/comparison.json).
+[the preceding report](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-fb90061/comparison.json).
 [provenance.json](provenance.json) links the tested source checkpoints,
 identical timed driver and validation. All source changes through this
 checkpoint are preserved by tag `swift-experiment-20261108-ca252d0`.
@@ -75,7 +75,7 @@ Driver 0.2.0 reports CPU time using the host Mach timebase (125/3 here), checked
 against `CLOCK_PROCESS_CPUTIME_ID`. Pre-0.2.0 CPU counters are invalid on this
 Mac; their throughput and footprint fields use independent measurements.
 
-[raw-evidence.tar.gz](raw-evidence.tar.gz) preserves both fixed-clock app
+[raw-evidence.tar.gz](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-ca252d0/raw-evidence.tar.gz) preserves both fixed-clock app
 reports, the before/after stack captures and lifecycle records, validation
 logs, driver binaries and all three frozen app executables. SHA-256:
 `e41eab09dc01e61e6d28f35f6a065fbf97f91d216dace1b86de74f926a140298`.

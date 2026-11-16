@@ -19,6 +19,6 @@ matched compilation measurements. Ordinary desktop background load was present
 and is recorded in result.json. The Rust build timing in the raw provenance is
 historical; it was not rebuilt for these timed samples.
 
-See [result.json](result.json) for every sample and both gates.
-[raw-evidence.tar.gz](raw-evidence.tar.gz) preserves the complete original report,
+See [result.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/emulator-comparison-6c601d1-a49a5af/result.json) for every sample and both gates.
+[raw-evidence.tar.gz](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/emulator-comparison-6c601d1-a49a5af/raw-evidence.tar.gz) preserves the complete original report,
 including all raw final snapshots, logs, source/input hashes and build provenance.

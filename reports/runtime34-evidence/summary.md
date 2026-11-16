@@ -24,7 +24,7 @@ glyph, atlas, atlas-budget, close-window, close-shortcut, and the 960×600 Kitty
 demo. Every owned process exited naturally with an empty cleanup list. macOS
 output was muted before the Kitty demo.
 
-The retained [raw evidence archive](raw-evidence.tar.gz) has SHA-256
+The retained [raw evidence archive](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/runtime34-evidence/raw-evidence.tar.gz) has SHA-256
 `b4d0307fce57d5eac87b9be86a8f97ac3e5c73e278c3b10f6cc0481f3873ce00` and
 contains the fixture runner, provenance, JSON reports, logs, raw samples, and
 benchmark binaries for both orders.

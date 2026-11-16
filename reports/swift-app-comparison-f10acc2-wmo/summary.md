@@ -3,7 +3,7 @@
 Frozen Swift `f10acc2` was compiled with `-O -whole-module-optimization` and
 the same 2 MiB, three-sample, 100×30 Obel Mono 14 visible-app PTY contract as
 the preceding 645 pilot. Exact commands and inputs are in
-[build.json](build.json) and [input.sha256](input.sha256). The version 0.3
+[build.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-f10acc2-wmo/build.json) and [input.sha256](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-f10acc2-wmo/input.sha256). The version 0.3
 driver's default four workload labels were validated by the matched comparison.
 
 | Median MiB/s | Swift 645 WMO | Swift f10 WMO | Change | Rust in f10 run | Swift f10 / Rust |
@@ -26,7 +26,7 @@ native smoke. No claim is made that every new test passes on the frozen 645
 baseline: the expected old difference includes a pre-existing overflow fix.
 
 All benchmark apps exited naturally with no surviving children in
-[comparison.json](comparison.json). `raw-evidence.tar.gz` retains the raw
+[comparison.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-f10acc2-wmo/comparison.json). `raw-evidence.tar.gz` retains the raw
 driver and launcher evidence, core result, and native-smoke log; compact
 measurement and provenance files remain beside this summary. The frozen bundle
 is preserved outside the repository with executable hash

@@ -3,7 +3,7 @@
 Frozen Swift `645f872` was compiled with `-O -whole-module-optimization` and
 the same 2 MiB, three-sample, 100×30 Obel Mono 14 visible-app PTY contract as
 the preceding 9e pilot. Exact commands and inputs are in
-[build.json](build.json) and [input.sha256](input.sha256). The patch removes a
+[build.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-645f872-wmo/build.json) and [input.sha256](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-645f872-wmo/input.sha256). The patch removes a
 screen alias and redundant blank allocation, and intentionally corrects
 viewport-clamp ordering; the retained index/history red-green logs exercise
 that ordering regression.
@@ -21,9 +21,9 @@ improve. The at-least-90% replacement gate remains false for all four
 workloads. This is optimization evidence, not replacement acceptance.
 
 The focused source gates and Astra review passed. The WMO core and native smoke
-also passed; the compact native result is [native-smoke.json](native-smoke.json).
+also passed; the compact native result is [native-smoke.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-645f872-wmo/native-smoke.json).
 Every measured app exited naturally with no surviving children in
-[comparison.json](comparison.json).
+[comparison.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-645f872-wmo/comparison.json).
 
 The 512 MiB ANSI profile passed with natural exits for its app and sampler and
 no surviving children. Its wall and CPU values are diagnostic-only because
@@ -35,7 +35,7 @@ splitting work. These counts overlap and must not be added or treated as
 whole-app CPU shares. They identify ASCII control-syntax byte processing as the
 next patch target; they do not establish a microprobe result.
 
-[profile-ansi/profile.json](profile-ansi/profile.json) records the profile's
+[profile-ansi/profile.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-645f872-wmo/profile-ansi/profile.json) records the profile's
 app, driver, runner, and raw-sample hashes. `raw-evidence.tar.gz` retains its
 complete profile tree, raw driver and launcher evidence, core result, and
 index/history red-green logs. Compact measurement and provenance files remain

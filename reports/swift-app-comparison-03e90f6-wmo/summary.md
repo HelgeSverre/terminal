@@ -2,8 +2,8 @@
 
 Frozen Swift `03e90f6` was compiled with the same `-O
 -whole-module-optimization` mode as the earlier `4ca285f` WMO pilot. The
-source checkpoint and exact input hashes are in [build.json](build.json) and
-[input.sha256](input.sha256). This pilot uses the same 2 MiB, three-sample,
+source checkpoint and exact input hashes are in [build.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-03e90f6-wmo/build.json) and
+[input.sha256](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-03e90f6-wmo/input.sha256). This pilot uses the same 2 MiB, three-sample,
 100×30 Obel Mono 14 visible-app PTY workload as the prior report.
 
 | Median MiB/s | Swift 4ca WMO | Swift 03e WMO | Change | Rust in 03e run | Swift 03e / Rust |
@@ -20,9 +20,9 @@ four workloads. This is optimization evidence, not replacement acceptance.
 
 The focused correctness worker passed. The WMO core smoke passed; its concise
 result is retained in the raw archive as `core-test.log`. The WMO native smoke
-also passed; its compact result is [native-smoke.json](native-smoke.json).
+also passed; its compact result is [native-smoke.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-03e90f6-wmo/native-smoke.json).
 Each measured app exited naturally with no surviving children according to
-[comparison.json](comparison.json).
+[comparison.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-03e90f6-wmo/comparison.json).
 
 The raw driver, launcher logs, and core-test output are retained once in
 `raw-evidence.tar.gz`; compact measurement and provenance files remain beside
@@ -51,8 +51,8 @@ throughput change. `profile-evidence.tar.gz` retains each profile's raw sample,
 launcher logs, driver output, and lifecycle proof without changing the sealed
 comparison archive.
 
-[profile/profile.json](profile/profile.json) and
-[profile-unicode/profile.json](profile-unicode/profile.json) record each
+[profile/profile.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-03e90f6-wmo/profile/profile.json) and
+[profile-unicode/profile.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-03e90f6-wmo/profile-unicode/profile.json) record each
 contract, app and driver hashes, raw-sample hash, and clean lifecycle.
 
 The selected-workload fixture separately exercised every named workload with

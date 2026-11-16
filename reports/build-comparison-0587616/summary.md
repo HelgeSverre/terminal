@@ -18,7 +18,7 @@ or a language-only compile-speed ratio.
 Both output bundles were checked against their source-tree hashes and passed
 strict deep code-signature verification before relocation. The tracked
 manifest, complete build logs, and exact runner are retained here. The signed
-app copies are intentionally outside Git; [relocation.json](relocation.json)
+app copies are intentionally outside Git; [relocation.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/build-comparison-0587616/relocation.json)
 records their paths and the hashes used to verify them.
 
 This source-scoped build evidence does not establish CI status, behavioral

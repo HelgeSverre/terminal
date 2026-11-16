@@ -85,10 +85,10 @@ Tags and releases happen only on request. See Release credentials below.
 - **Measure a frozen bundle.** Copy `dist/Terminal.app` before measuring and
   record the commit and the executable's hash. A bundle another session can
   rebuild is not a measurement target.
-- Test and smoke runs write their results to ignored files under `reports/`
-  (`native-smoke.json` and the others listed in
-  `.gitignore`). To keep a result as evidence, copy it into a dated
-  directory under `reports/` and commit that.
+- Test and smoke runs write to ignored `reports/`. Before committing evidence,
+  follow [reports/README.md](reports/README.md): retain a compact dated summary
+  with the tested commit, commands, results and artifact identity; force-add
+  only the selected evidence files.
 - Worktrees cost disk. Remove yours when the work is pushed or abandoned;
   `just clean` removes a checkout's build outputs.
 

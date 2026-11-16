@@ -1,6 +1,8 @@
 # Conformance and fuzzing
 
 Two checks run in CI on every push to `main`, besides the test suite.
+The [protocol coverage audit](protocol-coverage.md) maps image, input and related
+protocol features to implementation, regression tests and known limitations.
 
 ## esctest
 

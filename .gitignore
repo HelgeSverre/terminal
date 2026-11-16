@@ -2,36 +2,12 @@
 /dist/
 /runtime/
 .DS_Store
-/reports/font-glyphs.txt
-# Rewritten by every test or smoke run. To keep one as evidence, copy it into
-# a dated directory under reports/.
-/reports/font-glyphs.txt.json
-/reports/session-tests.json
-/reports/clipboard-access-tests.json
-/reports/native-smoke.json
-/reports/editing-smoke.json
-/reports/pane-lifecycle-smoke.json
-/reports/startup-grid.json
-/reports/applescript-smoke.json
-/reports/atlas-budget-smoke.json
-/reports/glyph-smoke.json
-/reports/native-idle.json
-/reports/resize-smoke.json
-/reports/intense-resize-smoke.json
-/reports/close-window-smoke.json
-/reports/close-shortcut-smoke.json
-/reports/accessibility-attributed/external-ax.json
-/reports/accessibility-attributed/provenance.json
-/reports/selection-smoke.json
-/reports/terminal-file-smoke.json
-/reports/open-file-test.log
-/reports/toolbox-*.log
+# Generated reports stay local. Curate small evidence with `git add -f`
+# only after following reports/README.md. Existing tracked evidence remains.
+/reports/**
+!/reports/README.md
 /assets/screenshots/.*.capture.json
 /.build/
-/reports/fuzz-current-seed
-/reports/fuzz-*.bin
-/reports/esctest.json
-/reports/esctest.log
 # Build output of any package in the tree, from SwiftPM or Xcode.
 .build/
 .build-*/

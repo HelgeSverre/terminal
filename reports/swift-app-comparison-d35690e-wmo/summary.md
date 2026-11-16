@@ -5,7 +5,7 @@ Frozen `d35690e` is the measured successor to the previously unmeasured scalar-b
 The completed ANSI profile also passed with natural app and sampler exits.
 Its verified attribution records numeric growth at 451 inclusive samples inside
 `parse` at 755, with sequence append at 256. These nested counts overlap and
-cannot be summed. The compact [profile](profile-ansi/profile.json) and
-[attribution](profile-ansi/attribution.json) preserve hashes and source counts;
+cannot be summed. The compact [profile](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-d35690e-wmo/profile-ansi/profile.json) and
+[attribution](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-d35690e-wmo/profile-ansi/attribution.json) preserve hashes and source counts;
 the refreshed raw archive contains the complete profile tree. The unmeasured
 numeric-reuse candidate is intentionally excluded.

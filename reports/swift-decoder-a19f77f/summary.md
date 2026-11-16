@@ -19,7 +19,7 @@ finish, invariant checks and final snapshot serialization/copy/free.
 | ASCII | 2.451503 | 2.971472 | 21.21% |
 | Mixed Unicode | 3.779404 | 4.277444 | 13.18% |
 
-[decoder-result.json](decoder-result.json) contains every sample, machine and
+[decoder-result.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-decoder-a19f77f/decoder-result.json) contains every sample, machine and
 background activity records, binary hashes and both correctness gates.
 
 ## Fresh Swift versus Rust replay
@@ -37,7 +37,7 @@ slightly from the decoder-only comparison.
 
 Rust is 12.4× faster on ASCII and 4.9× on mixed text in this run. Swift's
 backend executable is smaller; this is not a complete app-bundle comparison.
-See [rust-reference-result.json](rust-reference-result.json).
+See [rust-reference-result.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-decoder-a19f77f/rust-reference-result.json).
 
 Both experiments pass exact payload/reply byte counts and hashes, plus
 canonical final-state comparison. Publication additionally checked all 24
@@ -54,7 +54,7 @@ behavioral parity. Build wall times are provenance, not a matched compilation
 benchmark. All task-owned harnesses exited and temporary source worktrees were
 removed.
 
-[raw-evidence.tar.gz](raw-evidence.tar.gz) preserves both report trees, all raw
+[raw-evidence.tar.gz](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-decoder-a19f77f/raw-evidence.tar.gz) preserves both report trees, all raw
 snapshots, canonical projections, logs, build provenance, all three frozen
 binaries and the reproducer. SHA-256:
 `039dc1395cd5633518ca68ac814328b5de88e5d904dc729bc94ead70e69f538c`.

@@ -128,14 +128,21 @@ Three image protocols are shown, all within one 64 MiB budget and up to
 
 - Kitty graphics: RGB, RGBA and PNG, zlib compression, chunking, data in the
   escape code, a file, a temporary file or shared memory, image numbers,
-  placement, layering, every deletion selector, and Unicode placeholders, as
+  placement, layering, image/placement deletion, and Unicode placeholders, as
   tmux and Neovim image plugins use, placements relative to another
   placement, and animation: frames built on a base frame, composition, and
   playback that stops, waits on the last frame or loops a set number of
   times. Up to 1,000 frames an image, within the same budget.
 - Sixel, which the terminal reports in its device attributes.
 - iTerm2 inline images (`OSC 1337 ; File=…;inline=1`) in any format macOS
-  decodes, sized in cells, pixels or percent.
+  decodes, sized in cells, pixels or percent, using the first image frame.
+
+Support is partial: Kitty animation-frame deletion and relative children of
+Unicode placeholder placements are incomplete; SIXEL uses transparent
+backgrounds and does not implement its aspect/scrolling modes; iTerm2 multipart
+images are unsupported. The [protocol coverage audit](protocol-coverage.md)
+records tests and the remaining limitations.
+
 OSC 52 clipboard writes are allowed without asking and have payload limits;
 clipboard reads are denied. See the [clipboard policy](osc52-clipboard.md).
 

@@ -2,7 +2,7 @@
 
 Measured on 2026-11-09, Apple M2 Max, macOS 15.6, AC power. Ghostty was the
 installed **1.4.0** release. Our app used whole-module optimization; the
-[raw comparison](before-layout-cleanup-verified/comparison.json) records its
+[raw comparison](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/ghostty-swift-2026-11-09/before-layout-cleanup-verified/comparison.json) records its
 executable hash, the runner revision, configurations and individual samples.
 
 ## Visible-app throughput baseline
@@ -87,7 +87,7 @@ for the separate history/SQL and display-smoothness tests.
 
 ## Layout and release-preflight check
 
-The [post-cleanup comparison](after-layout-preflight/comparison.json) repeats the
+The [post-cleanup comparison](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/ghostty-swift-2026-11-09/after-layout-preflight/comparison.json) repeats the
 same two orders at `2e8949b`, before signing/publication. Our trial medians were
 58.8/58.8 MiB/s (short ASCII), 75.6/75.5 (long ASCII), 18.4/18.4 (ANSI), and
 12.3/12.4 (Unicode). This check finds no substantial throughput loss from the
@@ -98,7 +98,7 @@ prototypes. Exact executable identities and all reference samples are retained.
 
 ## First parser/text optimization batch
 
-The [development comparison](after-text-batching/comparison.json), at `0b7a6c0`,
+The [development comparison](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/ghostty-swift-2026-11-09/after-text-batching/comparison.json), at `0b7a6c0`,
 uses the same settings and reversed orders. These changes are for 0.2.4;
 released 0.2.3 remains the preflight baseline.
 
@@ -120,7 +120,7 @@ A separate payload-bit prototype had mixed timings and remains experimental.
 
 ## Profile-guided batch and approved settings
 
-The [next app comparison](after-profile-batch/comparison.json) uses the same
+The [next app comparison](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/ghostty-swift-2026-11-09/after-profile-batch/comparison.json) uses the same
 contract at `d4788df`. It includes indexed Unicode category pages, reused
 whitespace classification for visible links, owner-confined PTY read storage,
 and the approved settings sidebar. The release-WMO app was built at `96c2eb7`;

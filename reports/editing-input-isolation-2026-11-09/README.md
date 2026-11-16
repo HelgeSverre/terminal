@@ -3,7 +3,7 @@
 A fresh-prompt failure came from external desktop keystrokes entering the smoke
 window before its scripted `cd`. No parser or prompt-readiness change was needed.
 
-The [controlled comparison](isolation.json) compiles two private app variants
+The [controlled comparison](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/editing-input-isolation-2026-11-09/isolation.json) compiles two private app variants
 against the same canonical source graph. Both filter unrelated physical input;
 exactly two tagged queued key events reach the comparison boundary. The baseline
 omits the smoke's own input filter. The candidate retains it.
@@ -15,7 +15,7 @@ omits the smoke's own input filter. The candidate retains it.
 
 Both process trees exited with no survivors. The source-input and executable
 hashes are in the report. These controlled binaries use Swift 5 mode without
-optimization. Separate [development](development.json) and [whole-module release](release.json)
+optimization. Separate [development](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/editing-input-isolation-2026-11-09/development.json) and [whole-module release](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/editing-input-isolation-2026-11-09/release.json)
 smokes also pass the unchanged strict checks on this Mac (M2 Max, macOS 15.6,
 Swift 6.2.4). Only numeric editing state is retained. This is synthetic AppKit
 input and ZLE-buffer validation, not physical keyboard/IME conformance.

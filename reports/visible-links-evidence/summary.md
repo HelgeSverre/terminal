@@ -58,6 +58,6 @@ comparison. The original hardened-baseline injection attempt was also invalid
 and is explicitly excluded in the retained artifacts. Full raw evidence and
 frozen source are preserved by the hashed archive in `archive.json`.
 
-![serve Cmd-hover](serve-hover.png)
+![serve Cmd-hover](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/visible-links-evidence/serve-hover.png)
 
-![Vite Cmd-hover](dev-hover.png)
+![Vite Cmd-hover](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/visible-links-evidence/dev-hover.png)

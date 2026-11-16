@@ -24,6 +24,6 @@ snapshots. Its main-queue delay was p95 4.679042 ms (maximum 5.000958 ms), and
 its owner-probe delay was p95 0.162833 ms (maximum 21.245209 ms). These are
 observed development-stress telemetry, not a display-latency measurement.
 
-The [raw evidence archive](raw-evidence.tar.gz) has SHA-256
+The [raw evidence archive](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/sql-full-34bd618-evidence/raw-evidence.tar.gz) has SHA-256
 `3f7d9af8c579dd9f47aa5227b7438b9ee477c0a7e9cab6576eed63db4e875bc5`. It
 contains the paired JSON, launch logs, and provenance only.

@@ -11,7 +11,7 @@ is hashed before bundle signing; the measured app is hashed afterward.
 `signature-payload-proof.json` verifies that only the signature blob and its
 Mach-O size bookkeeping differ, using the retained `signature_payload.rb`.
 
-![Measured output throughput](throughput.png)
+![Measured output throughput](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/terminal-comparison-2026-11-10/throughput.png)
 
 | Workload | Helge Terminal, MiB/s | Ghostty, MiB/s | Kitty, MiB/s | Ours / Ghostty | Ours / Kitty |
 | --- | ---: | ---: | ---: | ---: | ---: |

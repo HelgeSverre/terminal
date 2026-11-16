@@ -26,10 +26,10 @@ The investigation found two layout defects:
 
 - Subdividing a minimum-height pane could create children of 119 and 0 points,
   although its ancestor had room. Splitting now allocates ancestor space before
-  positioning the new divider. [Failing geometry](subdivide-before.json).
+  positioning the new divider. [Failing geometry](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/real-tui-pane-stress/subdivide-before.json).
 - Shrinking a valid window could leave nested panes at 77 and 76 points, below
   the 120-point minimum. Window resizing now reconciles the entire layout with a
-  reentrancy guard. [Before](resize-before.json), [after](resize-after.json).
+  reentrancy guard. [Before](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/real-tui-pane-stress/resize-before.json), [after](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/real-tui-pane-stress/resize-after.json).
 
 `just pane-lifecycle-smoke` exercises these actual AppKit paths, promotion,
 attachment, containment, non-overlap, and shrink/grow minimums. It also runs in
@@ -52,6 +52,6 @@ and cleanup. They do not compare every Metal frame: the reused synthetic capture
 marker classifier is inconclusive for these real workloads. Full recordings
 remain in the private artifact directories listed in the verification receipt.
 
-![Files after the stress sequence](files.png)
+![Files after the stress sequence](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/real-tui-pane-stress/files.png)
 
-![Codex after the stress sequence](codex.png)
+![Codex after the stress sequence](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/real-tui-pane-stress/codex.png)

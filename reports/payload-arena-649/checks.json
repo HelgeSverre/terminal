@@ -1,9 +1,0 @@
-{
-  "ownership": "pass",
-  "emulator": "pass",
-  "reflow": "pass",
-  "unicode18_corpus": "pass",
-  "exact_document_trace": "pass",
-  "exact_emulator_trace": "pass",
-  "exact_movement_trace": "pass"
-}

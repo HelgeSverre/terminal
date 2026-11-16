@@ -14,11 +14,11 @@ records and four warmups are retained in `result.json` and `logs/`.
 | Mixed | 3.618594 | 3.957430 | +9.36% |
 
 The replay payload/reply gate and canonical final-state gate both passed.
-[raw-evidence.tar.gz](raw-evidence.tar.gz) retains snapshots, canonical
+[raw-evidence.tar.gz](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-printing-315f055/raw-evidence.tar.gz) retains snapshots, canonical
 projections, logs, frozen binaries, build inputs and diagnostic stack captures.
 The archive's SHA-256 is
 `77bbff1868c972cc0f0a45e41b27fc038ba3e3c2978e8349bd43679c600523ec`.
-Every timed and warmup record is also directly readable in [result.json](result.json).
+Every timed and warmup record is also directly readable in [result.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-printing-315f055/result.json).
 
 | Side | Source commit | Binary bytes | SHA-256 | Recorded build wall seconds |
 | --- | --- | ---: | --- | ---: |
@@ -34,7 +34,7 @@ attestation. The source is preserved remotely by annotated checkpoint
 This short probe does not replace the [Swift/Rust comparison](../emulator-comparison-6c601d1-a49a5af/summary.md).
 The measured sources, corpus size and run date differ; Rust was not rerun here.
 
-The later-added [reproducer](run_range_local_probe.rb) uses the retained frozen
-[canonicalizer](canonicalizer-source.rb) and accepts a new report directory,
+The later-added [reproducer](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-printing-315f055/run_range_local_probe.rb) uses the retained frozen
+[canonicalizer](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-printing-315f055/canonicalizer-source.rb) and accepts a new report directory,
 then the extracted baseline and candidate binary paths. It was syntax checked;
 the original measured records remain unchanged.

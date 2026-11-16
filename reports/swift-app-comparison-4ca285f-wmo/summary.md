@@ -45,8 +45,8 @@ against the prior source as independent expected-behavior evidence.
 `comparison.json` records measurement completion separately from the failed
 performance gate. Every measured app exited naturally with no surviving
 children. See [verification.json](verification.json),
-[native-smoke.json](native-smoke.json), [swift.json](swift.json) and
-[rust.json](rust.json). Source is preserved by checkpoint
+[native-smoke.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-4ca285f-wmo/native-smoke.json), [swift.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-4ca285f-wmo/swift.json) and
+[rust.json](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-4ca285f-wmo/rust.json). Source is preserved by checkpoint
 `swift-experiment-20261108-4ca285f`.
 
 The separate owned stack profile is diagnostic, not another timing sample.

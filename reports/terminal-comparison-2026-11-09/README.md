@@ -5,7 +5,7 @@ development build includes the committed parser, Unicode, visible-link and PTY
 read changes through `9354d3a`. Held ASCII/cluster/CSI experiments are excluded.
 The references are the installed Ghostty 1.4.0 and Kitty 0.45.0.
 
-![Measured output throughput](throughput.png)
+![Measured output throughput](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/terminal-comparison-2026-11-09/throughput.png)
 
 Each workload runs ten 16 MiB samples in an opaque 100×30-cell window, configured
 Obel Mono 14, with shell integration disabled. Apps run sequentially in two

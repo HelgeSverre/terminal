@@ -11,7 +11,7 @@ The locally installed toolchain is `Apple Swift version 6.2.4
 (swiftlang-6.2.4.1.4 clang-1700.6.4.2)`, targeting
 `arm64-apple-macosx15.0`. The frozen `43ef231` release command already has
 `-swift-version 5 -O -whole-module-optimization -target
-arm64-apple-macosx15.0` ([build record](../../reports/swift-app-comparison-43ef231-wmo/build.json)).
+arm64-apple-macosx15.0` ([build record](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/swift-app-comparison-43ef231-wmo/build.json)).
 `swiftc -help` on that exact compiler confirms `-emit-sil`, `-emit-silgen`,
 `-emit-ir`, `-emit-assembly`, `-Rpass`, `-Rpass-missed`, and
 `-save-optimization-record*` as supported driver options. The latter are

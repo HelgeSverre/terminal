@@ -18,4 +18,4 @@ Read-only independent review: CLEAR. No GUI, installation, release, or performan
 
 Evidence is self-contained at `/Users/helge/.codex/artifacts/terminal-sgr-parity-919`: archived source, replay runners/binaries, input fixtures, raw snapshots/replies, build/test logs, and hash manifest. `oracles.rb` reproduces the baseline or accepts the candidate replay path; `normal-colors.rb` checks all normal-color values and reply bytes.
 
-The [raw evidence archive](raw-evidence.tar.gz) has SHA-256 `2152f65293d8724ba3476732a242e23efd8b85998186c1d9a37b0a1e63aaafb8`. The [manifest](manifest.json) pins each retained input and output.
+The [raw evidence archive](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/sgr-parity-919/raw-evidence.tar.gz) has SHA-256 `2152f65293d8724ba3476732a242e23efd8b85998186c1d9a37b0a1e63aaafb8`. The [manifest](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/sgr-parity-919/manifest.json) pins each retained input and output.

@@ -85,11 +85,12 @@ Implemented and locally exercised:
   projects, with backing-scale-aware 8-point insets, native dark window chrome,
   and a separate settings window with inline validation. Two visual rounds
   checked the actual windows and cancelled test input without saving preferences.
-- Bounded Kitty direct RGB/RGBA/PNG graphics, zlib, chunks, placement/cropping,
-  alpha/layers, query replies, generation-checked binary pixel bridge and Metal textures.
-  Files/shared memory, image numbers, relative/Unicode placements and protocol
-  animation are not supported. Primary width reflow clears placements; image
-  anchor remapping and complete deletion/scroll-region semantics remain work.
+- Bounded Kitty RGB/RGBA/PNG graphics with zlib, chunking, file/shared-memory
+  transport, image numbers, placement/cropping, Unicode placeholders, relative
+  placements and animation; basic SIXEL and iTerm2 inline images share the
+  image store and Metal textures. The [protocol audit](protocol-coverage.md)
+  records partial combinations and missing features. Primary width reflow
+  clears placements; complete deletion/scroll-region semantics remain work.
 - Direct immutable Swift snapshots carry screen, history, viewport and image
   state without the former binary-cell bridge; indexed history/anchor lookups
   keep retained-snapshot and viewport work inside the document owner.

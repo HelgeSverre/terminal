@@ -1,6 +1,6 @@
 # CSI compatibility after text batching
 
-The [frozen-ref comparison](comparison.json) compiles the same corpus against
+The [frozen-ref comparison](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/csi-text-batching-0b7a6c0/comparison.json) compiles the same corpus against
 released `v0.2.3` (`2e8949b`) and development `0b7a6c0`. All 62,918 canonical
 snapshot/reply records match by SHA256 and exact bytes on this Mac.
 

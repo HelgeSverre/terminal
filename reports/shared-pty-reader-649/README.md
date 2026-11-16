@@ -113,7 +113,7 @@ exit naturally, without cleanup survivors.
 | Unicode | 16.87 / 16.82 | 19.82 / 19.59 | +17.4% / +16.5% |
 
 `app-comparison.json` contains every sample and lifecycle check. The runner is
-the unchanged [paired app runner](../borrowed-ascii-e62/compare_pair.rb).
+the unchanged [paired app runner](https://github.com/HelgeSverre/terminal/blob/3ad91fe/reports/borrowed-ascii-e62/compare_pair.rb).
 `baseline-build.json` and `rebased-649-app.provenance.json` record the compiler
 inputs. The measured candidate's signed executable hash is
 `34798ae9dfbaab0e77a2c6feb042d2409c4a0ba5965e79f4ccabcd77b6a4e4c5`.
