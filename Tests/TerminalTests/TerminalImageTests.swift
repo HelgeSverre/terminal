@@ -74,6 +74,24 @@ import UniformTypeIdentifiers
     #expect(screen.images.isEmpty && screen.rows[0] == "ok")
   }
 
+  @Test func sixelParametersStayWithinTheirCommand() throws {
+    // Digits outside a command are ignored. They must not turn !2 into !92.
+    // An oversized color parameter list must also leave the next command usable.
+    let payload = "9;9!2~$#1" + String(repeating: ";", count: 100_000) + "#2;2;100;0;0#2@"
+    for fragmented in [false, true] {
+      let terminal = try #require(HeadlessTerminal(columns: 40, rows: 10))
+      let sequence = esc + "Pq" + payload + esc + "\\"
+      if fragmented {
+        for byte in sequence.utf8 { terminal.feed(Data([byte])) }
+      } else {
+        terminal.feed(sequence)
+      }
+      let image = try #require(terminal.screen()?.images.first)
+      #expect(image.pixelWidth == 2 && image.pixelHeight == 6)
+      #expect(pixel(try #require(terminal.pixels(of: image)), 0) == [255, 0, 0, 255])
+    }
+  }
+
   @Test func aPictureTallerThanTheScreenScrollsItIntoView() throws {
     let terminal = try #require(HeadlessTerminal(columns: 20, rows: 4))
     terminal.feed("top\r\n")

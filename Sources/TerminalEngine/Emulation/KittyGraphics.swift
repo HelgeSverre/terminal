@@ -519,19 +519,21 @@ final class KittyGraphicsStore {
     return .success(nil)
   }
 
-  /// `a=c`: copies a `w` by `h` rectangle at `x`,`y` of frame `r` to `X`,`Y`
+  /// `a=c`: copies a `w` by `h` rectangle at `X`,`Y` of frame `r` to `x`,`y`
   /// of frame `c`, blended unless `C=1`.
   private func compose(_ id: UInt32, _ fields: [Character: String]) -> Result<(Int, Int)?, KittyGraphicsError> {
     guard var image = images[id] else { return .failure(.notFound) }
     guard let from = try? number(fields, "r", default: 1), let to = try? number(fields, "c", default: 1),
-      (1...image.frameCount).contains(from), (1...image.frameCount).contains(to),
-      let x = try? number(fields, "x", default: 0), let y = try? number(fields, "y", default: 0),
-      let targetX = try? number(fields, "X", default: 0), let targetY = try? number(fields, "Y", default: 0),
+      let x = try? number(fields, "X", default: 0), let y = try? number(fields, "Y", default: 0),
+      let targetX = try? number(fields, "x", default: 0), let targetY = try? number(fields, "y", default: 0),
       let width = try? number(fields, "w", default: 0), let height = try? number(fields, "h", default: 0),
-      let replace = try? number(fields, "C", default: 0) else { return .failure(.invalid) }
-    let w = width == 0 ? image.width - x : width, h = height == 0 ? image.height - y : height
+      let replace = try? number(fields, "C", default: 0), replace <= 1 else { return .failure(.invalid) }
+    guard (1...image.frameCount).contains(from), (1...image.frameCount).contains(to) else { return .failure(.notFound) }
+    let w = width == 0 ? image.width : width, h = height == 0 ? image.height : height
     guard x + w <= image.width, y + h <= image.height, targetX + w <= image.width, targetY + h <= image.height,
       w > 0, h > 0, serial < UInt64.max else { return .failure(.invalid) }
+    guard from != to || x + w <= targetX || targetX + w <= x || y + h <= targetY || targetY + h <= y
+    else { return .failure(.invalid) }
     var canvas = image.pixels(ofFrame: to - 1)
     let source = image.pixels(ofFrame: from - 1)
     // Only the rectangle: rows of the source frame starting at x, y.

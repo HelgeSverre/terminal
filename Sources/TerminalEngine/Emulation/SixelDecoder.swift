@@ -45,28 +45,36 @@ final class SixelDecoder {
   func push(_ byte: UInt8) {
     switch byte {
     case 0x30...0x39:
+      guard command != 0 else { return }
       // A parameter; kept small enough that arithmetic on it cannot overflow.
       number = min(1_000_000, (number ?? 0) * 10 + Int(byte - 0x30))
     case 0x3b:
-      parameters.append(number ?? 0); number = nil
+      guard command != 0 else { return }
+      appendParameter(number ?? 0); number = nil
     default:
       finishCommand()
       switch byte {
       case 0x21, 0x22, 0x23:                   // ! repeat, " raster, # color
         command = byte; parameters.removeAll(keepingCapacity: true)
       case 0x24: x = 0                         // $ carriage return
-      case 0x2d: x = 0; y += 6                 // - new line of sixels
+      case 0x2d: x = 0; y = min(Self.maximumDimension, y + 6) // - new line of sixels
       case 0x3f...0x7e: draw(byte - 0x3f, count: 1)
       default: break
       }
     }
   }
 
+  private func appendParameter(_ value: Int) {
+    // Color definitions have the most parameters: index, space and three
+    // components. Ignore excess fields without retaining an unbounded list.
+    if parameters.count < 5 { parameters.append(value) }
+  }
+
   /// Applies a command once its parameters are complete. A repeat is
   /// applied by the data byte that follows it.
   private func finishCommand() {
     guard command != 0 else { return }
-    if let number { parameters.append(number) }
+    if let number { appendParameter(number) }
     number = nil
     defer { if command != 0x21 { command = 0; parameters.removeAll(keepingCapacity: true) } }
     switch command {
@@ -115,7 +123,7 @@ final class SixelDecoder {
   private func draw(_ bits: UInt8, count: Int) {
     var repeatCount = count
     if command == 0x21 {
-      if let number { parameters.append(number) }
+      if let number { appendParameter(number) }
       number = nil
       repeatCount = max(1, parameters.first ?? 1)
       command = 0; parameters.removeAll(keepingCapacity: true)

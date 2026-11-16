@@ -277,7 +277,7 @@ import TerminalInterop
     // Frame 3: transparent, half-transparent green at x=0.
     terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,q=2;\(Data([0, 255, 0, 128]).base64EncodedString())\(esc)\\")
     // Compose frame 2's blue pixel onto frame 3 at x=0, blending.
-    terminal.feed("\(esc)_Ga=c,i=4,r=2,c=3,x=1,y=0,X=0,Y=0,w=1,h=1,q=2\(esc)\\")
+    terminal.feed("\(esc)_Ga=c,i=4,r=2,c=3,X=1,Y=0,x=0,y=0,w=1,h=1,q=2\(esc)\\")
     func frame(_ number: Int) -> [UInt8] {
       terminal.feed("\(esc)_Ga=a,i=4,s=1,c=\(number),q=2\(esc)\\")
       final class Box { var data = Data() }
@@ -295,6 +295,31 @@ import TerminalInterop
     #expect(frame(1) == [255, 0, 0, 255, 255, 0, 0, 255], "the base frame is unchanged")
     terminal.feed("\(esc)_Gi=4,a=f,r=9,f=32,s=1,v=1;\(dot(0, 0, 0))\(esc)\\")
     #expect(terminal.replies().contains("ENOENT"), "a frame that does not exist")
+  }
+
+  @Test func compositionRejectsOverlapAndMissingFramesAtomically() throws {
+    let terminal = Terminal()
+    let red: [UInt8] = [255, 0, 0, 255], blue: [UInt8] = [0, 0, 255, 255]
+    terminal.feed("\(esc)_Ga=T,i=4,f=32,s=2,v=2,q=2;\(Data(red + red + red + blue).base64EncodedString())\(esc)\\")
+    let original = try #require(terminal.images.first)
+    for fields in ["r=1,c=1,w=2,h=2", "r=1,c=1,X=1,Y=1,x=1,y=1,w=1,h=1"] {
+      terminal.feed("\(esc)_Ga=c,i=4,\(fields)\(esc)\\")
+      #expect(terminal.replies() == "\(esc)_Gi=4;EINVAL:invalid graphics command or image data\(esc)\\")
+      #expect(terminal.images.first?.generation == original.generation)
+      #expect(frameColor(terminal, at: 0) == red)
+    }
+    terminal.feed("\(esc)_Ga=c,i=4,r=2,c=1\(esc)\\")
+    #expect(terminal.replies() == "\(esc)_Gi=4;ENOENT:image not found\(esc)\\")
+    #expect(terminal.images.first?.generation == original.generation)
+    // Missing dimensions mean the full image, not the remainder after X/Y.
+    terminal.feed("\(esc)_Ga=c,i=4,r=1,c=1,X=1\(esc)\\")
+    #expect(terminal.replies().contains("EINVAL"))
+    #expect(terminal.images.first?.generation == original.generation)
+    // Disjoint rectangles in the same frame are legal. Exercise both axes.
+    terminal.feed("\(esc)_Ga=c,i=4,r=1,c=1,X=1,Y=1,x=0,y=0,w=1,h=1,C=1\(esc)\\")
+    #expect(terminal.replies() == "\(esc)_Gi=4;OK\(esc)\\")
+    #expect(terminal.images.first?.generation != original.generation)
+    #expect(frameColor(terminal, at: 0) == blue)
   }
 
   @Test func theTerminalSaysWhatItSupports() {
