@@ -20,16 +20,24 @@ fails when one of them stops passing, and names cases that newly pass;
 | Measured | Value (cases) |
 | --- | --- |
 | Run | 567 |
-| Pass | 320 |
-| Fail | 206 |
-| Marked by esctest as known xterm deviations | 41 |
+| Pass | 447 |
+| Reported failures | 81 |
+| Marked by esctest as known xterm deviations | 39 |
 
-Measured on 2026-11-15 at esctest2 `2798f12`, with
-`--expected-terminal=xterm --xterm-checksum=334`. The failures are mostly
-features the emulator does not have: rectangular area operations (DECCRA,
-DECERA, DECFRA, DECSERA), DECIC and DECDC, DECBI and DECFI, DECRQSS, window
-manipulation beyond the size reports, the special colors of OSC 5, and
-several DECRQM modes. `reports/esctest.json` lists them after a run.
+Measured on 2026-11-17 at source `b945624`, esctest2 `2798f12`, with
+`--expected-terminal=xterm --xterm-checksum=334 --xterm-reverse-wrap=383`.
+These are now the harness defaults; the modern reverse-wrap profile matches
+the implemented mode 45/1045 behavior. No previously passing case regressed.
+The known-good gate now protects all 447 passes.
+
+The 81 reported failures include two correct ISO-protection results that
+upstream's known-bug decorators reject as unexpected passes. The remainder
+are unsupported color spellings/status queries/hardware profiles, unknown
+legacy modes, and intentionally prohibited window changes. See the exact
+[protocol dispositions](protocol-discovery.md) and
+[VT dispositions](gap-vt-conformance.md); `reports/esctest.json` lists each case.
+The earlier 2026-11-15 baseline was 320 passes, 206 failures and 41 known
+xterm deviations with the legacy reverse-wrap profile.
 
 ## Fuzzing
 
