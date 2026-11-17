@@ -1244,8 +1244,9 @@ private final class TerminalEmulator {
       switch params.first ?? 0 {
       case 14: replies.append(contentsOf: "\u{1b}[4;\(rowCount * cellPixelHeight);\(columns * cellPixelWidth)t".utf8)
       case 16: replies.append(contentsOf: "\u{1b}[6;\(cellPixelHeight);\(cellPixelWidth)t".utf8)
-      case 20: replies.append(contentsOf: "\u{1b}]L\(iconTitle)\u{1b}\\".utf8)
-      case 21: replies.append(contentsOf: "\u{1b}]l\(title)\u{1b}\\".utf8)
+      // 20 and 21 would report the icon and window titles. They are not
+      // answered: a title is set by output, so reporting it lets output
+      // place its own text in the input stream.
       case 22:
         let which = params.count > 1 ? params[1] : 0
         if (0...2).contains(which), params.count <= 2 || params[2] == 0 {

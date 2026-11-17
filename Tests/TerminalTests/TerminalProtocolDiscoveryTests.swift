@@ -184,7 +184,8 @@ import TerminalInterop
   @Test func titlesAreBoundedFilteredAndRestorable() throws {
     let core = try terminal()
     core.feed(osc("0;original") + "\u{1b}[22;0t" + osc("1;icon") + osc("2;window"))
-    #expect(ask(core, "\u{1b}[20t\u{1b}[21t") == "\u{1b}]Licon\u{1b}\\\u{1b}]lwindow\u{1b}\\")
+    #expect(core.screen()?.title == "window")
+    #expect(ask(core, "\u{1b}[20t\u{1b}[21t").isEmpty, "titles set by output are never reported back as input")
     core.feed("\u{1b}[23;0t")
     #expect(core.screen()?.title == "original")
     let bidi = "\u{061c}\u{200e}\u{200f}\u{202a}\u{202b}\u{202c}\u{202d}\u{202e}\u{2066}\u{2067}\u{2068}\u{2069}"
@@ -216,9 +217,6 @@ import TerminalInterop
     // Push the icon and window separately, then restore both in one pop.
     core.feed(osc("1;original-icon") + osc("2;original-window") + "\u{1b}[22;1t\u{1b}[22;2t")
     core.feed(osc("1;changed-icon") + osc("2;changed-window") + "\u{1b}[23;0t")
-    #expect(ask(core, "\u{1b}[20t\u{1b}[21t") == "\u{1b}]Loriginal-icon\u{1b}\\\u{1b}]loriginal-window\u{1b}\\")
-    // The older frame was only consulted, and remains on the stack.
-    core.feed(osc("1;again") + "\u{1b}[23;1t")
-    #expect(ask(core, "\u{1b}[20t") == "\u{1b}]Loriginal-icon\u{1b}\\")
+    #expect(core.screen()?.title == "original-window")
   }
 }
