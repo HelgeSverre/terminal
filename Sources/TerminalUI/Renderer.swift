@@ -701,6 +701,7 @@ public final class TerminalRendering: @unchecked Sendable {
     RendererMetrics.beginGlyphFrame(revision: request.snapshot.revision)
     var quads: [Quad] = []
     var backgrounds: [Quad] = []
+    var decorations: [Quad] = []
     var glyphQuads = Array(repeating: [Quad](), count: atlases.count)
     var directGlyphQuads: [(quad: Quad, texture: MTLTexture, heap: MTLHeap?, legacyID: UUID?)] = []
     let snap = request.snapshot
@@ -714,6 +715,10 @@ public final class TerminalRendering: @unchecked Sendable {
     let whiteUV = SIMD4<Float>(0.5 / Float(atlasSize), 0.5 / Float(atlasSize), 0, 0)
     func rect(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ color: SIMD4<Float>) {
       quads.append(
+        Quad(rect: SIMD4(Float(x), Float(y), Float(w), Float(h)), uv: whiteUV, color: color))
+    }
+    func decoration(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ color: SIMD4<Float>) {
+      decorations.append(
         Quad(rect: SIMD4(Float(x), Float(y), Float(w), Float(h)), uv: whiteUV, color: color))
     }
     func appendGlyph(_ quad: Quad, _ glyph: Glyph) {
@@ -731,6 +736,7 @@ public final class TerminalRendering: @unchecked Sendable {
     for pass in 0..<2 {
       quads.removeAll(keepingCapacity: true)
       backgrounds.removeAll(keepingCapacity: true)
+      decorations.removeAll(keepingCapacity: true)
       glyphQuads = Array(repeating: [], count: atlases.count)
       directGlyphQuads.removeAll(keepingCapacity: true)
       frameAtlasPages = [0]
@@ -877,14 +883,14 @@ public final class TerminalRendering: @unchecked Sendable {
               for shape in UnderlineGeometry.rectangles(kind: linkHovered ? 1 : cell.style.underline,
                 x: c * request.cellWidth, width: request.cellWidth * cells,
                 height: request.cellHeight, scale: request.backingScale) {
-                rect(x + shape.x, y + shape.y, shape.width, shape.height,
+                decoration(x + shape.x, y + shape.y, shape.width, shape.height,
                   linkHovered ? fg : colors.underline(matching: fg))
               }
             }
             if cell.style.strike {
-              rect(x, y + request.cellHeight / 2, request.cellWidth * cells, 1, fg)
+              decoration(x, y + request.cellHeight / 2, request.cellWidth * cells, 1, fg)
             }
-            if cell.style.overline { rect(x, y, request.cellWidth * cells, 1, fg) }
+            if cell.style.overline { decoration(x, y, request.cellWidth * cells, 1, fg) }
           }
         }
       }
@@ -1045,6 +1051,7 @@ public final class TerminalRendering: @unchecked Sendable {
     // drawn in exactly one of the three image passes.
     let frameQuadCount =
       backgrounds.count + textQuads.count + textGlyphQuads.reduce(0) { $0 + $1.count }
+      + decorations.count
       + textDirectGlyphQuads.count + overlayQuads.count + overlayGlyphQuads.reduce(0) { $0 + $1.count }
       + overlayDirectGlyphQuads.count + snap.images.count
     let frameQuads = takeQuadBuffer(bytes: MemoryLayout<Quad>.stride * frameQuadCount)
@@ -1107,6 +1114,10 @@ public final class TerminalRendering: @unchecked Sendable {
       drawQuads(quads, texture: atlases[page], state: pipeline)
     }
     for item in textDirectGlyphQuads { drawQuads([item.quad], texture: item.texture, state: pipeline) }
+    // Glyph descenders and antialias coverage can overlap decorations. Draw
+    // the requested solid ink after every glyph representation so its color
+    // and shape do not depend on font coverage or asynchronous residency.
+    drawQuads(decorations, texture: atlases[0], state: pipeline)
     drawImages { $0 >= 0 }
     drawQuads(overlayQuads, texture: atlases[0], state: pipeline)
     for (page, quads) in overlayGlyphQuads.enumerated() {
