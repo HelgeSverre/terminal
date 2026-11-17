@@ -66,7 +66,8 @@ struct BoundedSearchRegex {
       case "$": return .lineEnd
       case ".": return .atom(Atom(ranges: [], any: true))
       case "\\":
-        let value = try folded(escaped())
+        let escapedValue = try escaped()
+        let value = try folded(escapedValue)
         return .atom(Atom(ranges: [value...value]))
       case "[":
         var inverted = false
