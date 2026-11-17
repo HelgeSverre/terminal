@@ -477,8 +477,8 @@ import TerminalInterop
       }
       let untouched = observed("")
       let foreign = [
-        "\u{1b}[?1;1;0S", "\u{1b}[?1000r", "\u{1b}[#P", "\u{1b}[>1T", "\u{1b}[2 A", "\u{1b}[1;2$r",
-        "\u{1b}[>0q", "\u{1b}[=c", "\u{1b}[>2A", "\u{1b}[?3@", "\u{1b}[<2L", "\u{1b}[1?J", "\u{1b}[!\"p",
+        "\u{1b}[?1;1;0S", "\u{1b}[?1000R", "\u{1b}[#P", "\u{1b}[>1T", "\u{1b}[2 A", "\u{1b}[1;2%r",
+        "\u{1b}[>1q", "\u{1b}[=c", "\u{1b}[>2A", "\u{1b}[?3@", "\u{1b}[<2L", "\u{1b}[1?J", "\u{1b}[!\"p",
       ]
       for sequence in foreign {
         let result = observed(sequence)
@@ -489,7 +489,7 @@ import TerminalInterop
       // character still starts the next line.
       let wrapping = helge_terminal_create(4, 2)!
       defer { helge_terminal_destroy(wrapping) }
-      feed(wrapping, "abcd\u{1b}[>0qe")
+      feed(wrapping, "abcd\u{1b}[>1qe")
       #expect(cells(snapshot(wrapping), 0)[3]["text"] as? String == "d", "last column kept")
       #expect(cells(snapshot(wrapping), 1)[0]["text"] as? String == "e", "wrap still pending")
       // The commands that share those final bytes still work.
@@ -497,6 +497,9 @@ import TerminalInterop
       #expect(observed("\u{1b}[?J").rows != untouched.rows, "DECSED erases")
       #expect(observed("\u{1b}[c").replies == "\u{1b}[?62;4;22c", "primary device attributes")
       #expect(observed("\u{1b}[>c").replies == "\u{1b}[>1;10;0c", "secondary device attributes")
+      let version = observed("\u{1b}[>0q")
+      #expect(version.rows == untouched.rows && version.replies == "\u{1b}P>|HelgeTerminal\u{1b}\\",
+              "version query is supported without changing the screen or cursor")
       #expect(observed("\u{1b}[?u").replies == "\u{1b}[?0u", "keyboard flags query")
       #expect(observed("\u{1b}[?69$p").replies == "\u{1b}[?69;2$y", "DECRQM for a private mode")
     }

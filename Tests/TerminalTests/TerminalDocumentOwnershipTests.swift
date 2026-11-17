@@ -953,11 +953,19 @@ import Testing
   }
 
   @Test static func logicalCapacityMatchesFormerRichArray() {
+    // The compatibility contract uses the former 64-byte element, not the
+    // current projection: OSC 8 identity metadata made TerminalCell larger.
+    // Keep Array's real allocation rounding as the independent oracle.
+    struct FormerRichCapacityCell {
+      var a: UInt64 = 0; var b: UInt64 = 0; var c: UInt64 = 0; var d: UInt64 = 0
+      var e: UInt64 = 0; var f: UInt64 = 0; var g: UInt64 = 0; var h: UInt64 = 0
+    }
+    #expect(MemoryLayout<FormerRichCapacityCell>.stride == 64)
     // Array capacity is part of history admission, not an implementation
-    // detail. Exercise awkward widths plus shrink/regrow against the actual
-    // pre-slot element type so allocator rounding stays byte-for-byte stable.
+    // detail. Exercise awkward widths plus shrink/regrow at the fixed pre-slot
+    // element stride so allocator rounding stays byte-for-byte stable.
     for width in [1, 2, 3, 4, 7, 17, 80] {
-      var rich = Array(repeating: TerminalCell(), count: width)
+      var rich = Array(repeating: FormerRichCapacityCell(), count: width)
       var row = TerminalRow(columns: width)
       func expected() -> UInt64 { 32 + UInt64(rich.capacity) * 64 }
       #expect(row.retainedStorageCost == expected())
@@ -967,7 +975,7 @@ import Testing
       #expect(row.retainedStorageCost == expected())
 
       let growth = width + 5
-      rich.append(contentsOf: repeatElement(TerminalCell(), count: growth - shrunk))
+      rich.append(contentsOf: repeatElement(FormerRichCapacityCell(), count: growth - shrunk))
       row.appendBlanks(growth - shrunk)
       #expect(row.retainedStorageCost == expected())
 
