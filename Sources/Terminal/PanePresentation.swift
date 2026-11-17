@@ -11,6 +11,7 @@ final class TerminalPanePresentationView: NSView {
   /// bar must not resize the grid, which would reflow and drop the matches.
   let findBar = TerminalFindBar()
   let resumeStrip = TerminalResumeStrip(frame: .zero)
+  let downloadOffer = TerminalDownloadOfferView(frame: .zero)
   private let header = PaneHeaderView()
   private var tracking: NSTrackingArea?
   private var showsHeader = false
@@ -63,6 +64,7 @@ final class TerminalPanePresentationView: NSView {
     addSubview(header)
     addSubview(resumeStrip)
     resumeStrip.onDismiss = { [weak self] in self?.needsLayout = true }
+    addSubview(downloadOffer)
     header.onSelect = { [weak self] in self?.onSelect?() }
     header.onChooseColor = { [weak self] point in self?.showColorPopover(at: point) }
     header.onClose = { [weak self] in self?.onClose?() }
@@ -142,6 +144,8 @@ final class TerminalPanePresentationView: NSView {
     resumeStrip.frame = NSRect(x: 0, y: height, width: bounds.width, height: TerminalResumeStrip.height)
     let resumeHeight = resumeStrip.isOffered ? TerminalResumeStrip.height : 0
     findBar.frame = NSRect(x: 0, y: height + resumeHeight, width: bounds.width, height: TerminalFindBar.height)
+    downloadOffer.frame = NSRect(x: 0, y: max(height, bounds.height - TerminalDownloadOfferView.height),
+      width: bounds.width, height: TerminalDownloadOfferView.height)
   }
 
   override func updateTrackingAreas() {

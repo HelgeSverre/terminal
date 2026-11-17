@@ -77,3 +77,13 @@ Control-Command-Z for zoom, and Control-Command-N to move the pane. Commands
 act on the pane whose canvas or find bar has focus.
 
 See [automation](automation.md) for script targeting and bounded reads.
+
+## Downloads offered by terminal programs
+
+A program can offer a bounded file download. A quiet strip at the bottom of its
+pane offers **Save filename…** and **Dismiss**. Output alone never opens a dialog
+or writes a file. Save opens the native Save panel with a sanitized basename;
+the file is written only to the destination you choose. Cancel or Dismiss
+releases the offered payload, as does closing its pane. The app accepts one
+pending offer across all panes, at most once per second, with a 32 MiB payload
+limit. Additional offers are discarded.

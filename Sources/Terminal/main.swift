@@ -163,6 +163,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     state.finished = true
     paneTitles[ObjectIdentifier(pane)] = state
     panePresentation(for: pane)?.setTitle(state.windowTitle)
+    panePresentation(for: pane)?.downloadOffer.dismiss()
     publishWindowTitle()
   }
 
@@ -296,6 +297,11 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
       guard let pane, let owner = pane.window?.windowController as? TerminalWindow, owner.visualBellEnabled else { return }
       owner.panePresentation(for: pane)?.indicateBell()
     }
+    pane.session.onDownload = { [weak pane] request in
+      guard let pane, let owner = pane.window?.windowController as? TerminalWindow,
+        let presentation = owner.panePresentation(for: pane) else { request.dismiss(); return }
+      presentation.downloadOffer.offer(request)
+    }
     return pane
   }
 
@@ -425,6 +431,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   /// Closes `pane`, and the window with it when it is the only one.
   private func close(_ pane: TerminalCanvasView) {
     endPaneZoom()
+    panePresentation(for: pane)?.downloadOffer.dismiss()
     guard panes.count > 1,
       let presentation = panePresentation(for: pane), let split = presentation.superview as? NSSplitView
     else {
@@ -468,6 +475,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   func windowDidDeminiaturize(_ notification: Notification) { panes.forEach { $0.refresh() } }
   func windowWillClose(_ notification: Notification) {
     panes.forEach {
+      panePresentation(for: $0)?.downloadOffer.dismiss()
       $0.session.close()
       $0.detachRenderingSurface()
     }
