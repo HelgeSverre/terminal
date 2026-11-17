@@ -1,5 +1,8 @@
 import Foundation
+import CoreGraphics
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 @testable import TerminalEngine
 @testable import TerminalUI
 import TerminalInterop
@@ -29,6 +32,15 @@ import TerminalInterop
     Oracle.feed(core, Oracle.command("a=T,f=24,s=1,v=1,i=4,p=1,U=1,c=1,r=1,C=1", [255, 255, 0]))
     let mark = String(UnicodeScalar(KittyPlaceholder.diacritics[0])!)
     Oracle.feed(core, "\(esc)[2;1H\(esc)[38;5;4m\u{10eeee}\(mark)\(mark)\(esc)[0m")
+    let png = NSMutableData()
+    let destination = try #require(CGImageDestinationCreateWithData(png, UTType.png.identifier as CFString, 1, nil))
+    let provider = try #require(CGDataProvider(data: Data([0, 255, 255, 255]) as CFData))
+    let cyan = try #require(CGImage(width: 1, height: 1, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: 4,
+      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+      provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+    CGImageDestinationAddImage(destination, cyan, nil)
+    #expect(CGImageDestinationFinalize(destination))
+    Oracle.feed(core, "\(esc)]1337;File=inline=1;width=2;height=1;preserveAspectRatio=0:\((png as Data).base64EncodedString())\u{7}")
     var snapshot = try #require(swiftTerminalSnapshot(core, scroll: nil, now: 0).snapshot)
     for image in snapshot.images {
       let bytes = Oracle.Bytes()
@@ -47,7 +59,9 @@ import TerminalInterop
     #expect(abs(Int(blended[0]) - 188) <= 2 && blended[1] == 0 && abs(Int(blended[2]) - 187) <= 2 && blended[3] == 255)
     #expect(bgra(12, 4) == [0, 255, 0, 255], "relative child's cropped green sample")
     #expect(bgra(4, 12) == [0, 255, 255, 255], "placeholder image slice")
-    #expect(bgra(20, 12) == [0, 0, 0, 255], "clear background outside placements")
+    #expect(bgra(20, 4) == [0, 0, 0, 255], "clear background outside placements")
+    #expect(bgra(9, 12) == [255, 255, 0, 255] && bgra(22, 12) == [255, 255, 0, 255],
+      "preserveAspectRatio=0 stretches to both horizontal edges")
   }
 }
 #endif
