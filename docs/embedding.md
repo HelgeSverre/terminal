@@ -274,6 +274,7 @@ All callbacks run on the main thread.
 | `view.onOpenLink` | The user opened a link with Command-click. Return true when the host has dealt with it; otherwise the view opens it with the workspace. |
 | `view.onContextMenu` | The context menu, holding Copy and Paste, before it is shown; the host changes its items |
 | `session.onBell` | The program rang the bell. The terminal makes no sound of its own. |
+| `session.onDownload` | A completed OSC 1337 file is available as a `TerminalDownloadRequest`; the host chooses whether to offer Save or dismiss it. |
 | `session.onStatus` | A line of text about the session's life, for a log |
 | `session.onLaunchFailure` | The child could not be started. `SessionLaunchFailure` says why: `.invalidArguments`, `.spawn(errno:)`, or `.stage(_:errno:)` with the launcher's failing step, such as `.execute` for a missing program or `.workingDirectory` for a missing directory. |
 | `session.onEnd` | The child has exited and its last output is on screen. `SessionEnd` carries `exitedCleanly`, `exitCode` or `terminatingSignal`, and `seconds`, the run time in seconds. |
@@ -298,6 +299,30 @@ whether Option sends Escape, the inset between the view's edge and the text
 (`contentInset`, 8 points unless set), and a `TerminalSessionConfiguration`: the history limit in rows
 (at most 50,000), whether typing scrolls back to the newest output, and the
 colors.
+
+### Received files
+
+The [iTerm file protocol](https://iterm2.com/documentation-images.html) accepts
+both `File` and multipart `MultipartFile`/`FilePart`/`FileEnd` transfers.
+`inline=1` displays an image; omitted `inline` or `inline=0` offers arbitrary
+file bytes through `session.onDownload`. The callback carries a sanitized
+basename and byte count. It never opens a save dialog or writes a file.
+
+Keep the request while showing a quiet Save/Dismiss control. After the user
+chooses a destination, call `request.takeData { data in ... }` and save the
+returned bytes to that user-selected destination. Completion runs on the main
+actor and returns nil after cancellation, close, reset or a repeated take.
+Call `request.dismiss()` when the user declines. Without a callback, the
+session dismisses offers automatically.
+
+The engine keeps at most four completed files and 32 MiB total until the host
+takes or dismisses them. Additional files are discarded while those limits
+are full. An individual transfer is limited to 32 MiB decoded data, with a
+1 MiB encoded limit per multipart part. Reset discards pending files; EOF
+discards an incomplete transfer while keeping completed offers available.
+`HeadlessTerminal.takeDownloads()` explicitly transfers all completed files
+as `[TerminalDownload]`, each containing `suggestedFilename` and `data`.
+The caller owns those bytes and any subsequent file operation.
 
 ### Wide text
 
