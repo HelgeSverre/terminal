@@ -4,13 +4,13 @@ import Darwin
 
 enum StateLocation {
   static func directory(arguments: [String], bundle: URL, home: URL) -> URL? {
-    let args = Array(arguments.dropFirst())
+    let args = Array(arguments.dropFirst().prefix { $0 != "--execute" })
     if let index = args.firstIndex(of: "--state-directory") {
       guard args.indices.contains(index + 1), !args[index + 1].isEmpty,
         !args[index + 1].hasPrefix("--") else { return nil }
       return URL(fileURLWithPath: args[index + 1], isDirectory: true).standardizedFileURL.resolvingSymlinksInPath()
     }
-    guard args.isEmpty else { return nil }
+    guard arguments.dropFirst().isEmpty else { return nil }
     let path = bundle.standardizedFileURL.path
     let roots = ["/Applications/", home.appendingPathComponent("Applications").path + "/"]
     guard roots.contains(where: { path.hasPrefix($0) }) else { return nil }

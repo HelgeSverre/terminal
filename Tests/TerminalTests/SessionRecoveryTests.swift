@@ -39,6 +39,8 @@ import Darwin
     #expect(StateLocation.directory(arguments: ["app"], bundle: installed, home: home)?.lastPathComponent == "Sessions")
     #expect(StateLocation.directory(arguments: ["app", "--state-directory", "/private/test"], bundle: development, home: home)?.path == "/private/test")
     #expect(StateLocation.directory(arguments: ["app", "--state-directory"], bundle: installed, home: home) == nil)
+    #expect(StateLocation.directory(arguments: ["app", "--execute", "child", "--state-directory", "/private/child-state"], bundle: installed, home: home) == nil)
+    #expect(StateLocation.directory(arguments: ["app", "--state-directory", "/private/app-state", "--execute", "child", "--state-directory", "/private/child-state"], bundle: development, home: home)?.path == "/private/app-state")
     #expect(StateLocation.directory(arguments: ["app"], bundle: URL(fileURLWithPath: "/Applications-other/App.app"), home: home) == nil)
   }
 
