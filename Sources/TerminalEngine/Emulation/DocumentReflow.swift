@@ -122,6 +122,7 @@ final class DocumentReflowTransaction {
     let required = State.sum(sourceBytes, promptBytes, largestPromptDictionary,
       primarySelection?.content.allocationBytes ?? 0, alternateSelection?.content.allocationBytes ?? 0,
       State.product(source.history.count + source.primary.rows.count, 16), 4096)
+      + UInt64(min(graphicsAnchors.count, 256)) * 256
     guard required <= ReflowReservationLedger.operationLimit else {
       if source.history.isEmpty { earlyStatus = .rejected(.operationBudget) }
       else {

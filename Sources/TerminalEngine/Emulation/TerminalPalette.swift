@@ -85,6 +85,20 @@ struct TerminalPalette {
   var snapshotPalette: [[Int]] { entries.map(\.snapshotValue) }
   var snapshotDefaultForeground: [Int] { defaultForeground.snapshotValue }
   var snapshotDefaultBackground: [Int] { defaultBackground.snapshotValue }
+  /// Kitty's indexed formats reserve the last eight slots for presentation
+  /// colors rather than the end of the SGR grayscale ramp.
+  var snapshotGraphicsPalette: [[Int]] {
+    var colors = snapshotPalette
+    colors[248] = snapshotDefaultBackground
+    colors[249] = snapshotDefaultForeground
+    colors[250] = RGB(scheme.selectionBackground).snapshotValue
+    colors[251] = RGB(scheme.selectionForeground).snapshotValue
+    colors[252] = RGB(scheme.cursor).snapshotValue
+    colors[253] = snapshotDefaultBackground
+    colors[254] = snapshotDefaultForeground
+    colors[255] = snapshotDefaultForeground
+    return colors
+  }
 
   mutating func reset() {
     entries = Self.entries(for: scheme)

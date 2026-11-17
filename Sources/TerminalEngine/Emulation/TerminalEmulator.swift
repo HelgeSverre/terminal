@@ -2227,7 +2227,7 @@ private final class TerminalEmulator {
     self.changed(document: false)
   }
   private func refreshGraphicsPalette() {
-    graphics.setPalette(palette.snapshotPalette, foreground: palette.snapshotDefaultForeground, background: palette.snapshotDefaultBackground)
+    graphics.setPalette(palette.snapshotGraphicsPalette)
   }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
   func setHistoryByteLimit(_ value: Int) { historyByteLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }

@@ -192,14 +192,10 @@ final class KittyGraphicsStore {
 
   /// Palette-linked images own their samples as well as the current RGBA.
   /// A new generation retires cached textures without changing placement IDs.
-  func setPalette(_ colors: [[Int]], foreground: [Int], background: [Int]) {
-    guard colors.count == 256 else { return }
-    var resolved = colors
-    resolved[248] = background
-    for slot in [249, 250, 252, 254, 255] { resolved[slot] = foreground }
-    for slot in [251, 253] { resolved[slot] = background }
-    guard resolved != indexedColors else { return }
-    indexedColors = resolved
+  func setPalette(_ colors: [[Int]]) {
+    guard colors.count == 256, colors.allSatisfy({ $0.count == 3 && $0.allSatisfy({ (0...255).contains($0) }) }),
+      colors != indexedColors else { return }
+    indexedColors = colors
     for id in Array(images.keys) {
       guard var image = images[id], let samples = image.indexed, serial < UInt64.max else { continue }
       serial += 1
