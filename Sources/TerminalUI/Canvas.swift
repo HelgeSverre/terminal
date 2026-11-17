@@ -5,7 +5,7 @@ import TerminalEngine
 import TerminalHost
 
 public final class TerminalCanvasView: NSView, NSTextInputClient {
-  package let automationID = UUID().uuidString
+  package let automationID: String
   public let session: TerminalSession
   private let rendering: TerminalRendering?
   private let clipboard: ClipboardAccess?
@@ -108,7 +108,8 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   /// Without `rendering` the view draws nothing; without `clipboard` it
   /// refuses clipboard writes and copies nothing.
   public init(frame: NSRect, session: TerminalSession, rendering: TerminalRendering?, clipboard: ClipboardAccess?,
-       configuration: TerminalViewConfiguration = TerminalViewConfiguration()) {
+       configuration: TerminalViewConfiguration = TerminalViewConfiguration(), automationID: String = UUID().uuidString) {
+    self.automationID = automationID
     self.session = session
     self.rendering = rendering
     self.clipboard = clipboard

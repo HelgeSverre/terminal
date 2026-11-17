@@ -362,9 +362,18 @@ public final class TerminalSession: @unchecked Sendable {
     case clearDisplay
     case probe(UInt64, @MainActor (Double) -> Void)
     case clipboardDecision(UInt64, Bool, @MainActor (Bool) -> Void)
+    case recoveryCheckpoint(Bool, @MainActor (String?, Int, Double?) -> Void)
     case eof, idle
   }
   private let launchSpec: LaunchSpec?
+  package var launchDirectory: String? { launchSpec?.cwd }
+  private let recoverySeed: String?
+  private var recoveryTiming = RecoveryCheckpointTiming()
+  private var recoveryCapturing = false
+  package var onRecoveryActivity: (@MainActor () -> Void)?
+  package var onRecoveryMetadata: (@MainActor () -> Void)?
+  package var onRecoveryReady: (@MainActor () -> Void)?
+  @MainActor private var recoveryReadyDelivered = false
   private let transport: TerminalTransport?
   private var connection: TerminalConnection?
   private let awaitsGrid: Bool
@@ -482,14 +491,18 @@ public final class TerminalSession: @unchecked Sendable {
   public convenience init(launch: LaunchSpec, startsAtFirstGrid: Bool = false) {
     self.init(launch: launch, transport: nil, startsAtFirstGrid: startsAtFirstGrid)
   }
+  package convenience init(recovering launch: LaunchSpec, text: String, startsAtFirstGrid: Bool = false) {
+    self.init(launch: launch, transport: nil, startsAtFirstGrid: startsAtFirstGrid, recoverySeed: text)
+  }
   /// A session with no local process: `transport` is its far end. The
   /// session reports its end when the transport ends its connection, and
   /// `processIdentifier` stays nil.
   public convenience init(transport: TerminalTransport, startsAtFirstGrid: Bool = false) {
     self.init(launch: nil, transport: transport, startsAtFirstGrid: startsAtFirstGrid)
   }
-  private init(launch: LaunchSpec?, transport: TerminalTransport?, startsAtFirstGrid: Bool) {
+  private init(launch: LaunchSpec?, transport: TerminalTransport?, startsAtFirstGrid: Bool, recoverySeed: String? = nil) {
     launchSpec = launch
+    self.recoverySeed = recoverySeed
     self.transport = transport
     awaitsGrid = startsAtFirstGrid
     if SessionDiagnostics.collectsStreamStatistics { streamStatistics = StreamStatistics() }
@@ -826,6 +839,7 @@ public final class TerminalSession: @unchecked Sendable {
     }
     core = handle
     TerminalGraphicsTransportBridge.enable(core: handle)
+    if let recoverySeed { TerminalRecoveryBridge.seed(core: handle, text: recoverySeed) }
     guard launchSpec?.isValid != false else { return fail(.invalidArguments, "Invalid launch arguments") }
     guard awaitsGrid else { return launch(columns: 80, rows: 24, cellWidth: 0, cellHeight: 0) }
     awaitingGrid = true
@@ -1022,7 +1036,10 @@ public final class TerminalSession: @unchecked Sendable {
       ingress.consumeOutput(used)
       readBroker.consumed(used, completedNode: false)
       bytesParsed += UInt64(used)
-      if used > 0 { lastParseNs = DispatchTime.now().uptimeNanoseconds }
+      if used > 0 {
+        lastParseNs = DispatchTime.now().uptimeNanoseconds
+        recoveryDidChange(at: lastParseNs)
+      }
       drainReplies()
       drainClipboardWrites()
       if helge_terminal_take_bells(core) > 0 {
@@ -1239,6 +1256,7 @@ public final class TerminalSession: @unchecked Sendable {
       helge_terminal_search_clear(core)
     case .clearDisplay:
       let action = helge_terminal_clear_display(core)
+      recoveryDidChange(at: DispatchTime.now().uptimeNanoseconds)
       if action != 0 { historySearch.cancel() }
       if action == 2 && !writeEnded {
         writeID += 1
@@ -1247,6 +1265,9 @@ public final class TerminalSession: @unchecked Sendable {
     case .probe(let accepted, let completion):
       let delay = Double(DispatchTime.now().uptimeNanoseconds - accepted) / 1_000_000
       DispatchQueue.main.async { completion(delay) }
+    case .recoveryCheckpoint(let force, let completion):
+      beginRecoveryCheckpoint(force: force, completion: completion)
+      publishNeeded = false
     case .eof:
       parserEnded = true
       helge_terminal_finish(core)
@@ -1730,8 +1751,57 @@ public final class TerminalSession: @unchecked Sendable {
       deliveryScheduled = false
       publication.unlock()
       if let snapshot {
+        let directoryChanged = deliveredDirectory != snapshot.cwd
         deliveredDirectory = snapshot.cwd
         onSnapshot?(snapshot)
+        if !recoveryReadyDelivered {
+          recoveryReadyDelivered = true
+          onRecoveryReady?()
+        }
+        if directoryChanged { onRecoveryMetadata?() }
+      }
+    }
+  }
+  /// Returns a checkpoint, or the delay until a dirty pane is eligible. Only
+  /// one capture is admitted per session; the app schedules panes serially.
+  package func recoveryCheckpoint(force: Bool = false,
+    completion: @escaping @MainActor (String?, Int, Double?) -> Void) {
+    readBroker.submit { [self] in
+      guard !closed else { DispatchQueue.main.async { completion(nil, 0, nil) }; return }
+      enqueue(.recoveryCheckpoint(force, completion))
+    }
+  }
+  private func recoveryDidChange(at now: UInt64) {
+    if onRecoveryActivity != nil, recoveryTiming.output(at: now) {
+      DispatchQueue.main.async { [weak self] in self?.onRecoveryActivity?() }
+    }
+  }
+  private func beginRecoveryCheckpoint(force: Bool,
+    completion: @escaping @MainActor (String?, Int, Double?) -> Void) {
+    guard !closed, !recoveryCapturing, let core,
+      let delay = recoveryTiming.delay(at: DispatchTime.now().uptimeNanoseconds, force: force) else {
+      DispatchQueue.main.async { completion(nil, 0, nil) }; return
+    }
+    guard delay == 0 else { DispatchQueue.main.async { completion(nil, 0, delay) }; return }
+    recoveryCapturing = true
+    recoveryTiming.captured()
+    let capture = TerminalRecoveryBridge.capture(core: core)
+    advanceRecovery(capture, completion: completion)
+  }
+  private func advanceRecovery(_ capture: TerminalRecoveryCapture,
+    completion: @escaping @MainActor (String?, Int, Double?) -> Void) {
+    guard !closed else {
+      recoveryCapturing = false
+      DispatchQueue.main.async { completion(nil, 0, nil) }; return
+    }
+    if let text = capture.advance() {
+      recoveryCapturing = false
+      DispatchQueue.main.async { completion(text, capture.capturedRows, nil) }
+    } else {
+      // Re-enter behind admitted input/output instead of holding the FIFO
+      // head while capturing up to the existing 16 MiB copy limit.
+      queue.async { [weak self] in
+        self?.readBroker.submit { [weak self] in self?.advanceRecovery(capture, completion: completion) }
       }
     }
   }
@@ -1769,6 +1839,7 @@ public final class TerminalSession: @unchecked Sendable {
         case .find(_, let completion): DispatchQueue.main.async { completion(.cancelled, nil) }
         case .searchNavigate(_, let completion): DispatchQueue.main.async { completion(nil) }
         case .clipboardDecision(_, _, let completion): DispatchQueue.main.async { completion(false) }
+        case .recoveryCheckpoint(_, let completion): DispatchQueue.main.async { completion(nil, 0, nil) }
         case .selection(_, let completion, let cost, _, let retainsCopyResult):
           finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
                           result: .failure(.cancelled))

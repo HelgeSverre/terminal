@@ -48,7 +48,7 @@ func selectionSmokePasteboardName(reportPath: String) -> NSPasteboard.Name {
 #endif
 
 final class TerminalWindow: NSWindowController, NSWindowDelegate {
-  private struct PaneTitle {
+  struct PaneTitle {
     var reported = ""
     var finished = false
 
@@ -58,17 +58,18 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     }
   }
 
-  let automationID = UUID().uuidString
+  let automationID: String
   private(set) var panes: [TerminalCanvasView] = []
-  private let container = NSView()
-  private var root: NSView?
+  let container = NSView()
+  var root: NSView?
   private var initialLaunch: LaunchSpec?
   private let diagnosticSplitLaunch: LaunchSpec?
   private var reconcilingLayout = false
-  private weak var activePane: TerminalCanvasView?
-  private var paneTitles: [ObjectIdentifier: PaneTitle] = [:]
-  private var panePresentations: [ObjectIdentifier: TerminalPanePresentationView] = [:]
-  init(launch: LaunchSpec? = nil) {
+  private(set) weak var activePane: TerminalCanvasView?
+  var paneTitles: [ObjectIdentifier: PaneTitle] = [:]
+  var panePresentations: [ObjectIdentifier: TerminalPanePresentationView] = [:]
+  init(launch: LaunchSpec? = nil, layout: WindowLayout? = nil) {
+    automationID = layout?.id.uuidString ?? UUID().uuidString
     initialLaunch = launch
     #if TERMINAL_DIAGNOSTICS
     diagnosticSplitLaunch =
@@ -91,13 +92,22 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     window.delegate = self
     container.wantsLayer = true
     window.contentView = container
-    let pane = makePane()
-    let presentation = panePresentation(for: pane)!
-    root = presentation
-    container.addSubview(presentation)
-    presentation.frame = NSRect(x: 0, y: 0, width: 1000, height: 680)
-    presentation.autoresizingMask = [.width, .height]
-    window.center()
+    let content: NSView
+    if let layout {
+      content = restoreTree(layout.root, states: Dictionary(uniqueKeysWithValues: layout.panes.map { ($0.id, $0) }))
+      let frame = WindowLayout.clampedFrame(layout.frame, to: NSScreen.screens.map(\.visibleFrame))
+      window.setFrame(frame, display: false)
+    } else {
+      content = panePresentation(for: makePane())!
+      window.center()
+    }
+    root = content
+    container.addSubview(content)
+    content.frame = container.bounds
+    content.autoresizingMask = [.width, .height]
+    reconcileLayout()
+    if let layout { applyRatios(layout.root, to: content) }
+    let pane = layout.flatMap { saved in panes.first { $0.automationID == saved.activePane.string } } ?? panes[0]
     selectActivePane(pane)
     window.makeFirstResponder(pane)
   }
@@ -111,10 +121,11 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     if window?.title != title { window?.title = title }
   }
 
-  private func selectActivePane(_ pane: TerminalCanvasView?) {
+  func selectActivePane(_ pane: TerminalCanvasView?) {
     activePane = pane
     publishWindowTitle()
     updatePanePresentation()
+    recoveryChanged()
   }
 
   private func recordTitle(_ title: String, from pane: TerminalCanvasView) {
@@ -124,6 +135,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     paneTitles[ObjectIdentifier(pane)] = state
     panePresentation(for: pane)?.setTitle(state.windowTitle)
     publishWindowTitle()
+    recoveryChanged()
   }
 
   private func recordSessionFinished(for pane: TerminalCanvasView) {
@@ -140,13 +152,33 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     selectActivePane(pane)
   }
 
-  private func makePane(launch: LaunchSpec? = nil) -> TerminalCanvasView {
+  private func makePane(launch: LaunchSpec? = nil, state: PaneState? = nil) -> TerminalCanvasView {
     let delegate = NSApp.delegate as? AppDelegate
+    let id = state?.id ?? PaneID()
+    let launch = state.map { LaunchSpec.shell.inheritingDirectory(URL(fileURLWithPath: $0.directory).absoluteString) }
+      ?? initialLaunch ?? diagnosticSplitLaunch ?? launch ?? .shell
+    let session: TerminalSession
+    if let state, let store = delegate?.recovery {
+      let checkpoint = store.scrollback(id)
+      let formatter = DateFormatter()
+      formatter.dateFormat = "yyyy-MM-dd HH:mm"
+      var marker = "Restored · saved \(formatter.string(from: checkpoint.capturedAt))"
+      if checkpoint.unavailable { marker += " · history unavailable" }
+      if launch.cwd != state.directory { marker += " · directory unavailable: \(state.directory)" }
+      session = TerminalSession(recovering: launch, text: checkpoint.text + "\n" + marker + "\n", startsAtFirstGrid: true)
+    } else { session = TerminalSession(launch: launch, startsAtFirstGrid: true) }
     let pane = TerminalCanvasView(
       frame: .zero,
-      session: TerminalSession(launch: initialLaunch ?? diagnosticSplitLaunch ?? launch ?? .shell, startsAtFirstGrid: true),
+      session: session,
       rendering: delegate?.rendering, clipboard: delegate?.clipboardAccess,
-      configuration: TerminalPreferences.load().view)
+      configuration: TerminalPreferences.load().view, automationID: id.string)
+    if delegate?.recovery != nil {
+      session.onRecoveryActivity = { [weak delegate, weak pane] in
+        if let pane { delegate?.recoveryOutput(pane) }
+      }
+      session.onRecoveryMetadata = { [weak self] in self?.recoveryChanged() }
+      session.onRecoveryReady = { [weak delegate] in delegate?.recoveryPaneReady(id.string) }
+    }
     pane.onFocused = { [weak pane] in
       guard let pane else { return }
       (NSApp.delegate as? AppDelegate)?.rememberFocus(pane)
@@ -198,6 +230,11 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     }
     panes.append(pane)
     let presentation = TerminalPanePresentationView(canvas: pane)
+    presentation.onColorChanged = { [weak self] in self?.recoveryChanged() }
+    if let state {
+      if let color = state.color.flatMap(PaneChromeColor.init(hex:)) { presentation.choose(color) }
+      paneTitles[ObjectIdentifier(pane)] = PaneTitle(reported: state.title)
+    }
     pane.attach(findBar: presentation.findBar)
     presentation.onSelect = { [weak self, weak pane] in
       guard let self, let pane else { return }
@@ -217,7 +254,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     return pane
   }
 
-  private func panePresentation(for pane: TerminalCanvasView) -> TerminalPanePresentationView? {
+  func panePresentation(for pane: TerminalCanvasView) -> TerminalPanePresentationView? {
     panePresentations[ObjectIdentifier(pane)]
   }
 
@@ -249,7 +286,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   /// The pane that pane commands act on: the one holding keyboard focus,
   /// whether in its canvas or in its find bar. Casting the first responder
   /// to a canvas misses the latter, and Close Pane then closed the window.
-  private var focusedPane: TerminalCanvasView? {
+  var focusedPane: TerminalCanvasView? {
     guard let presentation = TerminalPanePresentationView.enclosing(window?.firstResponder) else { return nil }
     return panes.first { $0 === presentation.canvas }
   }
@@ -289,7 +326,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     window?.makeFirstResponder(pane)
     panes.forEach { $0.updateFocus() }
   }
-  private func reconcileLayout() {
+  func reconcileLayout() {
     guard !reconcilingLayout, let root else { return }
     reconcilingLayout = true
     defer { reconcilingLayout = false }
@@ -364,6 +401,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     reconcileLayout()
     window?.makeFirstResponder(next)
     panes.forEach { $0.updateFocus() }
+    recoveryChanged()
   }
   func windowDidChangeOcclusionState(_ notification: Notification) {
     panes.forEach {
@@ -371,7 +409,8 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       $0.refresh()
     }
   }
-  func windowDidResize(_ notification: Notification) { reconcileLayout() }
+  func windowDidResize(_ notification: Notification) { reconcileLayout(); recoveryChanged() }
+  func windowDidMove(_ notification: Notification) { recoveryChanged() }
   func windowDidResignKey(_ notification: Notification) { panes.forEach { $0.updateFocus() } }
   func windowDidDeminiaturize(_ notification: Notification) { panes.forEach { $0.refresh() } }
   func windowWillClose(_ notification: Notification) {
@@ -384,6 +423,61 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   func windowDidBecomeKey(_ notification: Notification) {
     panes.forEach { $0.updateFocus() }
     publishWindowTitle()
+    recoveryChanged()
+  }
+
+  func recoveryChanged() { (NSApp.delegate as? AppDelegate)?.recoveryChanged() }
+
+  func layout() -> WindowLayout? {
+    guard let window, let root, let tree = layoutTree(root),
+      let active = activePane ?? panes.first, let activeID = UUID(uuidString: active.automationID),
+      let id = UUID(uuidString: automationID) else { return nil }
+    let tabs = window.tabbedWindows ?? [window]
+    let first = tabs.compactMap { ($0.windowController as? TerminalWindow)?.automationID }.first ?? automationID
+    return WindowLayout(id: id, frame: window.frame, root: tree, activePane: PaneID(activeID),
+      panes: panes.map { pane in
+        PaneState(id: PaneID(UUID(uuidString: pane.automationID)!),
+          directory: pane.session.workingDirectory?.path ?? pane.session.launchDirectory ?? pane.session.siblingLaunch.cwd,
+          title: paneTitles[ObjectIdentifier(pane)]?.reported ?? "", color: panePresentation(for: pane)?.savedColor)
+      }, tabGroup: UUID(uuidString: first) ?? id,
+      tabIndex: tabs.firstIndex(of: window) ?? 0,
+      selectedTab: window.tabGroup?.selectedWindow === window || tabs.count == 1,
+      zoomed: window.isZoomed, fullScreen: window.styleMask.contains(.fullScreen))
+  }
+  private func layoutTree(_ view: NSView) -> PaneLayout? {
+    if let presentation = view as? TerminalPanePresentationView,
+      let pane = presentation.canvas as? TerminalCanvasView, let id = UUID(uuidString: pane.automationID) {
+      return .pane(PaneID(id))
+    }
+    guard let split = view as? NSSplitView, split.arrangedSubviews.count == 2,
+      let first = layoutTree(split.arrangedSubviews[0]), let second = layoutTree(split.arrangedSubviews[1]) else { return nil }
+    let extent = (split.isVertical ? split.bounds.width : split.bounds.height) - split.dividerThickness
+    let size = split.isVertical ? split.arrangedSubviews[0].frame.width : split.arrangedSubviews[0].frame.height
+    return .split(vertical: split.isVertical, ratio: PaneLayout.boundedRatio(extent > 0 ? size / extent : 0.5), first: first, second: second)
+  }
+  private func restoreTree(_ tree: PaneLayout, states: [PaneID: PaneState]) -> NSView {
+    switch tree {
+    case .pane(let id): return panePresentation(for: makePane(state: states[id]))!
+    case .split(let vertical, _, let first, let second):
+      let split = TerminalSplitView(frame: .zero)
+      split.wantsLayer = true
+      split.isVertical = vertical
+      split.dividerStyle = .thin
+      for child in [restoreTree(first, states: states), restoreTree(second, states: states)] {
+        child.autoresizingMask = [.width, .height]
+        split.addArrangedSubview(child)
+      }
+      return split
+    }
+  }
+  private func applyRatios(_ tree: PaneLayout, to view: NSView) {
+    guard case .split(_, let ratio, let first, let second) = tree,
+      let split = view as? NSSplitView, split.arrangedSubviews.count == 2 else { return }
+    split.adjustSubviews()
+    let extent = (split.isVertical ? split.bounds.width : split.bounds.height) - split.dividerThickness
+    split.setPosition(max(0, extent) * PaneLayout.boundedRatio(ratio), ofDividerAt: 0)
+    applyRatios(first, to: split.arrangedSubviews[0]); applyRatios(second, to: split.arrangedSubviews[1])
+    reconcileLayout()
   }
 }
 /// Builds the renderer on another thread while AppKit finishes launching:
@@ -437,7 +531,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var terminationRequested = false
   private var finishedLaunching = false
   private var pendingFileLaunches: [LaunchSpec] = []
-  init(rendering setup: RenderingSetup) {
+  let recovery: SessionStateStore?
+  private var recoveryLayoutWork: DispatchWorkItem?
+  private var recoveryCheckpointWork: DispatchWorkItem?
+  private var recoveryPending: [String: (pane: TerminalCanvasView, due: Date)] = [:]
+  private var recoveryCaptureInFlight = false
+  private var recoveryReadyPanes: Set<String> = []
+  private var recoveryObservers: [NSObjectProtocol] = []
+  init(rendering setup: RenderingSetup, recovery: SessionStateStore? = nil) {
+    self.recovery = recovery
     #if TERMINAL_DIAGNOSTICS
     if let path = selectionSmokeReportPath() {
       let pasteboard = NSPasteboard(name: selectionSmokePasteboardName(reportPath: path))
@@ -488,6 +590,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       let launches = pendingFileLaunches
       pendingFileLaunches.removeAll()
       launches.forEach { openTerminalWindow(launch: $0) }
+    } else if let layout = recovery?.restored {
+      restoreWindows(layout)
     } else {
       #if TERMINAL_DIAGNOSTICS
       if !openDiagnosticWindow() { newWindow(nil) }
@@ -506,6 +610,108 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     startDiagnostics()
     #endif
     MainActor.assumeIsolated { Updates.shared.checkAtLaunch() }
+    if recovery != nil {
+      recoveryObservers.append(NotificationCenter.default.addObserver(
+        forName: NSSplitView.didResizeSubviewsNotification, object: nil, queue: .main
+      ) { [weak self] _ in self?.recoveryChanged() })
+      recoveryObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
+        forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+      ) { [weak self] _ in self?.checkpointBeforeSleep() })
+      recoveryChanged()
+    }
+  }
+
+  private func restoreWindows(_ layout: SessionLayout) {
+    for saved in layout.windows {
+      let controller = TerminalWindow(layout: saved)
+      windows.append(controller)
+    }
+    let groups = Dictionary(grouping: layout.windows, by: \.tabGroup)
+    for group in groups.values {
+      let ordered = group.sorted { $0.tabIndex < $1.tabIndex }
+      let controllers = ordered.compactMap { saved in windows.first { $0.automationID == saved.id.uuidString } }
+      guard let first = controllers.first?.window else { continue }
+      for controller in controllers.dropFirst() {
+        if let tab = controller.window { first.addTabbedWindow(tab, ordered: .above) }
+      }
+      for controller in controllers { controller.showWindow(nil) }
+      if let selected = ordered.first(where: \.selectedTab),
+        let window = windows.first(where: { $0.automationID == selected.id.uuidString })?.window {
+        window.tabGroup?.selectedWindow = window
+      }
+    }
+    for saved in layout.windows {
+      guard let window = windows.first(where: { $0.automationID == saved.id.uuidString })?.window else { continue }
+      if saved.zoomed && !window.isZoomed { window.zoom(nil) }
+      if saved.fullScreen { window.toggleFullScreen(nil) }
+    }
+    if let key = layout.keyWindow, let controller = windows.first(where: { $0.automationID == key.uuidString }) {
+      if launchesInBackground { controller.window?.orderBack(nil) }
+      else { controller.window?.makeKeyAndOrderFront(nil) }
+    }
+  }
+
+  func recoveryChanged() {
+    guard recovery != nil, !terminationRequested else { return }
+    recoveryLayoutWork?.cancel()
+    let work = DispatchWorkItem { [weak self] in self?.saveRecoveryLayout() }
+    recoveryLayoutWork = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+  }
+  private func saveRecoveryLayout() {
+    recoveryLayoutWork = nil
+    guard let recovery, !terminationRequested else { return }
+    let saved = windows.compactMap { $0.layout() }
+    guard !saved.isEmpty else { return }
+    let key = (NSApp.keyWindow?.windowController as? TerminalWindow).flatMap { UUID(uuidString: $0.automationID) }
+    let layout = SessionLayout(appBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
+      windows: saved, keyWindow: key)
+    guard layout.isValid else { return }
+    let restoring = recovery.restored != nil && !windows.flatMap(\.panes).allSatisfy { recoveryReadyPanes.contains($0.automationID) }
+    recovery.save(layout, restoring: restoring)
+  }
+  func recoveryPaneReady(_ id: String) { recoveryReadyPanes.insert(id); recoveryChanged() }
+  func recoveryOutput(_ pane: TerminalCanvasView) {
+    guard recovery != nil, !terminationRequested else { return }
+    recoveryPending[pane.automationID] = (pane, Date().addingTimeInterval(2))
+    scheduleRecoveryCheckpoint()
+  }
+  private func scheduleRecoveryCheckpoint() {
+    recoveryCheckpointWork?.cancel()
+    recoveryCheckpointWork = nil
+    guard !terminationRequested, !recoveryCaptureInFlight,
+      let next = recoveryPending.values.map(\.due).min() else { return }
+    let work = DispatchWorkItem { [weak self] in self?.captureNextRecoveryPane() }
+    recoveryCheckpointWork = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + max(0, next.timeIntervalSinceNow), execute: work)
+  }
+  private func captureNextRecoveryPane(force: Bool = false) {
+    recoveryCheckpointWork = nil
+    guard !terminationRequested, !recoveryCaptureInFlight,
+      let entry = recoveryPending.min(by: { $0.value.due < $1.value.due }) else { return }
+    let pane = entry.value.pane
+    recoveryPending[entry.key] = nil
+    guard windows.contains(where: { $0.panes.contains(where: { $0 === pane }) }) else {
+      scheduleRecoveryCheckpoint(); return
+    }
+    recoveryCaptureInFlight = true
+    pane.session.recoveryCheckpoint(force: force) { [weak self, weak pane] text, rows, delay in
+      guard let self else { return }
+      recoveryCaptureInFlight = false
+      if let pane, !terminationRequested,
+        windows.contains(where: { $0.panes.contains(where: { $0 === pane }) }) {
+        if let text, let uuid = UUID(uuidString: pane.automationID) {
+          recovery?.saveScrollback(text, rows: rows, pane: PaneID(uuid))
+        } else if let delay { recoveryPending[pane.automationID] = (pane, Date().addingTimeInterval(delay)) }
+      }
+      scheduleRecoveryCheckpoint()
+    }
+  }
+  private func checkpointBeforeSleep() {
+    recoveryLayoutWork?.cancel()
+    saveRecoveryLayout()
+    for entry in recoveryPending { recoveryPending[entry.key]?.due = .distantPast }
+    captureNextRecoveryPane(force: true)
   }
   #if TERMINAL_DIAGNOSTICS
   @MainActor private func openDiagnosticWindow() -> Bool {
@@ -689,7 +895,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     windows.forEach { $0.applyPanePresentationPreferences(preferences) }
     preferencesWindow?.reload()
   }
-  func remove(_ window: TerminalWindow) { windows.removeAll { $0 === window } }
+  func remove(_ window: TerminalWindow) { windows.removeAll { $0 === window }; recoveryChanged() }
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
     // A reopen can arrive during launch, before the first window is on
@@ -702,6 +908,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     guard !terminationRequested else { return .terminateLater }
     terminationRequested = true
+    recoveryLayoutWork?.cancel()
+    recoveryCheckpointWork?.cancel()
+    recoveryPending.removeAll()
+    recovery?.cleanExit()
     windows.forEach { $0.close() }
     // Closing hangs every child up. The app leaves as soon as the last one
     // has been reaped, which for a shell at its prompt is a few milliseconds.
@@ -791,7 +1001,11 @@ SmokeStream.runIfRequested()
 #endif
 // Children are told which version of this terminal they run in.
 helge_terminal_set_program_version(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
-if let launch = AppDelegate.firstLaunch() {
+let recoveryState = SessionStateStore.open(directory: StateLocation.directory(
+  arguments: CommandLine.arguments, bundle: Bundle.main.bundleURL, home: FileManager.default.homeDirectoryForCurrentUser))
+let restoredFirstPane = recoveryState?.restored?.windows.first?.panes.first
+if let launch = restoredFirstPane.map({ LaunchSpec.shell.inheritingDirectory(URL(fileURLWithPath: $0.directory).absoluteString) })
+  ?? AppDelegate.firstLaunch() {
   let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096)
   let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096)
   EarlyChild.start(launch, grid: columns.flatMap { columns in rows.map { (columns, $0) } })
@@ -813,7 +1027,7 @@ let application = NSApplication.shared
 // Started only now: touching Metal before the application object exists
 // leaves the first window unable to become key when the app is launched
 // without coming to the front, and its first click is then spent on focus.
-let delegate = AppDelegate(rendering: RenderingSetup())
+let delegate = AppDelegate(rendering: RenderingSetup(), recovery: recoveryState)
 application.delegate = delegate
 application.run()
 

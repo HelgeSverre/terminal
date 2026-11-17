@@ -2718,6 +2718,38 @@ private final class TerminalEmulator {
 // stable C-shaped surface.
 
 private func core(_ pointer: OpaquePointer?) -> TerminalEmulator? { pointer.map { Unmanaged<TerminalEmulator>.fromOpaque(UnsafeMutableRawPointer($0)).takeUnretainedValue() } }
+package enum TerminalRecoveryBridge {
+  package static func capture(core pointer: OpaquePointer) -> TerminalRecoveryCapture {
+    core(pointer)!.recoveryCapture()
+  }
+  package static func seed(core pointer: OpaquePointer, text: String) {
+    core(pointer)!.seedRecovery(text)
+  }
+}
+
+private extension TerminalEmulator {
+  func recoveryCapture() -> TerminalRecoveryCapture {
+    let total = history.count + primary.rows.count
+    let start = max(0, total - historyLimit)
+    let rows = (start..<total).map { $0 < history.count ? history[$0] : primary.rows[$0 - history.count] }
+    return TerminalRecoveryCapture(rows: rows)
+  }
+  func seedRecovery(_ text: String) {
+    let saved = attributes
+    pen.flags |= 2
+    // Literal Unicode only. ESC, C0/C1 and DEL cannot become parser actions,
+    // OSC clipboard requests, image transports or shell input on restoration.
+    for scalar in text.unicodeScalars {
+      if scalar.value == 10 { carriageReturn(); lineFeed() }
+      else if scalar.value == 9 { for _ in 0..<8 { put(" ") } }
+      else if scalar.value >= 32 && !(127...159).contains(scalar.value) { put(scalar) }
+    }
+    if primary.cursorColumn != 0 { carriageReturn(); lineFeed() }
+    attributes = saved
+    forgetLastPrinted()
+    changed(history: true)
+  }
+}
 // Internal Swift adapter: same owner-confined handle, no C callback or borrowed
 // row/cell storage. The returned value survives later mutation and destruction.
 package func swiftTerminalSnapshot(_ pointer: OpaquePointer?, scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {

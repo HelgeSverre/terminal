@@ -26,6 +26,8 @@ final class TerminalPanePresentationView: NSView {
 
   var onSelect: (() -> Void)?
   var onClose: (() -> Void)?
+  var onColorChanged: (() -> Void)?
+  var savedColor: String? { chosenColor?.hex }
 
   init(canvas: NSView) {
     self.canvas = canvas
@@ -141,6 +143,7 @@ final class TerminalPanePresentationView: NSView {
     guard self.color != color else { return }
     chosenColor = color
     updateHeader()
+    onColorChanged?()
   }
 
   /// Makes this pane follow the default color preference again.
@@ -148,11 +151,13 @@ final class TerminalPanePresentationView: NSView {
     guard chosenColor != nil else { return }
     chosenColor = nil
     updateHeader()
+    onColorChanged?()
   }
 
   private func restoreColorBeforePopover() {
     chosenColor = colorBeforePopover
     updateHeader()
+    onColorChanged?()
   }
 
   private func updateHeader() {
