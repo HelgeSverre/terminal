@@ -9,8 +9,11 @@ struct BoundedSearchRegex {
     var ranges: [ClosedRange<UInt32>]
     var inverted = false
     var any = false
+    /// `\w`: the same word test whole-word matching uses.
+    var word = false
     func accepts(_ scalar: Unicode.Scalar) -> Bool {
       if any { return scalar.value != 10 }
+      if word { return scalar.isSearchWord != inverted }
       return ranges.contains { $0.contains(scalar.value) } != inverted
     }
   }
@@ -42,17 +45,51 @@ struct BoundedSearchRegex {
         nodes += 1
         guard nodes <= 256 else { throw TerminalSearchAdmissionError.query }
         var node = try atom(depth: depth)
-        if index < input.count, input[index] == "?" || input[index] == "*" || input[index] == "+" {
+        if index < input.count, input[index] == "?" || input[index] == "*" || input[index] == "+" || input[index] == "{" {
           let quantifier = input[index]; index += 1
           switch node {
           case .lineStart, .lineEnd: throw TerminalSearchAdmissionError.query
-          default: node = .repeated(node, quantifier)
+          default: node = quantifier == "{" ? try counted(node) : .repeated(node, quantifier)
           }
         }
         sequence.append(node)
       }
       guard !sequence.isEmpty else { throw TerminalSearchAdmissionError.query }
       return sequence.count == 1 ? sequence[0] : .sequence(sequence)
+    }
+    /// `{n}`, `{n,}` and `{n,m}` after the opening brace, written out as
+    /// copies. The instruction limit bounds what a count can expand to.
+    mutating func counted(_ node: Node) throws -> Node {
+      func number() -> Int? {
+        var value: Int?
+        while index < input.count, let digit = input[index].properties.numericType == .decimal && input[index].isASCII
+          ? Int(input[index].value) - 48 : nil {
+          value = (value ?? 0) * 10 + digit; index += 1
+          if value! > 256 { return nil }
+        }
+        return value
+      }
+      guard let minimum = number(), index < input.count else { throw TerminalSearchAdmissionError.query }
+      var maximum: Int? = minimum
+      if input[index] == "," {
+        index += 1
+        maximum = index < input.count && input[index] == "}" ? nil : number()
+        guard maximum != nil || (index < input.count && input[index] == "}") else { throw TerminalSearchAdmissionError.query }
+      }
+      guard index < input.count, input[index] == "}", maximum.map({ $0 >= minimum && $0 > 0 }) ?? true else {
+        throw TerminalSearchAdmissionError.query
+      }
+      index += 1
+      var parts = Array(repeating: node, count: minimum)
+      if let maximum {
+        // a{2,4} is aa(a(a)?)?: each optional copy admits the next.
+        var optional: Node?
+        for _ in minimum..<maximum {
+          optional = .repeated(optional.map { .sequence([node, $0]) } ?? node, "?")
+        }
+        if let optional { parts.append(optional) }
+      } else { parts.append(.repeated(node, "*")) }
+      return parts.count == 1 ? parts[0] : .sequence(parts)
     }
     mutating func atom(depth: Int) throws -> Node {
       let character = input[index]; index += 1
@@ -66,6 +103,7 @@ struct BoundedSearchRegex {
       case "$": return .lineEnd
       case ".": return .atom(Atom(ranges: [], any: true))
       case "\\":
+        if index < input.count, let shorthand = Self.shorthand(input[index]) { index += 1; return .atom(shorthand) }
         let escapedValue = try escaped()
         let value = try folded(escapedValue)
         return .atom(Atom(ranges: [value...value]))
@@ -81,9 +119,9 @@ struct BoundedSearchRegex {
             index += 1; upper = input[index]; index += 1
             if upper == "\\" { upper = try escaped() }
           }
-          let first = try folded(lower), last = try folded(upper)
-          guard first <= last else { throw TerminalSearchAdmissionError.query }
-          ranges.append(first...last)
+          guard lower.value <= upper.value else { throw TerminalSearchAdmissionError.query }
+          ranges.append(lower.value...upper.value)
+          if !caseSensitive { ranges.append(contentsOf: Self.lowercaseImage(lower.value...upper.value)) }
           guard ranges.count <= 128 else { throw TerminalSearchAdmissionError.query }
         }
         guard index < input.count, !ranges.isEmpty else { throw TerminalSearchAdmissionError.query }
@@ -93,6 +131,37 @@ struct BoundedSearchRegex {
       default:
         let value = try folded(character)
         return .atom(Atom(ranges: [value...value]))
+      }
+    }
+    /// Text is lowercased before a case-insensitive match, so a class also
+    /// accepts the lowercase of each member. Folding only the endpoints would
+    /// make `[@-Z]` cover the punctuation between `Z` and `a`.
+    static func lowercaseImage(_ range: ClosedRange<UInt32>) -> [ClosedRange<UInt32>] {
+      var image: [ClosedRange<UInt32>] = []
+      // A wider range than this keeps only its own members.
+      guard range.count <= 65_536 else { return image }
+      for value in range {
+        guard let scalar = Unicode.Scalar(value) else { continue }
+        let lowered = UnicodeLowercase.lowercase(scalar)
+        guard lowered.count == 1, lowered[0].value != value else { continue }
+        if let last = image.last, last.upperBound + 1 == lowered[0].value {
+          image[image.count - 1] = last.lowerBound...lowered[0].value
+        } else if image.last?.contains(lowered[0].value) != true {
+          image.append(lowered[0].value...lowered[0].value)
+        }
+      }
+      return image
+    }
+    static func shorthand(_ scalar: Unicode.Scalar) -> Atom? {
+      let space: [ClosedRange<UInt32>] = [9...13, 32...32]
+      switch scalar {
+      case "d": return Atom(ranges: [48...57])
+      case "D": return Atom(ranges: [48...57], inverted: true)
+      case "s": return Atom(ranges: space)
+      case "S": return Atom(ranges: space, inverted: true)
+      case "w": return Atom(ranges: [], word: true)
+      case "W": return Atom(ranges: [], inverted: true, word: true)
+      default: return nil
       }
     }
     func folded(_ scalar: Unicode.Scalar) throws -> UInt32 {
@@ -151,12 +220,23 @@ struct BoundedSearchRegex {
   static let maxMatchScalars = 4096
   private let code: [Instruction]
   private let entry: Int
-  /// Boundary proofs are conservatively retained for all regexes, so anchors
-  /// inside a group or alternation have the same stale-result protection.
   private var active: [Thread] = []
   private var candidate: Range<Int>?
   private(set) var exceeded = false
+  /// A path that reached `maxMatchScalars` was dropped; results may be incomplete.
+  private(set) var truncated = false
+  /// A base allowance, plus a grant for each scalar seen for the first time.
+  /// An ordinary pattern costs less per scalar than the grant, so history
+  /// length never exhausts it; repeated lookahead replay still does.
   private var remainingWork = 64 * 1024 * 1024
+  private static let workPerScalar = 128
+  private var granted = 0
+  // Scratch reused for every scalar.
+  private var stack: [Thread] = []
+  private var consumers: [Thread] = []
+  private var matchStarts: [Int] = []
+  private var visited: [UInt32]
+  private var visit: UInt32 = 0
 
   init(_ query: String, caseSensitive: Bool) throws {
     var parser = Parser(input: Array(query.unicodeScalars), caseSensitive: caseSensitive)
@@ -165,37 +245,37 @@ struct BoundedSearchRegex {
     var compiler = Compiler()
     entry = try compiler.compile(expression, next: 0)
     code = compiler.code
+    visited = Array(repeating: 0, count: code.count)
   }
   mutating func reset() { active.removeAll(keepingCapacity: true); candidate = nil }
 
   mutating func push(_ scalar: Unicode.Scalar, position: Int, previousWord: Bool,
                      lineStart: Bool, wholeWord: Bool) -> Range<Int>? {
+    if position >= granted { granted = position + 1; remainingWork += Self.workPerScalar }
+    // Seeds arrive in position order and every later step keeps that order,
+    // so `active` is always sorted by start, oldest first.
     if !wholeWord || !previousWord { active.append(Thread(state: entry, start: position)) }
-    let closure = close(position: position, lineStart: lineStart, lineEnd: scalar == "\n",
-                        acceptsBoundary: !wholeWord || !Self.word(scalar))
-    remainingWork -= closure.work
+    remainingWork -= close(position: position, lineStart: lineStart, lineEnd: scalar == "\n",
+                           acceptsBoundary: !wholeWord || !scalar.isSearchWord)
     if remainingWork <= 0 { exceeded = true; return nil }
-    for start in closure.matches { consider(start..<position) }
-    var following: [Thread] = []
-    for thread in closure.consumers {
+    for start in matchStarts { consider(start..<position) }
+    active.removeAll(keepingCapacity: true)
+    for thread in consumers {
       if let candidate, thread.start > candidate.lowerBound { continue }
       guard case .consume(let atom, let destination) = code[thread.state] else { continue }
       remainingWork -= max(1, atom.ranges.count)
       if remainingWork <= 0 { exceeded = true; return nil }
       guard atom.accepts(scalar) else { continue }
-      guard position - thread.start < Self.maxMatchScalars else { exceeded = true; continue }
-      following.append(Thread(state: destination, start: thread.start))
+      active.append(Thread(state: destination, start: thread.start))
     }
-    active = following
     if let candidate, !active.contains(where: { $0.start <= candidate.lowerBound }) { return candidate }
     return nil
   }
 
-  mutating func finish(position: Int, lineStart: Bool, wholeWord: Bool) -> Range<Int>? {
-    let closure = close(position: position, lineStart: lineStart, lineEnd: true, acceptsBoundary: true)
-    remainingWork -= closure.work
+  mutating func finish(position: Int, lineStart: Bool) -> Range<Int>? {
+    remainingWork -= close(position: position, lineStart: lineStart, lineEnd: true, acceptsBoundary: true)
     if remainingWork <= 0 { exceeded = true; return nil }
-    for start in closure.matches { consider(start..<position) }
+    for start in matchStarts { consider(start..<position) }
     return candidate
   }
 
@@ -206,18 +286,25 @@ struct BoundedSearchRegex {
     candidate = range
   }
 
-  private func close(position: Int, lineStart: Bool, lineEnd: Bool,
-                     acceptsBoundary: Bool) -> (consumers: [Thread], matches: [Int], work: Int) {
-    // Oldest seeds are traversed first; a state is visited only once. Epsilon
-    // cycles from nested repetition cannot cause recursion or repeated work.
-    var stack = active.sorted { $0.start > $1.start }
-    var visited = Array(repeating: false, count: code.count)
+  /// Fills `consumers` and `matchStarts` from `active` and returns the work
+  /// done. Oldest seeds are traversed first and a state is visited once, so
+  /// epsilon cycles from nested repetition cause neither recursion nor
+  /// repeated work.
+  ///
+  /// A path already `maxMatchScalars` long is dropped before it can claim a
+  /// state, so a younger path waiting at the same state takes over.
+  private mutating func close(position: Int, lineStart: Bool, lineEnd: Bool, acceptsBoundary: Bool) -> Int {
+    stack.removeAll(keepingCapacity: true)
+    stack.append(contentsOf: active.reversed())
+    consumers.removeAll(keepingCapacity: true)
+    matchStarts.removeAll(keepingCapacity: true)
+    if visit == .max { visit = 0; for index in visited.indices { visited[index] = 0 } }
+    visit += 1
     var work = active.count * 8
-    var consumers: [Thread] = []
-    var matches: [Int] = []
     while let thread = stack.popLast() {
-      guard !visited[thread.state] else { continue }
-      visited[thread.state] = true
+      guard position - thread.start < Self.maxMatchScalars else { truncated = true; continue }
+      guard visited[thread.state] != visit else { continue }
+      visited[thread.state] = visit
       work += 1
       switch code[thread.state] {
       case .consume: consumers.append(thread)
@@ -226,16 +313,20 @@ struct BoundedSearchRegex {
         stack.append(Thread(state: first, start: thread.start))
       case .lineStart(let next): if lineStart { stack.append(Thread(state: next, start: thread.start)) }
       case .lineEnd(let next): if lineEnd { stack.append(Thread(state: next, start: thread.start)) }
-      case .match: if acceptsBoundary { matches.append(thread.start) }
+      case .match: if acceptsBoundary { matchStarts.append(thread.start) }
       }
     }
-    return (consumers, matches, work)
+    return work
   }
+}
 
-  private static func word(_ scalar: Unicode.Scalar) -> Bool {
-    scalar == "_" || scalar.properties.isAlphabetic || scalar.properties.numericType != nil
-      || scalar.properties.generalCategory == .nonspacingMark
-      || scalar.properties.generalCategory == .spacingMark
-      || scalar.properties.generalCategory == .enclosingMark
+extension Unicode.Scalar {
+  /// What whole-word search and `\w` call part of a word: letters, numbers,
+  /// combining marks and underscore.
+  var isSearchWord: Bool {
+    self == "_" || properties.isAlphabetic || properties.numericType != nil
+      || properties.generalCategory == .nonspacingMark
+      || properties.generalCategory == .spacingMark
+      || properties.generalCategory == .enclosingMark
   }
 }

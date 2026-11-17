@@ -6,6 +6,9 @@ import TerminalEngine
 
 @Suite @MainActor struct FindOptionsTests {
   @Test func togglesSubmitTheExistingQueryWithCurrentOptions() throws {
+    // A click reaches its target through the application object; run alone,
+    // no earlier suite has created it.
+    _ = NSApplication.shared
     let bar = TerminalFindBar(frame: NSRect(x: 0, y: 0, width: 480, height: 30))
     let field = try #require(bar.subviews.first {
       $0.accessibilityIdentifier() == "no.helgesverre.terminal.find.query"

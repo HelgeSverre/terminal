@@ -192,7 +192,7 @@ struct TerminalSearchTask {
   private var recentBase = 0
   private var previousWord = false
   private var lineStart = true
-  private var candidate: (spans: [TerminalSearchSpan], endAnchored: Bool)?
+  private var candidate: [TerminalSearchSpan]?
   private var wordBeforeRecent: [Bool] = []
   private var recent: [TerminalSearchSpan] = []
   private var recentScalars: [Unicode.Scalar] = []
@@ -328,7 +328,7 @@ struct TerminalSearchTask {
         status = next == nil ? .complete : .needsPage
         if status == .complete {
           if regex != nil {
-            let range = regex!.finish(position: position, lineStart: lineStart, wholeWord: options.wholeWord)
+            let range = regex!.finish(position: position, lineStart: lineStart)
             if regex!.exceeded { status = .resourceLimit }
             else if let range {
               storeRegexMatch(range)
@@ -415,25 +415,15 @@ struct TerminalSearchTask {
     retainedSpanCount += spans.count
   }
 
-  private static func word(_ scalar: Unicode.Scalar) -> Bool {
-    scalar == "_" || scalar.properties.isAlphabetic || scalar.properties.numericType != nil
-      || scalar.properties.generalCategory == .nonspacingMark
-      || scalar.properties.generalCategory == .spacingMark
-      || scalar.properties.generalCategory == .enclosingMark
-  }
-
   private mutating func finishCandidate(next: Unicode.Scalar?, span: TerminalSearchSpan? = nil) {
     guard let candidate else { return }
     self.candidate = nil
-    if options.wholeWord, let next, Self.word(next) { return }
-    if candidate.endAnchored, let next, next != "\n" { return }
-    var spans = candidate.spans
+    if options.wholeWord, let next, next.isSearchWord { return }
+    var spans = candidate
     if let span, spans.last?.proof != span.proof {
       spans.append(TerminalSearchSpan(proof: span.proof, start: span.start, end: span.start, isBoundaryOnly: true))
     }
     storeMatch(spans)
-    matched = 0
-    regex?.reset()
   }
 
   /// Processes one already retained scalar. A hit rewinds only the bounded
@@ -445,6 +435,8 @@ struct TerminalSearchTask {
                             previousWord: wordBeforeRecent[index], lineStart: recentLineStarts[index],
                             wholeWord: options.wholeWord)
     if regex!.exceeded { status = .resourceLimit; return false }
+    // A path cut at the match-length bound makes the result incomplete, not void.
+    if regex!.truncated { dropped = true }
     if let range { storeRegexMatch(range); return true }
     return false
   }
@@ -496,14 +488,17 @@ struct TerminalSearchTask {
             spans.append(TerminalSearchSpan(proof: before.proof, start: before.end, end: before.end, isBoundaryOnly: true))
           }
           for span in recent[start...] { Self.append(span, to: &spans) }
-          if options.wholeWord { candidate = (spans, false) }
+          if options.wholeWord { candidate = spans }
           else { storeMatch(spans) }
+          count = 0
+        } else {
+          // Not a word start. An occurrence overlapping this one may still be.
+          count = failure[count - 1]
         }
-        count = 0
       }
       matched = count
     }
-    previousWord = Self.word(scalar)
+    previousWord = scalar.isSearchWord
     lineStart = scalar == "\n"
     position += 1
     let limit = regex == nil ? pattern.count + 1 : BoundedSearchRegex.maxMatchScalars + 2
