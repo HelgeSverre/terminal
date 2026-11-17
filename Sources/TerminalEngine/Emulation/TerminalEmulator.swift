@@ -2814,8 +2814,8 @@ private final class TerminalEmulator {
 
 private func core(_ pointer: OpaquePointer?) -> TerminalEmulator? { pointer.map { Unmanaged<TerminalEmulator>.fromOpaque(UnsafeMutableRawPointer($0)).takeUnretainedValue() } }
 package enum TerminalRecoveryBridge {
-  package static func capture(core pointer: OpaquePointer) -> TerminalRecoveryCapture {
-    core(pointer)!.recoveryCapture()
+  package static func capture(core pointer: OpaquePointer, maximumBytes: Int = 16 * 1024 * 1024) -> TerminalRecoveryCapture {
+    core(pointer)!.recoveryCapture(maximumBytes: maximumBytes)
   }
   package static func seed(core pointer: OpaquePointer, text: String) {
     core(pointer)!.seedRecovery(text)
@@ -2823,11 +2823,8 @@ package enum TerminalRecoveryBridge {
 }
 
 private extension TerminalEmulator {
-  func recoveryCapture() -> TerminalRecoveryCapture {
-    let total = history.count + primary.rows.count
-    let start = max(0, total - historyLimit)
-    let rows = (start..<total).map { $0 < history.count ? history[$0] : primary.rows[$0 - history.count] }
-    return TerminalRecoveryCapture(rows: rows)
+  func recoveryCapture(maximumBytes: Int) -> TerminalRecoveryCapture {
+    TerminalRecoveryCapture(history: history, primary: primary.rows, limit: historyLimit, maximumBytes: maximumBytes)
   }
   func seedRecovery(_ text: String) {
     let saved = attributes

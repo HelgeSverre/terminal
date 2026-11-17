@@ -10,6 +10,28 @@ indirect enum PaneLayout: Equatable, Codable {
   case pane(PaneID)
   case split(vertical: Bool, ratio: Double, first: PaneLayout, second: PaneLayout)
 
+  private enum CodingKeys: String, CodingKey { case pane, split }
+  private enum PaneKeys: String, CodingKey { case _0 }
+  private enum SplitKeys: String, CodingKey { case vertical, ratio, first, second }
+  init(from decoder: Decoder) throws {
+    // A depth bound protects the decoder and view-construction stack from
+    // malformed recursive input. Window/pane counts retain their normal
+    // limits; the store separately bounds the whole file by the copy budget.
+    guard decoder.codingPath.count <= 256 else {
+      throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Pane tree is too deeply nested"))
+    }
+    let value = try decoder.container(keyedBy: CodingKeys.self)
+    if value.contains(.pane) {
+      let pane = try value.nestedContainer(keyedBy: PaneKeys.self, forKey: .pane)
+      self = .pane(try pane.decode(PaneID.self, forKey: ._0))
+    } else {
+      let split = try value.nestedContainer(keyedBy: SplitKeys.self, forKey: .split)
+      self = .split(vertical: try split.decode(Bool.self, forKey: .vertical),
+        ratio: Self.boundedRatio(try split.decode(Double.self, forKey: .ratio)),
+        first: try split.decode(PaneLayout.self, forKey: .first), second: try split.decode(PaneLayout.self, forKey: .second))
+    }
+  }
+
   var panes: [PaneID] {
     switch self {
     case .pane(let id): return [id]

@@ -372,6 +372,7 @@ public final class TerminalSession: @unchecked Sendable {
     case probe(UInt64, @MainActor (Double) -> Void)
     case clipboardDecision(UInt64, Bool, @MainActor (Bool) -> Void)
     case recoveryCheckpoint(Bool, @MainActor (String?, Int, Double?) -> Void)
+    case recoveryRead(Int, @MainActor (String?) -> Void)
     case eof, idle
   }
   private let launchSpec: LaunchSpec?
@@ -1287,6 +1288,12 @@ public final class TerminalSession: @unchecked Sendable {
     case .recoveryCheckpoint(let force, let completion):
       beginRecoveryCheckpoint(force: force, completion: completion)
       publishNeeded = false
+    case .recoveryRead(let maximumBytes, let completion):
+      if let core, !recoveryCapturing {
+        recoveryCapturing = true
+        advanceRecovery(TerminalRecoveryBridge.capture(core: core, maximumBytes: maximumBytes)) { text, _, _ in completion(text) }
+      } else { DispatchQueue.main.async { completion(nil) } }
+      publishNeeded = false
     case .eof:
       parserEnded = true
       helge_terminal_finish(core)
@@ -1834,6 +1841,15 @@ public final class TerminalSession: @unchecked Sendable {
       enqueue(.recoveryCheckpoint(force, completion))
     }
   }
+  /// Read-only primary history capture, independent of checkpoint dirtiness.
+  /// One bounded capture is admitted; the caller receives nil when busy/closed.
+  package func recoveryHistory(maximumBytes: Int,
+    completion: @escaping @MainActor (String?) -> Void) {
+    readBroker.submit { [self] in
+      guard !closed else { DispatchQueue.main.async { completion(nil) }; return }
+      enqueue(.recoveryRead(min(16 * 1024 * 1024, max(0, maximumBytes)), completion))
+    }
+  }
   private func recoveryDidChange(at now: UInt64) {
     if onRecoveryActivity != nil, recoveryTiming.output(at: now) {
       DispatchQueue.main.async { [weak self] in self?.onRecoveryActivity?() }
@@ -1905,6 +1921,7 @@ public final class TerminalSession: @unchecked Sendable {
         case .commandHistory(let completion): DispatchQueue.main.async { completion([]) }
         case .clipboardDecision(_, _, let completion): DispatchQueue.main.async { completion(false) }
         case .recoveryCheckpoint(_, let completion): DispatchQueue.main.async { completion(nil, 0, nil) }
+        case .recoveryRead(_, let completion): DispatchQueue.main.async { completion(nil) }
         case .selection(_, let completion, let cost, _, let retainsCopyResult):
           finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
                           result: .failure(.cancelled))
