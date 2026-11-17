@@ -147,6 +147,14 @@ brew install just fish neovim tmux fzf
 just test
 ```
 
+The headless gate builds optimized test products once in `target/swiftpm/testing`,
+then assembles its test-enabled app bundle and reuses the same emulator in the
+terminfo and PTY probes. Phase timings and per-test XML reports are written to
+`reports/test-timing`. The test cache preserves timestamps only for tracked files
+whose contents match the build receipt; edited files still rebuild normally.
+CI runs protocol conformance and the two-minute sanitizer fuzzer in separate
+jobs alongside the headless gate. All three jobs must pass.
+
 GUI diagnostics open disposable windows and clean up their child processes.
 The real-workload stress commands need Accessibility, Screen Recording, and
 brief exclusive keyboard/mouse access. [Recorded results](reports/real-tui-pane-stress/README.md)

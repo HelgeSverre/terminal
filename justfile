@@ -107,7 +107,10 @@ check: test smoke pane-lifecycle-smoke startup-grid-smoke close-smoke selection-
 
 # Validate the bundle plist, terminfo and signature.
 [group('check')]
-verify: build
+verify: build _verify-bundle
+
+[private]
+_verify-bundle:
     plutil -lint dist/Terminal.app/Contents/Info.plist
     /usr/bin/infocmp -x -A dist/Terminal.app/Contents/Resources/terminfo helge-terminal >/dev/null
     TERMINFO="$PWD/dist/Terminal.app/Contents/Resources/terminfo" /usr/bin/tput -T helge-terminal colors | grep -qx 256
@@ -127,7 +130,9 @@ verify: build
 
 [private]
 @_test-build:
+    if [[ -f target/swiftpm/testing/source-state.json && -x target/swiftpm/testing/debug/dev ]]; then target/swiftpm/testing/debug/dev test-cache restore; fi
     TERMINAL_TEST_HOOKS=1 swift build --build-tests --scratch-path target/swiftpm/testing -c debug -Xswiftc -O --jobs 3
+    target/swiftpm/testing/debug/dev test-cache record
 
 # Arguments go to `swift test`: `just unit-test --filter SessionTests`.
 # Run the Swift Testing suites.
@@ -159,7 +164,9 @@ terminfo-test: build _terminfo-test
 
 # Glyph raster and residency tests; needs a real GPU.
 [group('test')]
-glyph-rendering-tests: build _glyph-rendering-tests
+glyph-rendering-tests: _test-build
+    target/swiftpm/testing/debug/dev bundle testing "$PWD/target/swiftpm/testing/debug"
+    just _glyph-rendering-tests
 
 # ── smoke ─────────────────────────────────────────────────────────────
 
@@ -367,11 +374,11 @@ _glyph-rendering-tests:
 
 [private]
 @_glyph-raster-tests:
-    {{swift_test}} --filter GlyphRasterWorkerTests
+    {{swift_test}} --skip-build --filter GlyphRasterWorkerTests
 
 [private]
 @_glyph-residency-tests:
-    {{swift_test}} --filter GlyphResidency
+    {{swift_test}} --skip-build --filter GlyphResidency
 
 # Standalone Metal texture upload check, as the hosted-runner policy runs it.
 [group('test')]

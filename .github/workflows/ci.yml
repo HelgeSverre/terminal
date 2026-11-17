@@ -37,12 +37,15 @@ jobs:
           if ! xcrun -sdk macosx metal --version; then
             xcodebuild -downloadComponent MetalToolchain
           fi
+      - name: Identify test toolchain
+        id: toolchain
+        run: echo "id=$( { xcrun swift --version; xcodebuild -version; xcrun --show-sdk-version; } | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            target
-            .build
-          key: macos-arm64-swift-${{ hashFiles('Sources/**', 'Tests/**', 'Resources/**', 'Benchmarks/**', 'assets/**', 'tools/Dev/**', 'Package.swift', 'justfile') }}
+          path: target
+          key: tests-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.id }}-${{ hashFiles('Sources/**', 'Tests/**', 'Resources/**', 'Benchmarks/**', 'assets/**', 'tools/**', 'Package.swift', 'Package.resolved', 'justfile') }}
+          restore-keys: |
+            tests-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.id }}-
       - name: Run Swift native tests
         env:
           TERMINAL_CI_GPU_POLICY: paravirtual
@@ -51,15 +54,8 @@ jobs:
           set -o pipefail
           just "${{ github.event.inputs.test_target || 'test' }}" 2>&1 | tee reports/ci-tests.txt
       - name: Verify the application bundle
-        run: just verify
-      - name: Run esctest against the emulator
-        if: ${{ !github.event.inputs.test_target || github.event.inputs.test_target == 'test' }}
-        run: |
-          set -o pipefail
-          just esctest 2>&1 | tee reports/esctest-ci.txt
-      - name: Fuzz the emulator for two minutes
-        if: ${{ !github.event.inputs.test_target || github.event.inputs.test_target == 'test' }}
-        run: just fuzz 120
+        if: ${{ !github.event.inputs.test_target || github.event.inputs.test_target == 'test' || github.event.inputs.test_target == 'glyph-rendering-tests' }}
+        run: just _verify-bundle
       - name: Collect glyph residency crash report
         if: always()
         run: |
@@ -76,3 +72,42 @@ jobs:
             reports/fuzz-current-seed
             reports/crash-reports
             reports/gpu-policy
+            reports/test-timing
+
+  conformance:
+    name: Terminal protocol conformance
+    if: ${{ !github.event.inputs.test_target || github.event.inputs.test_target == 'test' }}
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: brew install just
+      - name: Run esctest against the emulator
+        run: |
+          mkdir -p reports
+          set -o pipefail
+          just esctest 2>&1 | tee reports/esctest-ci.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: conformance-results
+          path: |
+            reports/esctest.json
+            reports/esctest.log
+            reports/esctest-ci.txt
+
+  fuzz:
+    name: Emulator address-sanitizer fuzzing
+    if: ${{ !github.event.inputs.test_target || github.event.inputs.test_target == 'test' }}
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: brew install just
+      - name: Fuzz the emulator for two minutes
+        run: just fuzz 120
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: fuzz-results
+          path: reports/fuzz-current-seed

@@ -32,22 +32,26 @@ jobs:
             xcodebuild -downloadComponent MetalToolchain
           fi
 
+      - name: Identify test toolchain
+        id: toolchain
+        run: echo "id=$( { xcrun swift --version; xcodebuild -version; xcrun --show-sdk-version; } | shasum -a 256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: target
-          key: macos-arm64-swift-${{ hashFiles('Sources/**', 'Tests/**', 'Resources/**', 'Benchmarks/**', 'assets/**', 'tools/Dev/**', 'Package.swift', 'justfile') }}
+          key: tests-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.id }}-${{ hashFiles('Sources/**', 'Tests/**', 'Resources/**', 'Benchmarks/**', 'assets/**', 'tools/**', 'Package.swift', 'Package.resolved', 'justfile') }}
+          restore-keys: |
+            tests-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.id }}-
 
-      # Compile from this checkout after restoring the test cache.
-      - name: Build test tool after cache restore
-        run: |
-          mkdir -p target/native
-          xcrun swiftc -O "$PWD"/tools/Dev/*.swift -o target/native/dev
+      # Build the complete test graph once, including the metadata validator.
+      - name: Build test products
+        run: just _test-build
 
       - name: Validate version and source
         id: metadata
         run: |
           mkdir -p dist/release
-          target/native/dev release-publisher validate --output dist/release/release-metadata.json
+          target/swiftpm/testing/debug/dev release-publisher validate --output dist/release/release-metadata.json
 
       - name: Run tests
         env:

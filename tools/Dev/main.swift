@@ -48,6 +48,7 @@ let commands = [
   AppBundle.command,
   Sources.command,
   TestPipeline.command,
+  TestBuildCache.command,
 ]
 
 func printUsage() {
