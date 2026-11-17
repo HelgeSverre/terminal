@@ -377,7 +377,8 @@ public final class TerminalSession: @unchecked Sendable {
   }
   private let launchSpec: LaunchSpec?
   package var launchDirectory: String? { launchSpec?.cwd }
-  private let recoverySeed: String?
+  private var recoverySeed: String?
+  private var initialRecoveryConfiguration: TerminalSessionConfiguration?
   private var recoveryTiming = RecoveryCheckpointTiming()
   private var recoveryCapturing = false
   package var onRecoveryActivity: (@MainActor () -> Void)?
@@ -851,7 +852,6 @@ public final class TerminalSession: @unchecked Sendable {
     }
     core = handle
     TerminalGraphicsTransportBridge.enable(core: handle)
-    if let recoverySeed { TerminalRecoveryBridge.seed(core: handle, text: recoverySeed) }
     guard launchSpec?.isValid != false else { return fail(.invalidArguments, "Invalid launch arguments") }
     guard awaitsGrid else { return launch(columns: 80, rows: 24, cellWidth: 0, cellHeight: 0) }
     awaitingGrid = true
@@ -866,6 +866,23 @@ public final class TerminalSession: @unchecked Sendable {
   }
   /// Starts the child on a terminal of the given size and attaches to it.
   private func launch(columns: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
+    if let text = recoverySeed, let core {
+      // The saved lines belong to this pane's first measured grid. Seeding
+      // at the placeholder 80-column size can wrap twice as many physical
+      // rows and evict the oldest half before a 160-column pane is resized.
+      let value = initialRecoveryConfiguration ?? configuration
+      helge_terminal_set_history_limit(core, UInt32(value.historyRows))
+      helge_terminal_set_grapheme_clustering(core, value.graphemeClustering)
+      guard helge_terminal_resize_pixels(core, UInt32(columns), UInt32(rows), UInt32(max(0, cellWidth)), UInt32(max(0, cellHeight))) else {
+        return fail(.engineUnavailable, "Unable to prepare restored terminal grid")
+      }
+      self.columns = columns; rowCount = rows
+      cellWidthPx = cellWidth; cellHeightPx = cellHeight
+      recoverySeed = nil
+      initialRecoveryConfiguration = nil
+      TerminalRecoveryBridge.seed(core: core, text: text)
+      schedulePublish()
+    }
     guard let spec = launchSpec else {
       return connect(columns: columns, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
     }
@@ -1551,6 +1568,7 @@ public final class TerminalSession: @unchecked Sendable {
   public func configure(_ value: TerminalSessionConfiguration) {
     readBroker.submit { [self] in
       guard !closed else { return }
+      if awaitingGrid && recoverySeed != nil { initialRecoveryConfiguration = value }
       enqueue(.configure(value))
     }
   }
@@ -1848,6 +1866,13 @@ public final class TerminalSession: @unchecked Sendable {
     readBroker.submit { [self] in
       guard !closed else { DispatchQueue.main.async { completion(nil) }; return }
       enqueue(.recoveryRead(min(16 * 1024 * 1024, max(0, maximumBytes)), completion))
+    }
+  }
+  /// A foreground group on this session's own PTY, never an arbitrary PID.
+  package func foregroundProcessIdentifier(completion: @escaping @MainActor (Int32?) -> Void) {
+    readBroker.submit { [self] in
+      let foreground = !closed && master >= 0 ? tcgetpgrp(master) : -1
+      DispatchQueue.main.async { completion(foreground > 0 ? foreground : nil) }
     }
   }
   private func recoveryDidChange(at now: UInt64) {

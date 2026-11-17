@@ -156,4 +156,19 @@ import TerminalInterop
     #expect(helge_terminal_take_bells(target) == 0)
     #expect(helge_terminal_validate(target))
   }
+
+  @Test func restorationSeedsAtFirstGridAndConfiguredHistoryBound() async throws {
+    let lines = (0..<300).map { String(format: "%04d", $0) + String(repeating: "x", count: 150) }
+    let session = TerminalSession(recovering: TestEnvironment.shell("stty raw -echo; printf READY; exec /bin/cat"),
+      text: lines.joined(separator: "\n") + "\n", startsAtFirstGrid: true)
+    defer { session.close() }
+    session.configure(TerminalSessionConfiguration(historyRows: 400))
+    session.resize(cols: 160, rows: 3)
+    #expect(await TestEnvironment.wait { session.processIdentifier != nil })
+    let text: String? = await withCheckedContinuation { continuation in
+      session.recoveryHistory(maximumBytes: 1_048_576) { continuation.resume(returning: $0) }
+    }
+    #expect(text?.contains(lines[0]) == true)
+    #expect(text?.contains(lines[299]) == true)
+  }
 }
