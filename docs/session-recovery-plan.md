@@ -1,7 +1,10 @@
 # Session recovery plan
 
-Status: plan, revised 2026-11-11. Nothing here is implemented. Code references
-are to `main` at `3c96cb7`.
+Status: phases 0 to 3 were implemented on 2026-11-17, with click-to-resume
+only; [usage](usage.md) describes the behavior. Phase 4's real-agent checks and
+power-loss testing remain. The text below is the plan as revised 2026-11-11:
+its code references are to `main` at `3c96cb7` and are historical, and
+statements that something is not implemented describe that date.
 
 ## Summary
 
@@ -15,11 +18,11 @@ alive; they are restarted.
 | # | Decision | Effect on the plan |
 | --- | --- | --- |
 | 1 | Restore only after an unclean exit | No restore after a normal quit, no setting. A clean quit deletes the saved state |
-| 2 | Trusted resume rules: undecided | One open question, prepared in [Resume rules](#resume-rules) |
+| 2 | Trusted resume rules: decided 2026-11-17 as bundled rules only, run after an explicit Resume click | See [Resume rules](#resume-rules) |
 | 3 | Use existing defaults, no new knobs | Scrollback is saved up to the existing history and copy limits. No new settings |
 | 4 | No encryption | Files are readable by the user only; the environment is not saved. Everything else is plain text |
 | 5 | No tmux, no keeping processes alive | Helper phase and tmux alternative removed; see [Considered and not planned](#considered-and-not-planned) |
-| 6 | Nothing is implemented yet | Phases 0 to 2 can start now. Phase 3 waits for the answer to the open question |
+| 6 | Nothing was implemented when this was written | Phases 0 to 3 have since been implemented |
 
 Consequence of decision 1: a normal macOS restart, shutdown or logout quits
 the app cleanly, so nothing is restored after it. Only a crash, a kill, a

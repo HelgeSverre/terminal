@@ -4,13 +4,13 @@
 sequences Terminal implements today. The build compiles it with `tic -x` into
 `Terminal.app/Contents/Resources/terminfo`, and `just test` verifies the
 compiled bundle, exact `tput` expansions, and a replay of representative
-expanded strings through `terminal-tools`.
+expanded strings through `dev terminfo-smoke`.
 
 This source is intentionally standalone rather than `use=xterm-256color`.
 ncurses terminfo entries are declarations of an emulator's programming
 interface, and `use=` would silently inherit features such as OSC 52 clipboard,
-cursor-style extensions, title stack, and dynamic colors that this application
-does not claim. `tic` compiles source into the database read by terminfo clients
+cursor-style extensions, title stack, and dynamic colors that this entry has
+not been audited to declare. `tic` compiles source into the database read by terminfo clients
 ([`tic(1)`](https://invisible-island.net/ncurses/man/tic.1m.html));
 [`infocmp(1)`](https://invisible-island.net/ncurses/man/infocmp.1m.html) is used
 to inspect that compiled result.
@@ -20,11 +20,11 @@ to inspect that compiled result.
 | Capability group | Entry policy | Evidence in the emulator |
 | --- | --- | --- |
 | Cursor movement, tabs, margins, erase, character/line insert/delete and scroll | Advertised | `TerminalEmulator.swift` handles the CSI/ESC sequences emitted by the entry. |
-| 256 indexed colors and advertised SGR styles (bold, dim, conceal, reverse, underline) | Advertised | `setaf`/`setab` use standard xterm-compatible ANSI/256-color SGR; `Renderer.swift` visibly applies each listed style. Blink is deliberately absent because the renderer retains, but does not animate, that style. |
+| 256 indexed colors and advertised SGR styles (bold, dim, conceal, reverse, underline) | Advertised | `setaf`/`setab` use standard xterm-compatible ANSI/256-color SGR; `Renderer.swift` visibly applies each listed style. Blink renders, but the entry does not advertise it until the expansion and replay test covers it. |
 | Alternate screen, application cursor/keypad | Advertised | `?1049`, `?1`, `ESC =`, and `ESC >` map to owned screen/input modes. |
 | DEC line drawing and supported keys | Advertised | `acsc` matches the DEC graphics mapping; key strings match `TerminalInputEncoder.swift`. |
-| Audible/visual bell, OSC 52, window operations, title-stack, dynamic color allocation, cursor-style extensions | Not advertised | The entry declares only tested capabilities. OSC 52 writes have a separate [permission policy](osc52-clipboard.md); reads are denied. |
-| Direct-color terminfo extension | Not advertised as `RGB` | RGB SGR rendering works and `COLORTERM=truecolor` is exported, but `colors#256` remains the stable terminfo promise until direct-color ncurses behavior is tested across supported client versions. |
+| Audible/visual bell, OSC 52, window operations, title-stack, dynamic color allocation, cursor-style extensions | Not advertised | The entry declares only capabilities its test covers. The emulator implements a visual bell, the title stack, dynamic colors and cursor styles; they have not been audited into the entry. OSC 52 writes have a separate [permission policy](osc52-clipboard.md); reads are denied. |
+| Direct-color terminfo extension | Not advertised as `RGB` | RGB SGR rendering works and `COLORTERM=truecolor` is exported, but `colors#256` remains the stable terminfo promise until direct-color ncurses behavior is tested across supported client versions. XTGETTCAP does answer `RGB` and `Tc`; only the compiled entry withholds them. |
 
 The SGR sequences use the same 256-color forms documented by
 [xterm's control-sequence reference](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html).

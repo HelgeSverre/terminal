@@ -9,9 +9,10 @@ osascript -e 'tell application id "no.helgesverre.terminal" to list panes'
 ```
 
 The [scripting dictionary](../Resources/Terminal/Terminal.sdef) exposes the
-commands below. It does not expose scriptable window, tab, or pane collections,
-a current-directory property, or writable preference properties. Discover panes
-with `list panes`, target them by ID, and change settings with `configure
+commands below and read-only `terminal window`, `terminal tab` and `terminal
+pane` collections; see [Desktop collections and configuration](#desktop-collections-and-configuration).
+Preferences are not writable properties. Discover panes with `list panes` or
+the collections, target them by ID, and change settings with `configure
 preferences`.
 
 ## Commands
@@ -24,10 +25,16 @@ focused or last-focused terminal pane when their pane parameter is omitted.
 | App | `list panes` | None | List of pane ID strings across all open terminal windows and tabs |
 | App | `show settings` | None | `true` after presenting Settings |
 | App | `configure preferences` | Any subset of the settings in the next table; all optional | Text summary of saved font size, scrollback rows, starting directory, and word characters |
+| App | `read preferences` | None | JSON text of every saved preference |
 | Window | `new window` | None | First pane ID in the new window |
 | Tab | `new tab` | None | First pane ID in the new tab |
 | Pane | `send text` | Required direct text; optional `to pane` ID | ID of the pane that accepted the text |
 | Pane | `read screen` | Optional `from pane` ID; optional integer `max characters` | Most recent part of the displayed text projection |
+| Pane | `read history` | Optional `from pane` ID; optional integer `max characters` (a UTF-8 byte budget) | Bounded suffix of primary-screen history and text |
+| Pane | `read directory` | Optional `from pane` ID | Latest shell-reported working directory as a file URL, or empty |
+| Pane | `select text` | Required `from row`, `from column`, `to row`, `to column` (one-based, end exclusive); optional `in pane` ID | Target pane ID |
+| Pane | `apply pane color` | Required direct color; optional `to pane` ID | Target pane ID |
+| Pane | `read pane color` | Optional `from pane` ID | The pane's header color as `#RRGGBB` |
 | Pane | `clear screen` | Optional `in pane` ID | Target pane ID after requesting a display clear |
 | Pane | `focus pane` | Optional `pane id` | Target pane ID after making its window key and the pane its first responder |
 | Pane | `split right` | Optional `pane id` | New pane ID; the new pane receives focus |
@@ -52,13 +59,19 @@ AppleScript's `set` command. Omitted values retain their current settings.
 | `follows tail on input` | Boolean | Controls whether terminal input returns the viewport to live output |
 | `starting directory` | Existing absolute directory; `~` expands; empty text uses the home directory | Sets the default for newly launched sessions; existing shells keep their working directory |
 | `word characters` | Up to 64 Unicode scalars and 256 UTF-8 bytes, without whitespace or controls | Adds characters to Unicode word selection; empty text uses Unicode boundaries alone |
+| `default pane color` | A hex color or a palette color name | Header color of panes without their own |
+| `font family` | Text; empty uses the bundled font | Updates open panes and the saved default |
+| `ligatures` | Boolean | Joins punctuation runs when the font has ligatures |
+| `join emoji` | Boolean | Whether an emoji sequence takes the cells of one character |
+| `show pane titles` | Boolean | Shows pane headers in windows with more than one pane |
+| `inactive pane dim` | Integer: 0, 5, 10, 20 or 50 percent | Dims panes without focus |
+| `desktop configuration` | JSON text in the [desktop controls](desktop-controls.md) format | Replaces profiles, shortcuts, theme, cursor, Option sides and visual bell |
 
 Word characters are saved sorted and deduplicated. `configure preferences`
 validates the complete update before saving and applying it through the same
 path as Settings' **Apply** button. Saved preferences persist across relaunches;
 no relaunch is needed to apply the exposed settings. Session configuration is
-queued through each session owner. Settings-only controls, such as pane titles
-and inactive-pane dimming, retain their current values when this command runs.
+queued through each session owner.
 
 ## Keep a pane ID
 

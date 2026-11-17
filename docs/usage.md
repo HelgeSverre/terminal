@@ -20,8 +20,8 @@ Use `~/code` to start new windows there. An empty field or `~` uses your home
 folder; a saved folder that disappears also falls back to home.
 
 The setting applies to new shells. A split inherits the active pane's reported
-local working directory. Bundled zsh prompt hooks report that directory while
-preserving your startup files. Shells without directory reporting use the
+local working directory. Bundled zsh, Bash (non-login) and fish prompt hooks
+report that directory while preserving your startup files. Shells without directory reporting use the
 configured starting folder.
 
 Override the folder for a development launch with:
@@ -148,7 +148,9 @@ emoji with a skin tone, a flag or a joined emoji. Sources and licenses are in th
 The font-size number field accepts 8–40 pt. Use its stepper or press Up/Down to
 adjust the value. Settings also controls scrollback, following output on input,
 and whether Option sends an Escape prefix. Option-arrow word movement remains
-available in either Option mode.
+available in either Option mode. Per-side Option, cursor style, visual bell,
+shell profiles, shortcuts and themes are in [desktop controls](desktop-controls.md);
+find options are in [search](search.md).
 
 Programs honor an inherited `NO_COLOR`. If an automation shell sets it
 implicitly, open the app with:
@@ -166,22 +168,26 @@ compatibility choice and the bundled capability description.
 Three image protocols are shown, all within one 64 MiB budget and up to
 4096 pixels a side:
 
-- Kitty graphics: RGB, RGBA and PNG, zlib compression, chunking, data in the
+- Kitty graphics: RGB, RGBA, PNG and palette-indexed data, zlib compression, chunking, data in the
   escape code, a file, a temporary file or shared memory, image numbers,
   placement, layering, image/placement deletion, and Unicode placeholders, as
   tmux and Neovim image plugins use, placements relative to another
   placement, and animation: frames built on a base frame, composition, and
   playback that stops, waits on the last frame or loops a set number of
   times. Up to 1,000 frames an image, within the same budget.
-- Sixel, which the terminal reports in its device attributes.
+- Sixel, which the terminal reports in its device attributes, with background,
+  aspect ratio, palette registers and display modes.
 - iTerm2 inline images (`OSC 1337 ; File=…;inline=1`) in any format macOS
-  decodes, sized in cells, pixels or percent, using the first image frame.
+  decodes, sized in cells, pixels or percent. Animated GIFs play and multipart
+  transfers are accepted. A file sent without `inline=1` is offered in the
+  pane as a download: nothing is written until you choose Save and a
+  destination. One offer is shown at a time across the app; a file that
+  arrives while another offer is showing, or within a second of the previous
+  one, is discarded.
 
-Support is partial: Kitty animation-frame deletion and relative children of
-Unicode placeholder placements are incomplete; SIXEL uses transparent
-backgrounds and does not implement its aspect/scrolling modes; iTerm2 multipart
-images are unsupported. The [protocol coverage audit](protocol-coverage.md)
-records tests and the remaining limitations.
+Support is bounded rather than complete. The [protocol coverage audit](protocol-coverage.md)
+records the tests and the limits: indexed animation edits, budgets and client
+combinations that are not yet qualified.
 
 OSC 52 clipboard writes are allowed without asking and have payload limits;
 clipboard reads are denied. See the [clipboard policy](osc52-clipboard.md).

@@ -22,6 +22,9 @@ Status distinguishes **missing**, **partial**, **observed** (cause unresolved),
 immediate evidence of user impact; **Optional** needs a product decision.
 These priorities are recommendations, not severity scores or release blockers.
 
+(Baseline recommendation. It was carried out on 2026-11-17 except for V01–V05
+and V07–V08; see [status](gap-implementation-status.md).)
+
 The most useful next work is identification/capability replies, reproducing
 the tmux keyboard problem, fixing underline rendering, checking real IMEs and
 VoiceOver, and implementing the already-planned crash recovery. Completing
@@ -109,7 +112,7 @@ is listed separately under V04.
 | U05 | Partial / Next | **Accessibility exposes the presented viewport, not a fetchable history document.** AX projection is bounded at 262,144 UTF-16 units. Screen-reader access to older output requires viewport navigation; history fetching is absent. | Define bounded history navigation and test it with VoiceOver. Existing external AX styled-text checks do not establish speech/navigation usability. Evidence: [`AccessibilityProjection.swift`](../Sources/TerminalUI/AccessibilityProjection.swift), Canvas AX methods. |
 | U06 | Partial / Optional | **Trackpad scrolling is line-granular.** Fractional deltas accumulate, but only whole lines reach the session; no sub-row pixel translation is rendered. | Decide whether smooth pixel scrolling is wanted and validate selection/mouse-reporting interaction. Evidence: [`ScrollAccumulator.swift`](../Sources/TerminalUI/ScrollAccumulator.swift). |
 | U07 | Partial / Optional | **Find is a bounded, case-insensitive literal search.** No case toggle, regex or whole-word option; retained matches cap at 10,000 and query size at 4096 UTF-8 bytes. Matching uses lowercase mapping, not a general locale-aware normalized search. | Keep caps visible; add search modes only if desired, with cancellation/resource tests. Evidence: [`HistorySearch.swift`](../Sources/TerminalEngine/Emulation/HistorySearch.swift), [`FindBar.swift`](../Sources/TerminalUI/FindBar.swift). |
-| U08 | Partial / Later | **Bundled shell integration is zsh-only.** Bash/fish run and are in the PTY corpus, but lack equivalent bundled OSC 7/133 hooks. OSC 133 A/B/C/D is consumed, but exit status is not retained as command metadata; no command-history navigation UI exists. | Test and add equivalent hooks where needed without replacing users' prompts. Treat command navigation/status UI as a separate product choice. Evidence: [`ShellIntegration`](../Resources/Terminal/ShellIntegration), emulator `finishString`. |
+| U08 | Partial / Later | **Bundled shell integration is zsh-only.** Bash/fish run and are in the PTY corpus, but lack equivalent bundled OSC 7/133 hooks. OSC 133 A/B/C/D is consumed, but exit status is not retained as command metadata; no command-history navigation UI exists. | Test and add equivalent hooks where needed without replacing users' prompts. Treat command navigation/status UI as a separate product choice. Evidence: [`ShellIntegration`](../Sources/TerminalHost/Resources/ShellIntegration), emulator `finishString`. |
 | U09 | Missing / Next | **Crash recovery is still a plan.** There is no implemented persistence/restoration of windows, tab/split layout, working directories or scrollback. New windows start at a fixed centered size. | Follow the approved [recovery plan](session-recovery-plan.md), which restores after unclean exit only. Agent auto-resume policy remains undecided; it need not block basic recovery. Do not introduce normal-quit restore contrary to that plan. |
 | U10 | Missing / Optional | **Pane management is basic:** split/close/mouse focus and scripted focus exist; no dedicated directional pane-focus shortcuts, zoom-pane command, or pane move/reparent UI was found. Tab navigation already exists. | Choose desired actions, then test nested splits and focus/menu routing. Evidence: `TerminalWindow`, app menu and [`KeyMap.swift`](../Sources/TerminalUI/KeyMap.swift). |
 | U11 | Missing UI / Optional | **Customization:** no saved shell/launch profiles, configurable keybindings, separate left/right Option policy, user theme editor/import, or cursor-style controls. Font family and ligatures already exist; embedding callers can supply colors. | Pick actual desired settings rather than importing every original spec option. Evidence: [`Preferences.swift`](../Sources/Terminal/Preferences.swift), [`Settings.swift`](../Sources/Terminal/Settings.swift), [`ViewConfiguration.swift`](../Sources/TerminalUI/ViewConfiguration.swift). |
@@ -182,6 +185,9 @@ configuration and other broad product aspirations should be reconsidered as
 choices, not silently reinstated as release requirements.
 
 ## Suggested execution order
+
+(Baseline order, carried out on 2026-11-17 except for the validation entries
+that need hardware, people or external clients.)
 
 1. C01–C03: truthful identity and capability discovery, with real Snacks startup.
 2. V01: isolate tmux/icat keyboard negotiation before another input change.

@@ -5,7 +5,7 @@ yellow visual language. `Sources/Terminal/Settings.swift` owns the window, schem
 and shared field renderer; `Sources/TerminalUI/Theme.swift` owns its palette.
 This document describes the local implementation, not a published release.
 
-The five sections are General, Text, Scrollback, Panes, and Keyboard. The HTML
+The six sections are General, Text, Scrollback, Panes, Keyboard, and Appearance. The HTML
 prototype supplies the sidebar and row structure. Its dynamic section demo and
 SidePulse hardware controls are not part of this implementation. The font family
 is read-only and reflects `TerminalFont.appKit`, rather than promising a chooser.

@@ -1,6 +1,10 @@
 # macOS Vulkan Terminal — Data Model and State Machines
 
-**Status:** implementation specification, version 1.0  
+**Status:** implementation specification, version 1.0. Historical in part: the
+Vulkan, Rust and macOS 26 architecture named here was superseded by Swift,
+Metal and macOS 14, and several features listed as later, including Kitty
+graphics and Sixel, are implemented. The behavioral requirements still apply;
+see [status](status.md).  
 **Prepared:** 7 November 2026  
 **Audience:** the coding agent implementing the application and the engineer reviewing it  
 **Primary target:** Apple Silicon, macOS 26 or later  

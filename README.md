@@ -177,6 +177,11 @@ The bundle identifier is `no.helgesverre.terminal`.
 | [Benchmarks](docs/benchmarking.md) | Ghostty/Kitty comparisons, SQL output, resize stress, and measurement limits |
 | [Swift cutover](docs/swift-cutover.md) | Paired Rust/Swift measurements and the archived Rust snapshot |
 | [Terminal compatibility](docs/terminfo.md) | Bundled capabilities and parser coverage |
+| [Protocol coverage](docs/protocol-coverage.md) · [conformance](docs/conformance.md) | Image, input and query protocols, their tests and limits; esctest and fuzzing |
+| [Desktop controls](docs/desktop-controls.md) | Profiles, shortcuts, themes, cursor, Option keys and pane commands |
+| [Search](docs/search.md) | Find options, the bounded regex dialect and headless search |
+| [Gap status](docs/gap-implementation-status.md) · [qualification](docs/qualification.md) | What the 2026-11-17 gap work implemented and what still needs external checks |
+| [Input and accessibility validation](docs/native-input-accessibility-validation.md) | Manual checks for input methods and VoiceOver |
 | [Clipboard protocol](docs/osc52-clipboard.md) | OSC 52 behavior and policy |
 | [Fonts](Sources/TerminalUI/Resources/Fonts/README.md) | Font sources and licenses |
 
