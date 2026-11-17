@@ -238,8 +238,8 @@ import TerminalInterop
     #expect(frameColor(terminal, at: 0) == [255, 0, 0, 255], "stopped until told to run")
     #expect(helge_terminal_next_frame_delay(terminal.core, 0) == -1)
 
-    // Run from frame 1 (red, 40 ms by default) at time 1000: loops for ever.
-    terminal.feed("\(esc)_Ga=a,i=4,s=3,q=2\(esc)\\", at: 1000)
+    // Give the otherwise gapless root a 40 ms gap, then loop for ever.
+    terminal.feed("\(esc)_Ga=a,i=4,r=1,z=40,s=3,q=2\(esc)\\", at: 1000)
     #expect(frameColor(terminal, at: 1000) == [255, 0, 0, 255])
     #expect(helge_terminal_next_frame_delay(terminal.core, 1000) == 40)
     #expect(frameColor(terminal, at: 1040) == [0, 255, 0, 255])
@@ -258,7 +258,7 @@ import TerminalInterop
     let terminal = Terminal()
     terminal.feed("\(esc)_Ga=T,i=4,f=32,s=1,v=1,q=2;\(dot(255, 0, 0))\(esc)\\")
     terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,z=100,q=2;\(dot(0, 255, 0))\(esc)\\")
-    terminal.feed("\(esc)_Ga=a,i=4,s=2,q=2\(esc)\\")
+    terminal.feed("\(esc)_Ga=a,i=4,r=1,z=40,s=2,q=2\(esc)\\")
     #expect(frameColor(terminal, at: 10_000) == [0, 255, 0, 255], "waits on the last frame")
     // Two loops: red 40, green 100, red 40, green 100, then it stays green.
     terminal.feed("\(esc)_Ga=a,i=4,s=3,c=1,v=3,q=2\(esc)\\", at: 20_000)
@@ -324,7 +324,254 @@ import TerminalInterop
 
   @Test func theTerminalSaysWhatItSupports() {
     let terminal = Terminal()
-    terminal.feed("\(esc)_Gi=31,a=q,e=t,t=f,U=1,I=2;\(esc)\\")
-    #expect(terminal.replies() == "\(esc)_Gi=31,e=t,I=2,U=1,t=f;OK\(esc)\\")
+    terminal.feed("\(esc)_Gi=31,a=q,e=t,t=f,U=1;\(esc)\\")
+    #expect(terminal.replies() == "\(esc)_Gi=31,e=t,t=f;OK\(esc)\\")
+  }
+
+  @Test func featureQueriesAreActionSpecificAndIgnoreDefaults() {
+    let terminal = Terminal()
+    func query(_ action: String, _ fields: String, _ expected: String) {
+      terminal.feed("\(esc)_Ga=q,i=31,e=\(action),\(fields);ignored payload\(esc)\\")
+      #expect(terminal.replies() == "\(esc)_Gi=31\(expected);OK\(esc)\\")
+    }
+    query("T", "C=1,U=1,c=0,t=d,f=32,m=1", ",e=T,C=1,U=1")
+    query("f", "r=1,X=1,U=1,C=1,z=-1", ",e=f,X=1,r=1,z=-1")
+    query("a", "s=3,v=1,c=2,r=1,z=0,U=1", ",e=a,c=2,r=1,s=3")
+    query("c", "C=1,r=2,c=3,U=1,t=f", ",e=c,C=1,c=3,r=2")
+    query("d", "d=f,r=2,t=f,U=1", ",e=d,d=f,r=2")
+    query("p", "f=24,s=10,P=1,Q=2,H=-3,z=5", ",e=p,H=-3,P=1,Q=2,z=5")
+    query("q", "f=24,t=s,s=1,v=1,U=1", ",e=q,f=24,s=1,t=s,v=1")
+    query("t", "f=8,t=invalid,s=4294967295,U=1", ",e=t")
+    query("a", "s=4,v=0,c=-1", ",e=a")
+    query("j", "U=1,p=7", "")
+    #expect(terminal.images.isEmpty)
+  }
+
+  @Test func featureQueriesPreservePendingUploads() {
+    let terminal = Terminal()
+    terminal.feed("\(esc)_Ga=T,i=4,f=32,s=1,v=1,m=1;\(dot(255, 0, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=q,i=31,e=T,U=1,m=1;not base64\(esc)\\")
+    #expect(terminal.replies() == "\(esc)_Gi=31,e=T,U=1;OK\(esc)\\")
+    terminal.feed("\(esc)_Ga=q,i=31,I=7,e=T\(esc)\\")
+    #expect(terminal.replies().contains("EINVAL"))
+    terminal.feed("\(esc)_Gm=0\(esc)\\")
+    #expect(terminal.replies() == "\(esc)_Gi=4;OK\(esc)\\")
+    #expect(frameColor(terminal, at: 0) == [255, 0, 0, 255])
+  }
+
+  @Test func rootFrameIsGaplessAndZeroGapEditsAreIgnored() {
+    let terminal = Terminal()
+    terminal.feed("\(esc)_Ga=T,i=4,f=32,s=1,v=1,q=2;\(dot(255, 0, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,q=2;\(dot(0, 255, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,z=60,q=2;\(dot(0, 0, 255))\(esc)\\")
+    terminal.feed("\(esc)_Ga=a,i=4,s=3,q=2\(esc)\\", at: 1000)
+    #expect(frameColor(terminal, at: 1000) == [0, 255, 0, 255])
+    #expect(helge_terminal_next_frame_delay(terminal.core, 1000) == 40)
+    #expect(frameColor(terminal, at: 1040) == [0, 0, 255, 255])
+    #expect(frameColor(terminal, at: 1100) == [0, 255, 0, 255])
+    terminal.feed("\(esc)_Ga=a,i=4,s=1,c=1,r=1,z=25,q=2\(esc)\\", at: 1200)
+    terminal.feed("\(esc)_Ga=a,i=4,r=1,z=0,s=3,q=2\(esc)\\", at: 1200)
+    #expect(frameColor(terminal, at: 1200) == [255, 0, 0, 255])
+    #expect(helge_terminal_next_frame_delay(terminal.core, 1200) == 25)
+  }
+
+  @Test func frameDeletionPromotesRenumbersAndPreservesPixels() throws {
+    let terminal = Terminal()
+    terminal.feed("\(esc)_Ga=T,i=4,f=32,s=1,v=1,q=2;\(dot(255, 0, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,z=60,q=2;\(dot(0, 255, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,z=80,q=2;\(dot(0, 0, 255))\(esc)\\")
+    terminal.feed("\(esc)_Ga=a,i=4,s=1,c=2,q=2\(esc)\\")
+    let green = try #require(terminal.images.first).generation
+    terminal.feed("\(esc)_Ga=d,d=f,i=4,r=1,q=2\(esc)\\")
+    #expect(frameColor(terminal, at: 0) == [0, 255, 0, 255])
+    #expect(terminal.images.first?.generation == green, "promotion preserves resource identity")
+    terminal.feed("\(esc)_Ga=a,i=4,s=3,q=2\(esc)\\", at: 1000)
+    #expect(helge_terminal_next_frame_delay(terminal.core, 1000) == 60)
+    #expect(frameColor(terminal, at: 1060) == [0, 0, 255, 255])
+    terminal.feed("\(esc)_Ga=d,d=f,i=4,r=2,q=2\(esc)\\", at: 1060)
+    #expect(frameColor(terminal, at: 1060) == [0, 255, 0, 255])
+    #expect(helge_terminal_next_frame_delay(terminal.core, 1060) == -1)
+    terminal.feed("\(esc)_Ga=a,i=4,c=2\(esc)\\")
+    #expect(terminal.replies().contains("EINVAL"), "deleted frame number is gone")
+    terminal.feed("\(esc)_Ga=d,d=f,i=4,q=2\(esc)\\")
+    #expect(terminal.images.count == 1, "lowercase keeps the last frame")
+    terminal.feed("\(esc)_Ga=d,d=F,i=4,q=2\(esc)\\")
+    #expect(terminal.images.isEmpty, "uppercase deletes the last frame and its placements")
+  }
+
+  @Test func relativeChildrenFollowVirtualPlaceholderGeometry() throws {
+    let terminal = Terminal()
+    terminal.feed(transmit("i=1,p=1,U=1,c=1,r=1,q=2", 1, 1))
+    terminal.feed(transmit("i=2,p=1,P=1,Q=1,H=2,V=1,q=2", 1, 1))
+    #expect(terminal.images.isEmpty)
+    terminal.feed("\(esc)[3;5H\(esc)[38;5;1m" + placeholder(row: 0, column: 0) + "\(esc)[0m")
+    #expect(terminal.images.first { $0.image == 2 }.map { [$0.row, $0.col] } == [3, 6])
+    terminal.feed("\(esc)[5;3H\(esc)[38;5;1m" + placeholder(row: 0, column: 0) + "\(esc)[0m")
+    #expect(terminal.images.first { $0.image == 2 }.map { [$0.row, $0.col] } == [3, 4], "independent minimum x and y")
+    terminal.feed("\(esc)[3;1H\(esc)[2K")
+    #expect(terminal.images.first { $0.image == 2 }.map { [$0.row, $0.col] } == [5, 4])
+    // No snapshot between text movement and deletion: command geometry must be current.
+    terminal.feed("\(esc)[5;1H\(esc)[2K\(esc)[7;8H\(esc)[38;5;1m" + placeholder(row: 0, column: 0) + "\(esc)[0m")
+    terminal.feed("\(esc)_Ga=d,d=p,x=10,y=8,q=2\(esc)\\")
+    #expect(!terminal.images.contains { $0.image == 2 })
+    #expect(terminal.images.contains { $0.image == 1 }, "virtual parent survives positional deletion")
+  }
+
+  @Test func positionalDeletionUsesResolvedRelativeOrigins() {
+    for deletion in ["d=p,x=8,y=2", "d=q,x=8,y=2,z=7", "d=x,x=8", "d=y,y=2", "d=c"] {
+      let terminal = Terminal()
+      terminal.feed("\(esc)[3;5H" + transmit("i=1,p=1,q=2", 1, 1))
+      terminal.feed("\(esc)[1;1H" + transmit("i=2,p=1,P=1,Q=1,H=3,V=-1,z=7,q=2", 1, 1))
+      terminal.feed("\(esc)[2;8H\(esc)_Ga=d,\(deletion),q=2\(esc)\\")
+      #expect(terminal.images.map(\.image) == [1], "\(deletion) deletes the child at its resolved position")
+    }
+  }
+
+  @Test func animationEditsPreserveElapsedTimeAndCompletedLoops() {
+    let terminal = Terminal()
+    terminal.feed("\(esc)_Ga=T,i=4,f=32,s=1,v=1,q=2;\(dot(255, 0, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,z=60,q=2;\(dot(0, 255, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,z=80,q=2;\(dot(0, 0, 255))\(esc)\\")
+    terminal.feed("\(esc)_Ga=a,i=4,r=1,z=40,s=3,v=3,q=2\(esc)\\", at: 1000)
+    terminal.feed("\(esc)_Ga=d,d=f,i=4,r=3,q=2\(esc)\\", at: 1010)
+    #expect(helge_terminal_next_frame_delay(terminal.core, 1010) == 30, "deleting a different frame preserves elapsed time")
+    terminal.feed("\(esc)_Ga=a,i=4,r=1,z=0,q=2\(esc)\\", at: 1150)
+    #expect(frameColor(terminal, at: 1150) == [0, 255, 0, 255])
+    #expect(helge_terminal_next_frame_delay(terminal.core, 1150) == -1, "an edit does not restart completed loops")
+    #expect(frameColor(terminal, at: 1300) == [0, 255, 0, 255])
+    terminal.feed("\(esc)_Ga=a,i=4,s=1,c=1,q=2\(esc)\\", at: 1400)
+    terminal.feed("\(esc)_Ga=a,i=4,s=3,q=2\(esc)\\", at: 1500)
+    #expect(frameColor(terminal, at: 1600) == [255, 0, 0, 255], "stopping resets the loop counter")
+  }
+
+  @Test func rootFrameDataEditsCanSetItsGap() {
+    let terminal = Terminal()
+    terminal.feed("\(esc)_Ga=T,i=4,f=32,s=1,v=1,q=2;\(dot(255, 0, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=f,i=4,f=32,s=1,v=1,q=2;\(dot(0, 255, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=f,i=4,r=1,z=25,f=32,s=1,v=1,q=2;\(dot(0, 0, 255))\(esc)\\")
+    terminal.feed("\(esc)_Ga=a,i=4,s=3,q=2\(esc)\\", at: 1000)
+    #expect(frameColor(terminal, at: 1000) == [0, 0, 255, 255])
+    #expect(helge_terminal_next_frame_delay(terminal.core, 1000) == 25)
+  }
+
+  @Test func framePromotionDoesNotChangeImageNumberOrder() throws {
+    let terminal = Terminal()
+    terminal.feed(transmit("I=7,q=2", 1, 1))
+    let old = try #require(terminal.images.first).image
+    terminal.feed(transmit("I=7,q=2", 1, 1))
+    terminal.feed("\(esc)_Ga=f,i=\(old),f=32,s=1,v=1,q=2;\(dot(0, 255, 0))\(esc)\\")
+    terminal.feed("\(esc)_Ga=d,d=f,i=\(old),r=1,q=2\(esc)\\")
+    terminal.feed("\(esc)_Ga=d,d=F,I=7,q=2\(esc)\\")
+    #expect(terminal.images.map(\.image) == [old], "I names the newest image, not the most recently edited frame")
+  }
+
+  @Test func frameDeletionReleasesStorageAndAbortsPartialUpload() {
+    let store = KittyGraphicsStore()
+    let context = KittyGraphicsContext(alternate: false, row: 1, column: 0, cellWidth: 10, cellHeight: 20)
+    func send(_ header: String, _ body: String = "") {
+      _ = store.consume(Data("G\(header);\(body)".utf8), context: context, now: 0)
+    }
+    send("a=T,i=4,f=32,s=1,v=1", dot(255, 0, 0))
+    send("a=f,i=4,f=32,s=1,v=1", dot(0, 255, 0))
+    #expect(store.accountedBytes == 8)
+    send("a=f,i=4,f=32,s=1,v=1,m=1", dot(0, 0, 255))
+    #expect(store.accountedBytes == 12)
+    send("a=d,d=f,i=4,r=1")
+    #expect(store.accountedBytes == 4)
+    send("a=d,d=f,i=4,r=99")
+    #expect(store.accountedBytes == 4)
+    send("a=d,d=F,i=4")
+    #expect(store.accountedBytes == 0)
+  }
+
+  @Test func virtualParentFollowsActiveScreenAndScrollback() {
+    let terminal = Terminal()
+    terminal.feed(transmit("i=1,p=1,U=1,c=1,r=1,q=2", 1, 1))
+    terminal.feed(transmit("i=2,p=1,P=1,Q=1,H=2,V=3,q=2", 1, 1))
+    terminal.feed("\(esc)[1;1H\(esc)[38;5;1m" + placeholder(row: 0, column: 0) + "\(esc)[0m\(esc)[10;1H\n")
+    #expect(terminal.images.first { $0.image == 2 }.map { [$0.row, $0.col] } == [2, 2], "parent above viewport can anchor visible child")
+    helge_terminal_set_history_limit(terminal.core, 0)
+    #expect(!terminal.images.contains { $0.image == 2 }, "history eviction invalidates cached parent geometry")
+    terminal.feed("\(esc)[?1049h\(esc)[2;5H\(esc)[38;5;1m" + placeholder(row: 0, column: 0) + "\(esc)[0m")
+    #expect(terminal.images.first { $0.image == 2 }.map { [$0.row, $0.col] } == [4, 6], "virtual parent belongs to the text's screen")
+    terminal.feed("\(esc)[?1049l\(esc)_Ga=d,d=i,i=1,q=2\(esc)\\")
+    terminal.feed("\(esc)_Ga=p,i=2,p=3\(esc)\\")
+    #expect(terminal.replies().contains("ENOENT"), "orphaned relative image is freed with its last placement")
+  }
+
+  @Test func virtualParentsWithLargeHistory() {
+    let terminal = Terminal()
+    helge_terminal_set_history_limit(terminal.core, 50_000)
+    terminal.feed(String(repeating: "ordinary history\r\n", count: 20_000))
+    terminal.feed(transmit("i=1,p=1,U=1,c=1,r=1,q=2", 1, 1))
+    terminal.feed(transmit("i=2,p=1,P=1,Q=1,H=2,V=1,q=2", 1, 1))
+    terminal.feed("\(esc)[3;5H\(esc)[38;5;1m" + placeholder(row: 0, column: 0) + "\(esc)[0m")
+    #expect(terminal.images.first { $0.image == 2 }.map { [$0.row, $0.col] } == [3, 6])
+    let start = DispatchTime.now().uptimeNanoseconds
+    for tick in 0..<100 {
+      let images = swiftTerminalSnapshot(terminal.core, scroll: nil, now: UInt64(tick)).snapshot?.images ?? []
+      #expect(images.first { $0.image == 2 }.map { [$0.row, $0.col] } == [3, 6])
+    }
+    print("Kitty virtual-parent snapshots, 20k history rows, 100 ticks: \(Double(DispatchTime.now().uptimeNanoseconds - start) / 1_000_000) ms")
+    let outputStart = DispatchTime.now().uptimeNanoseconds
+    for _ in 0..<100 {
+      terminal.feed("\(esc)[1;1Hordinary output")
+      #expect(terminal.images.first { $0.image == 2 }.map { [$0.row, $0.col] } == [3, 6])
+    }
+    print("Kitty virtual-parent snapshots with live edits, 20k history rows, 100 updates: \(Double(DispatchTime.now().uptimeNanoseconds - outputStart) / 1_000_000) ms")
+    terminal.feed("\(esc)[3;1H\(esc)[2K")
+    #expect(!terminal.images.contains { $0.image == 2 }, "text mutation invalidates the cached geometry")
+  }
+
+  @Test func frameDeletionRejectsBothIdentityKeysWithoutMutation() {
+    for selectors in ["i=0,I=7", "I=7,i=0", "i=4,I=0"] {
+      let terminal = Terminal()
+      terminal.feed(transmit("I=7,q=2", 1, 1))
+      terminal.feed("\(esc)_Ga=d,d=F,\(selectors)\(esc)\\")
+      #expect(terminal.replies().contains("EINVAL"))
+      #expect(terminal.images.count == 1)
+    }
+  }
+
+  @Test func virtualParentCacheFollowsNewHistoryRows() {
+    let terminal = Terminal()
+    terminal.feed(transmit("i=1,p=1,U=1,c=1,r=1,q=2", 1, 1))
+    terminal.feed(transmit("i=2,p=1,P=1,Q=1,H=2,V=4,q=2", 1, 1))
+    terminal.feed("\(esc)[3;5H\(esc)[38;5;1m" + placeholder(row: 0, column: 0) + "\(esc)[0m")
+    #expect(terminal.images.first { $0.image == 2 }?.row == 6)
+    for scroll in 1...5 {
+      terminal.feed("\(esc)[10;1H\r\n")
+      #expect(terminal.images.first { $0.image == 2 }?.row == 6 - scroll)
+    }
+    helge_terminal_set_history_limit(terminal.core, 0)
+    #expect(!terminal.images.contains { $0.image == 2 })
+  }
+
+  @Test func placementRejectsBothIdentityKeys() {
+    let terminal = Terminal()
+    terminal.feed(transmit("I=7,q=2", 1, 1))
+    terminal.feed("\(esc)_Ga=p,i=0,I=7\(esc)\\")
+    #expect(terminal.replies().contains("EINVAL"))
+    #expect(terminal.images.count == 1)
+  }
+
+  @Test func currentKittenLargeChunksAndUnpaddedBase64() {
+    let terminal = Terminal()
+    let payload = pixels(256, 128).replacingOccurrences(of: "=", with: "")
+    let split = payload.index(payload.startIndex, offsetBy: 128 * 1024)
+    terminal.feed("\(esc)_Ga=T,i=8,f=32,s=256,v=128,m=1;\(payload[..<split])\(esc)\\")
+    #expect(terminal.images.isEmpty)
+    terminal.feed("\(esc)_Ga=T,m=0;\(payload[split...])\(esc)\\")
+    #expect(terminal.replies().contains("OK"))
+    #expect(terminal.images.first?.image == 8)
+  }
+
+  @Test func largeChunkCompatibilityRemainsBoundedAndCanonical() {
+    for payload in [String(repeating: "A", count: 128 * 1024 + 4), "AAAAAB", "AAAAAA="] {
+      let terminal = Terminal()
+      terminal.feed("\(esc)_Ga=T,i=8,f=32,s=1,v=1;\(payload)\(esc)\\")
+      #expect(terminal.images.isEmpty)
+      #expect(terminal.replies().contains("EINVAL"))
+    }
   }
 }

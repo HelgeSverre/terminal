@@ -12,11 +12,11 @@ describe their recorded revisions. Tests named below are under `Tests/TerminalTe
 | Kitty RGB, RGBA, PNG; zlib; chunks | `KittyGraphicsStore.consume`, bounded transport/decode; `TerminalGraphicsOracleTests` (PNG/zlib, chunk partitions, malformed atomicity, expiry) | No indexed `f=8/16`; 16 MiB per decoded image, 64 MiB live store, 64 images, 256 placements, 4096 pixels per side |
 | File, temporary-file, shared-memory transport; image numbers | `KittyTransport`, `KittyGraphicsExtensionTests.filesAndTemporaryFilesAreRead`, `.imageNumbersNameTheNewestImage` | Shared-memory success has no dedicated regression; transport executes synchronously on the session owner |
 | Placement, crop, offset, layering, cursor movement | `layout`, `visible`; oracle cursor/resize/screen tests and extension deletion tests | Primary width reflow clears placements; scroll-region/clipped-anchor deletion semantics need broader conformance cases |
-| Unicode placeholders | `KittyPlaceholder`, `placeholderSlice`; two extension tests verify slices, color IDs and unmarked continuation | No end-to-end tmux/Neovim or Metal pixel oracle |
-| Relative placements | `origin`, `pruneOrphans`; extension tests cover following/moving/deleting parents, cycles and depth | Maximum depth 8; a virtual placeholder parent is accepted but its child never renders (G4) |
-| Animation frames and playback | `addFrame`, `control`, `playback`; extension tests cover frames, composition, loops, loading and gaps | Up to 1000 frames within shared storage budget; frame deletion is a no-op (G3); default root gap differs (G7); loop edits and UI scheduling need more coverage |
-| Image/placement deletion | `delete`; extension selectors and oracle cross-screen/cache tests | `f/F` is not implemented; positional selectors do not resolve relative origins (G5) |
-| Queries and quiet replies | `consume`, `featureReply`, `outcome`; oracle query and extension feature tests | Feature replies are not yet action-specific and echo some default/identity keys (G6) |
+| Unicode placeholders | `KittyPlaceholder`, `placeholderSlice`; extension tests verify slices, color IDs and unmarked continuation; real Neovim/Snacks images and splits checked directly and through tmux | Snacks requires its `SNACKS_KITTY=true` allowlist override; no exhaustive Metal pixel oracle |
+| Relative placements | `origin`, `pruneOrphans`; extension tests cover ordinary and virtual parents, movement, scrollback, screen changes, deletion, cycles and depth | Maximum depth 8; virtual parents cache at most 256 extrema pairs (512 row IDs plus a tail), scan appended history and the live grid, and rebuild on eviction/reflow/prototype changes |
+| Animation frames and playback | `addFrame`, `control`, `playback`; extension tests cover frames, composition, loops, loading, gap edits and frame deletion | Up to 1000 frames within shared storage budget; broader UI scheduling coverage remains separate |
+| Image/placement deletion | `delete`, `deleteFrame`; extension selectors, resolved relative origins, root promotion, resource accounting and oracle cross-screen/cache tests | Positional deletion leaves virtual prototypes intact; manipulate their placeholder text instead |
+| Queries and quiet replies | `consume`, `featureReply`, `outcome`; action-specific non-default keys, ignored payload and pending-upload preservation tests | Advertises implemented formats/actions only, not full protocol conformance |
 | SIXEL | `SixelDecoder`, DCS parser; `TerminalImageTests` covers RGB/HLS, repeat, raster size, scrolling, cropping to limits and DA1 advertisement | Transparent background only; header/raster aspect ratios, P2 background, DECSDM 80 and mode 8452 unsupported; palette resets per image |
 | iTerm2 inline images | `InlineImageDecoder`, `showInlineImage`; `TerminalImageTests` covers BEL/ST, aspect ratio, cells/pixels/percent/auto sizing and large images | Original `OSC 1337;File=...;inline=1` only; first frame only; no multipart, downloads, ReportCellSize or feature reporting |
 | Shared image lifetime and rendering | `KittyGraphicsStore.show`, immutable image generations, session `ImageKey` cache and renderer textures | Engine/ABI checks exist; session-to-Metal pixel correctness for animation, crop, alpha and z order remains unverified |
@@ -47,13 +47,19 @@ Capability statements above come from this repository's implementation and tests
 | --- | --- | --- |
 | G1 | Kitty `a=c` uses lowercase source offsets and uppercase destination offsets; same-frame overlap succeeds; missing frames return EINVAL | Fixed in `814f7b8`: wire offsets, full-image defaults, overlap and error validation before mutation; red/green regressions pass |
 | G2 | SIXEL semicolons grow an unbounded parameter array; digits outside a command leak into the next repeat | Fixed in `814f7b8`: five retained fields maximum, command-scoped digits and saturated vertical position; whole/bytewise recovery regressions pass |
-| G3 | `a=d,d=f/F` acknowledges without deleting any frame | Deferred feature work: implement root promotion, frame renumbering, playback and resource accounting together; usage no longer claims every selector |
-| G4 | Relative child of a virtual placement has no resolved origin | Deferred: supply actual placeholder geometry to the placement owner, with tests through emulator snapshots |
-| G5 | Coordinate deletion checks a relative placement's stored cursor anchor rather than its resolved parent origin | Deferred with relative-placement geometry; ordinary selectors are tested, this combination is not |
-| G6 | Feature query replies echo `I` and use one key list for all actions | Deferred query-conformance work; queries cannot yet be treated as an exhaustive capability contract |
-| G7 | `Animation.firstGap=0` passes through the generic 40 ms default, so the root frame is displayed instead of initially gapless | Deferred animation timing work: distinguish the root default from an added frame's default and test state/loop edits with explicit clocks |
+| G3 | `a=d,d=f/F` acknowledges without deleting any frame | Fixed: root promotion, frame renumbering, stable image-number ordering, playback state, storage release and last-frame semantics; extension regressions |
+| G4 | Relative child of a virtual placement has no resolved origin | Fixed: derive independent minimum coordinates from actual placeholder text, including scrollback and active-screen changes; bounded cached origins and snapshot regressions |
+| G5 | Coordinate deletion checks a relative placement's stored cursor anchor rather than its resolved parent origin | Fixed: rendering and deletion share origin resolution; all positional selectors tested, including text movement without an intervening snapshot |
+| G6 | Feature query replies echo `I` and use one key list for all actions | Fixed: action-specific supported non-default keys; ignored payload, unsupported actions and in-progress upload preservation covered |
+| G7 | `Animation.firstGap=0` passes through the generic 40 ms default, so the root frame is displayed instead of initially gapless | Fixed: gapless root default, explicit root-gap edits, ignored zero-gap updates and bounded playback preserving elapsed time/completed loops |
+| G8 | Current `kitten icat` renders blank: its 128 KiB chunks, unpadded base64 and repeated action on continuations exceed older transport assumptions | Bounded compatibility with current client framing; canonical decoding and total decoded-image limits retained |
 
-G3–G7 remain observable compatibility limitations, not completed fixes. New
+G3–G8 were repaired in the 2026-11-17 follow-up. G8 was found in real-client testing;
+the [current Kitty client](https://github.com/kovidgoyal/kitty/blob/master/tools/tui/graphics/command.go)
+uses 128 KiB chunks and unpadded base64. The parser envelope is limited to
+128 KiB plus 4 KiB of header space. Relative graphics may perform indexed
+history lookups for bounded parent IDs; viewport FollowTail still avoids its
+own retained-history anchor resolution. Unlisted new
 protocol features are outside this repair batch. Runtime scheduling, PTY/renderer
 redesign, non-macOS builds and complete VT conformance are outside this audit.
 
@@ -62,8 +68,8 @@ redesign, non-macOS builds and complete VT conformance are outside this audit.
 | Machine and owner | Transition and invariant | Evidence or disposition |
 | --- | --- | --- |
 | Chunk upload, `KittyGraphicsStore` | Idle → collecting → committed; malformed/cancel/timeout drops pending work. Completed query must not store or move cursor | Oracle atomic chunks, upload lifecycle and detection tests; retained |
-| Frames, `KittyGraphicsStore` | Stopped/loading/running; compose validates before assigning pixels and generation; playback snapshots retain the selected generation | G1 repair; G3 deferred; extension playback tests |
-| Placements, `KittyGraphicsStore` | Anchored/virtual/relative; removal prunes descendants; screen and row identity govern visibility | Existing hierarchy/screen tests; G4/G5 deferred |
+| Frames, `KittyGraphicsStore` | Stopped/loading/running; compose validates before assigning pixels and generation; playback snapshots retain the selected generation | G1/G3/G7 repairs; extension playback/deletion tests |
+| Placements, `KittyGraphicsStore` | Anchored/virtual/relative; removal prunes descendants; screen and row identity govern visibility | Hierarchy/screen tests; G4/G5 repairs and large-history validation |
 | SIXEL command, `SixelDecoder` | No command → repeat/raster/color → draw; each command owns bounded numeric state; CAN/SUB discards the decoder | G2 repair and image tests |
 | Inline image, `InlineImageDecoder` | Header → bounded payload → decode/admit, or failed; cancellation discards all partial work | Image tests; retained |
 | Parser/input/clipboard | Owner-serialized negotiation and framing; independent keyboard screen stacks, bounded clipboard payload | Input/OSC52/scheduler tests; retained |

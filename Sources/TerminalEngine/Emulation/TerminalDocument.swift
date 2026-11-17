@@ -463,6 +463,15 @@ struct TerminalRow: Equatable {
   var payloadCount: Int { storage.payloads.count }
   var retainedCellCapacity: Int { storage.logicalCapacity }
 
+  /// Inspect the leading scalar without projecting styles, links or a String
+  /// for ordinary cells. Graphics scans use this to skip non-placeholder text.
+  func starts(with scalar: UInt32, at index: Int) -> Bool {
+    let slot = storage.slots[index]
+    if slot.hasScalar { return slot.scalar == scalar }
+    guard slot.hasPayload else { return false }
+    return storage.payload(at: index)?.text?.unicodeScalars.first?.value == scalar
+  }
+
   func cell(_ index: Int) -> TerminalCell {
     let slot = storage.slots[index]
     return Self.project(slot, storage.style(slot.style), storage.payload(at: index))

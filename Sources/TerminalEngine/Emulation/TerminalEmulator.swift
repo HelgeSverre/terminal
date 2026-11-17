@@ -641,7 +641,7 @@ private final class TerminalEmulator {
         if byte == 0x18 || byte == 0x1a { graphics.abort(); sequence = ""; parser = .ground }
         else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
         else if byte == 0x1b { if sequence.last != "\u{1b}" { sequence.append("\u{1b}") } }
-        else if sequence.last == "\u{1b}" || sequence.utf8.count >= 8192 {
+        else if sequence.last == "\u{1b}" || sequence.utf8.count >= KittyGraphicsStore.maximumPacketBytes {
           graphics.abort(); parser = .discardString(escaped: false, osc: false); sequence = ""
         }
         else if sequence.isEmpty && byte != 0x47 { parser = .discardString(escaped: false, osc: false) }
@@ -1416,7 +1416,9 @@ private final class TerminalEmulator {
     let s = screen
     let outcome = graphics.consume(Data(payload.utf8), context: KittyGraphicsContext(
       alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
-      cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id)), now: clock)
+      cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id),
+      rowPositions: graphics.hasRelativePlacements ? graphicsRowPositions(offset: 0) : [:],
+      virtualOrigins: virtualParentOrigins(offset: 0)), now: clock)
     if let reply = outcome.reply { replies.append(reply) }
     if let advance = outcome.advance {
       resetClusterBoundary()
@@ -1690,42 +1692,105 @@ private final class TerminalEmulator {
     guard graphics.hasPlacements else { return }
     // Retired placements retain only bounded (<= 256) row IDs, never rows.
     // Rebuilding this membership set is therefore deferred to graphics seams.
-    var retained = Set(history.map(\.id))
-    retained.formUnion(primary.rows.map(\.id)); retained.formUnion(alternate.rows.map(\.id))
-    graphics.pruneAnchors(retaining: retained)
+    let screens = Set(primary.rows.map(\.id) + alternate.rows.map(\.id))
+    graphics.pruneAnchors(isRetained: { screens.contains($0) || history.index(ofRowID: $0) != nil })
+  }
+  private func graphicsRowPositions(offset: Int) -> [UInt64: Int] {
+    var positions: [UInt64: Int] = [:]
+    let visible = Dictionary(uniqueKeysWithValues: screen.rows.enumerated().map { ($0.element.id, $0.offset) })
+    let scroll = usingAlternate ? 0 : min(offset, history.count)
+    for id in graphics.anchorRows {
+      if let index = visible[id] { positions[id] = index + scroll }
+      else if !usingAlternate, let index = history.index(ofRowID: id) { positions[id] = index - history.count + scroll }
+    }
+    return positions
   }
   private func visibleImages(offset: Int) -> [KittyImagePlacement] {
     guard graphics.hasPlacements else { return [] }
-    var positions: [UInt64: Int] = [:]
-    if usingAlternate {
-      for (index, row) in alternate.rows.enumerated() { positions[row.id] = index }
-    } else {
-      let start = history.count - min(offset, history.count)
-      for (index, row) in history.enumerated() { positions[row.id] = index - start }
-      for (index, row) in primary.rows.enumerated() { positions[row.id] = history.count + index - start }
+    let placeholders = graphics.hasVirtualPlacements ? placeholderImages(offset: offset) : (images: [], origins: [:])
+    return graphics.visible(alternate: usingAlternate, positions: graphicsRowPositions(offset: offset), height: rowCount,
+                            virtualOrigins: virtualParentOrigins(offset: offset)) + placeholders.images
+  }
+  private struct HistoryVirtualOrigin {
+    var rowID: UInt64
+    var rowOffset: Int
+    var columnRowID: UInt64
+    var column: Int
+  }
+  private struct VirtualOriginCache {
+    let geometry: UInt64
+    let placements: [UInt64]
+    var tail: UInt64?
+    var origins: [UInt64: HistoryVirtualOrigin] = [:]
+  }
+  // Retained history rows are immutable. Cache only each prototype's two
+  // extrema and scan newly appended rows, not all history after live output.
+  // Rebuild if reflow/prototype changes or eviction removes an extremum/tail.
+  // At most 256 entries; no cached rows, cells or per-history-row metadata.
+  private var virtualOriginCache: VirtualOriginCache?
+  private func virtualParentOrigins(offset: Int) -> [UInt64: KittyPlacementOrigin] {
+    guard graphics.hasVirtualParents else { virtualOriginCache = nil; return [:] }
+    if usingAlternate { return placeholderImages(offset: 0, originsOnly: true).origins }
+    let placements = graphics.virtualPlacementIdentities
+    var cache = virtualOriginCache ?? VirtualOriginCache(geometry: geometryEpoch, placements: placements)
+    if cache.geometry != geometryEpoch || cache.placements != placements
+      || cache.tail.map({ history.index(ofRowID: $0) == nil }) == true
+      || cache.origins.values.contains(where: {
+        history.index(ofRowID: $0.rowID) == nil || history.index(ofRowID: $0.columnRowID) == nil
+      }) {
+      cache = VirtualOriginCache(geometry: geometryEpoch, placements: placements)
     }
-    var shown = graphics.visible(alternate: usingAlternate, positions: positions, height: rowCount)
-    if graphics.hasVirtualPlacements { shown += placeholderImages(offset: offset) }
-    return shown
+    let first = cache.tail.flatMap { history.index(ofRowID: $0).map { $0 + 1 } } ?? 0
+    if first < history.count {
+      _ = placeholderImages(offset: 0, originsOnly: true, historyRange: first..<history.count) { serial, origin, rowID, sourceRow in
+        let next = HistoryVirtualOrigin(rowID: rowID, rowOffset: origin.row - sourceRow, columnRowID: rowID, column: origin.column)
+        if var old = cache.origins[serial] {
+          let oldRow = self.history.index(ofRowID: old.rowID)! - self.history.count + old.rowOffset
+          if origin.row < oldRow { old.rowID = next.rowID; old.rowOffset = next.rowOffset }
+          if origin.column < old.column { old.column = next.column; old.columnRowID = next.columnRowID }
+          cache.origins[serial] = old
+        } else { cache.origins[serial] = next }
+      }
+    }
+    cache.tail = history.count > 0 ? history[history.count - 1].id : nil
+    virtualOriginCache = cache
+    var origins = cache.origins.mapValues {
+      KittyPlacementOrigin(row: history.index(ofRowID: $0.rowID)! - history.count + $0.rowOffset, column: $0.column)
+    }
+    for (serial, live) in placeholderImages(offset: 0, originsOnly: true).origins {
+      if let old = origins[serial] { origins[serial] = KittyPlacementOrigin(row: min(old.row, live.row), column: min(old.column, live.column)) }
+      else { origins[serial] = live }
+    }
+    let scroll = min(offset, history.count)
+    return origins.mapValues { KittyPlacementOrigin(row: $0.row + scroll, column: $0.column) }
   }
   /// The image slices behind the Unicode placeholders on screen. Runs of
   /// placeholder cells that continue one another become one slice each.
-  private func placeholderImages(offset: Int) -> [KittyImagePlacement] {
-    var rows: [TerminalRow] = []
-    if usingAlternate { rows = alternate.rows } else {
-      let start = history.count - min(offset, history.count)
-      for index in start..<(start + rowCount) {
-        if index < history.count { rows.append(history[index]) }
-        else if index - history.count < primary.rows.count { rows.append(primary.rows[index - history.count]) }
-      }
-    }
+  private func placeholderImages(offset: Int, originsOnly: Bool = false, historyRange: Range<Int>? = nil,
+    recordOrigin: ((UInt64, KittyPlacementOrigin, UInt64, Int) -> Void)? = nil)
+    -> (images: [KittyImagePlacement], origins: [UInt64: KittyPlacementOrigin]) {
+    let start = usingAlternate ? 0 : history.count - min(offset, history.count)
+    let total = usingAlternate ? alternate.rows.count : history.count + primary.rows.count
+    // Parents may be above the viewport while their relative children are visible.
+    let lower = historyRange?.lowerBound ?? start
+    let upper = historyRange?.upperBound ?? min(total, start + rowCount)
     var result: [KittyImagePlacement] = []
-    for (screenRow, row) in rows.enumerated() {
+    var origins: [UInt64: KittyPlacementOrigin] = [:]
+    for index in lower..<upper {
+      let row = usingAlternate ? alternate.rows[index] : index < history.count ? history[index] : primary.rows[index - history.count]
+      let rowID = row.id
+      let screenRow = index - start
       var run: (cell: KittyPlaceholder.Cell, start: Int, count: Int)?
       var previous: KittyPlaceholder.Cell?
       func flush() {
         guard let current = run, let row = current.cell.row, let column = current.cell.column else { run = nil; return }
-        if let slice = graphics.placeholderSlice(
+        if let anchor = graphics.placeholderOrigin(current.cell, screenRow: screenRow, screenColumn: current.start) {
+          recordOrigin?(anchor.serial, anchor.origin, rowID, screenRow)
+          if let old = origins[anchor.serial] {
+            origins[anchor.serial] = KittyPlacementOrigin(row: min(old.row, anchor.origin.row), column: min(old.column, anchor.origin.column))
+          } else { origins[anchor.serial] = anchor.origin }
+        }
+        if !originsOnly, screenRow >= 0, screenRow < rowCount, let slice = graphics.placeholderSlice(
           current.cell, row: row, column: column, count: current.count, screenRow: screenRow,
           screenColumn: current.start, alternate: usingAlternate, cellWidth: cellPixelWidth, cellHeight: cellPixelHeight) {
           result.append(slice)
@@ -1733,9 +1798,9 @@ private final class TerminalEmulator {
         run = nil
       }
       for index in 0..<row.count {
+        guard row.starts(with: KittyPlaceholder.character, at: index) else { flush(); previous = nil; continue }
         let cell = row.cell(index)
-        guard cell.text.unicodeScalars.first?.value == KittyPlaceholder.character,
-          var placeholder = KittyPlaceholder.read(text: cell.text, foreground: cell.style.foreground, underline: cell.style.underline)
+        guard var placeholder = KittyPlaceholder.read(text: cell.text, foreground: cell.style.foreground, underline: cell.style.underline)
         else { flush(); previous = nil; continue }
         // A cell without its row or column continues the one to its left.
         if let left = previous, left.image == placeholder.image, left.placement == placeholder.placement {
@@ -1756,7 +1821,7 @@ private final class TerminalEmulator {
       }
       flush()
     }
-    return result
+    return (result, origins)
   }
   /// Mode 2027. Set: a grapheme cluster, such as an emoji with a skin tone,
   /// takes the cells of one character. Reset: each code point with a width
