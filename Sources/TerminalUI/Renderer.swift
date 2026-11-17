@@ -1084,8 +1084,8 @@ public final class TerminalRendering: @unchecked Sendable {
         let boxW = p.extent.map { Float($0[0]) } ?? (p.natural ? sourceW : Float(p.columns * request.cellWidth - p.offset[0]))
         let boxH = p.extent.map { Float($0[1]) } ?? (p.natural ? sourceH : Float(p.rows * request.cellHeight - p.offset[1]))
         let factor = min(boxW / sourceW, boxH / sourceH)
-        let width = sourceW * factor
-        let height = sourceH * factor
+        let width = p.stretch == true ? boxW : sourceW * factor
+        let height = p.stretch == true ? boxH : sourceH * factor
         let x = Float(request.inset + p.col * request.cellWidth + p.offset[0]) + (boxW - width) / 2
         let y =
           Float(request.inset + p.row * request.cellHeight + p.offset[1]) + (boxH - height) / 2
