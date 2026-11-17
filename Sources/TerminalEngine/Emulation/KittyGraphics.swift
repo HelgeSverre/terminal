@@ -27,6 +27,12 @@ struct KittyPlacementOrigin {
   var column: Int
 }
 
+struct GraphicsReflowAnchor {
+  let serial: UInt64
+  let row: UInt64
+  let column: Int
+}
+
 struct KittyImagePlacement: Equatable {
   let image: UInt32
   let generation: UInt64
@@ -85,18 +91,20 @@ final class KittyGraphicsStore {
 
   private struct Image {
     let id: UInt32
-    let generation: UInt64
+    var generation: UInt64
     let created: UInt64
     let alternate: Bool
     let width: Int
     let height: Int
-    let rgba: Data
+    var rgba: Data
+    var indexed: Data? = nil
+    var indexedAlpha = false
     /// The number a program gave it with `I`, or 0.
     var number: UInt32 = 0
     /// Frames after the first, which is `rgba`.
     var frames: [Frame] = []
     var animation = Animation()
-    var totalBytes: Int { rgba.count + frames.reduce(0) { $0 + $1.rgba.count } }
+    var totalBytes: Int { rgba.count + (indexed?.count ?? 0) + frames.reduce(0) { $0 + $1.rgba.count } }
     var frameCount: Int { 1 + frames.count }
     func pixels(ofFrame index: Int) -> Data { index == 0 ? rgba : frames[index - 1].rgba }
     func generation(ofFrame index: Int) -> UInt64 { index == 0 ? generation : frames[index - 1].generation }
@@ -128,10 +136,10 @@ final class KittyGraphicsStore {
     let id: UInt32
     let serial: UInt64
     var alternate: Bool
-    let row: UInt64
-    let column: Int
-    let source: [Int]
-    let cells: [Int]
+    var row: UInt64
+    var column: Int
+    var source: [Int]
+    var cells: [Int]
     let offset: [Int]
     let natural: Bool
     let z: Int
@@ -157,8 +165,55 @@ final class KittyGraphicsStore {
   private static let maximumFrames = 1000
   private var placements: [Placement] = []
   private var pending: Upload?
+  var asynchronousTransport = false
+  private var external: (upload: Upload, context: KittyGraphicsContext, read: KittyTransport.Read)?
+  private let transportReader: ([Character: String], Data, Int) throws -> Data
+  init(transportReader: @escaping ([Character: String], Data, Int) throws -> Data = { try KittyTransport.read($0, payload: $1, limit: $2) }) {
+    self.transportReader = transportReader
+  }
+  var transportPending: Bool { external != nil }
+  func whenTransportReady(_ callback: @escaping () -> Void) { external?.read.whenReady(callback) }
+  func completeTransport() -> KittyGraphicsOutcome? {
+    guard let operation = external, let result = operation.read.take() else { return nil }
+    external = nil
+    switch result {
+    case .failure(let error): return outcome(fields: operation.upload.fields, result: .failure(error))
+    case .success(let data): return outcome(fields: operation.upload.fields,
+      result: finish(operation.upload, context: operation.context, transported: data))
+    }
+  }
   private var serial: UInt64 = 0
   private var bytes = 0
+  private var indexedColors = [[Int]](repeating: [0, 0, 0], count: 256)
+
+  /// Palette-linked images own their samples as well as the current RGBA.
+  /// A new generation retires cached textures without changing placement IDs.
+  func setPalette(_ colors: [[Int]], foreground: [Int], background: [Int]) {
+    guard colors.count == 256 else { return }
+    var resolved = colors
+    resolved[248] = background
+    for slot in [249, 250, 252, 254, 255] { resolved[slot] = foreground }
+    for slot in [251, 253] { resolved[slot] = background }
+    guard resolved != indexedColors else { return }
+    indexedColors = resolved
+    for id in Array(images.keys) {
+      guard var image = images[id], let samples = image.indexed, serial < UInt64.max else { continue }
+      serial += 1
+      image.rgba = indexedRGBA(samples, alpha: image.indexedAlpha)
+      image.generation = serial
+      images[id] = image
+    }
+  }
+
+  private func indexedRGBA(_ samples: Data, alpha: Bool) -> Data {
+    var rgba = Data(capacity: samples.count / (alpha ? 2 : 1) * 4)
+    let data = [UInt8](samples)
+    for offset in stride(from: 0, to: data.count, by: alpha ? 2 : 1) {
+      let color = indexedColors[Int(data[offset])]
+      rgba.append(contentsOf: [UInt8(color[0]), UInt8(color[1]), UInt8(color[2]), alpha ? data[offset + 1] : 255])
+    }
+    return rgba
+  }
 
   var accountedBytes: Int { bytes + (pending?.bytes.count ?? 0) }
   var hasPlacements: Bool { !placements.isEmpty }
@@ -167,18 +222,53 @@ final class KittyGraphicsStore {
   var hasVirtualParents: Bool { placements.contains { $0.isRelative && parent(of: $0)?.virtual == true } }
   var anchorRows: Set<UInt64> { Set(placements.filter { !$0.virtual && !$0.isRelative }.map(\.row)) }
   var virtualPlacementIdentities: [UInt64] { placements.filter(\.virtual).map(\.serial) }
+  var reflowAnchors: [GraphicsReflowAnchor] {
+    placements.filter { !$0.alternate && !$0.virtual && !$0.isRelative }
+      .map { GraphicsReflowAnchor(serial: $0.serial, row: $0.row, column: $0.column) }
+  }
+  func applyReflow(_ anchors: [UInt64: GraphicsReflowAnchor]) {
+    for index in placements.indices {
+      guard let anchor = anchors[placements[index].serial] else { continue }
+      placements[index].row = anchor.row; placements[index].column = anchor.column
+    }
+  }
+  /// Rectangle scrolling moves only placements wholly inside the page. Text
+  /// rows retain identity here, so image anchors must move explicitly. Clip
+  /// the source and destination together when an edge leaves the page.
+  func scrollRectangle(alternate: Bool, rows: [UInt64], top: Int, bottom: Int,
+                       left: Int, right: Int, amount: Int, up: Bool) {
+    let positions = Dictionary(uniqueKeysWithValues: rows.enumerated().map { ($0.element, $0.offset) })
+    var removed = Set<UInt64>()
+    for index in placements.indices {
+      let p = placements[index]
+      guard !p.virtual, !p.isRelative, p.alternate == alternate, let row = positions[p.row],
+        row >= top, row + p.cells[1] <= bottom + 1,
+        p.column >= left, p.column + p.cells[0] <= right + 1 else { continue }
+      let target = row + (up ? -amount : amount)
+      let start = max(top, target), end = min(bottom + 1, target + p.cells[1])
+      guard end > start else { removed.insert(p.serial); continue }
+      let sourceStart = p.source[1] + (start - target) * p.source[3] / p.cells[1]
+      let sourceEnd = p.source[1] + (end - target) * p.source[3] / p.cells[1]
+      placements[index].row = rows[start]
+      placements[index].cells[1] = end - start
+      placements[index].source[1] = sourceStart
+      placements[index].source[3] = max(1, sourceEnd - sourceStart)
+    }
+    placements.removeAll { removed.contains($0.serial) }
+    pruneOrphans()
+  }
   func imageRGBA(id: UInt32, generation: UInt64) -> Data? {
     guard let image = images[id] else { return nil }
     if image.generation == generation { return image.rgba }
     return image.frames.first { $0.generation == generation }?.rgba
   }
-  func abort() { pending = nil }
+  func abort() { pending = nil; external?.read.cancel(); external = nil }
   func tick(now: UInt64) {
     self.now = now
     guard let upload = pending else { return }
     if now > upload.lastChunk && now - upload.lastChunk > 10_000 || now > upload.started && now - upload.started > 60_000 { pending = nil }
   }
-  func clear() { images.removeAll(); placements.removeAll(); pending = nil; bytes = 0 }
+  func clear() { abort(); images.removeAll(); placements.removeAll(); bytes = 0 }
   func clear(alternate: Bool, removeResources: Bool = false) {
     placements.removeAll { $0.alternate == alternate }
     if removeResources {
@@ -254,23 +344,32 @@ final class KittyGraphicsStore {
   /// the storage budget, scrolling and erasing treat it the same. Returns
   /// the cells it covers, or nil when there is no room for it.
   func show(width: Int, height: Int, rgba: Data, columns: Int, rows: Int,
-            context: KittyGraphicsContext) -> (columns: Int, rows: Int)? {
+            context: KittyGraphicsContext, animation: [InlineImageDecoder.Frame] = []) -> (columns: Int, rows: Int)? {
     guard width > 0, height > 0, width <= Self.maximumImageDimension, height <= Self.maximumImageDimension,
-      rgba.count == width * height * 4, rgba.count <= Self.maximumImageBytes, serial < UInt64.max - 1,
+      rgba.count == width * height * 4, rgba.count <= Self.maximumImageBytes, serial < UInt64.max - UInt64(max(2, animation.count + 1)),
       let id = (1...Int(UInt32.max)).reversed().first(where: { images[UInt32($0)] == nil })
     else { return nil }
     let generation = serial + 1
-    let image = Image(id: UInt32(id), generation: generation, created: generation, alternate: context.alternate,
+    var image = Image(id: UInt32(id), generation: generation, created: generation, alternate: context.alternate,
       width: width, height: height, rgba: rgba)
+    if animation.count > 1 {
+      guard animation.count <= Self.maximumFrames,
+        animation.count <= Self.maximumImageBytes / rgba.count,
+        animation.allSatisfy({ $0.rgba.count == rgba.count }) else { return nil }
+      image.animation = Animation(state: 3, current: 0, since: now, firstGap: animation[0].milliseconds)
+      image.frames = animation.dropFirst().enumerated().map { offset, frame in
+        Frame(rgba: frame.rgba, generation: generation + UInt64(offset + 1), gap: frame.milliseconds)
+      }
+    }
     var fields: [Character: String] = [:]
     if columns > 0 { fields["c"] = String(columns) }
     if rows > 0 { fields["r"] = String(rows) }
-    guard (try? makeRoom(replacing: image.id, size: rgba.count)) != nil,
+    guard (try? makeRoom(replacing: image.id, size: image.totalBytes)) != nil,
       let (placement, _) = try? layout(fields, image: image, context: context, serial: generation + 1),
       placements.count < Self.maximumPlacements
     else { return nil }
-    serial = generation + 1
-    images[image.id] = image; bytes += rgba.count
+    serial = generation + UInt64(max(1, animation.count))
+    images[image.id] = image; bytes += image.totalBytes
     placements.append(placement)
     return (placement.cells[0], placement.cells[1])
   }
@@ -386,6 +485,14 @@ final class KittyGraphicsStore {
       catch { return outcome(fields: upload.fields, result: .failure(.invalid)) }
     if more { pending = upload; return KittyGraphicsOutcome() }
     resolvedID = 0
+    if asynchronousTransport, (upload.fields["t"] ?? "d") != "d" {
+      let fields = upload.fields, payload = upload.bytes
+      let reader = transportReader
+      external = (upload, context, KittyTransport.Read(fields: fields, payload: payload, limit: Self.maximumImageBytes) {
+        try reader(fields, payload, Self.maximumImageBytes)
+      })
+      return KittyGraphicsOutcome()
+    }
     let result = finish(upload, context: context)
     var fields = upload.fields
     if fields["I"] != nil, resolvedID != 0 { fields["i"] = String(resolvedID) }
@@ -417,7 +524,8 @@ final class KittyGraphicsStore {
     if type != "d", try number(values, "m", default: 0) != 0 { throw KittyGraphicsError.invalid }
     if let compression = values["o"], compression != "z" { throw KittyGraphicsError.unsupported }
     let format = try number(values, "f", default: 32)
-    guard format == 24 || format == 32 || format == 100 else { throw KittyGraphicsError.unsupported }
+    guard [8, 16, 24, 32, 100].contains(format) else { throw KittyGraphicsError.unsupported }
+    if [8, 16].contains(format), values["a"] == "f" { throw KittyGraphicsError.unsupported }
     guard try number(values, "q", default: 0) <= 2 else { throw KittyGraphicsError.invalid }
     if format != 100 {
       let width = try number(values, "s", default: 0), height = try number(values, "v", default: 0)
@@ -427,9 +535,9 @@ final class KittyGraphicsStore {
   }
   /// The id `finish` gave an image the program numbered, for the reply.
   private var resolvedID: UInt32 = 0
-  private func finish(_ upload: Upload, context: KittyGraphicsContext) -> Result<(Int, Int)?, KittyGraphicsError> {
+  private func finish(_ upload: Upload, context: KittyGraphicsContext, transported: Data? = nil) -> Result<(Int, Int)?, KittyGraphicsError> {
     do {
-      let data = try KittyTransport.read(upload.fields, payload: upload.bytes, limit: Self.maximumImageBytes)
+      let data = try transported ?? transportReader(upload.fields, upload.bytes, Self.maximumImageBytes)
       let decoded = try decode(upload.fields, bytes: data)
       if upload.fields["a"] == "q" { return .success(nil) }
       if upload.fields["a"] == "f" {
@@ -446,14 +554,18 @@ final class KittyGraphicsStore {
       }
       guard serial < UInt64.max else { throw KittyGraphicsError.noSpace }
       let generation = serial + 1
-      let image = Image(id: UInt32(id), generation: generation, created: generation, alternate: context.alternate, width: decoded.width,
+      var image = Image(id: UInt32(id), generation: generation, created: generation, alternate: context.alternate, width: decoded.width,
         height: decoded.height, rgba: decoded.rgba, number: numbered)
+      if let format = upload.fields["f"], format == "8" || format == "16" {
+        image.indexedAlpha = format == "16"
+        image.indexed = upload.fields["o"] == "z" ? try inflate(data, limit: decoded.width * decoded.height * (image.indexedAlpha ? 2 : 1)) : data
+      }
       resolvedID = UInt32(id)
       if upload.fields["a"] == "T" { _ = try layout(upload.fields, image: image, context: context, serial: generation) }
-      try makeRoom(replacing: UInt32(id), size: image.rgba.count)
+      try makeRoom(replacing: UInt32(id), size: image.totalBytes)
       serial = generation
       if let old = images[UInt32(id)] { bytes -= old.totalBytes }
-      images[UInt32(id)] = image; bytes += image.rgba.count
+      images[UInt32(id)] = image; bytes += image.totalBytes
       placements.removeAll { $0.image == UInt32(id) }
       pruneOrphans()
       return upload.fields["a"] == "T" ? place(upload.fields, image: image, context: context) : .success(nil)
@@ -508,6 +620,7 @@ final class KittyGraphicsStore {
   private func addFrame(_ id: UInt32, fields: [Character: String], decoded: (width: Int, height: Int, rgba: Data))
     -> Result<(Int, Int)?, KittyGraphicsError> {
     guard var image = images[id] else { return .failure(.notFound) }
+    guard image.indexed == nil else { return .failure(.unsupported) }
     guard let edit = try? number(fields, "r", default: 0), let base = try? number(fields, "c", default: 0),
       let x = try? number(fields, "x", default: 0), let y = try? number(fields, "y", default: 0),
       let replace = try? number(fields, "X", default: 0), let background = UInt32(fields["Y"] ?? "0"),
@@ -551,6 +664,7 @@ final class KittyGraphicsStore {
   /// frame's gap, and `v` the number of loops.
   private func control(_ id: UInt32, _ fields: [Character: String]) -> Result<(Int, Int)?, KittyGraphicsError> {
     guard var image = images[id] else { return .failure(.notFound) }
+    guard image.indexed == nil else { return .failure(.unsupported) }
     guard let state = try? number(fields, "s", default: 0), state <= 3,
       let current = try? number(fields, "c", default: 0), current <= image.frameCount,
       let frame = try? number(fields, "r", default: 0), frame <= image.frameCount,
@@ -579,6 +693,7 @@ final class KittyGraphicsStore {
   /// of frame `c`, blended unless `C=1`.
   private func compose(_ id: UInt32, _ fields: [Character: String]) -> Result<(Int, Int)?, KittyGraphicsError> {
     guard var image = images[id] else { return .failure(.notFound) }
+    guard image.indexed == nil else { return .failure(.unsupported) }
     guard let from = try? number(fields, "r", default: 1), let to = try? number(fields, "c", default: 1),
       let x = try? number(fields, "X", default: 0), let y = try? number(fields, "Y", default: 0),
       let targetX = try? number(fields, "x", default: 0), let targetY = try? number(fields, "y", default: 0),
@@ -666,10 +781,11 @@ final class KittyGraphicsStore {
       return try png(payload)
     }
     let width = try number(values, "s", default: 0), height = try number(values, "v", default: 0)
-    let expected = width * height * (format == 24 ? 3 : 4)
+    let expected = width * height * (format == 8 ? 1 : format == 16 ? 2 : format == 24 ? 3 : 4)
     guard expected > 0, expected <= Self.maximumImageBytes else { throw KittyGraphicsError.tooLarge }
     let payload = values["o"] == "z" ? try inflate(bytes, limit: expected) : bytes
     guard expected == payload.count else { throw KittyGraphicsError.invalid }
+    if format == 8 || format == 16 { return (width, height, indexedRGBA(payload, alpha: format == 16)) }
     if format == 32 { return (width, height, payload) }
     var rgba = Data(capacity: width * height * 4)
     for pixel in payload.withUnsafeBytes({ Array($0.bindMemory(to: UInt8.self)) }).chunks(ofCount: 3) { rgba.append(contentsOf: [pixel[0], pixel[1], pixel[2], 255]) }
@@ -988,7 +1104,7 @@ final class KittyGraphicsStore {
       let value = fields[key]!
       guard keys.contains(key) else { return nil }
       switch key {
-      case "f": guard ["24", "100"].contains(value) else { return nil } // 32 is the default.
+      case "f": guard ["8", "16", "24", "100"].contains(value) else { return nil } // 32 is the default.
       case "t": guard ["f", "t", "s"].contains(value) else { return nil } // d is the default.
       case "d": guard value.count == 1, value != "a", "AiInNcCpPqQrRxXyYzZfF".contains(value) else { return nil }
       case "o": guard value == "z" else { return nil }

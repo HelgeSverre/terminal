@@ -382,6 +382,7 @@ public final class TerminalSession: @unchecked Sendable {
   private var lastParseNs: UInt64 = 0
   private var parserEnded = false
   private var ownerScheduled = false
+  private var graphicsTransportWaiting = false
   private var core: OpaquePointer?
   private var master: Int32 = -1
   private var pid: Int32 = -1
@@ -824,6 +825,7 @@ public final class TerminalSession: @unchecked Sendable {
       return fail(.engineUnavailable, "Core initialization failed")
     }
     core = handle
+    TerminalGraphicsTransportBridge.enable(core: handle)
     guard launchSpec?.isValid != false else { return fail(.invalidArguments, "Invalid launch arguments") }
     guard awaitsGrid else { return launch(columns: 80, rows: 24, cellWidth: 0, cellHeight: 0) }
     awaitingGrid = true
@@ -976,7 +978,7 @@ public final class TerminalSession: @unchecked Sendable {
     scheduleOwner()
   }
   private func scheduleOwner() {
-    guard !closed, !ownerScheduled, !ingress.isEmpty else { return }
+    guard !closed, !ownerScheduled, !graphicsTransportWaiting, !ingress.isEmpty else { return }
     ownerScheduled = true
     streamStatistics?.pumpSchedules += 1
     readBroker.submit { [self] in
@@ -1029,6 +1031,16 @@ public final class TerminalSession: @unchecked Sendable {
       if offset + used < bytes.count || helge_terminal_has_work(core) {
         // The partially consumed output lease remains at the ingress head.
         complete = false
+      }
+      if let core {
+        graphicsTransportWaiting = TerminalGraphicsTransportBridge.whenReady(core: core) { [weak self] in
+          guard let self else { return }
+          self.readBroker.submit { [weak self] in
+            guard let self else { return }
+            self.graphicsTransportWaiting = false
+            self.scheduleOwner()
+          }
+        }
       }
     case .input(let text, let key, let modifiers, let event, let cost):
       if writeEnded {

@@ -1,6 +1,15 @@
 import Foundation
 import TerminalInterop
 
+/// Host-only asynchronous transport. The C/headless API retains synchronous
+/// completion; live sessions suspend the ordered ingress lease while I/O runs.
+package enum TerminalGraphicsTransportBridge {
+  package static func enable(core pointer: OpaquePointer) { core(pointer)?.enableAsynchronousGraphics() }
+  package static func whenReady(core pointer: OpaquePointer, _ callback: @escaping () -> Void) -> Bool {
+    core(pointer)?.whenGraphicsReady(callback) ?? false
+  }
+}
+
 // Owns terminal emulation and the stable C compatibility boundary.  The public C-shaped surface is
 // deliberately thin: the state machine owns parsing, grid mutation, history,
 // snapshots, and input encoding so neither Session nor the renderer needs to
@@ -128,6 +137,10 @@ private final class TerminalEmulator {
   @exclusivity(unchecked) private var clipboardRequests: [(UInt64, Data)] = []
   @exclusivity(unchecked) private var pendingClipboardRequests = Set<UInt64>()
   @exclusivity(unchecked) private var palette = TerminalPalette()
+  private var sixelPalette: [UInt32]?
+  private var sixelDisplayMode = false
+  private var sixelCursorRight = false
+  private var multipartImage: InlineImageDecoder?
   @exclusivity(unchecked) private var title = ""
   @exclusivity(unchecked) private var iconTitle = ""
   @exclusivity(unchecked) private var titleStack: [(title: String?, icon: String?)] = []
@@ -475,6 +488,10 @@ private final class TerminalEmulator {
   }
   func feed(_ bytes: UnsafePointer<UInt8>?, count: Int, now: UInt64) -> Int {
     tick(now)
+    if graphics.transportPending {
+      guard let outcome = graphics.completeTransport() else { return 0 }
+      applyGraphicsOutcome(outcome)
+    }
     // REP is intentionally resumable. It keeps the owner responsive and lets
     // an admitted input event observe modes established *after* the repeat.
     if repeatRemaining > 0, lastPrinted == nil {
@@ -597,6 +614,12 @@ private final class TerminalEmulator {
             // An iTerm2 inline image: megabytes of base64, read as it comes.
             parser = .inlineImage(InlineImageDecoder(), escaped: false)
             sequence = ""
+            multipartImage = nil
+          } else if sequence == "1337;FilePart=" {
+            if let decoder = multipartImage {
+              decoder.beginPart(); parser = .inlineImage(decoder, escaped: false)
+            } else { parser = .discardString(escaped: false, osc: true) }
+            sequence = ""
           }
         }
         else { parser = .discardString(escaped: false, osc: true); sequence = "" }
@@ -622,12 +645,14 @@ private final class TerminalEmulator {
           parser = .osc52(decoder, escaped: false)
         }
       case .inlineImage(let decoder, let escaped):
-        if byte == 0x18 || byte == 0x1a { parser = .ground }
+        if byte == 0x18 || byte == 0x1a { multipartImage = nil; parser = .ground }
         else if byte == 0x07 || (escaped && byte == 0x5c) {
           parser = .ground
-          if let image = decoder.finish() { showInlineImage(image.request, width: image.width, height: image.height, rgba: image.rgba) }
+          if !decoder.waitsForFileEnd, let image = decoder.finish() {
+            showInlineImage(image.request, width: image.width, height: image.height, rgba: image.rgba, frames: image.frames)
+          }
         } else if byte == 0x1b { parser = .inlineImage(decoder, escaped: true) }
-        else if escaped { parser = .escape; handleEscapedByte(byte) }
+        else if escaped { multipartImage = nil; parser = .escape; handleEscapedByte(byte) }
         else { decoder.push(byte) }
       case .dcsHeader:
         // A short header selects Sixel or one of our bounded DCS queries.
@@ -636,7 +661,9 @@ private final class TerminalEmulator {
           sequence.append("q"); parser = .dcsQuery(escaped: false)
         }
         else if byte == 0x71, sequence.utf8.allSatisfy({ (0x30...0x3b).contains($0) }) {
-          sequence = ""; parser = .sixel(SixelDecoder(), escaped: false)
+          let header = sequence.split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 }
+          sequence = ""
+          parser = .sixel(SixelDecoder(header: header, palette: sixelPalette, background: palette.snapshotDefaultBackground), escaped: false)
         }
         else if sequence.utf8.count < 64, (0x20...0x3f).contains(byte) {
           sequence.unicodeScalars.append(UnicodeScalar(byte))
@@ -656,7 +683,8 @@ private final class TerminalEmulator {
         else if escaped && byte == 0x5c {
           parser = .ground
           if let picture = decoder.finish() {
-            showPicture(width: picture.width, height: picture.height, rgba: picture.rgba, columns: 0, rows: 0, below: true)
+            sixelPalette = decoder.palette
+            showSixel(width: picture.width, height: picture.height, rgba: picture.rgba)
           }
         } else if byte == 0x1b { parser = .sixel(decoder, escaped: true) }
         else if escaped { parser = .escape; handleEscapedByte(byte) }
@@ -677,6 +705,7 @@ private final class TerminalEmulator {
         else { parser = .discardString(escaped: byte == 0x1b, osc: osc) }
       }
       offset += 1
+      if graphics.transportPending { flushDecodedScalars(); return offset }
     }
     flushDecodedScalars()
     return limit
@@ -897,6 +926,8 @@ private final class TerminalEmulator {
     currentLink = nil
     palette.reset()
     colorSchemeReports = false; titleStack.removeAll(keepingCapacity: true)
+    multipartImage = nil
+    sixelPalette = nil; sixelDisplayMode = false; sixelCursorRight = false
     applyGraphemeClustering(hostGraphemeClustering)
     charsetSpecial = [false, false]; charsetSlot = 0
     forgetLastPrinted()
@@ -1354,6 +1385,8 @@ private final class TerminalEmulator {
   private func scroll(_ s: inout TerminalScreen, top: Int, bottom: Int, count: Int, up: Bool, allowHistory: Bool) {
     let margins = horizontalMargins; let amount = min(count, bottom - top + 1); guard amount > 0 else { return }
     if margins.left != 0 || margins.right != columns - 1 {
+      graphics.scrollRectangle(alternate: usingAlternate, rows: s.rows.map(\.id), top: top, bottom: bottom,
+        left: margins.left, right: margins.right, amount: amount, up: up)
       document.scrollRectangle(&s, top: top, bottom: bottom, left: margins.left, right: margins.right, count: amount, up: up, eraseStyle: eraseStyle()); return
     }
     for _ in 0..<amount {
@@ -1521,6 +1554,8 @@ private final class TerminalEmulator {
       case 25: enabled = screen.cursorVisible
       case 47, 1047, 1049: enabled = usingAlternate
       case 69: enabled = leftRightMargins
+      case 80: enabled = sixelDisplayMode
+      case 8452: enabled = sixelCursorRight
       case 9, 1000, 1002, 1003: enabled = mouseMode == mode
       case 1004: enabled = focusReporting
       case 1005, 1006, 1015, 1016: enabled = mouseEncoding == mode
@@ -1582,6 +1617,8 @@ private final class TerminalEmulator {
         if enabled { saveCursor() } else { restoreCursor() }
         changedActiveScreen = true
       case 1004: focusReporting = enabled
+      case 80: sixelDisplayMode = enabled
+      case 8452: sixelCursorRight = enabled
       case 9, 1000, 1002, 1003:
         if enabled { mouseMode = mode } else if mouseMode == mode { mouseMode = 0 }
       case 1005, 1006, 1015, 1016:
@@ -1655,6 +1692,7 @@ private final class TerminalEmulator {
       }
       else if ["4", "5", "6", "10", "11", "12", "104", "105", "106", "110", "111", "112"].contains(command) {
         for reply in palette.applyOSC(command: command, value: value) { replies.append(contentsOf: reply.utf8) }
+        refreshGraphicsPalette()
       }
       else if command == "133" {
         let marker = value.split(separator: ";", omittingEmptySubsequences: false).first
@@ -1675,6 +1713,22 @@ private final class TerminalEmulator {
         }
         screen = current
       }
+      else if command == "1337" {
+        if value.hasPrefix("MultipartFile=") {
+          multipartImage = InlineImageDecoder(multipartHeader: String(value.dropFirst("MultipartFile=".count)))
+        } else if value == "FileEnd" {
+          let decoder = multipartImage; multipartImage = nil
+          if let image = decoder?.finish() {
+            showInlineImage(image.request, width: image.width, height: image.height, rgba: image.rgba, frames: image.frames)
+          }
+        } else if value == "ReportCellSize" {
+          replies.append(Data("\u{1b}]1337;ReportCellSize=\(cellPixelHeight);\(cellPixelWidth)\u{1b}\\".utf8))
+        } else if value == "Capabilities" {
+          // File download is deliberately not advertised: output cannot choose
+          // a path on the user's filesystem. Inline and multipart are accepted.
+          replies.append(Data("\u{1b}]1337;Capabilities=T24LrBFSyHSx\u{1b}\\".utf8))
+        }
+      }
       return
     }
     guard case .apc = parser else { return }
@@ -1682,12 +1736,17 @@ private final class TerminalEmulator {
     // path that needs live anchor membership.  Pruning here keeps ordinary
     // scalar output O(1) while retaining the placement cap semantics.
     pruneGraphicsAnchors()
+    refreshGraphicsPalette()
     let s = screen
     let outcome = graphics.consume(Data(payload.utf8), context: KittyGraphicsContext(
       alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
       cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id),
       rowPositions: graphics.hasRelativePlacements ? graphicsRowPositions(offset: 0) : [:],
       virtualOrigins: virtualParentOrigins(offset: 0)), now: clock)
+    applyGraphicsOutcome(outcome)
+  }
+  private func applyGraphicsOutcome(_ outcome: KittyGraphicsOutcome) {
+    let s = screen
     if let reply = outcome.reply { replies.append(reply) }
     if let advance = outcome.advance {
       resetClusterBoundary()
@@ -1704,14 +1763,26 @@ private final class TerminalEmulator {
   /// `below` leaves the cursor on the line after the picture, in the column
   /// it began in, as Sixel does; otherwise it ends on the picture's last
   /// row, to its right, as iTerm2's inline images do.
-  private func showPicture(width: Int, height: Int, rgba: Data, columns wanted: Int, rows wantedRows: Int, below: Bool) {
+  private func showSixel(width: Int, height: Int, rgba: Data) {
+    if sixelDisplayMode {
+      let s = screen
+      _ = graphics.show(width: width, height: height, rgba: rgba, columns: 0, rows: 0,
+        context: KittyGraphicsContext(alternate: usingAlternate, row: s.rows[0].id, column: 0,
+          cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id)))
+      changed()
+    } else {
+      showPicture(width: width, height: height, rgba: rgba, columns: 0, rows: 0, below: !sixelCursorRight)
+    }
+  }
+  private func showPicture(width: Int, height: Int, rgba: Data, columns wanted: Int, rows wantedRows: Int, below: Bool,
+                           frames: [InlineImageDecoder.Frame] = []) {
     pruneGraphicsAnchors()
     let s = screen
     guard s.rows.indices.contains(s.cursorRow), let cells = graphics.show(
       width: width, height: height, rgba: rgba, columns: wanted, rows: wantedRows,
       context: KittyGraphicsContext(
         alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
-        cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id)))
+        cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id)), animation: frames)
     else { return }
     resetClusterBoundary()
     for _ in 0..<(below ? cells.rows : cells.rows - 1) { index(reverse: false) }
@@ -1723,7 +1794,8 @@ private final class TerminalEmulator {
   }
   /// Turns an inline image's `width` and `height` into cells. A picture
   /// wider than the room to the right of the cursor is scaled to fit it.
-  private func showInlineImage(_ request: InlineImageDecoder.Request, width: Int, height: Int, rgba: Data) {
+  private func showInlineImage(_ request: InlineImageDecoder.Request, width: Int, height: Int, rgba: Data,
+                               frames: [InlineImageDecoder.Frame] = []) {
     let cellWidth = max(1, cellPixelWidth), cellHeight = max(1, cellPixelHeight)
     func cells(_ size: InlineImageDecoder.Size, of total: Int, cell: Int) -> Int? {
       switch size {
@@ -1747,7 +1819,7 @@ private final class TerminalEmulator {
         wide = max(1, (boxHeight * width / height + cellWidth - 1) / cellWidth)
       }
     }
-    showPicture(width: width, height: height, rgba: rgba, columns: min(wide, 4096), rows: min(tall, 4096), below: false)
+    showPicture(width: width, height: height, rgba: rgba, columns: min(wide, 4096), rows: min(tall, 4096), below: false, frames: frames)
   }
   private func enqueueClipboard(_ data: Data) {
     guard data.count <= OSC52Decoder.maximumDecodedBytes, pendingClipboardRequests.count < 4 else { return }
@@ -1842,7 +1914,8 @@ private final class TerminalEmulator {
       ? eraseStyle() : nil
     return DocumentReflowTransaction(source: document, geometry: geometry,
       anchor: viewAnchor, promptEraseStyle: promptStyle, historyRows: historyLimit, historyBytes: historyByteLimit,
-      primarySelection: selection.reflowInput(.primary), alternateSelection: selection.reflowInput(.alternate))
+      primarySelection: selection.reflowInput(.primary), alternateSelection: selection.reflowInput(.alternate),
+      graphicsAnchors: graphics.reflowAnchors)
   }
   func advanceResize() -> TerminalResizeProgress {
     guard var pending = pendingResize else { return .rejected(.noOperation, retained: resizeGeometry) }
@@ -1889,7 +1962,7 @@ private final class TerminalEmulator {
     columns = geometry.columns; rowCount = geometry.rows
     cellPixelWidth = geometry.cellWidth; cellPixelHeight = geometry.cellHeight
     if columns != oldColumns {
-      graphics.clear(alternate: false)
+      graphics.applyReflow(replacement.mapping.graphics)
       tabs = Array(tabs.prefix(columns))
       if columns > oldColumns {
         tabs.append(contentsOf: (oldColumns..<columns).map { !tabsCleared && $0 > 0 && $0.isMultiple(of: 8) })
@@ -1974,10 +2047,10 @@ private final class TerminalEmulator {
     }
     return positions
   }
-  private func visibleImages(offset: Int) -> [KittyImagePlacement] {
+  private func visibleImages(offset: Int, height: Int? = nil) -> [KittyImagePlacement] {
     guard graphics.hasPlacements else { return [] }
-    let placeholders = graphics.hasVirtualPlacements ? placeholderImages(offset: offset) : (images: [], origins: [:])
-    return graphics.visible(alternate: usingAlternate, positions: graphicsRowPositions(offset: offset), height: rowCount,
+    let placeholders = graphics.hasVirtualPlacements ? placeholderImages(offset: offset, presentationHeight: height) : (images: [], origins: [:])
+    return graphics.visible(alternate: usingAlternate, positions: graphicsRowPositions(offset: offset), height: height ?? rowCount,
                             virtualOrigins: virtualParentOrigins(offset: offset)) + placeholders.images
   }
   private struct HistoryVirtualOrigin {
@@ -2035,14 +2108,15 @@ private final class TerminalEmulator {
   }
   /// The image slices behind the Unicode placeholders on screen. Runs of
   /// placeholder cells that continue one another become one slice each.
-  private func placeholderImages(offset: Int, originsOnly: Bool = false, historyRange: Range<Int>? = nil,
+  private func placeholderImages(offset: Int, originsOnly: Bool = false, historyRange: Range<Int>? = nil, presentationHeight: Int? = nil,
     recordOrigin: ((UInt64, KittyPlacementOrigin, UInt64, Int) -> Void)? = nil)
     -> (images: [KittyImagePlacement], origins: [UInt64: KittyPlacementOrigin]) {
     let start = usingAlternate ? 0 : history.count - min(offset, history.count)
     let total = usingAlternate ? alternate.rows.count : history.count + primary.rows.count
     // Parents may be above the viewport while their relative children are visible.
     let lower = historyRange?.lowerBound ?? start
-    let upper = historyRange?.upperBound ?? min(total, start + rowCount)
+    let visibleHeight = presentationHeight ?? rowCount
+    let upper = historyRange?.upperBound ?? min(total, start + visibleHeight)
     var result: [KittyImagePlacement] = []
     var origins: [UInt64: KittyPlacementOrigin] = [:]
     for index in lower..<upper {
@@ -2059,7 +2133,7 @@ private final class TerminalEmulator {
             origins[anchor.serial] = KittyPlacementOrigin(row: min(old.row, anchor.origin.row), column: min(old.column, anchor.origin.column))
           } else { origins[anchor.serial] = anchor.origin }
         }
-        if !originsOnly, screenRow >= 0, screenRow < rowCount, let slice = graphics.placeholderSlice(
+        if !originsOnly, screenRow >= 0, screenRow < visibleHeight, let slice = graphics.placeholderSlice(
           current.cell, row: row, column: column, count: current.count, screenRow: screenRow,
           screenColumn: current.start, alternate: usingAlternate, cellWidth: cellPixelWidth, cellHeight: cellPixelHeight) {
           result.append(slice)
@@ -2107,8 +2181,12 @@ private final class TerminalEmulator {
   func setColorScheme(_ value: TerminalColorScheme) {
     let changed = palette.hostScheme != value
     palette.setScheme(value)
+    refreshGraphicsPalette()
     if changed && colorSchemeReports { replies.append(contentsOf: colorSchemeReply.utf8) }
     self.changed(document: false)
+  }
+  private func refreshGraphicsPalette() {
+    graphics.setPalette(palette.snapshotPalette, foreground: palette.snapshotDefaultForeground, background: palette.snapshotDefaultBackground)
   }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
   func setHistoryByteLimit(_ value: Int) { historyByteLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
@@ -2204,7 +2282,12 @@ private final class TerminalEmulator {
     // implicit successful terminator.
     parser = .ground
   }
-  var hasPendingWork: Bool { repeatRemaining > 0 }
+  var hasPendingWork: Bool { repeatRemaining > 0 || graphics.transportPending }
+  fileprivate func enableAsynchronousGraphics() { graphics.asynchronousTransport = true }
+  fileprivate func whenGraphicsReady(_ callback: @escaping () -> Void) -> Bool {
+    guard graphics.transportPending else { return false }
+    graphics.whenTransportReady(callback); return true
+  }
   var publicationGated: Bool { syncDeadline != nil }
   func snapshot(scroll: Int?, now: UInt64) -> Data? {
     tick(now)

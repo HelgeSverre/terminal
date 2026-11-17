@@ -6,6 +6,43 @@ import Foundation
 /// last three the payload is the name, and `S` and `O` give the size and
 /// offset to read.
 enum KittyTransport {
+  /// Admission is process-wide: even an uninterruptible filesystem can hold
+  /// at most two workers and their bounded payloads. Timeout releases the
+  /// terminal owner, not the descriptor still used by the worker.
+  final class Read: @unchecked Sendable {
+    private static let slots = DispatchSemaphore(value: 2)
+    private let lock = NSLock()
+    private var result: Result<Data, KittyGraphicsError>?
+    private var callback: (() -> Void)?
+    init(fields: [Character: String], payload: Data, limit: Int,
+         operation: @escaping () throws -> Data) {
+      guard Self.slots.wait(timeout: .now()) == .success else { result = .failure(.noSpace); return }
+      DispatchQueue.global(qos: .utility).async { [self] in
+        defer { Self.slots.signal() }
+        let value: Result<Data, KittyGraphicsError>
+        do { value = .success(try operation()) }
+        catch let error as KittyGraphicsError { value = .failure(error) }
+        catch { value = .failure(.invalid) }
+        complete(value)
+      }
+      DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .seconds(2)) { [weak self] in
+        self?.complete(.failure(.notFound))
+      }
+    }
+    private func complete(_ value: Result<Data, KittyGraphicsError>) {
+      lock.lock()
+      guard result == nil else { lock.unlock(); return }
+      result = value; let ready = callback; callback = nil
+      lock.unlock(); ready?()
+    }
+    func take() -> Result<Data, KittyGraphicsError>? { lock.lock(); defer { lock.unlock() }; return result }
+    func whenReady(_ ready: @escaping () -> Void) {
+      lock.lock()
+      if result != nil { lock.unlock(); ready() }
+      else { callback = ready; lock.unlock() }
+    }
+    func cancel() { complete(.failure(.invalid)); lock.lock(); callback = nil; lock.unlock() }
+  }
   static func read(_ fields: [Character: String], payload: Data, limit: Int) throws -> Data {
     let type = fields["t"] ?? "d"
     guard type != "d" else { return payload }
@@ -82,10 +119,14 @@ enum KittyTransport {
     let total = Int(status.st_size)
     let count = size > 0 ? size : total - offset
     guard offset >= 0, count > 0, offset + count <= total, count <= limit else { throw KittyGraphicsError.invalid }
-    guard let mapped = mmap(nil, total, PROT_READ, MAP_SHARED, descriptor, 0), mapped != MAP_FAILED else {
+    let pageSize = Int(getpagesize())
+    let alignedOffset = offset / pageSize * pageSize
+    let prefix = offset - alignedOffset
+    let mappedCount = prefix + count
+    guard let mapped = mmap(nil, mappedCount, PROT_READ, MAP_SHARED, descriptor, off_t(alignedOffset)), mapped != MAP_FAILED else {
       throw KittyGraphicsError.invalid
     }
-    defer { munmap(mapped, total) }
-    return Data(bytes: mapped.advanced(by: offset), count: count)
+    defer { munmap(mapped, mappedCount) }
+    return Data(bytes: mapped.advanced(by: prefix), count: count)
   }
 }

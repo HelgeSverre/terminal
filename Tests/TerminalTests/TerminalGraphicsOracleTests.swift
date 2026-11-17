@@ -175,7 +175,7 @@ import TerminalInterop
     #expect((snapshot(core)!["rows"] as! [[String: Any]])[0]["id"] as? Int == firstID)
     #expect(images(core).count == 1 && images(core)[0]["row"] as? Int == 0)
     #expect(helge_terminal_resize(core, 4, 4))
-    #expect(images(core).isEmpty)
+    #expect(images(core).count == 1 && images(core)[0]["row"] as? Int == 0)
   }}
   @Test static func partitions() {
     let packet = Data(command("a=T,f=32,s=2,v=1,i=4294967295,C=1", [1, 2, 3, 4, 5, 6, 7, 8]).utf8)

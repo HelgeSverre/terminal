@@ -19,6 +19,19 @@ final class InlineImageDecoder {
     var preservesAspectRatio = true
     var inline = false
   }
+  struct Frame {
+    let rgba: Data
+    let milliseconds: Int
+  }
+  var waitsForFileEnd = false
+  private var partBytes = 0
+
+  convenience init(multipartHeader: String) {
+    self.init()
+    for byte in (multipartHeader + ":").utf8 { push(byte) }
+    waitsForFileEnd = true
+  }
+  func beginPart() { partBytes = 0 }
 
   private var header: [UInt8] = []
   private var inHeader = true
@@ -27,6 +40,10 @@ final class InlineImageDecoder {
 
   func push(_ byte: UInt8) {
     guard !failed else { return }
+    if waitsForFileEnd {
+      partBytes += 1
+      guard partBytes <= 1_048_576 else { failed = true; return }
+    }
     if inHeader {
       if byte == UInt8(ascii: ":") { inHeader = false }
       else if header.count < 4096 { header.append(byte) }
@@ -48,7 +65,7 @@ final class InlineImageDecoder {
 
   /// The request and the decoded picture, or nil when the sequence is not
   /// an inline image this terminal can show.
-  func finish() -> (request: Request, width: Int, height: Int, rgba: Data)? {
+  func finish() -> (request: Request, width: Int, height: Int, rgba: Data, frames: [Frame])? {
     guard !failed, !inHeader, let fields = String(bytes: header, encoding: .utf8) else { return nil }
     var request = Request()
     for field in fields.split(separator: ";") {
@@ -65,16 +82,30 @@ final class InlineImageDecoder {
     // Without `inline=1` the file is a download, which is not offered.
     guard request.inline, let file = Data(base64Encoded: encoded, options: .ignoreUnknownCharacters),
       !file.isEmpty, file.count <= Self.maximumFileBytes,
-      let picture = Self.decode(file) else { return nil }
-    return (request, picture.width, picture.height, picture.rgba)
+      let picture = Self.decode(file),
+      let source = CGImageSourceCreateWithData(file as CFData, [kCGImageSourceShouldCache: false] as CFDictionary)
+    else { return nil }
+    let count = CGImageSourceGetCount(source)
+    guard count <= 1000, count <= KittyGraphicsStore.maximumImageBytes / picture.rgba.count else { return nil }
+    var frames: [Frame] = []
+    if count > 1 {
+      for index in 0..<count {
+        guard let frame = Self.decode(file, frame: index), frame.width == picture.width, frame.height == picture.height else { return nil }
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
+        let gif = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+        let delay = (gif?[kCGImagePropertyGIFUnclampedDelayTime] as? Double) ?? (gif?[kCGImagePropertyGIFDelayTime] as? Double) ?? 0.1
+        frames.append(Frame(rgba: frame.rgba, milliseconds: Int(min(60, max(0.01, delay)) * 1000)))
+      }
+    }
+    return (request, picture.width, picture.height, picture.rgba, frames)
   }
 
   /// Decodes any format ImageIO reads (PNG, JPEG, GIF's first frame, …) to
   /// straight RGBA, scaled down when it has more pixels than are kept.
-  static func decode(_ file: Data) -> (width: Int, height: Int, rgba: Data)? {
+  static func decode(_ file: Data, frame: Int = 0) -> (width: Int, height: Int, rgba: Data)? {
     guard let source = CGImageSourceCreateWithData(file as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
       CGImageSourceGetCount(source) > 0,
-      let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+      let properties = CGImageSourceCopyPropertiesAtIndex(source, frame, nil) as? [CFString: Any],
       let sourceWidth = properties[kCGImagePropertyPixelWidth] as? Int,
       let sourceHeight = properties[kCGImagePropertyPixelHeight] as? Int,
       sourceWidth > 0, sourceHeight > 0, sourceWidth <= 65_536, sourceHeight <= 65_536
@@ -91,7 +122,7 @@ final class InlineImageDecoder {
       kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
       kCGImageSourceThumbnailMaxPixelSize: longest, kCGImageSourceShouldCache: false,
     ]
-    guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+    guard let image = CGImageSourceCreateThumbnailAtIndex(source, frame, options as CFDictionary) else { return nil }
     let width = image.width, height = image.height
     guard width > 0, height > 0, width * height <= maximumPixels else { return nil }
     var rgba = Data(count: width * height * 4)

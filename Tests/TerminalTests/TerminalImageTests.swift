@@ -33,7 +33,7 @@ import UniformTypeIdentifiers
     let terminal = try #require(HeadlessTerminal(columns: 40, rows: 10))
     // Two colors, each two pixels wide and one band of six pixels tall;
     // then a second band where only the top pixel of the first column is set.
-    terminal.feed("ab\(esc)Pq\"1;1;4;12#0;2;100;0;0#1;2;0;100;0#0!2~#1!2~-#1@\(esc)\\c")
+    terminal.feed("ab\(esc)P0;1q\"1;1;4;12#0;2;100;0;0#1;2;0;100;0#0!2~#1!2~-#1@\(esc)\\c")
     let screen = try #require(terminal.screen())
     let image = try #require(screen.images.first)
     #expect(screen.images.count == 1)
@@ -53,7 +53,7 @@ import UniformTypeIdentifiers
   @Test func sixelRepeatsColorsAndLimitsHold() throws {
     let terminal = try #require(HeadlessTerminal(columns: 40, rows: 10))
     // HLS red, a repeat of 20, and a carriage return that overdraws.
-    terminal.feed("\(esc)P0;1;0q#5;1;120;50;100#5!20~$#0;2;0;0;100#0!3~\(esc)\\")
+    terminal.feed("\(esc)P7;1;0q#5;1;120;50;100#5!20~$#0;2;0;0;100#0!3~\(esc)\\")
     let image = try #require(terminal.screen()?.images.first)
     #expect(image.pixelWidth == 20 && image.pixelHeight == 6 && image.columns == 3)
     let pixels = try #require(terminal.pixels(of: image))
@@ -80,7 +80,7 @@ import UniformTypeIdentifiers
     let payload = "9;9!2~$#1" + String(repeating: ";", count: 100_000) + "#2;2;100;0;0#2@"
     for fragmented in [false, true] {
       let terminal = try #require(HeadlessTerminal(columns: 40, rows: 10))
-      let sequence = esc + "Pq" + payload + esc + "\\"
+      let sequence = esc + "P7;1q" + payload + esc + "\\"
       if fragmented {
         for byte in sequence.utf8 { terminal.feed(Data([byte])) }
       } else {
@@ -96,7 +96,7 @@ import UniformTypeIdentifiers
     let terminal = try #require(HeadlessTerminal(columns: 20, rows: 4))
     terminal.feed("top\r\n")
     // 96 pixels tall: six rows of 16 pixels on a four-row screen.
-    terminal.feed("\(esc)Pq#0;2;0;0;100" + String(repeating: "#0!8~-", count: 16) + "\(esc)\\end")
+    terminal.feed("\(esc)P7;1q#0;2;0;0;100" + String(repeating: "#0!8~-", count: 16) + "\(esc)\\end")
     let screen = try #require(terminal.screen())
     let image = try #require(screen.images.first)
     #expect(image.rows == 6 && image.row == -3, "its top has scrolled off with the text")

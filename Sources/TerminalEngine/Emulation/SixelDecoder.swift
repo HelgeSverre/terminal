@@ -15,7 +15,9 @@ final class SixelDecoder {
     0x424242, 0x545499, 0x994242, 0x549954, 0x995499, 0x549999, 0x999954, 0xcccccc,
   ]
 
-  private var palette = [UInt32](repeating: 0, count: 256)
+  private(set) var palette = [UInt32](repeating: 0, count: 256)
+  private let background: UInt32
+  private var aspect = (vertical: 2, horizontal: 1)
   private var pixels: [UInt32] = []   // 0xAABBGGRR, row-major, `stride` wide
   private var stride = 0
   private var rows = 0
@@ -29,9 +31,18 @@ final class SixelDecoder {
   private var parameters: [Int] = []
   private var number: Int?
 
-  init() {
+  init(header: [Int] = [], palette saved: [UInt32]? = nil, background: [Int] = [0, 0, 0]) {
     for (index, value) in Self.defaultPalette.enumerated() { palette[index] = Self.pixel(value) }
     for index in 16..<256 { palette[index] = Self.pixel(Self.defaultPalette[index % 16]) }
+    if let saved, saved.count == 256 { palette = saved }
+    let p2 = header.count > 1 ? header[1] : 0
+    self.background = p2 == 1 ? 0 : Self.pixel(UInt32(background[0] << 16 | background[1] << 8 | background[2]))
+    switch header.first ?? 0 {
+    case 2: aspect = (5, 1)
+    case 3, 4: aspect = (3, 1)
+    case 7, 8, 9: aspect = (1, 1)
+    default: break
+    }
     color = palette[0]
   }
 
@@ -80,6 +91,9 @@ final class SixelDecoder {
     case 0x22:
       // Raster attributes: pixel aspect, then the picture's width and height.
       // The declared size is the picture's size, even where nothing is drawn.
+      if parameters.count >= 2, parameters[0] > 0, parameters[1] > 0 {
+        aspect = (min(parameters[0], 1000), min(parameters[1], 1000))
+      }
       if parameters.count >= 4, reserve(width: parameters[2], height: parameters[3]) {
         width = max(width, min(parameters[2], stride)); height = max(height, min(parameters[3], rows))
       }
@@ -127,8 +141,9 @@ final class SixelDecoder {
     }
     let end = min(Self.maximumDimension, x + repeatCount)
     defer { x = min(Self.maximumDimension, x + repeatCount) }
-    guard bits != 0, x < end, y < Self.maximumDimension else { return }
+    guard x < end, y < Self.maximumDimension else { return }
     guard reserve(width: end, height: y + 6) else { return }
+    width = max(width, end); height = max(height, min(rows, y + 6))
     for bit in 0..<6 where bits & (1 << bit) != 0 {
       let row = y + bit
       guard row < rows else { break }
@@ -160,7 +175,7 @@ final class SixelDecoder {
   }
   private func resize(stride newStride: Int, rows newRows: Int) {
     guard newStride != stride || newRows != rows else { return }
-    var grown = [UInt32](repeating: 0, count: newStride * newRows)
+    var grown = [UInt32](repeating: background, count: newStride * newRows)
     if stride > 0 {
       for row in 0..<rows {
         grown.replaceSubrange((row * newStride)..<(row * newStride + stride),
@@ -174,13 +189,22 @@ final class SixelDecoder {
   func finish() -> (width: Int, height: Int, rgba: Data)? {
     finishCommand()
     guard width > 0, height > 0 else { return nil }
-    var rgba = Data(count: width * height * 4)
+    // Normalize aspect to a square-pixel raster, bounded before allocation.
+    let ratio = Double(aspect.vertical) / Double(aspect.horizontal)
+    let wantedWidth = ratio < 1 ? Double(width) / ratio : Double(width)
+    let wantedHeight = ratio > 1 ? Double(height) * ratio : Double(height)
+    let scale = min(1, Double(Self.maximumDimension) / max(wantedWidth, wantedHeight),
+      (Double(Self.maximumBytes / 4) / (wantedWidth * wantedHeight)).squareRoot())
+    let outputWidth = max(1, Int(wantedWidth * scale)), outputHeight = max(1, Int(wantedHeight * scale))
+    var rgba = Data(count: outputWidth * outputHeight * 4)
     rgba.withUnsafeMutableBytes { raw in
       let out = raw.bindMemory(to: UInt32.self)
-      for row in 0..<height {
-        for column in 0..<width { out[row * width + column] = pixels[row * stride + column].littleEndian }
+      for row in 0..<outputHeight {
+        for column in 0..<outputWidth {
+          out[row * outputWidth + column] = pixels[(row * height / outputHeight) * stride + column * width / outputWidth].littleEndian
+        }
       }
     }
-    return (width, height, rgba)
+    return (outputWidth, outputHeight, rgba)
   }
 }
