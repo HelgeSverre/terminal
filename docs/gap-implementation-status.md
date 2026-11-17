@@ -63,6 +63,11 @@ cold/warm command-file opening, and unattended crash recovery with accessible
 saved text and cleanup on normal quit. The startup-routing and UIKit selector
 fixes are now verified. Gitleaks found no secrets through `129ca48`; the final
 documentation commit is scanned again before push.
+The standalone ASan build required a source-list correction at `648a83c`;
+the corrected binary passed a full 120-second fuzz run, and conformance
+retained all 447 protected passes. The first hosted app-test job also passed;
+its 7m14s overall workflow latency exceeded the target and its sanitizer-build
+failure required this follow-up. A fresh hosted run verifies the correction.
 See the [dated evidence](../reports/gap-implementation-2026-11-17/README.md)
 for commands, artifact identities and the distinction between tested revisions.
 

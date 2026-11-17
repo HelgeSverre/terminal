@@ -97,3 +97,13 @@ optimized ASan command then compiled successfully. The resulting executable
 passed 120 seconds with seeds 1–654 (654 cases, 3,735 KiB). The SwiftPM graph
 continues compiling and testing the full public embedding API. Neither the
 sanitizer nor fuzz duration was reduced.
+
+At `648a83c`, `just esctest` passed with the narrowed source list: 447 passes,
+81 reported failures, 39 known deviations, zero skips and no regression.
+The initial [hosted run](https://github.com/HelgeSverre/terminal/actions/runs/44162408802)
+passed app/developer tests and conformance. Native-test step: 366 seconds;
+headless job: 428 seconds; complete feedback: 434 seconds. The test build
+alone took 247 seconds despite restoring an older cache. The expected exact
+Apple Paravirtual fault gate skipped the hosted shared-heap GPU suites;
+all 16 GPU tests had passed locally on real hardware. The failed fuzzer build
+made this run fail overall. A corrected-run result is recorded separately.
