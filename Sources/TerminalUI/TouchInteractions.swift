@@ -136,7 +136,7 @@ final class TouchFindController: UIStackView, UITextFieldDelegate {
     field.autocorrectionType = .no; field.autocapitalizationType = .none
     field.addTarget(self, action: #selector(search), for: .editingChanged)
     addArrangedSubview(field); addArrangedSubview(result)
-    for (title, action) in [("Previous", #selector(previous)), ("Next", #selector(next)), ("Done", #selector(done))] {
+    for (title, action) in [("Previous", #selector(previous)), ("Next", #selector(TouchFindController.nextMatch)), ("Done", #selector(done))] {
       let button = UIButton(type: .system)
       button.setTitle(title, for: .normal); button.addTarget(self, action: action, for: .touchUpInside)
       addArrangedSubview(button)
@@ -149,7 +149,7 @@ final class TouchFindController: UIStackView, UITextFieldDelegate {
     }
   }
   @objc func previous() { navigate(older: true) }
-  @objc func next() { navigate(older: false) }
+  @objc func nextMatch() { navigate(older: false) }
   func navigate(older: Bool) {
     canvas?.session.searchNavigate(older: older) { [weak self] position in
       self?.result.text = position.map { "\($0.index)/\($0.total)" } ?? "0"
