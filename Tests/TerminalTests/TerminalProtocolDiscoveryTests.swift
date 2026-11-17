@@ -41,6 +41,18 @@ import TerminalInterop
     #expect(ask(core, dcs("$q$}")) == dcs("1$r0$}") && ask(core, dcs("$q$~")) == dcs("1$r0$~"))
   }
 
+  @Test func modesThatCanNeverBeSetReportPermanentlyReset() throws {
+    let core = try terminal()
+    for mode in [1, 5, 7, 10, 11, 13, 14, 15, 16, 17, 18, 19] {
+      #expect(ask(core, "\u{1b}[\(mode)$p") == "\u{1b}[\(mode);4$y")
+      #expect(ask(core, "\u{1b}[\(mode)h\u{1b}[\(mode)$p") == "\u{1b}[\(mode);4$y", "setting it changes nothing")
+    }
+    #expect(ask(core, "\u{1b}[?60$p") == "\u{1b}[?60;4$y")
+    #expect(ask(core, "\u{1b}[?60h\u{1b}[?60$p") == "\u{1b}[?60;4$y")
+    #expect(ask(core, "\u{1b}[2$p\u{1b}[12$p\u{1b}[3$p") == "\u{1b}[2;0$y\u{1b}[12;0$y\u{1b}[3;0$y", "modes xterm can toggle stay unrecognized")
+    #expect(ask(core, "\u{1b}[4$p\u{1b}[?7$p") == "\u{1b}[4;2$y\u{1b}[?7;1$y")
+  }
+
   @Test func numericKeypadModeIsTheKeypadApplicationMode() throws {
     let core = try terminal()
     #expect(ask(core, "\u{1b}[?66$p") == "\u{1b}[?66;2$y")

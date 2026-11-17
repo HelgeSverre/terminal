@@ -1599,8 +1599,9 @@ private final class TerminalEmulator {
       i += 1
     }
   }
-  /// DECRQM status: 1 set, 2 reset, 3 permanently set, 0 for a mode
-  /// `setMode` does not implement.
+  /// DECRQM status: 1 set, 2 reset, 4 permanently reset, 0 for a mode
+  /// `setMode` does not implement. Status 4 covers the ECMA-48 editing and
+  /// transfer modes and DECHCCM, which this terminal can never enter.
   private func modeReport(_ mode: Int, privateMode: Bool) -> Int {
     if privateMode, mode == 2031 { return colorSchemeReports ? 1 : 2 }
     if privateMode, mode == 2027 { return graphemeClustering ? 1 : 2 }
@@ -1609,6 +1610,7 @@ private final class TerminalEmulator {
       switch mode {
       case 4: enabled = insertMode
       case 20: enabled = newlineMode
+      case 1, 5, 7, 10, 11, 13...19: return 4
       default: return 0
       }
     } else {
@@ -1631,6 +1633,7 @@ private final class TerminalEmulator {
       case 1005, 1006, 1015, 1016: enabled = mouseEncoding == mode
       case 2004: enabled = bracketedPaste
       case 2026: enabled = syncDeadline != nil
+      case 60: return 4
       default: return 0
       }
     }
