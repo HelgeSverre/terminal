@@ -151,6 +151,9 @@ struct TerminalSearchSpan: Equatable {
   let proof: TerminalSearchProof
   var start: Int
   var end: Int
+  /// A neighboring scalar proves an anchor or word boundary but is not part
+  /// of the match. Keep it for validation without navigating to its row.
+  var isBoundaryOnly = false
 }
 
 struct TerminalSearchResolvedSpan: Equatable {
@@ -426,7 +429,7 @@ struct TerminalSearchTask {
     if candidate.endAnchored, let next, next != "\n" { return }
     var spans = candidate.spans
     if let span, spans.last?.proof != span.proof {
-      spans.append(TerminalSearchSpan(proof: span.proof, start: span.start, end: span.start))
+      spans.append(TerminalSearchSpan(proof: span.proof, start: span.start, end: span.start, isBoundaryOnly: true))
     }
     storeMatch(spans)
     matched = 0
@@ -452,12 +455,12 @@ struct TerminalSearchTask {
     var spans: [TerminalSearchSpan] = []
     if first > 0, recent[first - 1].proof != recent[first].proof {
       let before = recent[first - 1]
-      spans.append(TerminalSearchSpan(proof: before.proof, start: before.end, end: before.end))
+      spans.append(TerminalSearchSpan(proof: before.proof, start: before.end, end: before.end, isBoundaryOnly: true))
     }
     for span in recent[first..<end] { Self.append(span, to: &spans) }
     if end < recent.count, spans.last?.proof != recent[end].proof {
       let after = recent[end]
-      spans.append(TerminalSearchSpan(proof: after.proof, start: after.start, end: after.start))
+      spans.append(TerminalSearchSpan(proof: after.proof, start: after.start, end: after.start, isBoundaryOnly: true))
     }
     storeMatch(spans)
     regex?.reset()
@@ -468,6 +471,7 @@ struct TerminalSearchTask {
     if let index = spans.indices.last, spans[index].proof == span.proof {
       spans[index].start = min(spans[index].start, span.start)
       spans[index].end = max(spans[index].end, span.end)
+      spans[index].isBoundaryOnly = spans[index].isBoundaryOnly && span.isBoundaryOnly
     } else { spans.append(span) }
   }
 
@@ -489,7 +493,7 @@ struct TerminalSearchTask {
           var spans: [TerminalSearchSpan] = []
           if options.wholeWord, start > 0, recent[start - 1].proof != recent[start].proof {
             let before = recent[start - 1]
-            spans.append(TerminalSearchSpan(proof: before.proof, start: before.end, end: before.end))
+            spans.append(TerminalSearchSpan(proof: before.proof, start: before.end, end: before.end, isBoundaryOnly: true))
           }
           for span in recent[start...] { Self.append(span, to: &spans) }
           if options.wholeWord { candidate = (spans, false) }

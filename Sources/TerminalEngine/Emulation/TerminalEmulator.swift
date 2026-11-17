@@ -2626,7 +2626,7 @@ private final class TerminalEmulator {
       // The newest match is the first stop; navigation then walks to older output.
       searchHits = SearchHits(stamp: source.stamp, matches: matches, current: matches.count - 1,
                               capped: capped, byRow: byRow)
-      revealSearchMatch(anchor: matches[matches.count - 1].anchor)
+      revealSearchMatch(matches[matches.count - 1])
       return 5
     case .missing: return 2
     case .working: return 0
@@ -2637,7 +2637,11 @@ private final class TerminalEmulator {
   }
   /// Centers the match. A find bar docked over the first rows would cover a
   /// match pinned to the top of the viewport.
-  private func revealSearchMatch(anchor: Int) {
+  private func revealSearchMatch(_ match: TerminalSearchMatch) {
+    // Boundary rows remain in the proof chain, but the viewport must reveal
+    // the actual match. Zero-width matched newlines still count as content.
+    let matchedRow = match.spans.firstIndex { !$0.span.isBoundaryOnly } ?? 0
+    let anchor = match.anchor + matchedRow
     guard !usingAlternate else { return }
     setViewOffset(history.count - anchor + rowCount / 2)
   }
@@ -2675,7 +2679,7 @@ private final class TerminalEmulator {
       hits.matches[index].anchor = anchor
       hits.current = index
       searchHits = hits
-      revealSearchMatch(anchor: anchor)
+      revealSearchMatch(hits.matches[index])
       changed(document: false, screen: false)
       return (count - index, count, hits.capped)
     }

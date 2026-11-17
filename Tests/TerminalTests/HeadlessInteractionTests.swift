@@ -40,6 +40,33 @@ import TerminalEngine
     #expect(terminal.navigateSearch(older: true) == nil)
   }
 
+  @Test func boundaryProofRowsDoNotDisplaceTheRevealedMatch() throws {
+    for options in [TerminalSearchOptions(wholeWord: true), TerminalSearchOptions(regularExpression: true)] {
+      let terminal = try #require(HeadlessTerminal(columns: 10, rows: 2))
+      terminal.feed("older\r\nbefore\r\ncat!")
+      let query = options.regularExpression ? "^cat!$" : "cat"
+      #expect(singleMatch(search(terminal, query, options: options)))
+      let viewport = try #require(terminal.currentScreen())
+      #expect(viewport.rows == ["before", "cat!"])
+      #expect(viewport.activeSearchHighlights.count == 1)
+      #expect(viewport.activeSearchHighlights.first?.row == 1)
+      #expect(terminal.navigateSearch(older: true)?.index == 1)
+      let navigated = try #require(terminal.currentScreen())
+      #expect(navigated.rows == viewport.rows)
+      #expect(navigated.activeSearchHighlights == viewport.activeSearchHighlights)
+    }
+    // Matched hard newlines are also zero-width, but unlike neighboring proof
+    // rows they remain the navigation destination.
+    let terminal = try #require(HeadlessTerminal(columns: 10, rows: 2))
+    terminal.feed("older\r\nbefore\r\n\r\nlast")
+    guard case .found(let position) = search(terminal, "\n", options: .init(regularExpression: true)) else {
+      Issue.record("expected matched hard newlines"); return
+    }
+    #expect(position.total == 3)
+    let viewport = try #require(terminal.currentScreen())
+    #expect(viewport.rows == ["before", ""])
+  }
+
   @Test func searchAdmissionCancellationAndLiveEdits() throws {
     let terminal = try #require(HeadlessTerminal(columns: 100, rows: 2))
     terminal.feed(String(repeating: "a", count: 90))
