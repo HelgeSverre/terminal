@@ -496,9 +496,6 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     let location = pointer ?? window.map { convert($0.mouseLocationOutsideOfEventStream, from: nil) } ?? .zero
     preview.position(in: bounds, pointer: location)
   }
-  public override func rightMouseDragged(with event: NSEvent) {
-    _ = reportMouse(event, button: 34, release: false)
-  }
   public override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
     visibilityObservers.forEach { NotificationCenter.default.removeObserver($0) }

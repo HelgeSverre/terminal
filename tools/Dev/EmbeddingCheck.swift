@@ -7,7 +7,7 @@ enum EmbeddingCheck {
     summary: "Build Swift 6 consumer hosts with the development graph disabled.", run: run)
 
   static func run(_ arguments: [String]) throws {
-    let options = try Options(arguments, values: ["--url", "--revision"], command: command)
+    let options = try Options(arguments, flags: [], values: ["--url", "--revision"], command: command)
     guard options.positionals.isEmpty,
       (options.values["--url"] == nil) == (options.values["--revision"] == nil) else { throw Failure.usage(command) }
     let environment: [String: String?] = [
