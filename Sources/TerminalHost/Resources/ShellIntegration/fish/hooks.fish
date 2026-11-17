@@ -23,12 +23,9 @@ if not functions -q fish_prompt
     end
 end
 functions --copy fish_prompt _helge_terminal_original_prompt
-function _helge_terminal_status
-    return $argv[1]
-end
 function fish_prompt
-    set -l command_status $status
-    _helge_terminal_status $command_status
+    # First call preserves both $status and the full $pipestatus list for
+    # prompt themes; even a status-restoring helper would collapse the latter.
     _helge_terminal_original_prompt
     printf '\e]133;B\a'
 end
