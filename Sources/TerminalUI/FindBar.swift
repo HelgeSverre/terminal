@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import TerminalEngine
 
 /// What the count label beside the query reports.
 enum FindBarResult: Equatable {
@@ -36,6 +37,14 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
   private let count = NSTextField(labelWithString: "")
   private let previous = NSButton(title: "", target: nil, action: nil)
   private let next = NSButton(title: "", target: nil, action: nil)
+  private let caseToggle = NSButton(title: "Aa", target: nil, action: nil)
+  private let wordToggle = NSButton(title: "W", target: nil, action: nil)
+  private let regexToggle = NSButton(title: ".*", target: nil, action: nil)
+  var options: TerminalSearchOptions {
+    TerminalSearchOptions(caseSensitive: caseToggle.state == .on,
+                          wholeWord: wordToggle.state == .on,
+                          regularExpression: regexToggle.state == .on)
+  }
   private let close = NSButton(title: "", target: nil, action: nil)
   private var fieldFocused = false
   private var searchingNotice = 0
@@ -52,7 +61,7 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
     field.placeholderAttributedString = NSAttributedString(
       string: "Find in scrollback",
       attributes: [.foregroundColor: TerminalTheme.color(colors.muted), .font: NSFont.systemFont(ofSize: 13)])
-    for button in [previous, next, close] { button.contentTintColor = TerminalTheme.color(colors.secondary) }
+    for button in [previous, next, close, caseToggle, wordToggle, regexToggle] { button.contentTintColor = TerminalTheme.color(colors.secondary) }
     apply(result)
     needsDisplay = true
   }
@@ -104,6 +113,10 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
     count.setAccessibilityIdentifier("no.helgesverre.terminal.find.count")
     addSubview(count)
 
+    configureToggle(caseToggle, label: "Match case", identifier: "case")
+    configureToggle(wordToggle, label: "Whole word", identifier: "word")
+    configureToggle(regexToggle, label: "Bounded regex (shortest nonempty matches)", identifier: "regex")
+    regexToggle.toolTip = "Bounded regex: . [a-z] [^a-z] ? * + ^ $ and escaped literals; shortest nonempty matches. No groups or alternation."
     configure(previous, symbol: "chevron.up", label: "Previous match", hint: "Previous match (⇧ Return)",
       identifier: "previous", action: #selector(stepNewer(_:)))
     configure(next, symbol: "chevron.down", label: "Next match", hint: "Next match (Return)",
@@ -132,6 +145,22 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
     button.setAccessibilityIdentifier("no.helgesverre.terminal.find." + identifier)
     addSubview(button)
   }
+
+  private func configureToggle(_ button: NSButton, label: String, identifier: String) {
+    button.setButtonType(.toggle)
+    button.bezelStyle = .recessed
+    button.isBordered = false
+    button.font = .monospacedSystemFont(ofSize: 11, weight: .medium)
+    button.target = self
+    button.action = #selector(optionsChanged(_:))
+    button.toolTip = label
+    button.refusesFirstResponder = true
+    button.setAccessibilityLabel(label)
+    button.setAccessibilityIdentifier("no.helgesverre.terminal.find." + identifier)
+    addSubview(button)
+  }
+
+  @objc private func optionsChanged(_ sender: Any?) { onQuery?(query) }
 
   /// Shows the bar and puts the caret in the query, selecting any earlier
   /// query so typing replaces it.
@@ -195,7 +224,7 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
     super.layout()
     let side: CGFloat = 22
     var right = bounds.width - 4
-    for button in [close, next, previous] {
+    for button in [close, next, previous, regexToggle, wordToggle, caseToggle] {
       right -= side
       button.frame = NSRect(x: right, y: (bounds.height - side) / 2, width: side, height: side)
       right -= 2

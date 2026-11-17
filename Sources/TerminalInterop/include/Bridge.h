@@ -41,6 +41,8 @@ typedef struct SearchTask TerminalSearch;
 /* Exclusive task ownership migrates owner -> worker -> owner. No terminal
  * access on worker. Status: 0=work,1=page,2=done,3=changed,4=limit; accept 5=hit. */
 TerminalSearch *helge_terminal_search_create(Terminal *,const uint8_t *,size_t);
+/* Options: 1=case-sensitive, 2=whole-word, 4=bounded regex (docs/search.md). */
+TerminalSearch *helge_terminal_search_create_options(Terminal *,const uint8_t *,size_t,uint32_t);
 uint32_t helge_terminal_search_fill(Terminal *,TerminalSearch *);
 uint32_t helge_terminal_search_step(TerminalSearch *);
 uint32_t helge_terminal_search_accept(Terminal *,TerminalSearch *);

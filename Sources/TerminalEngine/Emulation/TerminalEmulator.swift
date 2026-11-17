@@ -2533,9 +2533,9 @@ private final class TerminalEmulator {
         return row.retainedStorageCost > UInt64(Int.max) ? Int.max : Int(row.retainedStorageCost)
       })
   }
-  func createSearch(_ query: String) -> TerminalSearchToken? {
+  func createSearch(_ query: String, options: TerminalSearchOptions = .init()) -> TerminalSearchToken? {
     searchHits = nil
-    return try? TerminalSearchToken(TerminalSearchTask(query: query, source: searchSource()))
+    return try? TerminalSearchToken(TerminalSearchTask(query: query, source: searchSource(), options: options))
   }
   private func searchStatus(_ status: TerminalSearchStatus) -> UInt32 {
     switch status {
@@ -2957,6 +2957,13 @@ package func swiftTerminalSetIdentity(_ pointer: OpaquePointer?, identity: Termi
   guard let bytes, count > 0, count <= 4_096,
         let query = String(bytes: UnsafeBufferPointer(start: bytes, count: count), encoding: .utf8),
         let token = core(pointer)?.createSearch(query)
+  else { return nil }
+  return OpaquePointer(Unmanaged.passRetained(token).toOpaque())
+}
+@_cdecl("helge_terminal_search_create_options") func swift_terminal_search_create_options(_ pointer: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ count: Int, _ flags: UInt32) -> OpaquePointer? {
+  guard flags & ~UInt32(7) == 0, let bytes, count > 0, count <= 4_096,
+        let query = String(bytes: UnsafeBufferPointer(start: bytes, count: count), encoding: .utf8),
+        let token = core(pointer)?.createSearch(query, options: TerminalSearchOptions(flags: flags))
   else { return nil }
   return OpaquePointer(Unmanaged.passRetained(token).toOpaque())
 }

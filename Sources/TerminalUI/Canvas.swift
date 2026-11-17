@@ -1139,7 +1139,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     let generation = findGeneration
     findPending = true
     findBar.show(.searching)
-    session.search(query) { [weak self] outcome, position in
+    session.search(query, options: findBar.options) { [weak self] outcome, position in
       guard let self, self.findGeneration == generation, let findBar = self.findBar else { return }
       self.findPending = false
       switch outcome {
@@ -1151,8 +1151,8 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
       // A newer query or a close already owns the label.
       case .cancelled: break
       case .changed: findBar.show(.failed("Output changed"))
-      case .invalidQuery: findBar.show(.failed("Query too long"))
-      case .resourceLimit: findBar.show(.failed("Row too large"))
+      case .invalidQuery: findBar.show(.failed("Invalid search expression"))
+      case .resourceLimit: findBar.show(.failed("Search limit exceeded"))
       }
     }
   }

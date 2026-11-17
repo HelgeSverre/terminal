@@ -8,8 +8,8 @@ public enum HistorySearchOutcome: Equatable, Sendable {
   /// `found`: the newest match is selected and scrolled into view.
   /// `missing`: nothing matches. `changed`: output kept arriving while the
   /// search ran; ask again. `cancelled`: a newer search or a close replaced
-  /// it. `invalidQuery`: empty, or longer than 4096 bytes of UTF-8.
-  /// `resourceLimit`: a row is too large to search.
+  /// it. `invalidQuery`: empty, longer than 4096 UTF-8 bytes, or unsupported regex syntax.
+  /// `resourceLimit`: a row, cell, proof set or regex match exceeds a bound.
   case found, missing, changed, cancelled, invalidQuery, resourceLimit
   public var message: String {
     switch self {
@@ -17,8 +17,8 @@ public enum HistorySearchOutcome: Equatable, Sendable {
     case .missing: return "No match"
     case .changed: return "Output changed during search; try again"
     case .cancelled: return "Search cancelled"
-    case .invalidQuery: return "Search must contain 1–4096 UTF-8 bytes"
-    case .resourceLimit: return "A terminal row exceeds the search memory limit"
+    case .invalidQuery: return "Invalid search expression (1–4096 UTF-8 bytes)"
+    case .resourceLimit: return "Search exceeds a memory or match-length limit"
     }
   }
 }
@@ -356,7 +356,7 @@ public final class TerminalSession: @unchecked Sendable {
     case configure(TerminalSessionConfiguration)
     case scroll(Int)
     case accessibilityHistory(TerminalHistoryPageRequest, @MainActor (TerminalHistoryPage?) -> Void)
-    case find(String, SearchCompletion)
+    case find(String, TerminalSearchOptions, SearchCompletion)
     case searchAdvance
     case searchNavigate(Bool, @MainActor (HistorySearchPosition?) -> Void)
     case searchClear
@@ -583,6 +583,7 @@ public final class TerminalSession: @unchecked Sendable {
     }
     private struct Request {
       let query: String
+      let options: TerminalSearchOptions
       let completion: SearchCompletion
       var retries = 0
     }
@@ -593,9 +594,9 @@ public final class TerminalSession: @unchecked Sendable {
     private var working = false
     private var scheduled = false
     init(session: TerminalSession) { self.session = session }
-    func start(_ query: String, completion: @escaping SearchCompletion) {
+    func start(_ query: String, options: TerminalSearchOptions, completion: @escaping SearchCompletion) {
       cancel()
-      request = Request(query: query, completion: completion)
+      request = Request(query: query, options: options, completion: completion)
       schedule()
     }
     func cancel() {
@@ -619,7 +620,7 @@ public final class TerminalSession: @unchecked Sendable {
         }
         let bytes = Array(request.query.utf8)
         let handle = bytes.withUnsafeBufferPointer {
-          helge_terminal_search_create(core, $0.baseAddress, $0.count)
+          helge_terminal_search_create_options(core, $0.baseAddress, $0.count, request.options.flags)
         }
         guard let handle else { finish(.invalidQuery); return }
         job = Job(handle, generation: generation)
@@ -1247,7 +1248,7 @@ public final class TerminalSession: @unchecked Sendable {
     case .accessibilityHistory(let request, let completion):
       publishNeeded = false
       finishHistoryPage(swiftTerminalHistoryPage(core, request: request), completion: completion)
-    case .find(let query, let completion): historySearch.start(query, completion: completion)
+    case .find(let query, let options, let completion): historySearch.start(query, options: options, completion: completion)
     case .searchAdvance: historySearch.advance()
     case .searchNavigate(let older, let completion):
       var index: UInt32 = 0
@@ -1642,16 +1643,16 @@ public final class TerminalSession: @unchecked Sendable {
   package func find(_ query: String, completion: @escaping @MainActor (HistorySearchOutcome) -> Void) {
     search(query) { outcome, _ in completion(outcome) }
   }
-  /// Searches the screen and its history for `query`, matching
-  /// case. Replaces any search in flight. A hit selects the newest match,
+  /// Searches the screen and its history with bounded scalar matching.
+  /// Replaces any search in flight. A hit selects the newest match,
   /// marks the others and reports its position among all retained matches.
-  public func search(_ query: String, completion: @escaping SearchCompletion) {
+  public func search(_ query: String, options: TerminalSearchOptions = .init(), completion: @escaping SearchCompletion) {
     readBroker.submit { [self] in
       guard !closed else {
         DispatchQueue.main.async { completion(.cancelled, nil) }
         return
       }
-      enqueue(.find(query, completion))
+      enqueue(.find(query, options, completion))
     }
   }
   /// Moves to the adjacent match of the accepted search, wrapping at the ends.
@@ -1869,7 +1870,7 @@ public final class TerminalSession: @unchecked Sendable {
         guard case .event(let event) = record else { continue }
         switch event {
         case .input(_, _, _, _, let cost), .keyInput(_, let cost), .raw(_, let cost), .shortcut(_, let cost): release(cost)
-        case .find(_, let completion): DispatchQueue.main.async { completion(.cancelled, nil) }
+        case .find(_, _, let completion): DispatchQueue.main.async { completion(.cancelled, nil) }
         case .searchNavigate(_, let completion): DispatchQueue.main.async { completion(nil) }
         case .accessibilityHistory(_, let completion): finishHistoryPage(nil, completion: completion)
         case .clipboardDecision(_, _, let completion): DispatchQueue.main.async { completion(false) }

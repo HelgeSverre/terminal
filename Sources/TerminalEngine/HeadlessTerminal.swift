@@ -30,6 +30,18 @@ public final class HeadlessTerminal {
     public let images: [Image]
     /// Rows that have scrolled off the top and are kept.
     public let historyRows: Int
+    /// Visible search decorations. `activeSearchHighlights` is the current
+    /// navigation stop; `searchHighlights` contains every visible match.
+    public let searchHighlights: [SearchSegment]
+    public let activeSearchHighlights: [SearchSegment]
+    /// The engine-owned selection, including the revision used by copy.
+    public let selection: Selection
+    fileprivate let presentation: TerminalSelectionPresentation?
+    /// A boundary from this screen, with a zero-based row and a column in
+    /// 0...columns. Wide-character boundaries are resolved by the engine.
+    public func selectionPoint(row: Int, column: Int) -> SelectionPoint? {
+      presentation?.hit(row: row, boundary: column).map { SelectionPoint(hit: $0) }
+    }
     /// The rows joined by newlines.
     public var text: String { rows.joined(separator: "\n") }
   }
@@ -68,7 +80,10 @@ public final class HeadlessTerminal {
     public let link: String?
   }
 
-  private let core: OpaquePointer
+  let core: OpaquePointer
+  var selectionPending = false
+  var searchHandle: OpaquePointer?
+  var searchResult: SearchResult = .cancelled
   public private(set) var columns: Int
   public private(set) var rows: Int
 
@@ -83,11 +98,12 @@ public final class HeadlessTerminal {
     self.columns = columns
     self.rows = rows
   }
-  deinit { helge_terminal_destroy(core) }
+  deinit { if let searchHandle { helge_terminal_search_destroy(searchHandle) }; helge_terminal_destroy(core) }
 
   /// Interprets bytes a program wrote to the terminal. Returns when all of
   /// them have taken effect.
   public func feed(_ bytes: Data) {
+    cancelPendingSelection()
     bytes.withUnsafeBytes { raw in
       let base = raw.bindMemory(to: UInt8.self).baseAddress
       var offset = 0
@@ -116,6 +132,7 @@ public final class HeadlessTerminal {
   /// or one cell run per code point with a width (false).
   public func setGraphemeClustering(_ enabled: Bool) { helge_terminal_set_grapheme_clustering(core, enabled) }
   @discardableResult public func resize(columns: Int, rows: Int) -> Bool {
+    cancelPendingSelection()
     guard columns > 0, rows > 0, columns <= 4096, rows <= 4096,
       helge_terminal_resize(core, UInt32(columns), UInt32(rows))
     else { return false }
@@ -183,7 +200,14 @@ public final class HeadlessTerminal {
   /// back with synchronized output.
   /// `scrolledBack` moves the window that many rows into the history.
   public func screen(scrolledBack: Int = 0) -> Screen? {
-    guard let snapshot = swiftTerminalSnapshot(core, scroll: max(0, scrolledBack), now: Self.now).snapshot
+    makeScreen(scroll: max(0, scrolledBack))
+  }
+
+  /// Reads the viewport left by search navigation without changing its offset.
+  public func currentScreen() -> Screen? { makeScreen(scroll: nil) }
+
+  private func makeScreen(scroll: Int?) -> Screen? {
+    guard let snapshot = swiftTerminalSnapshot(core, scroll: scroll, now: Self.now).snapshot
     else { return nil }
     func rgb(_ color: TerminalColor, _ fallback: [Int]) -> UInt32 {
       let parts = color.rgb.flatMap { $0.count == 3 ? $0 : nil }
@@ -223,7 +247,10 @@ public final class HeadlessTerminal {
         Image(row: $0.row, column: $0.col, columns: $0.columns, rows: $0.rows,
               pixelWidth: $0.width, pixelHeight: $0.height, id: $0.image, generation: $0.generation)
       },
-      historyRows: snapshot.history_rows)
+      historyRows: snapshot.history_rows,
+      searchHighlights: snapshot.search_matches.map { SearchSegment(row: $0.row, columns: $0.start..<$0.end) },
+      activeSearchHighlights: snapshot.search.map { SearchSegment(row: $0.row, columns: $0.start..<$0.end) },
+      selection: Selection(snapshot.selection), presentation: snapshot.selectionPresentation)
   }
 
   private static var now: UInt64 { DispatchTime.now().uptimeNanoseconds / 1_000_000 }

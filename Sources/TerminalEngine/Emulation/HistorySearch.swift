@@ -162,12 +162,13 @@ private struct TerminalSearchPage {
   let row: TerminalSearchRow
   let softNextID: UInt64?
   var column: Int
+  var scalarOffset: Int
   let end: Int
   let hardBreak: Bool
 }
 
-/// A bounded KMP literal task. It retains the newest `maxMatches`
-/// non-overlapping hits for navigation; scan state stays O(query).
+/// Bounded literal KMP or finite-state regex. Retains one row, bounded match
+/// proofs, and O(query + maximum regex match length) scan state.
 struct TerminalSearchTask {
   static let maxMatches = 10_000
   private static let maxQueryBytes = 4_096
@@ -177,21 +178,33 @@ struct TerminalSearchTask {
   private let stamp: TerminalSearchStamp
   private let pattern: [Unicode.Scalar]
   private let failure: [Int]
+  private let options: TerminalSearchOptions
+  private var regex: BoundedSearchRegex?
   private let stop: UInt64?
   private var next: UInt64?
   private var hint = 0
   private var page: TerminalSearchPage?
   private var matched = 0
+  private var position = 0
+  private var recentBase = 0
+  private var previousWord = false
+  private var lineStart = true
+  private var candidate: (spans: [TerminalSearchSpan], endAnchored: Bool)?
+  private var wordBeforeRecent: [Bool] = []
   private var recent: [TerminalSearchSpan] = []
   private var matches: [[TerminalSearchSpan]] = []
+  private var retainedSpanCount = 0
   private var dropped = false
   private(set) var status: TerminalSearchStatus = .needsPage
 
-  init(query: String, source: TerminalSearchSource) throws {
+  init(query: String, source: TerminalSearchSource, options: TerminalSearchOptions = .init()) throws {
     guard !query.isEmpty, query.utf8.count <= Self.maxQueryBytes else {
       throw TerminalSearchAdmissionError.query
     }
-    let folded = query.unicodeScalars.flatMap(Self.lowercase)
+    self.options = options
+    if options.regularExpression { regex = try BoundedSearchRegex(query, caseSensitive: options.caseSensitive) }
+    else { regex = nil }
+    let folded = options.caseSensitive ? Array(query.unicodeScalars) : query.unicodeScalars.flatMap(Self.lowercase)
     guard !folded.isEmpty else { throw TerminalSearchAdmissionError.query }
     var table = Array(repeating: 0, count: folded.count)
     if folded.count > 1 {
@@ -256,64 +269,62 @@ struct TerminalSearchTask {
       end = (row.cells.lastIndex { $0.endsHardRow }.map { $0 + 1 }) ?? 0
     }
     page = TerminalSearchPage(row: row, softNextID: actualSoftNext,
-                           column: 0, end: end, hardBreak: hasNext && !soft)
+                           column: 0, scalarOffset: 0, end: end, hardBreak: hasNext && !soft)
     self.next = nextID
     hint = index + 1
     status = .working
     return status
   }
 
-  /// Worker-only. It touches no mutable terminal/document state and advances at
-  /// most 64 physical cells. The task is safe to continue after owner teardown.
+  /// Worker-only: at most 64 scalars or non-text cells, independent of the
+  /// size of a grapheme. No mutable terminal/document access.
   mutating func step() -> TerminalSearchStatus {
     guard status == .working, var page else { return status }
-    let stop = min(page.end, page.column + Self.cellsPerStep)
-    var matchEnds: [Int] = []
-    while page.column < stop {
+    var budget = Self.cellsPerStep
+    while page.column < page.end && budget > 0 {
       let column = page.column
       let cell = page.row.cells[column]
-      page.column += 1
       let span = TerminalSearchSpan(
         proof: TerminalSearchProof(page.row, softNextID: page.softNextID), start: column, end: column + cell.columnWidth)
-      if cell.kind == .empty {
-        push(Unicode.Scalar(0x20)!, span: span, matchEnds: &matchEnds)
-      } else if cell.kind == .lead1 || cell.kind == .lead2 {
-        for scalar in cell.text.unicodeScalars.flatMap(Self.lowercase) { push(scalar, span: span, matchEnds: &matchEnds) }
+      guard cell.text.utf8.count <= 4096 else { status = .resourceLimit; self.page = nil; return status }
+      let scalars: [Unicode.Scalar]
+      if cell.kind == .empty { scalars = [Unicode.Scalar(0x20)!] }
+      else if cell.kind == .lead1 || cell.kind == .lead2 {
+        scalars = options.caseSensitive ? Array(cell.text.unicodeScalars) : cell.text.unicodeScalars.flatMap(Self.lowercase)
+      } else { scalars = [] }
+      if scalars.isEmpty { budget -= 1 }
+      while page.scalarOffset < scalars.count && budget > 0 {
+        push(scalars[page.scalarOffset], span: span)
+        page.scalarOffset += 1
+        budget -= 1
+        if status == .resourceLimit { self.page = nil; return status }
       }
+      if page.scalarOffset == scalars.count { page.column += 1; page.scalarOffset = 0 }
     }
-    if page.column == page.end {
+    if page.column == page.end && (!page.hardBreak || budget > 0) {
       if page.hardBreak {
         let point = TerminalSearchSpan(proof: TerminalSearchProof(page.row, softNextID: page.softNextID), start: page.end, end: page.end)
-        push(Unicode.Scalar(0x0a)!, span: point, matchEnds: &matchEnds)
+        push(Unicode.Scalar(0x0a)!, span: point)
       }
       self.page = nil
-      status = next == nil ? .complete : .needsPage
-    } else {
-      self.page = page
-    }
-    for matchEnd in matchEnds {
-      let start = matchEnd - pattern.count
-      var spans: [TerminalSearchSpan] = []
-      for span in recent[start..<matchEnd] {
-        if let index = spans.indices.last, spans[index].proof == span.proof {
-          spans[index].start = min(spans[index].start, span.start)
-          spans[index].end = max(spans[index].end, span.end)
-        } else {
-          spans.append(span)
-        }
+      if status != .resourceLimit {
+        status = next == nil ? .complete : .needsPage
+        if status == .complete { finishCandidate(next: nil) }
       }
-      matches.append(spans)
-    }
-    // Trim in halves so retention stays amortized O(1) per match.
+    } else { self.page = page }
     if matches.count >= 2 * Self.maxMatches {
-      matches.removeFirst(matches.count - Self.maxMatches)
+      let remove = matches.count - Self.maxMatches
+      retainedSpanCount -= matches.prefix(remove).reduce(0) { $0 + $1.count }
+      matches.removeFirst(remove)
       dropped = true
     }
-    if recent.count > pattern.count { recent.removeFirst(recent.count - pattern.count) }
     return status
   }
 
-  mutating func cancel() { status = .cancelled; page = nil; matches.removeAll(); recent.removeAll() }
+  mutating func cancel() {
+    status = .cancelled; page = nil; matches.removeAll(); recent.removeAll()
+    wordBeforeRecent.removeAll(); candidate = nil; regex?.reset()
+  }
 
   /// Owner-only acceptance. It rechecks epochs and per-row proofs, so a stale
   /// worker result can never navigate/highlight unrelated output.
@@ -366,17 +377,84 @@ struct TerminalSearchTask {
     for index in 0..<source.rowCount where source.rowIDAt(index) == id { return index }
     return nil
   }
-  private mutating func push(_ scalar: Unicode.Scalar, span: TerminalSearchSpan, matchEnds: inout [Int]) {
-    recent.append(span)
-    var candidate = matched
-    while candidate > 0 && scalar != pattern[candidate] { candidate = failure[candidate - 1] }
-    if scalar == pattern[candidate] { candidate += 1 }
-    if candidate == pattern.count {
-      matchEnds.append(recent.count)
-      // Restart rather than follow the failure link: matches never overlap,
-      // so each one is a distinct navigation stop.
-      candidate = 0
+  private mutating func storeMatch(_ spans: [TerminalSearchSpan]) {
+    // Match count alone does not bound multi-row proof storage.
+    guard retainedSpanCount + spans.count <= 65_536 else { status = .resourceLimit; return }
+    matches.append(spans)
+    retainedSpanCount += spans.count
+  }
+
+  private static func word(_ scalar: Unicode.Scalar) -> Bool {
+    scalar == "_" || scalar.properties.isAlphabetic || scalar.properties.numericType != nil
+      || scalar.properties.generalCategory == .nonspacingMark
+      || scalar.properties.generalCategory == .spacingMark
+      || scalar.properties.generalCategory == .enclosingMark
+  }
+
+  private mutating func finishCandidate(next: Unicode.Scalar?, span: TerminalSearchSpan? = nil) {
+    guard let candidate else { return }
+    self.candidate = nil
+    if options.wholeWord, let next, Self.word(next) { return }
+    if candidate.endAnchored, let next, next != "\n" { return }
+    var spans = candidate.spans
+    if let span, spans.last?.proof != span.proof {
+      spans.append(TerminalSearchSpan(proof: span.proof, start: span.start, end: span.start))
     }
-    matched = candidate
+    storeMatch(spans)
+    matched = 0
+    regex?.reset()
+  }
+
+  private mutating func push(_ scalar: Unicode.Scalar, span: TerminalSearchSpan) {
+    finishCandidate(next: scalar, span: span)
+    if status == .resourceLimit { return }
+    wordBeforeRecent.append(previousWord)
+    recent.append(span)
+    let range: Range<Int>?
+    let endAnchored: Bool
+    if regex != nil {
+      range = regex!.push(scalar, position: position, canStart: !options.wholeWord || !previousWord, lineStart: lineStart)
+      endAnchored = regex!.endAnchored
+      if regex!.exceeded { status = .resourceLimit; return }
+    } else {
+      var count = matched
+      while count > 0 && scalar != pattern[count] { count = failure[count - 1] }
+      if scalar == pattern[count] { count += 1 }
+      if count == pattern.count {
+        range = (position + 1 - pattern.count)..<(position + 1)
+        count = 0
+      } else { range = nil }
+      matched = count
+      endAnchored = false
+    }
+    if let range {
+      let start = range.lowerBound - recentBase
+      if start >= 0, (!options.wholeWord || !wordBeforeRecent[start]) {
+        var spans: [TerminalSearchSpan] = []
+        if (options.wholeWord || regex?.startAnchored == true), start > 0,
+           recent[start - 1].proof != recent[start].proof {
+          let before = recent[start - 1]
+          spans.append(TerminalSearchSpan(proof: before.proof, start: before.end, end: before.end))
+        }
+        for span in recent[start...] {
+          if let index = spans.indices.last, spans[index].proof == span.proof {
+            spans[index].start = min(spans[index].start, span.start)
+            spans[index].end = max(spans[index].end, span.end)
+          } else { spans.append(span) }
+        }
+        if options.wholeWord || endAnchored { candidate = (spans, endAnchored) }
+        else { storeMatch(spans); regex?.reset() }
+      }
+    }
+    previousWord = Self.word(scalar)
+    lineStart = scalar == "\n"
+    position += 1
+    let limit = (regex == nil ? pattern.count : BoundedSearchRegex.maxMatchScalars) + 1
+    if recent.count > 2 * limit {
+      let remove = recent.count - limit
+      recent.removeFirst(remove)
+      wordBeforeRecent.removeFirst(remove)
+      recentBase += remove
+    }
   }
 }

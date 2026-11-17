@@ -63,7 +63,7 @@ extension RowSnapshot {
   }
 }
 
-package enum TerminalSelectionScreen: String, Codable { case primary, alternate }
+package enum TerminalSelectionScreen: String, Codable, Sendable { case primary, alternate }
 package enum TerminalSelectionAffinity: String, Codable { case before, after }
 package enum TerminalSelectionGranularity: String, Codable { case character, word, line, rectangular }
 package enum TerminalSelectionMode: String, Codable { case linear, rectangular }
@@ -74,8 +74,8 @@ package enum TerminalSelectionFailure: String, Codable, Error {
 /// The bounded row identities actually presented to the user. It retains no
 /// terminal cells or history pages. Range gestures carry the interior proofs
 /// too, so unchanged endpoints cannot conceal an overwritten middle row.
-package struct TerminalSelectionPresentation: Equatable, Codable {
-  package struct Row: Equatable, Codable {
+package struct TerminalSelectionPresentation: Equatable, Codable, Sendable {
+  package struct Row: Equatable, Codable, Sendable {
     package let id: UInt64
     package let revision: UInt64
     package var softWrapped: Bool = false
