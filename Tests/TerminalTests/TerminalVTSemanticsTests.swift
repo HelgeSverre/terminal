@@ -67,6 +67,25 @@ import TerminalInterop
     }
   }
 
+  @Test static func eraseSavedLinesPreservesPinnedViewportIntent() {
+    let terminal = Oracle.make(4, 2); defer { helge_terminal_destroy(terminal) }
+    Oracle.feed(terminal, "one\r\ntwo\r\nlast")
+    helge_terminal_view_scroll(terminal, 1)
+    let before = Oracle.snapshot(terminal)
+    #expect(before["following_tail"] as? Bool == false)
+    Oracle.feed(terminal, "\u{1b}[3J")
+    let erased = Oracle.snapshot(terminal)
+    #expect(erased["history_rows"] as? Int == 0)
+    #expect(erased["following_tail"] as? Bool == false)
+    #expect(erased["viewport_clamp_revision"] as? Int == (before["viewport_clamp_revision"] as! Int) + 1)
+    #expect(lines(terminal, count: 2) == ["two ", "last"])
+    Oracle.feed(terminal, "\r\nnext")
+    let later = Oracle.snapshot(terminal)
+    #expect(later["following_tail"] as? Bool == false)
+    #expect(later["scroll_offset"] as? Int == 1)
+    #expect(lines(terminal, count: 2) == ["two ", "last"])
+  }
+
   @Test static func softResetPreservesLiveCursorAndResetsSavedCursor() {
     for (save, restore) in [("\u{1b}7", "\u{1b}8"), ("\u{1b}[s", "\u{1b}[u"), ("\u{1b}[?1048h", "\u{1b}[?1048l")] {
       let terminal = Oracle.make(); defer { helge_terminal_destroy(terminal) }

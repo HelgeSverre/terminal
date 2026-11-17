@@ -1295,7 +1295,9 @@ private final class TerminalEmulator {
     if mode == 3 {
       if !usingAlternate {
         document.clearHistory(); advanceSearchGeneration(); historyEpoch &+= 1
-        viewAnchor = nil; viewOffset = 0
+        // Clearing retained rows evicts a pinned viewport's content; it
+        // does not express the user's intent to start following output.
+        resolveViewportAnchor(clamp: true)
       }
       return
     }

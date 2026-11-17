@@ -18,11 +18,14 @@ import TerminalInterop
   static func feed(_ terminal: OpaquePointer, _ data: Data, now: UInt64 = 0) {
     var offset = 0
     while offset < data.count || helge_terminal_has_work(terminal) {
+      let hadDeferredWork = helge_terminal_has_work(terminal)
       let used: Int = data.withUnsafeBytes { buffer in
         helge_terminal_feed(terminal, offset < data.count ? buffer.bindMemory(to: UInt8.self).baseAddress!.advanced(by: offset) : nil, data.count - offset, now)
       }
-      #expect(used > 0 || helge_terminal_has_work(terminal) || offset == data.count)
-      if used <= 0 && !helge_terminal_has_work(terminal) && offset != data.count { return }
+      // A bounded REP turn can finish its deferred work without accepting
+      // any offered suffix. Replay that suffix on the next ABI turn.
+      #expect(used > 0 || hadDeferredWork || helge_terminal_has_work(terminal) || offset == data.count)
+      if used <= 0 && !hadDeferredWork && !helge_terminal_has_work(terminal) && offset != data.count { return }
       offset += used
       #expect(helge_terminal_validate(terminal))
     }
