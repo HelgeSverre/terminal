@@ -63,6 +63,12 @@ own retained-history anchor resolution. Unlisted new
 protocol features are outside this repair batch. Runtime scheduling, PTY/renderer
 redesign, non-macOS builds and complete VT conformance are outside this audit.
 
+The [2026-11-17 real-client report](../reports/kitty-real-world-2026-11-17/README.md)
+records the final tests, frozen app identity, visible PNG/GIF/placeholder results
+and native checks. Remaining integration caveats: Snacks needs its terminal
+allowlist override; interactive `icat --hold` under default tmux ignored exit
+keys even though its image rendered. The latter's cause is not yet isolated.
+
 ## State and ownership review
 
 | Machine and owner | Transition and invariant | Evidence or disposition |
