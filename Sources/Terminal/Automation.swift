@@ -306,6 +306,23 @@ final class TerminalReadDirectoryCommand: TerminalScriptCommand {
   }
 }
 
+@objc(TerminalReadHistoryCommand)
+final class TerminalReadHistoryCommand: TerminalScriptCommand {
+  override func performDefaultImplementation() -> Any? {
+    guard let pane = pane(), let limit = screenLimit() else { return nil }
+    suspendExecution()
+    pane.session.recoveryHistory(maximumBytes: limit) { [self] text in
+      guard let text else {
+        fail("The terminal history read was busy or the pane closed.", number: -1719)
+        resumeExecution(withResult: nil)
+        return
+      }
+      resumeExecution(withResult: text)
+    }
+    return nil
+  }
+}
+
 @objc(TerminalSelectTextCommand)
 final class TerminalSelectTextCommand: TerminalScriptCommand {
   override func performDefaultImplementation() -> Any? {

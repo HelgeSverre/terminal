@@ -113,6 +113,12 @@
       <parameter name="from pane" code="HpID" type="text" optional="yes"><cocoa key="PaneID"/></parameter>
       <result type="text"/>
     </command>
+    <command name="read history" code="HTermrdh" description="Read a bounded suffix of primary-screen history and text, without moving the viewport. Work runs in bounded owner turns.">
+      <cocoa class="TerminalReadHistoryCommand"/>
+      <parameter name="from pane" code="HpID" type="text" optional="yes"><cocoa key="PaneID"/></parameter>
+      <parameter name="max characters" code="Hmxc" type="integer" optional="yes" description="A UTF-8 byte budget from 1 through 262144; default 32768. Multibyte text can contain fewer characters."><cocoa key="MaxCharacters"/></parameter>
+      <result type="text"/>
+    </command>
     <command name="select text" code="HTermsel" description="Select visible text using one-based row and column boundaries. The end boundary is exclusive.">
       <cocoa class="TerminalSelectTextCommand"/>
       <parameter name="in pane" code="HpID" type="text" optional="yes"><cocoa key="PaneID"/></parameter>

@@ -53,6 +53,9 @@ struct DesktopConfiguration: Codable, Equatable {
       throw Invalid.value("A shortcut conflicts with another action's default. Remap both actions to distinct keys.")
     }
     try theme?.validate()
+    guard try encoded().count <= Self.maximumBytes else {
+      throw Invalid.value("Configuration must be smaller than 128 KiB.")
+    }
   }
 }
 

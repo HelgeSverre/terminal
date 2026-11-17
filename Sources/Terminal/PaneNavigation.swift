@@ -1,6 +1,14 @@
 import AppKit
+import TerminalUI
 
 enum PaneDirection { case left, right, up, down }
+
+struct PaneZoomState {
+  let pane: TerminalCanvasView
+  let presentation: TerminalPanePresentationView
+  let placeholder: NSView
+  let tree: PaneLayout
+}
 
 enum PaneNavigation {
   /// Edges choose the directional half-plane; edge separation favors the
@@ -38,6 +46,7 @@ extension TerminalWindow {
   @objc func focusUp(_ sender: Any?) { focusPane(direction: .up) }
   @objc func focusDown(_ sender: Any?) { focusPane(direction: .down) }
   private func focusPane(direction: PaneDirection) {
+    endPaneZoom()
     guard let source = focusedPane, let sourceView = panePresentation(for: source), let window else { return }
     let candidates = panes.filter { $0 !== source }
     let views = candidates.compactMap { panePresentation(for: $0) }

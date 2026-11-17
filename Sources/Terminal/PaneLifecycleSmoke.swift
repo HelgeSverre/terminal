@@ -26,6 +26,10 @@ import TerminalUI
   private var titlesOffMinimum = NSSize.zero
   private var finished = false
   private var focusThief: NSWindow?
+  private var desktopPane: TerminalCanvasView?
+  private var desktopTree: PaneLayout?
+  private var desktopDestination: TerminalWindow?
+  private var desktopEvidence: [String: Any] = [:]
 
   init(window: TerminalWindow, path: String) {
     controller = window
@@ -46,6 +50,7 @@ import TerminalUI
     case headersOff, headersOn, verifyHeadersOn
     case prepareNarrowLeaf, positionNarrowLeaf, splitNarrowLeaf, verifyNarrowLeaf
     case resizeNarrowSmaller, verifyNarrowSmaller, resizeNarrowLarger, verifyNarrowLarger
+    case zoomPane, verifyZoom, verifyUnzoom, movePane, verifyMove, verifyMovedTitle
   }
 
   private func schedule(_ step: Step) {
@@ -404,12 +409,74 @@ import TerminalUI
       guard verifyResizedLeaves(in: window) else {
         return finish(error: "window grow violated nested leaf minimum", extra: resizeEvidence(in: window))
       }
-      finish(error: nil, extra: resizeEvidence(in: window))
+      desktopEvidence = resizeEvidence(in: window)
+      schedule(.zoomPane)
+
+    case .zoomPane:
+      guard let pane = controller.panes.last else { return finish(error: "missing pane before zoom") }
+      desktopPane = pane
+      controller.window?.makeFirstResponder(pane)
+      controller.paneDidBecomeActive(pane)
+      desktopTree = controller.layout()?.root
+      controller.togglePaneZoom(nil)
+      schedule(.verifyZoom)
+
+    case .verifyZoom:
+      guard let pane = desktopPane, let presentation = panePresentation(pane),
+        presentation.superview === controller.container, controller.root?.isHidden == true,
+        controller.layout()?.root == desktopTree,
+        presentation.frame == controller.container.bounds else {
+        return finish(error: "pane zoom lost layout or did not fill the content")
+      }
+      controller.togglePaneZoom(nil)
+      schedule(.verifyUnzoom)
+
+    case .verifyUnzoom:
+      guard let pane = desktopPane, panePresentation(pane)?.superview is NSSplitView,
+        controller.root?.isHidden == false, sameLayout(controller.layout()?.root, desktopTree) else {
+        return finish(error: "unzoom did not restore original split layout")
+      }
+      desktopEvidence["pane_zoom_restored_layout"] = true
+      schedule(.movePane)
+
+    case .movePane:
+      guard let pane = desktopPane else { return finish(error: "missing pane before move") }
+      controller.window?.makeFirstResponder(pane)
+      controller.movePaneToWindow(nil)
+      schedule(.verifyMove)
+
+    case .verifyMove:
+      guard let pane = desktopPane, !controller.panes.contains(where: { $0 === pane }),
+        let destination = pane.window?.windowController as? TerminalWindow, destination !== controller,
+        destination.panes.count == 1, destination.panes[0] === pane,
+        destination.layout()?.root == .pane(PaneID(UUID(uuidString: pane.automationID)!)),
+        controller.layout()?.root.panes.count == controller.panes.count else {
+        return finish(error: "moving a pane did not preserve its canvas/session identity")
+      }
+      desktopDestination = destination
+      emitTitle("moved-pane-owner", to: pane)
+      waitFor(.verifyMovedTitle) { destination.window?.title == "moved-pane-owner" }
+
+    case .verifyMovedTitle:
+      guard desktopDestination?.window?.title == "moved-pane-owner",
+        controller.window?.title != "moved-pane-owner" else { return finish(error: "moved pane title reached its old window") }
+      desktopEvidence["pane_move_preserved_session"] = true
+      desktopEvidence["pane_move_title_owner"] = true
+      finish(error: nil, extra: desktopEvidence)
     }
   }
 
   private func settle(_ window: NSWindow) {
     window.contentView?.layoutSubtreeIfNeeded()
+  }
+
+  private func sameLayout(_ first: PaneLayout?, _ second: PaneLayout?) -> Bool {
+    switch (first, second) {
+    case let (.pane(a)?, .pane(b)?): return a == b
+    case let (.split(av, ar, a1, a2)?, .split(bv, br, b1, b2)?):
+      return av == bv && abs(ar - br) < 0.002 && sameLayout(a1, b1) && sameLayout(a2, b2)
+    default: return false
+    }
   }
 
   private func panePresentation(_ pane: TerminalCanvasView) -> TerminalPanePresentationView? {

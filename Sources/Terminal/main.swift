@@ -47,7 +47,7 @@ func selectionSmokePasteboardName(reportPath: String) -> NSPasteboard.Name {
 }
 #endif
 
-final class TerminalWindow: NSWindowController, NSWindowDelegate {
+final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemValidation {
   struct PaneTitle {
     var reported = ""
     var finished = false
@@ -68,7 +68,14 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   private(set) weak var activePane: TerminalCanvasView?
   var paneTitles: [ObjectIdentifier: PaneTitle] = [:]
   var panePresentations: [ObjectIdentifier: TerminalPanePresentationView] = [:]
-  init(launch: LaunchSpec? = nil, layout: WindowLayout? = nil) {
+  var paneZoom: PaneZoomState?
+  private var visualBellEnabled = TerminalPreferences.load().desktop.visualBell
+  struct PaneTransfer {
+    let pane: TerminalCanvasView
+    let presentation: TerminalPanePresentationView
+    let title: PaneTitle
+  }
+  init(launch: LaunchSpec? = nil, layout: WindowLayout? = nil, adopting transfer: PaneTransfer? = nil) {
     automationID = layout?.id.uuidString ?? UUID().uuidString
     initialLaunch = launch
     #if TERMINAL_DIAGNOSTICS
@@ -93,7 +100,13 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     container.wantsLayer = true
     window.contentView = container
     let content: NSView
-    if let layout {
+    if let transfer {
+      panes = [transfer.pane]
+      paneTitles[ObjectIdentifier(transfer.pane)] = transfer.title
+      panePresentations[ObjectIdentifier(transfer.pane)] = transfer.presentation
+      content = transfer.presentation
+      window.center()
+    } else if let layout {
       content = restoreTree(layout.root, states: Dictionary(uniqueKeysWithValues: layout.panes.map { ($0.id, $0) }))
       let frame = WindowLayout.clampedFrame(layout.frame, to: NSScreen.screens.map(\.visibleFrame))
       window.setFrame(frame, display: false)
@@ -122,6 +135,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   }
 
   func selectActivePane(_ pane: TerminalCanvasView?) {
+    if let zoom = paneZoom, pane !== zoom.pane { endPaneZoom() }
     activePane = pane
     publishWindowTitle()
     updatePanePresentation()
@@ -176,7 +190,9 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       session.onRecoveryActivity = { [weak delegate, weak pane] in
         if let pane { delegate?.recoveryOutput(pane) }
       }
-      session.onRecoveryMetadata = { [weak self] in self?.recoveryChanged() }
+      session.onRecoveryMetadata = { [weak pane] in
+        (pane?.window?.windowController as? TerminalWindow)?.recoveryChanged()
+      }
       session.onRecoveryReady = { [weak delegate] in delegate?.recoveryPaneReady(id.string) }
     }
     pane.onFocused = { [weak pane] in
@@ -184,7 +200,8 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       (NSApp.delegate as? AppDelegate)?.rememberFocus(pane)
     }
     initialLaunch = nil
-    pane.onStatus = { [weak self, weak pane] text in
+    pane.onStatus = { [weak pane] text in
+      let owner = pane?.window?.windowController as? TerminalWindow
       NSLog("Session: %@", text)
       pane?.setAccessibilityHelp(text)
       if text.localizedCaseInsensitiveContains("busy")
@@ -192,7 +209,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
       {
         NSSound.beep()
       }
-      if text.hasPrefix("Launch") && text.contains("failed"), let window = self?.window,
+      if text.hasPrefix("Launch") && text.contains("failed"), let window = owner?.window,
         window.isVisible
       {
         let alert = NSAlert()
@@ -201,7 +218,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
         alert.beginSheetModal(for: window)
       }
       if text == "Session finished" {
-        if let pane { self?.recordSessionFinished(for: pane) }
+        if let pane { owner?.recordSessionFinished(for: pane) }
         #if TERMINAL_DIAGNOSTICS
         if CommandLine.arguments.contains("--exit-after-command") {
           let arguments = Array(CommandLine.arguments.prefix { $0 != "--execute" })
@@ -222,34 +239,41 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
         #endif
       }
     }
-    pane.onTitle = { [weak self, weak pane] title in
-      if let pane { self?.recordTitle(title, from: pane) }
+    pane.onTitle = { [weak pane] title in
+      if let pane { (pane.window?.windowController as? TerminalWindow)?.recordTitle(title, from: pane) }
     }
-    pane.onActivated = { [weak self, weak pane] in
-      if let pane { self?.paneDidBecomeActive(pane) }
+    pane.onActivated = { [weak pane] in
+      if let pane { (pane.window?.windowController as? TerminalWindow)?.paneDidBecomeActive(pane) }
     }
     panes.append(pane)
     let presentation = TerminalPanePresentationView(canvas: pane)
-    presentation.onColorChanged = { [weak self] in self?.recoveryChanged() }
+    presentation.onColorChanged = { [weak pane] in
+      (pane?.window?.windowController as? TerminalWindow)?.recoveryChanged()
+    }
     if let state {
       if let color = state.color.flatMap(PaneChromeColor.init(hex:)) { presentation.choose(color) }
       paneTitles[ObjectIdentifier(pane)] = PaneTitle(reported: state.title)
     }
     pane.attach(findBar: presentation.findBar)
-    presentation.onSelect = { [weak self, weak pane] in
-      guard let self, let pane else { return }
-      self.selectActivePane(pane)
-      self.window?.makeFirstResponder(pane)
+    presentation.onSelect = { [weak pane] in
+      guard let pane, let owner = pane.window?.windowController as? TerminalWindow else { return }
+      owner.selectActivePane(pane)
+      owner.window?.makeFirstResponder(pane)
     }
-    presentation.onClose = { [weak self, weak pane] in
-      guard let self, let pane else { return }
-      self.window?.makeFirstResponder(pane)
-      self.closePane(nil)
+    presentation.onClose = { [weak pane] in
+      guard let pane, let owner = pane.window?.windowController as? TerminalWindow else { return }
+      owner.window?.makeFirstResponder(pane)
+      owner.closePane(nil)
     }
     panePresentations[ObjectIdentifier(pane)] = presentation
-    pane.session.onEnd = { [weak self, weak pane] end in
-      guard let self, let pane, end.closesPane, self.panes.contains(where: { $0 === pane }) else { return }
-      self.close(pane)
+    pane.session.onEnd = { [weak pane] end in
+      guard let pane, end.closesPane, let owner = pane.window?.windowController as? TerminalWindow,
+        owner.panes.contains(where: { $0 === pane }) else { return }
+      owner.close(pane)
+    }
+    pane.session.onBell = { [weak pane] in
+      guard let pane, let owner = pane.window?.windowController as? TerminalWindow, owner.visualBellEnabled else { return }
+      owner.panePresentation(for: pane)?.indicateBell()
     }
     return pane
   }
@@ -281,6 +305,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   /// immediately so neither the content minimum nor a divider keeps the old
   /// smaller allocation.
   func applyPanePresentationPreferences(_ preferences: TerminalPreferences) {
+    visualBellEnabled = preferences.desktop.visualBell
     if updatePanePresentation(preferences) { reconcileLayout() }
   }
   /// The pane that pane commands act on: the one holding keyboard focus,
@@ -293,6 +318,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   @objc func splitVertical(_ sender: Any?) { split(vertical: true) }
   @objc func splitHorizontal(_ sender: Any?) { split(vertical: false) }
   private func split(vertical: Bool) {
+    endPaneZoom()
     guard let current = focusedPane,
       let currentPresentation = panePresentation(for: current), let parent = currentPresentation.superview
     else { return }
@@ -328,6 +354,11 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   }
   func reconcileLayout() {
     guard !reconcilingLayout, let root else { return }
+    if let zoom = paneZoom {
+      zoom.presentation.frame = container.bounds
+      window?.contentMinSize = zoom.presentation.minimumSize
+      return
+    }
     reconcilingLayout = true
     defer { reconcilingLayout = false }
     let minimum = terminalMinimumSize(root)
@@ -372,6 +403,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   }
   /// Closes `pane`, and the window with it when it is the only one.
   private func close(_ pane: TerminalCanvasView) {
+    endPaneZoom()
     guard panes.count > 1,
       let presentation = panePresentation(for: pane), let split = presentation.superview as? NSSplitView
     else {
@@ -429,7 +461,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
   func recoveryChanged() { (NSApp.delegate as? AppDelegate)?.recoveryChanged() }
 
   func layout() -> WindowLayout? {
-    guard let window, let root, let tree = layoutTree(root),
+    guard let window, let root, let tree = paneZoom?.tree ?? layoutTree(root),
       let active = activePane ?? panes.first, let activeID = UUID(uuidString: active.automationID),
       let id = UUID(uuidString: automationID) else { return nil }
     let tabs = window.tabbedWindows ?? [window]
@@ -478,6 +510,77 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate {
     split.setPosition(max(0, extent) * PaneLayout.boundedRatio(ratio), ofDividerAt: 0)
     applyRatios(first, to: split.arrangedSubviews[0]); applyRatios(second, to: split.arrangedSubviews[1])
     reconcileLayout()
+  }
+
+  @objc func togglePaneZoom(_ sender: Any?) {
+    if paneZoom != nil { endPaneZoom(); return }
+    guard panes.count > 1, let pane = focusedPane, let presentation = panePresentation(for: pane),
+      let root, let tree = layoutTree(root), let parent = presentation.superview else { return }
+    let placeholder = NSView(frame: presentation.frame)
+    placeholder.autoresizingMask = presentation.autoresizingMask
+    parent.replaceSubview(presentation, with: placeholder)
+    paneZoom = PaneZoomState(pane: pane, presentation: presentation, placeholder: placeholder, tree: tree)
+    root.isHidden = true
+    container.addSubview(presentation)
+    presentation.frame = container.bounds
+    presentation.autoresizingMask = [.width, .height]
+    reconcileLayout()
+    window?.makeFirstResponder(pane)
+  }
+
+  func endPaneZoom() {
+    guard let zoom = paneZoom else { return }
+    paneZoom = nil
+    let frame = zoom.placeholder.frame
+    zoom.presentation.removeFromSuperview()
+    zoom.placeholder.superview?.replaceSubview(zoom.placeholder, with: zoom.presentation)
+    zoom.presentation.frame = frame
+    zoom.presentation.autoresizingMask = [.width, .height]
+    root?.isHidden = false
+    reconcileLayout()
+    if let root { applyRatios(zoom.tree, to: root) }
+    window?.makeFirstResponder(zoom.pane)
+    panes.forEach { $0.refresh() }
+  }
+
+  /// Reparent the existing canvas/session. Callback routing follows the pane's
+  /// current window, so title, exit, BEL and recovery events keep their owner.
+  @objc func movePaneToWindow(_ sender: Any?) {
+    endPaneZoom()
+    guard panes.count > 1, let pane = focusedPane, let presentation = panePresentation(for: pane),
+      let split = presentation.superview as? NSSplitView, let delegate = NSApp.delegate as? AppDelegate else { return }
+    let title = paneTitles[ObjectIdentifier(pane)] ?? PaneTitle()
+    let transfer = PaneTransfer(pane: pane, presentation: presentation, title: title)
+    presentation.removeFromSuperview()
+    if let survivor = split.arrangedSubviews.first, let parent = split.superview {
+      let frame = split.frame
+      survivor.removeFromSuperview()
+      parent.replaceSubview(split, with: survivor)
+      survivor.frame = frame
+      survivor.autoresizingMask = [.width, .height]
+      if root === split { root = survivor }
+    }
+    panes.removeAll { $0 === pane }
+    paneTitles[ObjectIdentifier(pane)] = nil
+    panePresentations[ObjectIdentifier(pane)] = nil
+    selectActivePane(panes.last)
+    reconcileLayout()
+    window?.makeFirstResponder(panes.last)
+    let destination = TerminalWindow(adopting: transfer)
+    delegate.windows.append(destination)
+    destination.showWindow(nil)
+    destination.window?.makeKeyAndOrderFront(nil)
+    panes.forEach { $0.updateFocus() }
+    recoveryChanged()
+  }
+
+  func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    if item.action == #selector(togglePaneZoom(_:)) {
+      item.state = paneZoom == nil ? .off : .on
+      return panes.count > 1 && focusedPane != nil
+    }
+    if item.action == #selector(movePaneToWindow(_:)) { return panes.count > 1 && focusedPane != nil }
+    return true
   }
 }
 /// Builds the renderer on another thread while AppKit finishes launching:
@@ -896,6 +999,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     preferences.save()
     windows.lazy.flatMap(\.panes).forEach { $0.apply(preferences.view) }
     windows.forEach { $0.applyPanePresentationPreferences(preferences) }
+    menu()
     preferencesWindow?.reload()
   }
   func remove(_ window: TerminalWindow) { windows.removeAll { $0 === window }; recoveryChanged() }
@@ -991,6 +1095,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       [.control, .shift])
     window.addItem(.separator())
     tabNavigation.addMenuItems(to: window)
+    DesktopMenus.append(shell: shell, view: view, delegate: self)
+    DesktopMenus.applyShortcuts(to: bar, configuration: TerminalPreferences.load().desktop)
   }
 }
 #if TERMINAL_DIAGNOSTICS

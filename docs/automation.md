@@ -233,3 +233,38 @@ The check first performs a non-prompting permission query. If macOS requires
 consent, run `just automation-consent`, approve the standard dialog, and rerun
 the smoke test. Denied permission is reported separately from missing consent.
 These commands do not reset or bypass TCC.
+
+## Desktop collections and configuration
+
+The scripting dictionary also exposes read-only `terminal window`, `terminal
+tab`, and `terminal pane` collections. Their `id` properties are stable while
+open; a pane id is accepted by the command parameters. A pane's `working
+directory` is the latest shell-reported file URL, and `selected text` is its
+bounded visible accessibility selection.
+
+```applescript
+tell application "Helge Terminal"
+  get id of every terminal pane of every terminal tab of every terminal window
+  read directory
+  read history max characters 262144
+  select text from row 1 from column 1 to row 1 to column 12
+  read preferences
+end tell
+```
+
+`read history` reads primary-screen history and text without moving the viewport.
+Its `max characters` parameter is a UTF-8 byte budget (1–262144; default 32768),
+so multibyte text may contain fewer characters. It runs in bounded session turns
+and reports a busy/closed error rather than waiting indefinitely. `select text`
+uses one-based visible rows and column boundaries with an exclusive end; a
+successful result means the ordered selection request was accepted.
+
+`read preferences` returns JSON for all saved preferences. Its
+`desktopConfiguration` field contains JSON text in the same format as General →
+Profiles, Shortcuts & Theme. Pass that text to `configure preferences desktop
+configuration` to validate and apply profiles, shortcuts, colors, cursor shape,
+Option sides and visual bell together. Other optional preference parameters
+include `font family` (empty uses the bundled font), `ligatures`, `join emoji`,
+`show pane titles`, and `inactive pane dim` (0, 5, 10, 20 or 50 percent).
+
+See [desktop controls](desktop-controls.md) for configuration examples and keys.

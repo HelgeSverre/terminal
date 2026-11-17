@@ -22,6 +22,7 @@ import Testing
     let loaded = TerminalPreferences.load(from: defaults)
     #expect(loaded.desktop == preferences.desktop)
     #expect(loaded.view.cursorStyle == 6)
+    #expect(loaded.view.leftOptionSendsEscape == true && loaded.view.rightOptionSendsEscape == false)
     #expect(loaded.session.colors == preferences.desktop.theme?.colors)
     defaults.set(Data("{}".utf8), forKey: "desktopConfiguration")
     #expect(TerminalPreferences.load(from: defaults).desktop == .standard)
