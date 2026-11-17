@@ -372,8 +372,15 @@ enum AppleScriptSmoke {
       let expected = [pane, otherPane, rightPane, belowPane, tabPane].sorted()
       let panes = paneIDs(try runScript(app + "list panes", name: "list panes"))
       guard panes.sorted() == expected else { throw Failure("list panes did not return the complete fixture set: \(panes)") }
+      let collected = paneIDs(try runScript(app + "get id of every terminal pane of every terminal tab of every terminal window", name: "pane collections"))
+      guard collected.sorted() == expected else { throw Failure("Scriptable collections did not return the complete pane set: \(collected)") }
       let focused = try runScript(app + "focus pane pane id \(literal(pane))", name: "focus named pane")
       guard focused == pane else { throw Failure("focus pane returned a different pane: \(focused.debugDescription)") }
+      try runScript(app + "send text ((ASCII character 27) & \"]7;file:///tmp\" & (ASCII character 7)) to pane \(literal(rightPane))", name: "send directory probe")
+      _ = try waitUntil("shell-reported directory") {
+        let directory = try self.runScript(app + "read directory from pane \(literal(rightPane))", name: "read directory")
+        return directory == "file:///tmp" ? directory : nil
+      }
 
       let defaultColor = try runScript(app + "read pane color from pane \(literal(pane))", name: "read default pane color")
       let recolored = try runScript(app + "apply pane color \"OCEAN\" to pane \(literal(rightPane))", name: "apply pane color")
@@ -398,6 +405,8 @@ enum AppleScriptSmoke {
                         "An invalid starting directory was accepted.", name: "reject invalid directory")
       try expectFailure(app + "configure preferences word characters \"not valid\"", -1700,
                         "Invalid selection word characters were accepted.", name: "reject invalid word characters")
+      try expectFailure(app + "select text from row 0 from column 1 to row 1 to column 2", -1700,
+                        "A zero selection row was accepted.", name: "reject invalid selection")
       try runScript(app + "show settings", name: "show settings while focused")
       // The rest must work while the app is not the active one.
       try hideFixture()
@@ -410,10 +419,18 @@ enum AppleScriptSmoke {
         return receiptInSnapshot(output, receipt) ? output : nil
       }
       guard receiptInSnapshot(screen, receipt) else { throw Failure("read screen did not return the exact committed-text receipt.") }
+      let history = try runScript(app + "read history max characters 2048", name: "read bounded history")
+      guard receiptInSnapshot(history, receipt), history.utf8.count <= 2048 else {
+        throw Failure("read history did not preserve the receipt within its byte budget.")
+      }
+      let selected = try runScript(app + "select text from row 1 from column 1 to row 1 to column 2", name: "select visible text")
+      guard selected == pane else { throw Failure("select text returned a different pane.") }
 
+      let desktop = "{\"profiles\":[],\"shortcuts\":[],\"visualBell\":true,\"cursorStyle\":6,\"leftOptionSendsEscape\":true,\"rightOptionSendsEscape\":false}"
       let configured = try runScript(
         app + "configure preferences font size 15.0 scrollback rows 1000 "
-          + "option sends escape true follows tail on input false starting directory \"/tmp\" word characters \"@_/-@\" default pane color \"teal\"",
+          + "option sends escape true follows tail on input false starting directory \"/tmp\" word characters \"@_/-@\" default pane color \"teal\" "
+          + "font family \"Menlo\" ligatures true join emoji false show pane titles false inactive pane dim 20 desktop configuration \(literal(desktop))",
         name: "configure preferences")
       guard configured.contains("15") else {
         throw Failure("configure preferences did not return the saved font size: \(configured.debugDescription)")
@@ -423,6 +440,16 @@ enum AppleScriptSmoke {
       }
       guard configured.contains("default pane color #2B6A65") else {
         throw Failure("configure preferences did not return the default pane color: \(configured.debugDescription)")
+      }
+      let preferences = try runScript(app + "read preferences", name: "read preferences")
+      guard let fields = try JSONSerialization.jsonObject(with: Data(preferences.utf8)) as? [String: Any],
+        fields["fontFamily"] as? String == "Menlo", fields["ligatures"] as? Bool == true,
+        fields["graphemeClustering"] as? Bool == false, fields["showPaneTitles"] as? Bool == false,
+        fields["inactivePaneDim"] as? Int == 20, let desktopJSON = fields["desktopConfiguration"] as? String,
+        let savedDesktop = try JSONSerialization.jsonObject(with: Data(desktopJSON.utf8)) as? [String: Any],
+        savedDesktop["cursorStyle"] as? Int == 6, savedDesktop["leftOptionSendsEscape"] as? Bool == true,
+        savedDesktop["rightOptionSendsEscape"] as? Bool == false else {
+        throw Failure("read preferences did not return all configured desktop values.")
       }
       let cleared = try runScript(app + "clear screen", name: "clear screen")
       guard cleared == pane else { throw Failure("clear screen returned a different pane: \(cleared.debugDescription)") }

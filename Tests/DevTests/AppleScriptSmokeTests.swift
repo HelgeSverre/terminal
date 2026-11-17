@@ -158,8 +158,8 @@ import Testing
       let session = try fakeDictionarySession(root: root, pane: "no.helgesverre.terminal.pane.")
       try session.exerciseDictionary()
       let names = session.commands.compactMap { $0["name"]?.text }
-      #expect(names.count == 34 && names.first == "get fixture name" && names.last == "quit fixture", "commands: \(names)")
-      #expect(names.contains("hide fixture") && names.filter { $0.hasPrefix("reject") }.count == 7, "commands: \(names)")
+      #expect(names.count == 41 && names.first == "get fixture name" && names.last == "quit fixture", "commands: \(names)")
+      #expect(names.contains("hide fixture") && names.filter { $0.hasPrefix("reject") }.count == 8, "commands: \(names)")
       #expect(session.childPIDs.count == 5, "every pane's program is recorded")
       #expect(session.commands.allSatisfy { $0["timed_out"]?.truth == false }, "nothing timed out")
     }
@@ -190,6 +190,11 @@ private func fakeDictionarySession(root: String, pane: String) throws -> AppleSc
   try "11\n12\n13\n14\n15\n".write(toFile: session.childPIDsPath!, atomically: true, encoding: .utf8)
   session.process = FakeFixtureProcess()
   session.osascript = root + "/osascript"
+  let desktopJSON = #"{"cursorStyle":6,"leftOptionSendsEscape":true,"rightOptionSendsEscape":false}"#
+  let preferencesJSON = String(data: try JSONSerialization.data(withJSONObject: [
+    "fontFamily": "Menlo", "ligatures": true, "graphemeClustering": false,
+    "showPaneTitles": false, "inactivePaneDim": 20, "desktopConfiguration": desktopJSON,
+  ]), encoding: .utf8)!
   // The source is the fourth argument. The first matching pattern answers.
   try writeScript("""
     refuse() { echo "execution error: refused ($1)" >&2; exit 1; }
@@ -210,6 +215,11 @@ private func fakeDictionarySession(root: String, pane: String) throws -> AppleSc
       *"close pane"*) touch "$0.closed" ;;
       *"to list panes")
         if [ -e "$0.closed" ]; then echo "\(pane)A1"; else echo "\(pane)A1, \(pane)B2, \(pane)C3, \(pane)D4, \(pane)E5"; fi ;;
+      *"of every terminal window") echo "\(pane)A1, \(pane)B2, \(pane)C3, \(pane)D4, \(pane)E5" ;;
+      *"read directory"*) echo "file:///tmp" ;;
+      *"select text from row 0"*) refuse -1700 ;;
+      *"select text from row 1"*) echo "\(pane)A1" ;;
+      *"read preferences") echo '\(preferencesJSON)' ;;
       *"max characters 0"|*"max characters 262145"|*"font size 7.0"|*"/does/not/exist\\""|*"\\"not valid\\"") refuse -1700 ;;
       *"max characters 2048") echo "AUTOMATION_RECEIPT \(sha256(of: Data(AppleScriptSmoke.largeCommittedText.utf8)))" ;;
       *"configure preferences"*) echo "font size 15, word characters -/@_, default pane color #2B6A65" ;;

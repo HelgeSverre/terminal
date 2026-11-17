@@ -4,6 +4,9 @@
   <suite name="Terminal Suite" code="HTer" description="Automation commands for Helge Terminal.">
     <class name="application" code="capp" description="Helge Terminal.">
       <cocoa class="NSApplication"/>
+      <property name="name" code="pnam" type="text" access="r"><cocoa key="terminalApplicationName"/></property>
+      <property name="id" code="ID  " type="text" access="r"><cocoa key="terminalApplicationIdentifier"/></property>
+      <property name="version" code="vers" type="text" access="r"><cocoa key="terminalApplicationVersion"/></property>
       <element type="terminal window" access="r"><cocoa key="terminalWindows"/></element>
     </class>
     <class name="terminal window" code="HTwi" description="A native terminal window, containing tabs.">

@@ -45,6 +45,15 @@ import TerminalUI
 }
 
 extension NSApplication {
+  @objc var terminalApplicationName: String {
+    Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+      ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+      ?? ProcessInfo.processInfo.processName
+  }
+  @objc var terminalApplicationIdentifier: String { Bundle.main.bundleIdentifier ?? "" }
+  @objc var terminalApplicationVersion: String {
+    Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+  }
   @objc var terminalWindows: [TerminalScriptWindow] {
     guard let delegate = delegate as? AppDelegate, delegate.acceptsAutomation else { return [] }
     var seen = Set<ObjectIdentifier>()
