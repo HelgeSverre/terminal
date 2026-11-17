@@ -114,6 +114,36 @@ import TerminalInterop
     #expect(await TestEnvironment.wait { completed.take() != nil })
   }
 
+  @Test @MainActor func transportTimeoutAndSuccessfulAsyncReplyAreBounded() async throws {
+    let gate = DispatchSemaphore(value: 0)
+    let blocked = KittyTransport.Read(fields: [:], payload: Data(), limit: 4, timeout: .milliseconds(10)) {
+      gate.wait(); return Data([9])
+    }
+    defer { gate.signal() }
+    #expect(await TestEnvironment.wait { blocked.take() != nil })
+    if case .failure(.notFound) = blocked.take() {} else { Issue.record("slow filesystem did not time out") }
+    let store = KittyGraphicsStore { _, _, _ in Data([1, 2, 3, 4]) }
+    store.asynchronousTransport = true
+    let context = KittyGraphicsContext(alternate: false, row: 1, column: 0, cellWidth: 8, cellHeight: 16)
+    _ = store.consume(Data("Ga=T,t=f,f=32,s=1,v=1,I=7,C=1;L2ZpbGU=".utf8), context: context, now: 0)
+    var result: KittyGraphicsOutcome?
+    #expect(await TestEnvironment.wait { result = store.completeTransport(); return result != nil })
+    let reply = String(decoding: try #require(result?.reply), as: UTF8.self)
+    #expect(reply.contains("I=7;OK") && reply.contains("i="))
+    #expect(store.visible(alternate: false, positions: [1: 0], height: 4).count == 1)
+  }
+
+  @Test func lineFeedAndDeferredWrapMovePartialWidthGraphics() throws {
+    for output in ["\n", "1234567"] {
+      let core = try #require(helge_terminal_create(8, 4)); defer { helge_terminal_destroy(core) }
+      Oracle.feed(core, "\(esc)[2;2H")
+      Oracle.feed(core, Oracle.command("a=T,f=24,s=1,v=1,c=1,r=1,i=1,C=1", [1, 2, 3]))
+      Oracle.feed(core, "\(esc)[?69h\(esc)[2;7s\(esc)[1;3r\(esc)[3;2H" + output)
+      let image = try #require(Oracle.images(core).first)
+      #expect(image["row"] as? Int == 0, "partial-width scroll from \(output.debugDescription)")
+    }
+  }
+
   @Test func multipartInlineIsAtomicAndReportsCellSize() throws {
     let terminal = try #require(HeadlessTerminal(columns: 8, rows: 4))
     let png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGOoEJFLBgACwAEOotbinwAAAABJRU5ErkJggg=="

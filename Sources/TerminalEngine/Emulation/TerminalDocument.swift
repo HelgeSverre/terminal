@@ -1032,6 +1032,7 @@ struct TerminalDocument {
     var lastPrinted: PrintedText?
     /// Nil means the attributes the caller supplied for this transaction.
     var repeatAttributes: PrintAttributes?
+    var partialScrollCount = 0
   }
   struct PrintBatchEffect {
     var effect: PrintEffect
@@ -1389,6 +1390,7 @@ struct TerminalDocument {
     /// Zero when the next byte needs the scalar transaction; nothing was changed.
     var consumedCount: Int
     var appendedHistoryCount: Int
+    var partialScrollCount = 0
   }
   /// Text transaction for a run of printable ASCII bytes (0x20...0x7E), borrowed
   /// from the parser's input for the duration of the call. Equivalent to printing
@@ -1416,7 +1418,7 @@ struct TerminalDocument {
                                  history: inout TerminalHistory, retainHistory: Bool,
                                  state: inout PrintState, nextRowID: inout UInt64) -> ASCIIPrintResult {
     let horizontal = leftRightMargins ? (screen.leftMargin, screen.rightMargin) : (0, columns - 1)
-    var consumed = 0, appended = 0
+    var consumed = 0, appended = 0, partialScrolls = 0
     while consumed < bytes.count, appended == 0 {
       // Printable ASCII starts a cluster unless it follows a Prepend scalar.
       // That case, insert mode and an invalid cursor stay with the scalar
@@ -1426,6 +1428,8 @@ struct TerminalDocument {
             (0..<columns).contains(screen.cursorColumn) else { break }
       state.segmenter.pushPrintableASCII()
       if screen.pendingWrap && autoWrap {
+        if (horizontal.0 != 0 || horizontal.1 != columns - 1), screen.cursorRow == screen.bottomMargin,
+          (horizontal.0...horizontal.1).contains(screen.cursorColumn) { partialScrolls += 1 }
         appended += wrapCursor(
           in: &screen, columns: columns, blankCellCapacity: blankCellCapacity, horizontal: horizontal,
           style: attributes.style, history: &history, nextRowID: &nextRowID, retainHistory: retainHistory)
@@ -1448,7 +1452,7 @@ struct TerminalDocument {
       screen.pendingWrap = column + count > right && autoWrap
       consumed += count
     }
-    return ASCIIPrintResult(consumedCount: consumed, appendedHistoryCount: appended)
+    return ASCIIPrintResult(consumedCount: consumed, appendedHistoryCount: appended, partialScrollCount: partialScrolls)
   }
 
   private static func category(for scalar: Unicode.Scalar) -> TerminalText.Category {
@@ -1556,6 +1560,8 @@ struct TerminalDocument {
         }
         if end > consumed {
           if wraps {
+            if (horizontal.0 != 0 || horizontal.1 != columns - 1), screen.cursorRow == screen.bottomMargin,
+              (horizontal.0...horizontal.1).contains(screen.cursorColumn) { effect.partialScrollCount += 1 }
             effect.appendedHistoryCount += wrapCursor(
               in: &screen, columns: columns, blankCellCapacity: blankCellCapacity, horizontal: horizontal,
               style: attributes.style, history: &history, nextRowID: &nextRowID, retainHistory: retainHistory)
@@ -1751,6 +1757,8 @@ struct TerminalDocument {
       screen.rows[row].revision &+= 1
     }
     func wrap() {
+      if (horizontal.left != 0 || horizontal.right != columns - 1), screen.cursorRow == screen.bottomMargin,
+        (horizontal.left...horizontal.right).contains(screen.cursorColumn) { effect.partialScrollCount += 1 }
       effect.appendedHistoryCount += Self.wrapCursor(
         in: &screen, columns: columns, blankCellCapacity: blankCellCapacity, horizontal: horizontal,
         style: attributes.style, history: &history, nextRowID: &nextRowID, retainHistory: retainHistory)

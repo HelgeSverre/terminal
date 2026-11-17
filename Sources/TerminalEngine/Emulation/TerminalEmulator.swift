@@ -433,6 +433,7 @@ private final class TerminalEmulator {
       lastPrinted = .scalar(Unicode.Scalar(bytes[offset + consumed - 1]))
       repeatUsesCurrentAttributes = true
       applyAppendedHistory(result.appendedHistoryCount)
+      applyPartialGraphicsScroll(result.partialScrollCount)
       let mutations = UInt64(result.consumedCount)
       revision &+= mutations; documentEpoch &+= mutations; screenEpoch &+= mutations
     }
@@ -441,6 +442,7 @@ private final class TerminalEmulator {
   private func apply(_ effect: TerminalDocument.PrintEffect, mutations: Int = 1) {
     guard mutations > 0 else { return }
     applyAppendedHistory(effect.appendedHistoryCount)
+    applyPartialGraphicsScroll(effect.partialScrollCount)
     if let printed = effect.lastPrinted {
       lastPrinted = printed
       if let kept = effect.repeatAttributes {
@@ -682,8 +684,9 @@ private final class TerminalEmulator {
         if byte == 0x18 || byte == 0x1a { parser = .ground }
         else if escaped && byte == 0x5c {
           parser = .ground
-          if let picture = decoder.finish() {
-            sixelPalette = decoder.palette
+          let picture = decoder.finish()
+          sixelPalette = decoder.palette
+          if let picture {
             showSixel(width: picture.width, height: picture.height, rgba: picture.rgba)
           }
         } else if byte == 0x1b { parser = .sixel(decoder, escaped: true) }
@@ -828,10 +831,25 @@ private final class TerminalEmulator {
   }
 
   private func index(reverse: Bool) {
+    if graphics.hasPlacements {
+      let s = screen, margins = horizontalMargins
+      if (margins.left != 0 || margins.right != columns - 1),
+        s.cursorRow == (reverse ? s.topMargin : s.bottomMargin),
+        (margins.left...margins.right).contains(s.cursorColumn) {
+        graphics.scrollRectangle(alternate: usingAlternate, rows: s.rows.map(\.id), top: s.topMargin, bottom: s.bottomMargin,
+          left: margins.left, right: margins.right, amount: 1, up: !reverse)
+      }
+    }
     let appendedCount = document.index(usingAlternate: usingAlternate, reverse: reverse,
                               leftRightMargins: leftRightMargins, eraseStyle: eraseStyle())
     applyAppendedHistory(appendedCount)
     changed(history: !reverse && !usingAlternate)
+  }
+  private func applyPartialGraphicsScroll(_ count: Int) {
+    guard count > 0, graphics.hasPlacements else { return }
+    let s = screen, margins = horizontalMargins
+    graphics.scrollRectangle(alternate: usingAlternate, rows: s.rows.map(\.id), top: s.topMargin, bottom: s.bottomMargin,
+      left: margins.left, right: margins.right, amount: count, up: true)
   }
   private func lineFeed() {
     resetClusterBoundary()
@@ -1693,6 +1711,7 @@ private final class TerminalEmulator {
       else if ["4", "5", "6", "10", "11", "12", "104", "105", "106", "110", "111", "112"].contains(command) {
         for reply in palette.applyOSC(command: command, value: value) { replies.append(contentsOf: reply.utf8) }
         refreshGraphicsPalette()
+        changed(document: false)
       }
       else if command == "133" {
         let marker = value.split(separator: ";", omittingEmptySubsequences: false).first
@@ -1756,6 +1775,7 @@ private final class TerminalEmulator {
       moved.pendingWrap = false
       screen = moved
     }
+    changed(document: false)
   }
   /// Shows a decoded picture at the cursor and moves the cursor past it.
   /// The screen scrolls as the picture needs, so all of it stays visible
@@ -2278,6 +2298,7 @@ private final class TerminalEmulator {
   func finish() {
     finishDecodedText()
     graphics.abort()
+    multipartImage = nil
     // OSC 52 writes require BEL/ST framing. EOF is an abort, never an
     // implicit successful terminator.
     parser = .ground

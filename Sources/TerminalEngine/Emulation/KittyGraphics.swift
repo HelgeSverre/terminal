@@ -178,8 +178,12 @@ final class KittyGraphicsStore {
     external = nil
     switch result {
     case .failure(let error): return outcome(fields: operation.upload.fields, result: .failure(error))
-    case .success(let data): return outcome(fields: operation.upload.fields,
-      result: finish(operation.upload, context: operation.context, transported: data))
+    case .success(let data):
+      resolvedID = 0
+      let finished = finish(operation.upload, context: operation.context, transported: data)
+      var fields = operation.upload.fields
+      if fields["I"] != nil, resolvedID != 0 { fields["i"] = String(resolvedID) }
+      return outcome(fields: fields, result: finished)
     }
   }
   private var serial: UInt64 = 0
@@ -215,7 +219,7 @@ final class KittyGraphicsStore {
     return rgba
   }
 
-  var accountedBytes: Int { bytes + (pending?.bytes.count ?? 0) }
+  var accountedBytes: Int { bytes + (pending?.bytes.count ?? 0) + (external?.upload.bytes.count ?? 0) }
   var hasPlacements: Bool { !placements.isEmpty }
   var hasVirtualPlacements: Bool { placements.contains { $0.virtual } }
   var hasRelativePlacements: Bool { placements.contains { $0.isRelative } }
