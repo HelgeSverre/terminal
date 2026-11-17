@@ -133,6 +133,8 @@ import TerminalInterop
     #expect(lines(terminal, count: 4)[1] == "abcd  gh")
     Oracle.feed(terminal, "\u{1b}[2;1H\u{1b}[4294967295'}")
     #expect(lines(terminal, count: 4)[1] == "abcd  gh")
+    Oracle.feed(terminal, "\u{1b}[2;2H\u{1b}[4294967295'}")
+    #expect(lines(terminal, count: 4) == ["abcdefgh", "a     gh", "a     gh", "abcdefgh"])
   }
 
   @Test static func reverseWrapModesAndRepeatDefault() {
@@ -145,6 +147,8 @@ import TerminalInterop
     #expect(cursor(terminal) == (2, 0), "modern reverse wrap only traverses wrapped rows")
     Oracle.feed(terminal, "\u{1b}[?1045h\u{1b}[2;4r\u{1b}[2;1H\u{8}")
     #expect(cursor(terminal) == (3, 7))
+    Oracle.feed(terminal, "\u{1b}[2;1H\u{1b}[4294967295D")
+    #expect(cursor(terminal) == (2, 1), "huge reverse traversal reduces complete page cycles")
     Oracle.feed(terminal, "\u{1b}[?1045l\u{1b}[?45l\u{1b}[1;1HX\u{1b}[b\u{1b}[0b")
     #expect(lines(terminal, count: 1)[0].hasPrefix("XXX"))
   }
