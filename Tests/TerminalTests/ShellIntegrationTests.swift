@@ -129,7 +129,7 @@ import TerminalInterop
       shellIntegrationDirectory: ShellIntegrationTests.resources))
     defer { session.close() }
     var ready = false
-    session.onSnapshot = { ready = $0.input_ready }
+    session.onSnapshot = { ready = $0.input_ready == true }
     #expect(await TestEnvironment.wait { ready })
     session.rawInput(Data("false\r".utf8))
     var commands: [TerminalCommandRecord] = []
@@ -150,7 +150,7 @@ import TerminalInterop
       shellIntegrationDirectory: ShellIntegrationTests.resources))
     defer { session.close() }
     var ready = false
-    session.onSnapshot = { ready = $0.input_ready }
+    session.onSnapshot = { ready = $0.input_ready == true }
     #expect(await TestEnvironment.wait { ready })
     session.rawInput(Data("false\r".utf8))
     var commands: [TerminalCommandRecord] = []

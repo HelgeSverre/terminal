@@ -84,11 +84,16 @@ import Testing
 
   @Test static func bellBurstsAreQuietlyCoalesced() {
     var gate = VisualBellGate()
-    #expect(gate.admit(now: 100))
-    #expect(!gate.admit(now: 100.1))
-    #expect(!gate.admit(now: 100.74))
-    #expect(gate.admit(now: 100.75))
-    #expect(!gate.admit(now: .nan))
+    let first = gate.admit(now: 100)
+    let early = gate.admit(now: 100.1)
+    let beforeDeadline = gate.admit(now: 100.74)
+    let atDeadline = gate.admit(now: 100.75)
+    let invalid = gate.admit(now: .nan)
+    #expect(first)
+    #expect(!early)
+    #expect(!beforeDeadline)
+    #expect(atDeadline)
+    #expect(!invalid)
   }
   @Test static func directionalFocusUsesNestedPaneGeometry() {
     let source = CGRect(x: 0, y: 0, width: 100, height: 200)
