@@ -1,5 +1,10 @@
 # Implementation status
 
+For the dated cross-app audit at `7573f72`, see the
+[2026-11-17 gap inventory](gap-inventory.md). It distinguishes confirmed gaps,
+validation work and intentional choices; older milestone lists below retain
+historical items that may already have been completed.
+
 The goal remains active. This is a working development milestone, not v1 completion.
 
 Implemented and locally exercised:
