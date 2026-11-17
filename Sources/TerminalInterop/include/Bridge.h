@@ -6,6 +6,8 @@
 typedef struct Terminal Terminal;
 uint32_t helge_terminal_abi_version(void);
 Terminal *helge_terminal_create(uint32_t cols,uint32_t rows);
+// Printable implementation identity; strings are read up to 128 bytes or NUL.
+void helge_terminal_set_identity(Terminal *,const char *name,const char *version);
 void helge_terminal_destroy(Terminal *);
 size_t helge_terminal_feed(Terminal *,const uint8_t *,size_t,uint64_t);
 bool helge_terminal_resize(Terminal *,uint32_t,uint32_t);

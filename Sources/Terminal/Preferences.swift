@@ -165,6 +165,8 @@ struct TerminalPreferences {
   var session: TerminalSessionConfiguration {
     var value = TerminalSessionConfiguration(historyRows: historyRows, followTailOnInput: followTailOnInput,
       selectionWordProfile: selectionWordProfile)
+    value.identity = TerminalIdentity(name: "HelgeTerminal",
+      version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
     value.graphemeClustering = graphemeClustering
     return value
   }

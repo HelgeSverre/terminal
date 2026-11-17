@@ -41,10 +41,13 @@ import Testing
 
     _ = palette.applyOSC(command: "10", value: "#12é456")
     _ = palette.applyOSC(command: "11", value: "rgb:/1/2")
-    _ = palette.applyOSC(command: "110", value: "#000000")
-    _ = palette.applyOSC(command: "111", value: "#000000")
     #expect(palette.snapshotDefaultForeground == [255, 128, 255])
     #expect(palette.snapshotDefaultBackground == [18, 52, 86])
+    // Reset commands now deliberately return to the host scheme.
+    _ = palette.applyOSC(command: "110", value: "#000000")
+    _ = palette.applyOSC(command: "111", value: "#000000")
+    #expect(palette.snapshotDefaultForeground == [230, 230, 230])
+    #expect(palette.snapshotDefaultBackground == [10, 10, 11])
   }
 
   @Test static func resetRestoresEveryColor() {

@@ -224,7 +224,7 @@ package struct TerminalSnapshot: Decodable {
   package enum CodingKeys: String, CodingKey {
     case at_prompt, input_ready, search, images, revision, geometry_epoch, document_epoch, history_epoch, screen_epoch,
       scroll_offset, following_tail, viewport_clamp_revision, cols, rows, cursor, modes, alternate, title, cwd,
-      history_rows, palette, default_fg, default_bg, selectionPresentation, selection, search_matches
+      history_rows, palette, default_fg, default_bg, cursor_color, selectionPresentation, selection, search_matches
   }
   package let revision: UInt64
   package let geometry_epoch: UInt64
@@ -245,6 +245,7 @@ package struct TerminalSnapshot: Decodable {
   package let palette: [[Int]]
   package let default_fg: [Int]
   package let default_bg: [Int]
+  package var cursor_color: UInt32? = nil
   package var selectionPresentation: TerminalSelectionPresentation? = nil
   package var selection: TerminalSelectionSnapshot = .none
   /// Visible matches other than the navigated one, which stays in `search`.
@@ -282,6 +283,7 @@ extension TerminalSnapshot {
     palette = try values.decode([[Int]].self, forKey: .palette)
     default_fg = try values.decode([Int].self, forKey: .default_fg)
     default_bg = try values.decode([Int].self, forKey: .default_bg)
+    cursor_color = try values.decodeIfPresent(UInt32.self, forKey: .cursor_color)
     selectionPresentation = try values.decodeIfPresent(TerminalSelectionPresentation.self, forKey: .selectionPresentation)
     selection = try values.decodeIfPresent(TerminalSelectionSnapshot.self, forKey: .selection) ?? .none
     search_matches = try values.decodeIfPresent([SearchHighlight].self, forKey: .search_matches) ?? []

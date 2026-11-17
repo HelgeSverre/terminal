@@ -107,6 +107,23 @@ private struct LinkDown: Error {}
     #expect(await TestEnvironment.wait { transport.sizes.last == [100, 30, 900, 540] }, "\(transport.sizes)")
   }
 
+  @Test func hostIdentityAndThemeReportsReachTheTransportInOrder() async {
+    let transport = RecordingTransport()
+    let session = TerminalSession(transport: transport)
+    defer { session.close() }
+    #expect(await TestEnvironment.wait { transport.connection != nil })
+    var configuration = TerminalSessionConfiguration(identity: TerminalIdentity(name: "HelgeTerminal", version: "test-release"))
+    session.configure(configuration)
+    transport.connection?.receive(Data("\u{1b}[>q\u{1b}[?2031h".utf8))
+    #expect(await TestEnvironment.wait { transport.sent == "\u{1b}P>|HelgeTerminal test-release\u{1b}\\" })
+    configuration.colors = TerminalColorScheme(background: 0xffffff)
+    session.configure(configuration)
+    // No incoming bytes are needed to flush a host-initiated theme report.
+    #expect(await TestEnvironment.wait { transport.sent.hasSuffix("\u{1b}[?997;2n") })
+    transport.connection?.receive(Data("\u{1b}[?996n".utf8))
+    #expect(await TestEnvironment.wait { transport.sent.hasSuffix("\u{1b}[?997;2n\u{1b}[?997;2n") })
+  }
+
   @Test func theTransportStartsAtTheFirstGrid() async {
     let transport = RecordingTransport()
     let session = TerminalSession(transport: transport, startsAtFirstGrid: true)

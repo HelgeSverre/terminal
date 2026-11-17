@@ -16,6 +16,8 @@ public final class HeadlessTerminal {
     public let cursorColumn: Int
     /// The title the program set, or an empty string.
     public let title: String
+    /// The active cursor color, including OSC 12 overrides.
+    public let cursorColor: UInt32
     /// Whether the program is using the alternate screen.
     public let isAlternateScreen: Bool
     /// The location the program last reported with OSC 7, as it sent it.
@@ -72,11 +74,12 @@ public final class HeadlessTerminal {
 
   /// Fails for a grid outside 1 to 4,096 columns and rows, or of more than
   /// 1,048,576 cells.
-  public init?(columns: Int = 80, rows: Int = 24) {
+  public init?(columns: Int = 80, rows: Int = 24, identity: TerminalIdentity = .helgeTerminal) {
     guard columns > 0, rows > 0, columns <= 4096, rows <= 4096,
       let core = helge_terminal_create(UInt32(columns), UInt32(rows))
     else { return nil }
     self.core = core
+    swiftTerminalSetIdentity(core, identity: identity)
     self.columns = columns
     self.rows = rows
   }
@@ -107,10 +110,7 @@ public final class HeadlessTerminal {
   /// Sets the colors the terminal starts from and reports to programs
   /// that ask (OSC 4, 10 and 11).
   public func setColors(_ colors: TerminalColorScheme) {
-    let ansi = colors.ansi.count == 16 ? colors.ansi : TerminalColorScheme.standardANSI
-    ansi.withUnsafeBufferPointer {
-      helge_terminal_set_colors(core, colors.foreground, colors.background, $0.baseAddress)
-    }
+    swiftTerminalSetColorScheme(core, colors: colors)
   }
   /// The state mode 2027 starts in: grapheme clusters (true, the default)
   /// or one cell run per code point with a width (false).
@@ -216,7 +216,7 @@ public final class HeadlessTerminal {
       return line
     }
     return Screen(
-      rows: lines, cursorRow: snapshot.cursor.row, cursorColumn: snapshot.cursor.col, title: snapshot.title,
+      rows: lines, cursorRow: snapshot.cursor.row, cursorColumn: snapshot.cursor.col, title: snapshot.title, cursorColor: snapshot.cursor_color ?? TerminalColorScheme.standard.cursor,
       isAlternateScreen: snapshot.alternate, workingDirectory: snapshot.cwd,
       cells: cells,
       images: snapshot.images.map {

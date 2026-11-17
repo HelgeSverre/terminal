@@ -1199,11 +1199,9 @@ public final class TerminalSession: @unchecked Sendable {
         finishLink(cost: cost, completion: completion, result: .failure(failure))
       }
     case .configure(let value):
-      if value.colors != configuration.colors, value.colors.ansi.count == 16 {
-        value.colors.ansi.withUnsafeBufferPointer {
-          helge_terminal_set_colors(core, value.colors.foreground, value.colors.background, $0.baseAddress)
-        }
-      }
+      if value.colors != configuration.colors { swiftTerminalSetColorScheme(core, colors: value.colors) }
+      if value.identity != configuration.identity { swiftTerminalSetIdentity(core, identity: value.identity) }
+      drainReplies()
       if value.graphemeClustering != configuration.graphemeClustering {
         helge_terminal_set_grapheme_clustering(core, value.graphemeClustering)
       }

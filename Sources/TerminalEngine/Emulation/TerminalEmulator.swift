@@ -17,7 +17,7 @@ private func decSpecialGraphics(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
   return mapping[scalar.value].flatMap(Unicode.Scalar.init) ?? scalar
 }
 
-private enum VTParserState { case ground, escape, charset(Int), escapeIntermediate(UInt8), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool), inlineImage(InlineImageDecoder, escaped: Bool), dcsHeader, sixel(SixelDecoder, escaped: Bool) }
+private enum VTParserState { case ground, escape, charset(Int), escapeIntermediate(UInt8), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool), inlineImage(InlineImageDecoder, escaped: Bool), dcsHeader, dcsQuery(escaped: Bool), sixel(SixelDecoder, escaped: Bool) }
 
 private final class TerminalSearchToken {
   // The task contains only immutable page snapshots while it is with the
@@ -126,6 +126,10 @@ private final class TerminalEmulator {
   @exclusivity(unchecked) private var pendingClipboardRequests = Set<UInt64>()
   @exclusivity(unchecked) private var palette = TerminalPalette()
   @exclusivity(unchecked) private var title = ""
+  @exclusivity(unchecked) private var iconTitle = ""
+  @exclusivity(unchecked) private var titleStack: [(title: String?, icon: String?)] = []
+  @exclusivity(unchecked) private var identity = TerminalIdentity.helgeTerminal
+  @exclusivity(unchecked) private var colorSchemeReports = false
   @exclusivity(unchecked) private var currentDirectory: String?
   @exclusivity(unchecked) private var applicationCursor = false
   @exclusivity(unchecked) private var applicationKeypad = false
@@ -621,12 +625,27 @@ private final class TerminalEmulator {
         else if escaped { parser = .escape; handleEscapedByte(byte) }
         else { decoder.push(byte) }
       case .dcsHeader:
-        // `DCS P1 ; P2 ; P3 q` begins a Sixel picture. Every other device
-        // control string is consumed up to its terminator and ignored.
-        if byte == 0x18 || byte == 0x1a { parser = .ground }
-        else if byte == 0x71 { parser = .sixel(SixelDecoder(), escaped: false) }
-        else if (0x30...0x3b).contains(byte) { break }
-        else { parser = .discardString(escaped: byte == 0x1b, osc: false) }
+        // A short header selects Sixel or one of our bounded DCS queries.
+        if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
+        else if byte == 0x71, sequence == "$" || sequence == "+" {
+          sequence.append("q"); parser = .dcsQuery(escaped: false)
+        }
+        else if byte == 0x71, sequence.utf8.allSatisfy({ (0x30...0x3b).contains($0) }) {
+          sequence = ""; parser = .sixel(SixelDecoder(), escaped: false)
+        }
+        else if sequence.utf8.count < 64, (0x20...0x3f).contains(byte) {
+          sequence.unicodeScalars.append(UnicodeScalar(byte))
+        }
+        else { sequence = ""; parser = .discardString(escaped: byte == 0x1b, osc: false) }
+      case .dcsQuery(let escaped):
+        if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
+        else if escaped && byte == 0x5c {
+          finishQuery(); parser = .ground
+        } else if byte == 0x1b { parser = .dcsQuery(escaped: true) }
+        else if escaped { sequence = ""; parser = .escape; handleEscapedByte(byte) }
+        else if (0x20...0x7e).contains(byte), sequence.utf8.count < TerminalQueries.maximumPayloadBytes + 2 {
+          sequence.unicodeScalars.append(UnicodeScalar(byte))
+        } else { sequence = ""; parser = .discardString(escaped: false, osc: false) }
       case .sixel(let decoder, let escaped):
         if byte == 0x18 || byte == 0x1a { parser = .ground }
         else if escaped && byte == 0x5c {
@@ -703,7 +722,7 @@ private final class TerminalEmulator {
     case 0x5b: csiBytes.removeAll(keepingCapacity: true); csiUTF8Count = 0; parser = .csi
     case 0x5d: sequence = ""; parser = .osc
     case 0x5f: sequence = ""; parser = .apc
-    case 0x50: parser = .dcsHeader
+    case 0x50: sequence = ""; parser = .dcsHeader
     // SOS and PM carry strings this terminal does not interpret. They are
     // consumed up to ST so their bodies never reach the screen.
     case 0x58, 0x5e: parser = .discardString(escaped: false, osc: false)
@@ -816,6 +835,7 @@ private final class TerminalEmulator {
     focusReporting = false; reverseVideo = false; mouseMode = 0; sgrMouse = false
     currentLink = nil
     palette.reset()
+    colorSchemeReports = false; titleStack.removeAll(keepingCapacity: true)
     applyGraphemeClustering(hostGraphemeClustering)
     charsetSpecial = [false, false]; charsetSlot = 0
     forgetLastPrinted()
@@ -920,7 +940,7 @@ private final class TerminalEmulator {
     case (0x3f, nil): return [0x4a, 0x4b, 0x68, 0x6c, 0x6e, 0x75].contains(final)
     // Keyboard flags (set, push, pop); secondary device attributes.
     case (0x3d, nil), (0x3c, nil): return final == 0x75
-    case (0x3e, nil): return final == 0x75 || final == 0x63
+    case (0x3e, nil): return final == 0x75 || final == 0x63 || final == 0x71
     // DECSTR, DECSCA, DECSCUSR, DECRQM for an ANSI or a private mode.
     case (nil, 0x21), (nil, 0x24): return final == 0x70
     case (nil, 0x22), (nil, 0x20): return final == 0x71
@@ -946,6 +966,10 @@ private final class TerminalEmulator {
     if final == 0x6d {
       applySGR(packet.values, colonSyntax: packet.hasColon ? String(decoding: raw, as: UTF8.self) : nil)
       changed()
+      return
+    }
+    if final == 0x71, raw.first == 0x3e {
+      if raw.dropFirst().allSatisfy({ $0 == 0x30 }) { replies.append(contentsOf: identity.versionReply.utf8) }
       return
     }
     let params = packet.values
@@ -1014,7 +1038,7 @@ private final class TerminalEmulator {
         else if action == 3 { s.keyboardFlags &= ~flags }
       }
       else { originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false }
-    case 0x6e: clearsPending = false; if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = max(1, s.cursorRow + 1 - (originMode ? s.topMargin : 0)); let column = max(1, s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0)); replies.append(contentsOf: "\u{1b}[\(privateMode ? "?" : "")\(row);\(column)R".utf8) }
+    case 0x6e: clearsPending = false; if privateMode && params.first == 996 { replies.append(contentsOf: colorSchemeReply.utf8) } else if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = max(1, s.cursorRow + 1 - (originMode ? s.topMargin : 0)); let column = max(1, s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0)); replies.append(contentsOf: "\u{1b}[\(privateMode ? "?" : "")\(row);\(column)R".utf8) }
     // Secondary device attributes: a VT220-class terminal, firmware version
     // 10, no ROM cartridge. Primary attributes otherwise.
     case 0x63 where first == 0x3e: clearsPending = false; replies.append(contentsOf: "\u{1b}[>1;10;0c".utf8)
@@ -1031,6 +1055,20 @@ private final class TerminalEmulator {
       switch params.first ?? 0 {
       case 14: replies.append(contentsOf: "\u{1b}[4;\(rowCount * cellPixelHeight);\(columns * cellPixelWidth)t".utf8)
       case 16: replies.append(contentsOf: "\u{1b}[6;\(cellPixelHeight);\(cellPixelWidth)t".utf8)
+      case 20: replies.append(contentsOf: "\u{1b}]L\(iconTitle)\u{1b}\\".utf8)
+      case 21: replies.append(contentsOf: "\u{1b}]l\(title)\u{1b}\\".utf8)
+      case 22:
+        let which = params.count > 1 ? params[1] : 0
+        if (0...2).contains(which), params.count <= 2 || params[2] == 0 {
+          if titleStack.count == 16 { titleStack.removeFirst() }
+          titleStack.append((which == 1 ? nil : title, which == 2 ? nil : iconTitle))
+        }
+      case 23:
+        let which = params.count > 1 ? params[1] : 0
+        if (0...2).contains(which), params.count <= 2 || params[2] == 0, let saved = titleStack.popLast() {
+          if which != 1, let value = saved.title { title = value }
+          if which != 2, let value = saved.icon { iconTitle = value }
+        }
       case 18, 19: replies.append(contentsOf: "\u{1b}[\((params.first ?? 18) == 18 ? 8 : 9);\(rowCount);\(columns)t".utf8)
       default: break
       }
@@ -1274,6 +1312,7 @@ private final class TerminalEmulator {
   /// DECRQM status: 1 set, 2 reset, 3 permanently set, 0 for a mode
   /// `setMode` does not implement.
   private func modeReport(_ mode: Int, privateMode: Bool) -> Int {
+    if privateMode, mode == 2031 { return colorSchemeReports ? 1 : 2 }
     if privateMode, mode == 2027 { return graphemeClustering ? 1 : 2 }
     let enabled: Bool
     if !privateMode {
@@ -1339,6 +1378,7 @@ private final class TerminalEmulator {
       case 1006: sgrMouse = enabled
       case 2004: bracketedPaste = enabled
       case 2027: applyGraphemeClustering(enabled)
+      case 2031: colorSchemeReports = enabled
       case 5: reverseVideo = enabled
       case 69:
         leftRightMargins = enabled
@@ -1365,16 +1405,29 @@ private final class TerminalEmulator {
     primary.leftMargin = 0; primary.rightMargin = columns - 1; alternate.leftMargin = 0; alternate.rightMargin = columns - 1
     primary.keyboardFlags = 0; primary.keyboardStack.removeAll(); alternate.keyboardFlags = 0; alternate.keyboardStack.removeAll()
   }
+  private var colorSchemeReply: String { "\u{1b}[?997;\(palette.schemeIsDark ? 1 : 2)n" }
+  func setIdentity(_ value: TerminalIdentity) { identity = value }
+  private func finishQuery() {
+    let payload = sequence; sequence = ""
+    if payload.hasPrefix("+q") {
+      replies.append(contentsOf: TerminalQueries.termcap(String(payload.dropFirst(2)), applicationCursor: applicationCursor).utf8)
+    } else if payload.hasPrefix("$q") {
+      let s = screen
+      replies.append(contentsOf: TerminalQueries.status(String(payload.dropFirst(2)), style: pen, protected: protectedOutput,
+        top: s.topMargin, bottom: s.bottomMargin, left: s.leftMargin, right: s.rightMargin, cursorShape: s.cursorShape).utf8)
+    }
+  }
   private func finishString() {
     let payload = sequence; sequence = ""
     if case .osc = parser {
       // OSC bytes are lossy UTF-8 decoded before command dispatch.
       let bytes = payload.unicodeScalars.map { UInt8($0.value) }
       let decoded = String(decoding: bytes, as: UTF8.self)
-      guard let separator = decoded.firstIndex(of: ";") else { return }
-      let command = String(decoded[..<separator])
-      let value = String(decoded[decoded.index(after: separator)...])
-      if command == "0" || command == "2" { title = sanitizedTitle(value) }
+      let parts = decoded.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)
+      let command = String(parts[0])
+      let value = parts.count > 1 ? String(parts[1]) : ""
+      if command == "0" || command == "2" { title = sanitizedTitle(value); if command == "0" { iconTitle = title } }
+      else if command == "1" { iconTitle = sanitizedTitle(value) }
       else if command == "7" {
         if value.utf8.count <= 8192 { currentDirectory = value }
       }
@@ -1384,7 +1437,7 @@ private final class TerminalEmulator {
           if uri.utf8.count <= 8192 { currentLink = uri.isEmpty ? nil : uri }
         }
       }
-      else if ["4", "10", "11", "104"].contains(command) {
+      else if ["4", "5", "6", "10", "11", "12", "104", "105", "106", "110", "111", "112"].contains(command) {
         for reply in palette.applyOSC(command: command, value: value) { replies.append(contentsOf: reply.utf8) }
       }
       else if command == "133" {
@@ -1835,7 +1888,12 @@ private final class TerminalEmulator {
     hostGraphemeClustering = enabled
     applyGraphemeClustering(enabled)
   }
-  func setColorScheme(_ value: TerminalColorScheme) { palette.setScheme(value); changed(document: false) }
+  func setColorScheme(_ value: TerminalColorScheme) {
+    let changed = palette.hostScheme != value
+    palette.setScheme(value)
+    if changed && colorSchemeReports { replies.append(contentsOf: colorSchemeReply.utf8) }
+    self.changed(document: false)
+  }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
   func setHistoryByteLimit(_ value: Int) { historyByteLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
   func clearDisplay() -> UInt32 {
@@ -1962,12 +2020,13 @@ private final class TerminalEmulator {
       cells.reserveCapacity(columns)
       for cell in row.cells {
         guard Int(cell.kind) < kinds.count else { return (nil, "Invalid cell kind") }
-        let flags = cell.style.flags
+        let resolved = palette.presentationStyle(cell.style)
+        let flags = resolved.flags
         let style = CellStyle(
-          foreground: TerminalColor(packed: cell.style.foreground),
-          background: TerminalColor(packed: cell.style.background),
-          underline_color: TerminalColor(packed: cell.style.underline),
-          underline: Int(cell.style.underlineKind), bold: flags & 1 != 0, faint: flags & 2 != 0,
+          foreground: TerminalColor(packed: resolved.foreground),
+          background: TerminalColor(packed: resolved.background),
+          underline_color: TerminalColor(packed: resolved.underline),
+          underline: Int(resolved.underlineKind), bold: flags & 1 != 0, faint: flags & 2 != 0,
           italic: flags & 4 != 0, inverse: flags & 8 != 0, conceal: flags & 16 != 0,
           strike: flags & 32 != 0, overline: flags & 64 != 0, blink: flags & 128 != 0)
         cells.append(CellSnapshot(text: cell.text, kind: kinds[Int(cell.kind)], style: style,
@@ -1998,7 +2057,7 @@ private final class TerminalEmulator {
                            focus: focusReporting, mouse: mouseMode, sgr_mouse: sgrMouse,
                            reverse_video: reverseVideo, newline: newlineMode),
       alternate: usingAlternate, title: title, cwd: currentDirectory, history_rows: history.count,
-      palette: colors, default_fg: foreground, default_bg: background,
+      palette: colors, default_fg: foreground, default_bg: background, cursor_color: palette.cursorRGB,
       selectionPresentation: TerminalSelectionPresentation(snapshotID: selectionSnapshotID,
         documentGeneration: selectionDocumentGeneration, screen: selectionScreen, geometryEpoch: geometryEpoch,
         columns: columns, rows: selected.rows.map { .init(id: $0.id, revision: $0.revision, softWrapped: $0.softWrapped) }),
@@ -2183,9 +2242,10 @@ private final class TerminalEmulator {
   private func sanitizedTitle(_ value: String) -> String {
     var result = ""
     var byteCount = 0
-    // Only Unicode's Cc category counts as control. In
-    // particular, format scalars such as ZWJ and WORD JOINER remain titles.
-    for scalar in value.unicodeScalars where scalar.properties.generalCategory != .control {
+    // Remove direction overrides, isolates and marks that can disguise a
+    // host/path. Preserve other format scalars, including ZWJ and WORD JOINER.
+    for scalar in value.unicodeScalars where scalar.properties.generalCategory != .control
+      && ![0x061c, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069].contains(scalar.value) {
       let nextCount = scalar.utf8.count
       guard byteCount + nextCount <= 4096 else { break }
       result.unicodeScalars.append(scalar)
@@ -2274,6 +2334,7 @@ private final class TerminalEmulator {
     views.reserveCapacity(selected.rows.count * columns)
     for row in selected.rows {
       for cell in row.cells {
+        let resolved = palette.presentationStyle(cell.style)
         var view = TerminalCellView()
         view.text = borrowed.copy(cell.text, into: &borrowed.text)
         view.text_len = cell.text.utf8.count
@@ -2281,13 +2342,13 @@ private final class TerminalEmulator {
           view.link = borrowed.copy(link, into: &borrowed.links)
           view.link_len = link.utf8.count
         }
-        view.foreground = cell.style.foreground
-        view.background = cell.style.background
-        view.underline_color = cell.style.underline
-        view.style_flags = cell.style.flags
+        view.foreground = resolved.foreground
+        view.background = resolved.background
+        view.underline_color = resolved.underline
+        view.style_flags = resolved.flags
         view.kind = cell.kind
         view.cell_flags = cell.flags
-        view.underline = cell.style.underlineKind
+        view.underline = resolved.underlineKind
         views.append(view)
       }
     }
@@ -2309,7 +2370,7 @@ private final class TerminalEmulator {
     let source: [TerminalRow]; let offset: Int
     let selected = selectSnapshot(scroll: scroll)
     source = selected.rows; offset = selected.offset
-    let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(cell.style.foreground), "background": colorJSON(cell.style.background), "underline_color": colorJSON(cell.style.underline), "underline": Int(cell.style.underlineKind), "bold": cell.style.flags & 1 != 0, "faint": cell.style.flags & 2 != 0, "italic": cell.style.flags & 4 != 0, "inverse": cell.style.flags & 8 != 0, "conceal": cell.style.flags & 16 != 0, "strike": cell.style.flags & 32 != 0, "overline": cell.style.flags & 64 != 0, "blink": cell.style.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
+    let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in let resolved = palette.presentationStyle(cell.style); return ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(resolved.foreground), "background": colorJSON(resolved.background), "underline_color": colorJSON(resolved.underline), "underline": Int(resolved.underlineKind), "bold": resolved.flags & 1 != 0, "faint": resolved.flags & 2 != 0, "italic": resolved.flags & 4 != 0, "inverse": resolved.flags & 8 != 0, "conceal": resolved.flags & 16 != 0, "strike": resolved.flags & 32 != 0, "overline": resolved.flags & 64 != 0, "blink": resolved.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
     var data = snapshotMetadata(cursor: screen, offset: offset,
                                 followingTail: selected.followingTail,
                                 search: visibleSearchHighlights(in: source, offset: offset))
@@ -2321,6 +2382,7 @@ private final class TerminalEmulator {
                                 search: (current: [[String: Int]], others: [[String: Int]])) -> [String: Any] {
     let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement, "extent": image.extent as Any? ?? NSNull()] as [String: Any] }
     var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search.current,"search_matches":search.others,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette.snapshotPalette,"default_fg":palette.snapshotDefaultForeground,"default_bg":palette.snapshotDefaultBackground]
+    metadata["cursor_color"] = palette.cursorRGB
     metadata["cwd"] = currentDirectory as Any? ?? NSNull()
     return metadata
   }
@@ -2371,6 +2433,23 @@ typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePoi
 @_cdecl("helge_terminal_create") func swift_terminal_create(_ cols: UInt32, _ rows: UInt32) -> OpaquePointer? {
   guard (1...4096).contains(cols), (1...4096).contains(rows), cols <= 1_048_576 / rows else { return nil }
   return OpaquePointer(Unmanaged.passRetained(TerminalEmulator(columns: Int(cols), rows: Int(rows))).toOpaque())
+}
+/// Swift host configuration includes cursor/selection colors without changing
+/// the layout of the version-1 C snapshot ABI.
+package func swiftTerminalSetColorScheme(_ pointer: OpaquePointer?, colors: TerminalColorScheme) { core(pointer)?.setColorScheme(colors) }
+package func swiftTerminalSetIdentity(_ pointer: OpaquePointer?, identity: TerminalIdentity) { core(pointer)?.setIdentity(identity) }
+@_cdecl("helge_terminal_set_identity") func swift_terminal_set_identity(_ pointer: OpaquePointer?, _ name: UnsafePointer<CChar>?, _ version: UnsafePointer<CChar>?) {
+  func bounded(_ pointer: UnsafePointer<CChar>?) -> String? {
+    guard let pointer else { return nil }
+    var bytes: [UInt8] = []
+    for index in 0..<128 {
+      let byte = UInt8(bitPattern: pointer[index])
+      if byte == 0 { break }
+      bytes.append(byte)
+    }
+    return String(decoding: bytes, as: UTF8.self)
+  }
+  core(pointer)?.setIdentity(TerminalIdentity(name: bounded(name) ?? "HelgeTerminal", version: bounded(version)))
 }
 @_cdecl("helge_terminal_destroy") func swift_terminal_destroy(_ pointer: OpaquePointer?) { if let pointer { Unmanaged<TerminalEmulator>.fromOpaque(UnsafeMutableRawPointer(pointer)).release() } }
 @_cdecl("helge_terminal_feed") func swift_terminal_feed(_ pointer: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ count: Int, _ now: UInt64) -> Int { core(pointer)?.feed(bytes, count: count, now: now) ?? 0 }

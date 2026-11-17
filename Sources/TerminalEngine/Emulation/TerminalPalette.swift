@@ -2,7 +2,7 @@
 ///
 /// This deliberately owns wire details (including query reply spelling) so
 /// the terminal state machine only has to route OSC code/value pairs and
-/// publish snapshots. OSC 110/111 are intentionally not handled.
+/// publish snapshots. Resets return to the current host scheme.
 struct TerminalPalette {
   private struct RGB: Equatable {
     let red: UInt8
@@ -12,6 +12,7 @@ struct TerminalPalette {
     init(_ rgb: UInt32) { red = UInt8((rgb >> 16) & 255); green = UInt8((rgb >> 8) & 255); blue = UInt8(rgb & 255) }
 
     var snapshotValue: [Int] { [Int(red), Int(green), Int(blue)] }
+    var packed: UInt32 { UInt32(red) << 16 | UInt32(green) << 8 | UInt32(blue) }
 
     fileprivate var oscValue: String {
       "rgb:\(Self.doubledHex(red))/\(Self.doubledHex(green))/\(Self.doubledHex(blue))"
@@ -27,6 +28,9 @@ struct TerminalPalette {
   private var entries: [RGB]
   private var defaultForeground: RGB
   private var defaultBackground: RGB
+  private var cursor: RGB
+  private var special: [RGB?] = Array(repeating: nil, count: 5)
+  private var specialEnabled = Array(repeating: false, count: 6)
   /// What a reset returns to: the host's scheme.
   private var scheme = TerminalColorScheme.standard
 
@@ -34,6 +38,7 @@ struct TerminalPalette {
     entries = Self.entries(for: scheme)
     defaultForeground = RGB(scheme.foreground)
     defaultBackground = RGB(scheme.background)
+    cursor = RGB(scheme.cursor)
   }
 
   /// Makes `value` the colors to start from. A color the program has set
@@ -43,7 +48,34 @@ struct TerminalPalette {
     for slot in 0..<16 where entries[slot] == old[slot] { entries[slot] = new[slot] }
     if defaultForeground == RGB(scheme.foreground) { defaultForeground = RGB(value.foreground) }
     if defaultBackground == RGB(scheme.background) { defaultBackground = RGB(value.background) }
+    if cursor == RGB(scheme.cursor) { cursor = RGB(value.cursor) }
     scheme = value
+  }
+
+  var hostScheme: TerminalColorScheme { scheme }
+  // Report the user's configured scheme, not an OSC color chosen by a child.
+  var schemeIsDark: Bool {
+    let color = RGB(scheme.background)
+    return Int(color.red) * 299 + Int(color.green) * 587 + Int(color.blue) * 114 < 128_000
+  }
+  var cursorRGB: UInt32 { cursor.packed }
+
+  /// xterm attribute colors are opt-in (OSC 6/106). They affect retained
+  /// output at presentation time, rather than replacing the stored SGR pen.
+  func presentationStyle(_ original: TerminalStyle) -> TerminalStyle {
+    guard specialEnabled.contains(true) else { return original }
+    var style = original
+    let active = [style.flags & 1 != 0, style.underlineKind != 0,
+                  style.flags & 128 != 0, style.flags & 8 != 0, style.flags & 4 != 0]
+    for slot in 0..<5 where active[slot] && specialEnabled[slot] {
+      let color = UInt32(0x0200_0000) | (special[slot] ?? RGB(scheme.foreground)).packed
+      if slot == 1 {
+        if style.underline == 0 || specialEnabled[5] { style.underline = color }
+      } else if slot == 3 {
+        if style.background == 0 || specialEnabled[5] { style.background = color }
+      } else if style.foreground == 0 || specialEnabled[5] { style.foreground = color }
+    }
+    return style
   }
 
   var snapshotPalette: [[Int]] { entries.map(\.snapshotValue) }
@@ -54,6 +86,9 @@ struct TerminalPalette {
     entries = Self.entries(for: scheme)
     defaultForeground = RGB(scheme.foreground)
     defaultBackground = RGB(scheme.background)
+    cursor = RGB(scheme.cursor)
+    special = Array(repeating: nil, count: 5)
+    specialEnabled = Array(repeating: false, count: 6)
   }
 
   /// Applies the OSC color commands implemented by the compatibility core.
@@ -61,33 +96,64 @@ struct TerminalPalette {
   @discardableResult
   mutating func applyOSC(command: String, value: String) -> [String] {
     switch command {
-    case "4":
+    case "4", "5":
       let fields = value.split(separator: ";", omittingEmptySubsequences: false)
       var replies: [String] = []
       var index = 0
       while index + 1 < fields.count {
-        guard let slot = Self.paletteIndex(fields[index]) else {
+        guard let requestedSlot = Self.paletteIndex(fields[index], maximum: 260) else {
           index += 2
           continue
         }
+        let slot = command == "5" ? requestedSlot + 256 : requestedSlot
+        guard slot < 261 else { index += 2; continue }
         let requested = fields[index + 1]
         if requested == "?" {
-          replies.append("\u{1b}]4;\(slot);\(entries[slot].oscValue)\u{1b}\\")
+          let color = slot < 256 ? entries[slot] : (special[slot - 256] ?? RGB(scheme.foreground))
+          replies.append("\u{1b}]\(command);\(requestedSlot);\(color.oscValue)\u{1b}\\")
         } else if let color = Self.parseColor(requested) {
-          entries[slot] = color
+          if slot < 256 { entries[slot] = color } else { special[slot - 256] = color }
         }
         index += 2
       }
       return replies
 
-    case "10", "11":
-      if value == "?" {
-        let color = command == "10" ? defaultForeground : defaultBackground
-        return ["\u{1b}]\(command);\(color.oscValue)\u{1b}\\"]
+    case "6", "106":
+      let fields = value.split(separator: ";", omittingEmptySubsequences: false)
+      for index in stride(from: 0, to: max(0, fields.count - 1), by: 2) {
+        if let slot = Self.paletteIndex(fields[index], maximum: 5), let enabled = Int(fields[index + 1]) {
+          specialEnabled[slot] = enabled != 0
+        }
       }
-      guard let color = Self.parseColor(value) else { return [] }
-      if command == "10" { defaultForeground = color }
-      else { defaultBackground = color }
+      return []
+
+    case "10", "11", "12":
+      var replies: [String] = []
+      let first = Int(command)!
+      for (offset, requested) in value.split(separator: ";", omittingEmptySubsequences: false).enumerated() {
+        let slot = first + offset
+        guard slot <= 12 else { break }
+        if requested == "?" {
+          let color = slot == 10 ? defaultForeground : (slot == 11 ? defaultBackground : cursor)
+          replies.append("\u{1b}]\(slot);\(color.oscValue)\u{1b}\\")
+        } else if let color = Self.parseColor(requested) {
+          if slot == 10 { defaultForeground = color }
+          else if slot == 11 { defaultBackground = color }
+          else { cursor = color }
+        }
+      }
+      return replies
+
+    case "110": defaultForeground = RGB(scheme.foreground); return []
+    case "111": defaultBackground = RGB(scheme.background); return []
+    case "112": cursor = RGB(scheme.cursor); return []
+    case "105":
+      if value.isEmpty { special = Array(repeating: nil, count: 5) }
+      else {
+        for field in value.split(separator: ";") {
+          if let slot = Self.paletteIndex(field, maximum: 4) { special[slot] = nil }
+        }
+      }
       return []
 
     case "104":
@@ -124,7 +190,7 @@ struct TerminalPalette {
     return palette
   }
 
-  private static func paletteIndex(_ text: Substring) -> Int? {
+  private static func paletteIndex(_ text: Substring, maximum: Int = 255) -> Int? {
     let bytes = text.utf8
     let digits = bytes.first == 0x2b ? bytes.dropFirst() : bytes[bytes.startIndex...]
     guard !digits.isEmpty else { return nil }
@@ -132,7 +198,7 @@ struct TerminalPalette {
     for byte in digits {
       guard byte >= 48 && byte <= 57 else { return nil }
       index = index * 10 + Int(byte - 48)
-      guard index < 256 else { return nil }
+      guard index <= maximum else { return nil }
     }
     return index
   }
@@ -140,13 +206,23 @@ struct TerminalPalette {
   private static func parseColor(_ text: some StringProtocol) -> RGB? {
     let bytes = Array(text.utf8)
     if bytes.first == 0x23 {
-      guard bytes.count == 7,
-            let red = byte(hexHigh: bytes[1], low: bytes[2]),
-            let green = byte(hexHigh: bytes[3], low: bytes[4]),
-            let blue = byte(hexHigh: bytes[5], low: bytes[6])
-      else { return nil }
-      return RGB(red: red, green: green, blue: blue)
+      // XParseColor's #RGB/#RRGGBB/#RRRGGGBBB/#RRRRGGGGBBBB:
+      // components occupy the most significant bits of a 16-bit channel.
+      let count = bytes.count - 1
+      guard [3, 6, 9, 12].contains(count) else { return nil }
+      let width = count / 3
+      var components: [UInt8] = []
+      for index in 0..<3 {
+        guard let value = hex(bytes[(1 + index * width)..<(1 + (index + 1) * width)]) else { return nil }
+        let channel = value << (16 - width * 4)
+        components.append(UInt8(channel >> 8))
+      }
+      return RGB(red: components[0], green: components[1], blue: components[2])
     }
+    let named: [String: UInt32] = ["black": 0x000000, "white": 0xffffff, "red": 0xff0000,
+      "green": 0x00ff00, "blue": 0x0000ff, "yellow": 0xffff00, "magenta": 0xff00ff, "cyan": 0x00ffff,
+      "gray": 0xbebebe, "grey": 0xbebebe]
+    if let value = named[String(text).lowercased()] { return RGB(value) }
     guard bytes.starts(with: [0x72, 0x67, 0x62, 0x3a]) else { return nil }
     let components = text.dropFirst(4).split(separator: "/", omittingEmptySubsequences: false)
     guard components.count == 3 else { return nil }
@@ -161,11 +237,6 @@ struct TerminalPalette {
       values.append(UInt8(value * 255 / maximum))
     }
     return RGB(red: values[0], green: values[1], blue: values[2])
-  }
-
-  private static func byte(hexHigh: UInt8, low: UInt8) -> UInt8? {
-    guard let value = hex([hexHigh, low]), value <= UInt32(UInt8.max) else { return nil }
-    return UInt8(value)
   }
 
   private static func hex<S: Collection>(_ bytes: S) -> UInt32? where S.Element == UInt8 {
