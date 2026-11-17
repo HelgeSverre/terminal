@@ -10,7 +10,7 @@ export TERMINAL_DEVELOPMENT := "1"
 swift_test := "TERMINAL_TEST_HOOKS=1 swift test --scratch-path target/swiftpm/testing -c debug -Xswiftc -O --jobs 3 --no-parallel --disable-xctest"
 
 # The emulator's sources, for the few programs still compiled directly.
-emulator_sources := "-package-name terminal -I Sources/TerminalInterop/include Sources/TerminalEngine/Text/*.swift Sources/TerminalEngine/Emulation/*.swift"
+emulator_sources := "-package-name terminal -I Sources/TerminalInterop/include Sources/TerminalEngine/*.swift Sources/TerminalEngine/Text/*.swift Sources/TerminalEngine/Emulation/*.swift"
 esctest_commit := "2798f12"
 spawn_object := "xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=14.0 -I Sources/TerminalInterop/include -c Sources/TerminalInterop/Spawn.c -o target/native/Spawn.o"
 

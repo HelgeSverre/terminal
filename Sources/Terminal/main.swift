@@ -3,6 +3,9 @@ import TerminalInterop
 import TerminalHost
 import TerminalUI
 
+// The app owns its bundle policy; embedded views use their module resources.
+TerminalResources.bundle = .main
+
 #if TERMINAL_DIAGNOSTICS
 /// A smoke run must never observe or mutate the user's clipboard. The report
 /// path already belongs to the fixture, so it is a stable private-board scope.

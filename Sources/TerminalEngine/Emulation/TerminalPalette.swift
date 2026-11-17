@@ -103,7 +103,7 @@ struct TerminalPalette {
     colors[249] = snapshotDefaultForeground
     colors[250] = RGB(scheme.selectionBackground).snapshotValue
     colors[251] = RGB(scheme.selectionForeground).snapshotValue
-    colors[252] = RGB(scheme.cursor).snapshotValue
+    colors[252] = RGB(cursorRGB).snapshotValue
     colors[253] = snapshotDefaultBackground
     colors[254] = snapshotDefaultForeground
     colors[255] = snapshotDefaultForeground
