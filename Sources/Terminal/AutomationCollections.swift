@@ -38,7 +38,9 @@ import TerminalUI
   let parent: TerminalScriptTab
   init(_ pane: TerminalCanvasView, parent: TerminalScriptTab) { self.pane = pane; self.parent = parent }
   @objc var identifier: String { pane.map { "no.helgesverre.terminal.pane." + $0.automationID } ?? "" }
-  @objc var workingDirectory: String { pane?.session.deliveredDirectory ?? "" }
+  @objc var workingDirectory: String {
+    MainActor.assumeIsolated { pane?.session.deliveredDirectory ?? "" }
+  }
   @objc var selectedText: String { pane?.accessibilitySelectedText() ?? "" }
   override var objectSpecifier: NSScriptObjectSpecifier? {
     guard let description = parent.classDescription as? NSScriptClassDescription else { return nil }

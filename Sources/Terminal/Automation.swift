@@ -302,7 +302,7 @@ final class TerminalReadPreferencesCommand: TerminalScriptCommand {
 final class TerminalReadDirectoryCommand: TerminalScriptCommand {
   override func performDefaultImplementation() -> Any? {
     guard let pane = pane() else { return nil }
-    return pane.session.deliveredDirectory ?? ""
+    return MainActor.assumeIsolated { pane.session.deliveredDirectory ?? "" }
   }
 }
 
