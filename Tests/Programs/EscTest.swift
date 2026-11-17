@@ -39,7 +39,8 @@ import TerminalInterop
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
     process.arguments = ["python3", directory + "/esctest/esctest.py", "--expected-terminal=xterm",
-                         "--xterm-checksum=334", "--logfile=" + log, "--v=2", "--timeout=0.5"] + arguments
+                         "--xterm-checksum=334", "--xterm-reverse-wrap=383",
+                         "--logfile=" + log, "--v=2", "--timeout=0.5"] + arguments
     process.currentDirectoryURL = URL(fileURLWithPath: directory + "/esctest")
     let terminal = FileHandle(fileDescriptor: slave, closeOnDealloc: false)
     process.standardInput = terminal; process.standardOutput = terminal; process.standardError = terminal
