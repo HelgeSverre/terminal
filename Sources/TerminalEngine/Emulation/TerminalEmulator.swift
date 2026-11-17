@@ -1803,14 +1803,14 @@ private final class TerminalEmulator {
     }
   }
   private func showPicture(width: Int, height: Int, rgba: Data, columns wanted: Int, rows wantedRows: Int, below: Bool,
-                           frames: [InlineImageDecoder.Frame] = []) {
+                           frames: [InlineImageDecoder.Frame] = [], stretch: Bool = false) {
     pruneGraphicsAnchors()
     let s = screen
     guard s.rows.indices.contains(s.cursorRow), let cells = graphics.show(
       width: width, height: height, rgba: rgba, columns: wanted, rows: wantedRows,
       context: KittyGraphicsContext(
         alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
-        cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id)), animation: frames)
+        cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id)), animation: frames, stretch: stretch)
     else { return }
     resetClusterBoundary()
     for _ in 0..<(below ? cells.rows : cells.rows - 1) { index(reverse: false) }
@@ -1847,7 +1847,8 @@ private final class TerminalEmulator {
         wide = max(1, (boxHeight * width / height + cellWidth - 1) / cellWidth)
       }
     }
-    showPicture(width: width, height: height, rgba: rgba, columns: min(wide, 4096), rows: min(tall, 4096), below: false, frames: frames)
+    showPicture(width: width, height: height, rgba: rgba, columns: min(wide, 4096), rows: min(tall, 4096), below: false,
+      frames: frames, stretch: !request.preservesAspectRatio)
   }
   private func enqueueClipboard(_ data: Data) {
     guard data.count <= OSC52Decoder.maximumDecodedBytes, pendingClipboardRequests.count < 4 else { return }
@@ -2396,7 +2397,7 @@ private final class TerminalEmulator {
       ImagePlacementSnapshot(image: value.image, generation: value.generation, width: value.width, height: value.height,
         source: value.source, row: value.row, col: value.column, columns: value.columns,
         rows: value.rows, offset: value.offset, natural: value.natural, z: value.z, placement: value.placement,
-        extent: value.extent)
+        extent: value.extent, stretch: value.stretch)
     }
     let images = visibleImages(offset: selected.offset).map(image)
     var snapshot = TerminalSnapshot(
@@ -2796,7 +2797,7 @@ private final class TerminalEmulator {
   private func snapshotMetadata(cursor: TerminalScreen, offset: Int,
                                 followingTail: Bool,
                                 search: (current: [[String: Int]], others: [[String: Int]])) -> [String: Any] {
-    let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement, "extent": image.extent as Any? ?? NSNull()] as [String: Any] }
+    let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement, "extent": image.extent as Any? ?? NSNull(), "stretch": image.stretch] as [String: Any] }
     var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search.current,"search_matches":search.others,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette.snapshotPalette,"default_fg":palette.snapshotDefaultForeground,"default_bg":palette.snapshotDefaultBackground]
     metadata["cursor_color"] = palette.cursorRGB
     if var modes = metadata["modes"] as? [String: Any] {

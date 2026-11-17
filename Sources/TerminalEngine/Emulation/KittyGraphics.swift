@@ -50,6 +50,7 @@ struct KittyImagePlacement: Equatable {
   /// The size the picture is drawn at, in pixels, when it is not to be
   /// fitted to its cells: a slice of an image behind Unicode placeholders.
   var extent: [Int]? = nil
+  var stretch = false
 }
 
 struct KittyGraphicsOutcome {
@@ -145,6 +146,7 @@ final class KittyGraphicsStore {
     let z: Int
     /// Shown only where the screen holds Unicode placeholders for it.
     var virtual = false
+    var stretch = false
     /// For a placement relative to another (P and Q): that placement's
     /// image and id, and the offset from its top left corner in cells.
     var parentImage: UInt32 = 0
@@ -323,7 +325,7 @@ final class KittyGraphicsStore {
       return KittyImagePlacement(image: placement.image, generation: image.generation(ofFrame: shownFrame(image.id)), width: image.width,
         height: image.height, source: placement.source, row: anchor.row, column: anchor.column,
         columns: placement.cells[0], rows: placement.cells[1], offset: placement.offset,
-        natural: placement.natural, z: placement.z, placement: placement.serial)
+        natural: placement.natural, z: placement.z, placement: placement.serial, stretch: placement.stretch)
     }.sorted { ($0.z, $0.image, $0.placement) < ($1.z, $1.image, $1.placement) }
   }
 
@@ -344,7 +346,7 @@ final class KittyGraphicsStore {
   /// the storage budget, scrolling and erasing treat it the same. Returns
   /// the cells it covers, or nil when there is no room for it.
   func show(width: Int, height: Int, rgba: Data, columns: Int, rows: Int,
-            context: KittyGraphicsContext, animation: [InlineImageDecoder.Frame] = []) -> (columns: Int, rows: Int)? {
+            context: KittyGraphicsContext, animation: [InlineImageDecoder.Frame] = [], stretch: Bool = false) -> (columns: Int, rows: Int)? {
     guard width > 0, height > 0, width <= Self.maximumImageDimension, height <= Self.maximumImageDimension,
       rgba.count == width * height * 4, rgba.count <= Self.maximumImageBytes, serial < UInt64.max - UInt64(max(2, animation.count + 1)),
       let id = (1...Int(UInt32.max)).reversed().first(where: { images[UInt32($0)] == nil })
@@ -370,7 +372,8 @@ final class KittyGraphicsStore {
     else { return nil }
     serial = generation + UInt64(max(1, animation.count))
     images[image.id] = image; bytes += image.totalBytes
-    placements.append(placement)
+    var shown = placement; shown.stretch = stretch
+    placements.append(shown)
     return (placement.cells[0], placement.cells[1])
   }
 
@@ -1104,7 +1107,8 @@ final class KittyGraphicsStore {
       let value = fields[key]!
       guard keys.contains(key) else { return nil }
       switch key {
-      case "f": guard ["8", "16", "24", "100"].contains(value) else { return nil } // 32 is the default.
+      case "f":
+        guard ["8", "16", "24", "100"].contains(value), feature != "f" || !["8", "16"].contains(value) else { return nil }
       case "t": guard ["f", "t", "s"].contains(value) else { return nil } // d is the default.
       case "d": guard value.count == 1, value != "a", "AiInNcCpPqQrRxXyYzZfF".contains(value) else { return nil }
       case "o": guard value == "z" else { return nil }

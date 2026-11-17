@@ -202,6 +202,8 @@ package struct ImagePlacementSnapshot: Decodable, Equatable {
   package let placement: UInt64
   /// The drawn size in pixels, when it is not fitted to the cells.
   package var extent: [Int]? = nil
+  /// Only iTerm's preserveAspectRatio=0 uses the whole requested box.
+  package var stretch: Bool? = nil
   package var key: ImageKey { ImageKey(id: image, generation: generation) }
 }
 package final class ImagePixels: @unchecked Sendable {
