@@ -66,6 +66,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   let container = NSView()
   var root: NSView?
   private var initialLaunch: LaunchSpec?
+  private var initialPaneID: PaneID?
   private let diagnosticSplitLaunch: LaunchSpec?
   private var reconcilingLayout = false
   private(set) weak var activePane: TerminalCanvasView?
@@ -78,9 +79,10 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     let presentation: TerminalPanePresentationView
     let title: PaneTitle
   }
-  init(launch: LaunchSpec? = nil, layout: WindowLayout? = nil, adopting transfer: PaneTransfer? = nil) {
+  init(launch: LaunchSpec? = nil, layout: WindowLayout? = nil, adopting transfer: PaneTransfer? = nil, paneID: PaneID? = nil) {
     automationID = layout?.id.uuidString ?? UUID().uuidString
     initialLaunch = launch
+    initialPaneID = paneID
     #if TERMINAL_DIAGNOSTICS
     diagnosticSplitLaunch =
       CommandLine.arguments.contains("--resize-smoke") || paneLifecycleSmokeReportPath() != nil
@@ -171,9 +173,12 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
 
   private func makePane(launch: LaunchSpec? = nil, state: PaneState? = nil) -> TerminalCanvasView {
     let delegate = NSApp.delegate as? AppDelegate
-    let id = state?.id ?? PaneID()
-    let launch = state.map { LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString) }
+    let id = state?.id ?? initialPaneID ?? PaneID()
+    initialPaneID = nil
+    let baseLaunch = state.map { LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString,
+      preferences: TerminalPreferences.load()) }
       ?? initialLaunch ?? diagnosticSplitLaunch ?? launch ?? .shell
+    let launch = baseLaunch.withResumeFile(delegate?.recovery?.resumeFile(id))
     let session: TerminalSession
     if let state, let store = delegate?.recovery {
       let checkpoint = store.scrollback(id)
@@ -256,6 +261,19 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     if let state {
       if let color = state.color.flatMap(PaneChromeColor.init(hex:)) { presentation.choose(color) }
       paneTitles[ObjectIdentifier(pane)] = PaneTitle(reported: state.title)
+      if let record = state.resume, let rule = delegate?.resumeRules.rule(record.rule),
+        let arguments = rule.arguments(for: record) {
+        presentation.resumeStrip.offer(label: rule.label, exact: record.session != nil, warned: record.warned) { [weak pane] in
+          guard let pane else { return false }
+          let accepted = pane.session.send(text: ResumeRules.shellCommand(arguments) + "\r")
+          if accepted {
+            let owner = pane.window?.windowController as? TerminalWindow
+            owner?.window?.makeFirstResponder(pane)
+            owner?.recoveryChanged()
+          }
+          return accepted
+        }
+      }
     }
     pane.attach(findBar: presentation.findBar)
     presentation.onSelect = { [weak pane] in
@@ -645,8 +663,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var recoverySleepFlush = false
   private var recoveryReadyPanes: Set<String> = []
   private var recoveryObservers: [NSObjectProtocol] = []
-  init(rendering setup: RenderingSetup, recovery: SessionStateStore? = nil) {
+  private var initialPaneID: PaneID?
+  private var recoveryLayoutRevision: UInt64 = 0
+  private var resumeSampling = false
+  private var resumePending: (layout: SessionLayout, restoring: Bool, revision: UInt64)?
+  lazy var resumeRules = ResumeRules.load(Bundle.main.url(forResource: "ResumeRules", withExtension: "json"))
+  private lazy var resumeSampler = ResumeSampler(rules: resumeRules, home: FileManager.default.homeDirectoryForCurrentUser)
+  init(rendering setup: RenderingSetup, recovery: SessionStateStore? = nil, paneID: PaneID? = nil) {
     self.recovery = recovery
+    initialPaneID = paneID
     #if TERMINAL_DIAGNOSTICS
     if let path = selectionSmokeReportPath() {
       let pasteboard = NSPasteboard(name: selectionSmokePasteboardName(reportPath: path))
@@ -685,6 +710,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
   /// The item is dimmed in a copy that does not update itself, such as a local build.
   @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+    if item.action == #selector(resumeAll(_:)) {
+      return windows.contains { controller in controller.panes.contains { controller.panePresentation(for: $0)?.resumeStrip.isOffered == true } }
+    }
     guard item.action == #selector(checkForUpdates(_:)) else { return true }
     return MainActor.assumeIsolated { Updates.shared.isEnabled }
   }
@@ -760,6 +788,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func recoveryChanged() {
     guard recovery != nil, !terminationRequested else { return }
+    recoveryLayoutRevision &+= 1
     recoveryLayoutWork?.cancel()
     let work = DispatchWorkItem { [weak self] in self?.saveRecoveryLayout() }
     recoveryLayoutWork = work
@@ -776,6 +805,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard layout.isValid else { return }
     let restoring = recovery.restored != nil && !windows.flatMap(\.panes).allSatisfy { recoveryReadyPanes.contains($0.automationID) }
     recovery.save(layout, restoring: restoring)
+    resumePending = (layout, restoring, recoveryLayoutRevision)
+    sampleNextResume()
+  }
+  private func sampleNextResume() {
+    guard !resumeSampling, !terminationRequested, let recovery, !resumeRules.rules.isEmpty,
+      let pending = resumePending else { return }
+    resumePending = nil
+    resumeSampling = true
+    let group = DispatchGroup()
+    var requests: [ResumeSampler.Pane] = []
+    for pane in windows.flatMap(\.panes) {
+      guard let raw = UUID(uuidString: pane.automationID) else { continue }
+      let id = PaneID(raw)
+      group.enter()
+      pane.session.foregroundProcessIdentifier { pid in
+        if let pid { requests.append(ResumeSampler.Pane(id: id, pid: pid, hook: recovery.resumeFile(id))) }
+        group.leave()
+      }
+    }
+    group.notify(queue: .main) { [weak self] in
+      guard let self else { return }
+      guard !terminationRequested else { resumeSampling = false; return }
+      resumeSampler.sample(requests) { [weak self] records in
+        guard let self else { return }
+        resumeSampling = false
+        if !terminationRequested, pending.revision == recoveryLayoutRevision {
+          var layout = pending.layout
+          for window in layout.windows.indices {
+            for pane in layout.windows[window].panes.indices {
+              let id = layout.windows[window].panes[pane].id
+              layout.windows[window].panes[pane].resume = records[id]
+            }
+          }
+          recovery.save(layout, restoring: pending.restoring)
+        }
+        sampleNextResume()
+      }
+    }
   }
   func recoveryPaneReady(_ id: String) { recoveryReadyPanes.insert(id); recoveryChanged() }
   func recoveryOutput(_ pane: TerminalCanvasView) {
@@ -810,6 +877,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         windows.contains(where: { $0.panes.contains(where: { $0 === pane }) }) {
         if let text, let uuid = UUID(uuidString: pane.automationID) {
           recovery?.saveScrollback(text, rows: rows, pane: PaneID(uuid))
+          recoveryChanged()
         } else if let delay { recoveryPending[pane.automationID] = (pane, Date().addingTimeInterval(delay)) }
       }
       scheduleRecoveryCheckpoint()
@@ -927,7 +995,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
   #endif
   @objc func newWindow(_ sender: Any?) {
-    let window = TerminalWindow()
+    let window = TerminalWindow(paneID: initialPaneID)
+    initialPaneID = nil
     windows.append(window)
     window.showWindow(nil)
     window.window?.makeKeyAndOrderFront(nil)
@@ -982,6 +1051,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     preferencesWindow?.present()
   }
+  @objc func resumeAll(_ sender: Any?) {
+    for controller in windows {
+      for pane in controller.panes { controller.panePresentation(for: pane)?.resumeStrip.resumeIfOffered() }
+    }
+  }
   func rememberFocus(_ pane: TerminalCanvasView) {
     guard pane.window?.firstResponder === pane,
       windows.contains(where: { $0.panes.contains { $0 === pane } })
@@ -1021,6 +1095,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     recoveryLayoutWork?.cancel()
     recoveryCheckpointWork?.cancel()
     recoveryPending.removeAll()
+    resumePending = nil
     let cleanups = DispatchGroup()
     if let recovery {
       cleanups.enter()
@@ -1075,6 +1150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let shell = submenu("Shell")
     item(shell, "New Window", #selector(newWindow(_:)), "n", target: self)
     item(shell, "New Tab", #selector(newTab(_:)), "t", target: self)
+    item(shell, "Resume All", #selector(resumeAll(_:)), "", [], target: self)
     item(shell, "Split Right", #selector(TerminalWindow.splitVertical(_:)), "d")
     item(
       shell, "Split Below", #selector(TerminalWindow.splitHorizontal(_:)), "d", [.command, .shift])
@@ -1121,9 +1197,14 @@ SmokeStream.runIfRequested()
 helge_terminal_set_program_version(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
 let recoveryState = SessionStateStore.open(directory: StateLocation.directory(
   arguments: CommandLine.arguments, bundle: Bundle.main.bundleURL, home: FileManager.default.homeDirectoryForCurrentUser))
-let restoredFirstPane = recoveryState?.restored?.windows.first?.panes.first
-if let launch = restoredFirstPane.map({ LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString) })
+let restoredFirstPane = recoveryState?.restored?.windows.first.flatMap { window in
+  window.panes.first { $0.id == window.root.panes.first }
+}
+let firstPaneID = restoredFirstPane?.id ?? (recoveryState != nil ? PaneID() : nil)
+if let baseLaunch = restoredFirstPane.map({ LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString,
+  preferences: TerminalPreferences.load()) })
   ?? AppDelegate.firstLaunch() {
+  let launch = baseLaunch.withResumeFile(firstPaneID.flatMap { recoveryState?.resumeFile($0) })
   let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096)
   let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096)
   EarlyChild.start(launch, grid: columns.flatMap { columns in rows.map { (columns, $0) } })
@@ -1145,7 +1226,7 @@ let application = NSApplication.shared
 // Started only now: touching Metal before the application object exists
 // leaves the first window unable to become key when the app is launched
 // without coming to the front, and its first click is then spent on focus.
-let delegate = AppDelegate(rendering: RenderingSetup(), recovery: recoveryState)
+let delegate = AppDelegate(rendering: RenderingSetup(), recovery: recoveryState, paneID: firstPaneID)
 application.delegate = delegate
 application.run()
 

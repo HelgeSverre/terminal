@@ -52,6 +52,7 @@ enum AppBundle {
       try replace(programs + "/TerminalLauncher", with: products + "/TerminalLauncher")
       try replace(app + "/Contents/Info.plist", with: Repository.path("Resources/Terminal/Info.plist"))
       try replace(resources + "/Terminal.sdef", with: Repository.path("Resources/Terminal/Terminal.sdef"))
+      try replace(resources + "/ResumeRules.json", with: Repository.path("Resources/Terminal/ResumeRules.json"))
       try replace(resources + "/Terminal.icns", with: scratch + "/Terminal.icns")
       try Console.quietly(["/usr/bin/ditto", Repository.path("Sources/TerminalHost/Resources/ShellIntegration"),
                            resources + "/ShellIntegration"])

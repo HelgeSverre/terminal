@@ -93,6 +93,46 @@ Hold Cmd over an HTTP, HTTPS, or mailto URL to underline it, then Cmd-click to
 open it. Plain URLs and OSC 8 hyperlinks use the same link actions. Dropping
 files into a pane pastes their quoted paths.
 
+## Crash recovery
+
+After an unclean exit, the next launch restores windows, tab groups, split
+panes, working directories and the latest plain-text history checkpoint. The
+history is faint and ends with a dated `Restored` marker. Each pane starts a
+fresh login shell; processes are not reattached. Quitting normally, closing the
+last window, and an orderly logout or restart discard saved sessions.
+
+A recognised program has a `Resume` and `Dismiss` strip. `Shell > Resume All`
+accepts every current offer. Nothing runs until one of these actions is used.
+An offer without an exact session ID says `most recent in this directory`;
+two programs sharing a directory can select the same conversation with this
+fallback. A previous broad-permissions flag is labelled on the strip and is
+not copied into the resume command.
+
+Installed copies under `/Applications` or `~/Applications` keep state in
+`~/Library/Application Support/no.helgesverre.terminal/Sessions`. Other copies
+write no recovery state unless launched with `--state-directory <directory>`.
+State is readable by this user only. It contains printed history, pane titles,
+directories and session IDs in plain text; it does not contain the environment
+or unechoed input. History is bounded by the existing scrollback setting and
+the 16 MiB copy limit per pane. Idle panes schedule no checkpoint work.
+
+For an exact agent session ID, an optional agent `SessionStart` hook can write
+to the pane-specific `HELGE_TERMINAL_RESUME_FILE` path. Configure this command
+through the agent's hook mechanism; the terminal does not edit its settings:
+
+```sh
+[ -n "${HELGE_TERMINAL_RESUME_FILE:-}" ] || exit 0
+jq -c '{rule: "claude-code", session: .session_id}' > "$HELGE_TERMINAL_RESUME_FILE.tmp" \
+  && chmod 600 "$HELGE_TERMINAL_RESUME_FILE.tmp" \
+  && mv "$HELGE_TERMINAL_RESUME_FILE.tmp" "$HELGE_TERMINAL_RESUME_FILE"
+```
+
+For Codex, replace `claude-code` with `codex`. A hook can name only a shipped
+rule and a validated session ID. It cannot supply a command. The terminal
+offers the record only when that rule also matched the pane's foreground
+program at its last sample. Agent-specific hook inheritance and real-agent
+resume behavior are tracked separately in the [recovery plan](session-recovery-plan.md).
+
 ## Text and settings
 
 Settings > Text has a font menu. Obel Mono is the default; JetBrains Mono,

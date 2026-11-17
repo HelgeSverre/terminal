@@ -10,6 +10,7 @@ final class TerminalPanePresentationView: NSView {
   /// Docked over the top rows of the canvas rather than above it: opening the
   /// bar must not resize the grid, which would reflow and drop the matches.
   let findBar = TerminalFindBar()
+  let resumeStrip = TerminalResumeStrip(frame: .zero)
   private let header = PaneHeaderView()
   private var tracking: NSTrackingArea?
   private var showsHeader = false
@@ -60,6 +61,8 @@ final class TerminalPanePresentationView: NSView {
     addSubview(canvas)
     addSubview(findBar)
     addSubview(header)
+    addSubview(resumeStrip)
+    resumeStrip.onDismiss = { [weak self] in self?.needsLayout = true }
     header.onSelect = { [weak self] in self?.onSelect?() }
     header.onChooseColor = { [weak self] point in self?.showColorPopover(at: point) }
     header.onClose = { [weak self] in self?.onClose?() }
@@ -136,7 +139,9 @@ final class TerminalPanePresentationView: NSView {
     let height = showsHeader ? Self.headerHeight : 0
     header.frame = NSRect(x: 0, y: 0, width: bounds.width, height: height)
     canvas.frame = NSRect(x: 0, y: height, width: bounds.width, height: max(0, bounds.height - height))
-    findBar.frame = NSRect(x: 0, y: height, width: bounds.width, height: TerminalFindBar.height)
+    resumeStrip.frame = NSRect(x: 0, y: height, width: bounds.width, height: TerminalResumeStrip.height)
+    let resumeHeight = resumeStrip.isOffered ? TerminalResumeStrip.height : 0
+    findBar.frame = NSRect(x: 0, y: height + resumeHeight, width: bounds.width, height: TerminalFindBar.height)
   }
 
   override func updateTrackingAreas() {

@@ -48,6 +48,7 @@ struct PaneState: Equatable, Codable {
   var directory: String
   var title: String
   var color: String?
+  var resume: ResumeRecord? = nil
 }
 
 struct WindowLayout: Equatable, Codable {
