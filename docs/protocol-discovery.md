@@ -74,3 +74,41 @@ including disjoint pieces and hard-line breaks, while distinct IDs remain
 separate. Labels remain bounded and activations retain owner-validated row
 identity/revision proofs. An ID-only rewrite invalidates the prior activation.
 This follows the [OSC 8 identity semantics](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda).
+
+## Recorded conformance disposition — 2026-11-17
+
+The coordinator's `e0f79b3` run recorded 440 passes, 88 failures and 39 known
+bugs with esctest2 `2798f12`, using its xterm/VT-level-5 expectations. This is
+the disposition of that recorded run, not a claim that the following changes
+have been rerun. The implemented SGR/margin/cursor/protection DECRQSS subset,
+practical hex/`rgb:` color forms, special-color reset paths and nine other
+title query/stack cases passed.
+
+| Recorded failures | Count | Disposition |
+| --- | ---: | --- |
+| `XtermWinops_PushIconThenWindowThenPopBoth` | 1 | Implemented-feature defect: a partial stack frame must inherit missing fields from an older frame. Fixed with a focused regression. |
+| `ResetSpecialColor_Dynamic` | 1 | Harness defaults mismatch: upstream forces black/white before each case, while OSC 110 correctly restores the host's configured foreground. The esctest host now configures black/white resource defaults; the app's reset behavior is unchanged. |
+| `ChangeColor`, `ChangeDynamicColor`, `ChangeSpecialColor`: `CIELab`, `CIELuv`, `CIEXYZ`, `CIEuvY`, `CIExyY`, `RGBI`, `TekHVC` | 21 | Unsupported X11 color-space syntaxes. The implemented parser deliberately covers hex, `rgb:` and basic names; it does not silently approximate these formats. |
+| `DA_0`, `DA_NoParameter`, `DA2_0`, `DA2_NoParameter` | 4 | Xterm-specific identity expectations: VT525/full xterm feature advertisement and xterm firmware range. Helge keeps its conservative VT220-class DA replies and supplies its actual implementation/version through XTVERSION. |
+| `DECID_Basic` | 1 | Unsupported legacy ESC Z identity alias. This is distinct from the working DA and XTVERSION query paths. |
+| Nine `DECDSR` cases listed below | 9 | Unsupported DEC hardware/status reports; timeouts reflect absent query handlers, not broken supported replies. |
+| 23 `DECRQM` modes listed below | 23 | Unsupported modes return status 0 (not recognized). Xterm's permanently-reset status 4 or toggling behavior is not claimed. |
+| `DECRQSS_DECSACE`, `DECSASD`, `DECSCL`, `DECSLPP`, `DECSNLS`, `DECSSDT` | 6 | Outside the bounded status subset: attribute-change extent, status display/type, conformance switching and child-controlled page/screen geometry are not implemented. Negative replies remain truthful. |
+| Three `DECSCL` level-switching cases | 3 | Unsupported virtual VT conformance-level switching/gating. Available extensions do not imply an emulated VT100–VT525 mode hierarchy. |
+| Nine window-changing cases listed below | 9 | Intentional exclusion: child-controlled resize, move and iconify remain disabled. No window mutation is enabled to improve conformance counts. |
+| Ten VT semantics cases | 10 | Owned by the VT package: CUB after nonwrapping inline output, DECALN margins, DECSED/DECSEL ISO-protection interaction, three DECSET cases, ED 0, NEL outside horizontal margins and RIS/DECCOLM. These require individual VT dispositions. |
+
+The unsupported DECDSR suffixes are `DECCKSR`, `DECMSR`,
+`DSRDECLocatorStatus`, `DSRDataIntegrity`, `DSRKeyboard`,
+`DSRMultipleSessionStatus`, `DSRPrinterPort`, `DSRUDKLocked` and `LocatorType`.
+
+The unsupported DECRQM ANSI modes are `EBM`, `FEAM`, `FETM`, `GATM`, `HEM`,
+`KAM`, `MATM`, `PUM`, `SATM`, `SRM`, `SRTM`, `TSM`, `TTM` and `VEM`.
+The DEC modes are `DECBKM`, `DECCOLM`, `DECHCCM`, `DECHEBM`, `DECNKM`,
+`DECNRCM`, `DECPEX`, `DECPFF` and `DECSCLM`.
+
+The excluded window cases are `DECSLPP`, `IconifyDeiconfiy`, `MoveToXY`,
+`MoveToXY_Defaults`, and `ResizePixels` with `BothParameters`,
+`OmittedHeight`, `OmittedWidth`, `ZeroHeight` and `ZeroWidth`. The three
+DECSCL cases test level 2 disabling DECRQM, level 3 allowing DECRQM but not
+DECSLRM, and level 4 allowing DECSLRM but not DECNCSM.
