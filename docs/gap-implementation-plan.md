@@ -28,7 +28,7 @@ files are responsibility boundaries, not permission to edit another checkout.
 
 | Package | Inventory | Ownership and implementation | Dependencies |
 | --- | --- | --- | --- |
-| Protocol discovery | C01–C04, C08, U12 | Emulator query dispatch, bounded DCS query parser, terminal identity passed from host, palette/color scheme and title queries, bidi title filtering; protocol tests. Prepare truthful Snacks integration fixture/patch. | First; later engine work rebased onto this |
+| Protocol discovery | C01–C04, C07, C08, U12 | Emulator query dispatch, bounded DCS query parser, terminal identity passed from host, palette/color scheme and title queries, OSC 8 logical link identity, bidi title filtering; protocol tests. Prepare truthful Snacks integration fixture/patch. | First; later engine work rebased onto this |
 | VT semantics | C05 | Emulator/document cursor, margins, erase, rectangular operations, modes/save/reset; conformance regressions and explicit disposition of remaining xterm-specific failures. | Integrate after discovery |
 | Input compatibility | C06, V01 | Input encoder, native key metadata, mouse encoding and negotiated modes; reproduce tmux/icat and add modifyOtherKeys/pixel mouse with meaningful tests. | Integrate after engine protocol work |
 | Graphics | G01–G05, V04 | Kitty placement/reflow, indexed images, SIXEL semantics, iTerm multipart/animation/reporting, bounded transport and deterministic graphics tests. Downloads must require an explicit user save action, never arbitrary output-driven filesystem writes. | Engine protocol integration; coordinate renderer image interface |

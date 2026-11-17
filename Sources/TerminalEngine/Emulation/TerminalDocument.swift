@@ -12,6 +12,7 @@ struct TerminalCell: Equatable {
   // 0 empty, 1 single-width lead, 2 double-width lead, 3 continuation,
   // 4 a single-column spacer left by a wide glyph that wrapped.
   var text = ""; var kind: UInt8 = 0; var style = TerminalStyle(); var link: String?
+  var linkID: String? = nil
   var flags: UInt8 = 0; var protected = false
   static func erased(_ style: TerminalStyle = TerminalStyle()) -> TerminalCell {
     TerminalCell(text: "", kind: 0, style: style.erased())
@@ -105,7 +106,8 @@ private struct TerminalRowSlot: Equatable {
 private struct TerminalRowPayload: Equatable {
   var text: String?
   var link: String?
-  var utf8Bytes: UInt64 { UInt64(text?.utf8.count ?? 0) + UInt64(link?.utf8.count ?? 0) }
+  var linkID: String? = nil
+  var utf8Bytes: UInt64 { UInt64(text?.utf8.count ?? 0) + UInt64(link?.utf8.count ?? 0) + UInt64(linkID?.utf8.count ?? 0) }
 }
 
 // The sparse payload owner keeps its resource charge with its entries.
@@ -175,7 +177,7 @@ private struct TerminalRowPayloads: Equatable {
   }
   /// Leaves every column in `range` with a payload that is only `link`, or
   /// with none when `link` is nil.
-  mutating func replace(in range: Range<Int>, link: String?) {
+  mutating func replace(in range: Range<Int>, link: String?, linkID: String? = nil) {
     if link == nil && entries.isEmpty { return }
     let lower = position(of: range.lowerBound), upper = position(of: range.upperBound)
     for position in lower..<upper { utf8Bytes -= entries[position].payload.utf8Bytes }
@@ -183,7 +185,7 @@ private struct TerminalRowPayloads: Equatable {
       if lower < upper { entries.removeSubrange(lower..<upper) }
       return
     }
-    let payload = TerminalRowPayload(text: nil, link: link)
+    let payload = TerminalRowPayload(text: nil, link: link, linkID: linkID)
     entries.replaceSubrange(lower..<upper, with: range.lazy.map { Entry(column: $0, payload: payload) })
     utf8Bytes += UInt64(range.count) * payload.utf8Bytes
     grewCapacity()
@@ -261,8 +263,8 @@ private final class TerminalRowStorage {
     slots[index] = slot
   }
   /// Prepares `range` for a bulk overwrite: every cell gets `link`, or loses its payload.
-  func replacePayloads(in range: Range<Int>, link: String?) {
-    payloads.replace(in: range, link: link)
+  func replacePayloads(in range: Range<Int>, link: String?, linkID: String? = nil) {
+    payloads.replace(in: range, link: link, linkID: linkID)
   }
   /// Writes each scalar as a fresh one- or two-cell cluster starting at
   /// `column`, and returns the column after the last.
@@ -286,9 +288,9 @@ private final class TerminalRowStorage {
   }
   /// Writes a fresh multi-scalar cluster at `column` and returns the column
   /// after it.
-  func writeCluster(text: String, link: String?, wide: Bool, at column: Int, style: UInt16,
+  func writeCluster(text: String, link: String?, linkID: String? = nil, wide: Bool, at column: Int, style: UInt16,
                     flags: UInt8, protected: Bool) -> Int {
-    payloads[column] = TerminalRowPayload(text: text, link: link)
+    payloads[column] = TerminalRowPayload(text: text, link: link, linkID: linkID)
     return slots.withUnsafeMutableBufferPointer { slots in
       slots[column] = TerminalRowSlot(style: style, kind: wide ? 2 : 1, flags: flags, protected: protected,
                                       hasPayload: true)
@@ -483,7 +485,7 @@ struct TerminalRow: Equatable {
     else if slot.hasScalar, let scalar = Unicode.Scalar(slot.scalar) { text = String(scalar) }
     else { text = "" }
     return TerminalCell(text: text, kind: slot.kind, style: style,
-                        link: payload?.link, flags: slot.flags, protected: slot.protected)
+                        link: payload?.link, linkID: payload?.linkID, flags: slot.flags, protected: slot.protected)
   }
   private mutating func ensureUniqueForCellEdit() {
     if !isKnownUniquelyReferenced(&storage) {
@@ -499,7 +501,7 @@ struct TerminalRow: Equatable {
     ensureUniqueForCellEdit()
     var slot = TerminalRowSlot(scalar: 0, style: storage.intern(cell.style), hasScalar: false,
                                kind: cell.kind, flags: cell.flags, protected: cell.protected)
-    var payload = TerminalRowPayload(text: nil, link: cell.link)
+    var payload = TerminalRowPayload(text: nil, link: cell.link, linkID: cell.linkID)
     let scalars = cell.text.unicodeScalars
     if scalars.count == 1, let scalar = scalars.first {
       slot.scalar = scalar.value
@@ -511,19 +513,19 @@ struct TerminalRow: Equatable {
   }
 
   mutating func setScalar(_ scalar: Unicode.Scalar, at index: Int, kind: UInt8,
-                          style: TerminalStyle, link: String?, flags: UInt8, protected: Bool) {
+                          style: TerminalStyle, link: String?, linkID: String? = nil, flags: UInt8, protected: Bool) {
     observeSelectionWrite(index..<(index + 1))
     ensureUniqueForCellEdit()
     let slot = TerminalRowSlot(scalar: scalar.value, style: storage.intern(style), hasScalar: true,
                                kind: kind, flags: flags, protected: protected)
-    storage.setSlot(slot, payload: link.map { TerminalRowPayload(text: nil, link: $0) }, at: index)
+    storage.setSlot(slot, payload: link.map { TerminalRowPayload(text: nil, link: $0, linkID: linkID) }, at: index)
   }
 
   /// Re-forms the cells of a multi-scalar cluster after it gained a scalar:
   /// its lead, and its continuation when it is two cells wide. The cluster's
   /// text follows in one `setClusterText` once the print transaction has seen
   /// its last scalar; until then the lead's text is stale.
-  mutating func reformCluster(at index: Int, wide: Bool, style: TerminalStyle, link: String?,
+  mutating func reformCluster(at index: Int, wide: Bool, style: TerminalStyle, link: String?, linkID: String? = nil,
                               flags: UInt8, protected: Bool) {
     let width = wide ? 2 : 1
     guard index >= 0, index + width <= storage.slots.count else { return }
@@ -536,7 +538,7 @@ struct TerminalRow: Equatable {
     if wide {
       observeSelectionWrite((index + 1)..<(index + 2))
       storage.setSlot(TerminalRowSlot(style: styleIndex, kind: 3, flags: flags & ~UInt8(1), protected: protected),
-                      payload: link.map { TerminalRowPayload(text: nil, link: $0) }, at: index + 1)
+                      payload: link.map { TerminalRowPayload(text: nil, link: $0, linkID: linkID) }, at: index + 1)
     }
     revision &+= 1
   }
@@ -551,12 +553,12 @@ struct TerminalRow: Equatable {
     } else if slot.hasScalar, let scalar = Unicode.Scalar(slot.scalar) {
       scalars.append(scalar)
     }
-    return TerminalDocument.ClusterLead(style: storage.style(slot.style), link: payload?.link, flags: slot.flags,
+    return TerminalDocument.ClusterLead(style: storage.style(slot.style), link: payload?.link, linkID: payload?.linkID, flags: slot.flags,
                                         protected: slot.protected, wide: slot.kind == 2)
   }
-  mutating func setClusterText(_ text: String, link: String?, at index: Int) {
+  mutating func setClusterText(_ text: String, link: String?, linkID: String? = nil, at index: Int) {
     ensureUniqueForCellEdit()
-    storage.payloads[index] = TerminalRowPayload(text: text, link: link)
+    storage.payloads[index] = TerminalRowPayload(text: text, link: link, linkID: linkID)
     storage.slots[index].hasPayload = true
   }
   mutating func erase(at index: Int, style: TerminalStyle = TerminalStyle()) {
@@ -658,13 +660,13 @@ struct TerminalRow: Equatable {
     }
   }
   mutating func replaceASCII<C: Collection>(at column: Int, scalars: C, style: TerminalStyle,
-                                             link: String?, protected: Bool, isoProtected: Bool = false) where C.Element == Unicode.Scalar {
+                                             link: String?, linkID: String? = nil, protected: Bool, isoProtected: Bool = false) where C.Element == Unicode.Scalar {
     let count = scalars.count
     guard count > 0, column >= 0, column + count <= storage.slots.count else { return }
     ensureUniqueForCellEdit()
     let range = column..<(column + count)
     observeSelectionWrite(range)
-    storage.replacePayloads(in: range, link: link)
+    storage.replacePayloads(in: range, link: link, linkID: linkID)
     let styleIndex = storage.intern(style)
     storage.slots.withUnsafeMutableBufferPointer { slots in
       var index = column
@@ -691,14 +693,14 @@ struct TerminalRow: Equatable {
     if clearsRight { erase(at: upper, style: eraseStyle) }
   }
   mutating func writeASCII(_ bytes: UnsafeBufferPointer<UInt8>, at column: Int, style: TerminalStyle,
-                           link: String?, protected: Bool, isoProtected: Bool = false) {
+                           link: String?, linkID: String? = nil, protected: Bool, isoProtected: Bool = false) {
     let count = bytes.count
     guard count > 0, column >= 0, column + count <= storage.slots.count else { return }
     let range = column..<(column + count)
     clearPairHalves(outside: range, eraseStyle: style.erased())
     ensureUniqueForCellEdit()
     observeSelectionWrite(range)
-    storage.replacePayloads(in: range, link: link)
+    storage.replacePayloads(in: range, link: link, linkID: linkID)
     let slot = TerminalRowSlot(scalar: 0, style: storage.intern(style), hasScalar: true, kind: 1,
                                flags: (protected ? 2 : 0) | (isoProtected ? 8 : 0), protected: protected, hasPayload: link != nil)
     storage.slots.withUnsafeMutableBufferPointer { slots in
@@ -713,13 +715,13 @@ struct TerminalRow: Equatable {
   fileprivate mutating func replaceClusters(at column: Int, scalars: UnsafeBufferPointer<Unicode.Scalar>,
                                             clusters: [TerminalDocument.PrintedCluster],
                                             texts: borrowing TerminalDocument.ClusterCache, cellCount: Int,
-                                            style: TerminalStyle, link: String?, protected: Bool, isoProtected: Bool = false) {
+                                            style: TerminalStyle, link: String?, linkID: String? = nil, protected: Bool, isoProtected: Bool = false) {
     guard cellCount > 0, column >= 0, column + cellCount <= storage.slots.count else { return }
     let range = column..<(column + cellCount)
     clearPairHalves(outside: range, eraseStyle: style.erased())
     ensureUniqueForCellEdit()
     observeSelectionWrite(range)
-    storage.replacePayloads(in: range, link: link)
+    storage.replacePayloads(in: range, link: link, linkID: linkID)
     revision &+= UInt64(scalars.count)
     let styleIndex = storage.intern(style)
     let flags: UInt8 = (protected ? 2 : 0) | (isoProtected ? 8 : 0)
@@ -728,7 +730,7 @@ struct TerminalRow: Equatable {
     for cluster in clusters {
       index = storage.writeSingletons(UnsafeBufferPointer(rebasing: scalars[position..<cluster.start]), at: index,
                                       style: styleIndex, flags: flags, protected: protected, linked: linked)
-      index = storage.writeCluster(text: texts.text(in: cluster.slot), link: link, wide: cluster.wide, at: index,
+      index = storage.writeCluster(text: texts.text(in: cluster.slot), link: link, linkID: linkID, wide: cluster.wide, at: index,
                                    style: styleIndex, flags: flags, protected: protected)
       position = cluster.start + cluster.count
     }
@@ -747,7 +749,7 @@ struct TerminalRow: Equatable {
   // public history budget deliberately retains its legacy 64-byte formula.
   var allocationBaseCost: UInt64 {
     allocationSlotCost
-      + UInt64(storage.payloads.capacity) * 80 + UInt64(storage.payloads.count) * 64
+      + UInt64(storage.payloads.capacity) * 96 + UInt64(storage.payloads.count) * 64
   }
   // Admission keeps charging the 24 bytes a cell occupied before styles moved
   // into the row table. That over-covers the packed slots and their table for
@@ -759,7 +761,13 @@ struct TerminalRow: Equatable {
     let slot = storage.slots[index]
     let payload = storage.payload(at: index)
     return (slot.hasScalar ? UInt64(Self.utf8Length(of: slot.scalar)) : UInt64(payload?.text?.utf8.count ?? 0),
-            UInt64(payload?.link?.utf8.count ?? 0), payload != nil, payload?.link != nil)
+            UInt64(payload?.link?.utf8.count ?? 0) + UInt64(payload?.linkID?.utf8.count ?? 0), payload != nil, payload?.link != nil)
+  }
+  /// Enumerate sparse metadata without projecting ordinary scalar cells.
+  func forEachLinkID(_ body: (Int, String) -> Void) {
+    for entry in storage.payloads.entries {
+      if let id = entry.payload.linkID { body(entry.column, id) }
+    }
   }
   var retainedStorageCost: UInt64 {
     var bytes = Self.logicalRowCharge + UInt64(storage.logicalCapacity) * Self.logicalCellCharge
@@ -977,7 +985,7 @@ struct TerminalScreen: Equatable {
   enum PromptPhase { case none, drawing, inputReady }
   var rows: [TerminalRow]; var cursorRow = 0; var cursorColumn = 0; var pendingWrap = false
   var savedRow = 0; var savedColumn = 0; var savedPendingWrap = false; var savedOrigin = false
-  var savedStyle = TerminalStyle(); var savedLink: String?
+  var savedStyle = TerminalStyle(); var savedLink: String?; var savedLinkID: String?
   var savedProtected = false
   var savedCharsetSpecial = [false, false]
   var savedCharsetSlot = 0
@@ -1010,6 +1018,7 @@ struct TerminalDocument {
   struct PrintAttributes {
     var style: TerminalStyle
     var link: String?
+    var linkID: String? = nil
     var protected: Bool
     // ISO SPA/EPA protects against ordinary erasure; DEC DECSCA protects
     // against selective erasure. They are independent protocols.
@@ -1068,6 +1077,7 @@ struct TerminalDocument {
   fileprivate struct ClusterLead {
     var style: TerminalStyle
     var link: String?
+    var linkID: String? = nil
     var flags: UInt8
     var protected: Bool
     var wide: Bool
@@ -1443,7 +1453,7 @@ struct TerminalDocument {
       // enforces history limits before anything else is printed.
       let count = appended > 0 ? 1 : min(bytes.count - consumed, room)
       screen.rows[row].writeASCII(UnsafeBufferPointer(rebasing: bytes[consumed..<(consumed + count)]),
-                                  at: column, style: attributes.style, link: attributes.link,
+                                  at: column, style: attributes.style, link: attributes.link, linkID: attributes.linkID,
                                   protected: attributes.protected, isoProtected: attributes.isoProtected)
       state.openCluster = (row, column + count - 1)
       state.retainedScalars = 1
@@ -1570,7 +1580,7 @@ struct TerminalDocument {
           screen.rows[row].replaceClusters(
             at: column, scalars: UnsafeBufferPointer(rebasing: scalars[consumed..<end]),
             clusters: state.runClusters, texts: state.clusters, cellCount: cells,
-            style: attributes.style, link: attributes.link, protected: attributes.protected,
+            style: attributes.style, link: attributes.link, linkID: attributes.linkID, protected: attributes.protected,
             isoProtected: attributes.isoProtected)
           state.segmenter = segmenter
           state.openCluster = (row, column + cells - lastWidth)
@@ -1580,7 +1590,7 @@ struct TerminalDocument {
             effect.lastPrinted = .cluster(state.clusters.text(in: last.slot))
             // An extended cluster repeats with its lead cell's attributes,
             // which here are the caller's, stated outright as extension does.
-            effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link,
+            effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link, linkID: attributes.linkID,
                                                       protected: attributes.protected, isoProtected: attributes.isoProtected)
           } else {
             state.retainedScalars = 1
@@ -1704,19 +1714,19 @@ struct TerminalDocument {
         screen.rows[owner.row].revision &+= 1
       } else {
         screen.rows[owner.row].reformCluster(at: owner.column, wide: nextWide, style: lead.style,
-                                             link: lead.link, flags: nextFlags, protected: lead.protected)
+                                             link: lead.link, linkID: lead.linkID, flags: nextFlags, protected: lead.protected)
         formed = true
       }
       wide = nextWide
       flags = nextFlags
     }
-    screen.rows[owner.row].setClusterText(text, link: lead.link, at: owner.column)
+    screen.rows[owner.row].setClusterText(text, link: lead.link, linkID: lead.linkID, at: owner.column)
     state.retainedScalars += added.count
     screen.cursorRow = owner.row
     screen.cursorColumn = min(right, owner.column + occupied)
     screen.pendingWrap = owner.column + occupied > right && autoWrap
     effect.lastPrinted = .cluster(text)
-    effect.repeatAttributes = PrintAttributes(style: lead.style, link: lead.link, protected: lead.protected, isoProtected: lead.flags & 8 != 0)
+    effect.repeatAttributes = PrintAttributes(style: lead.style, link: lead.link, linkID: lead.linkID, protected: lead.protected, isoProtected: lead.flags & 8 != 0)
     return true
   }
 
@@ -1788,7 +1798,7 @@ struct TerminalDocument {
         let newRight = writeBounds(column).right
         let occupied = min(nominal, newRight + 1 - column)
         let lead = TerminalCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1,
-                                style: cell.style, link: cell.link,
+                                style: cell.style, link: cell.link, linkID: cell.linkID,
                                 flags: cell.flags | (nominal > occupied ? 1 : 0),
                                 protected: cell.protected)
         Self.replacePrintedLead(in: &screen.rows[row], at: column, with: lead)
@@ -1800,14 +1810,14 @@ struct TerminalDocument {
           shift(owner.row, owner.column + oldWidth, horizontal.1, occupied - oldWidth, cell.style.erased())
         }
         let lead = TerminalCell(text: combined, kind: nominal == 2 && occupied == 2 ? 2 : 1,
-                                style: cell.style, link: cell.link,
+                                style: cell.style, link: cell.link, linkID: cell.linkID,
                                 flags: cell.flags | (nominal > occupied ? 1 : 0),
                                 protected: cell.protected)
         Self.replacePrintedLead(in: &screen.rows[owner.row], at: owner.column, with: lead)
         screen.cursorRow = owner.row; screen.cursorColumn = min(right, owner.column + occupied); screen.pendingWrap = owner.column + occupied > right && autoWrap
       }
       effect.lastPrinted = .cluster(combined)
-      effect.repeatAttributes = PrintAttributes(style: cell.style, link: cell.link, protected: cell.protected, isoProtected: cell.flags & 8 != 0)
+      effect.repeatAttributes = PrintAttributes(style: cell.style, link: cell.link, linkID: cell.linkID, protected: cell.protected, isoProtected: cell.flags & 8 != 0)
       return
     }
     state.openCluster = nil; state.retainedScalars = 0
@@ -1854,11 +1864,11 @@ struct TerminalDocument {
     let kind: UInt8 = width == 2 && occupied == 2 ? 2 : 1
     let flags: UInt8 = (attributes.protected ? 2 : 0) | (truncated ? 1 : 0) | (attributes.isoProtected ? 8 : 0)
     Self.replacePrintedScalar(in: &screen.rows[row], at: column, scalar: scalar, kind: kind,
-                              style: attributes.style, link: attributes.link, flags: flags,
+                              style: attributes.style, link: attributes.link, linkID: attributes.linkID, flags: flags,
                               protected: attributes.protected)
     state.openCluster = (row, column); state.retainedScalars = 1
     effect.lastPrinted = .scalar(scalar)
-    effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link,
+    effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link, linkID: attributes.linkID,
                                               protected: attributes.protected, isoProtected: attributes.isoProtected)
     screen.cursorColumn = min(right, column + occupied)
     screen.pendingWrap = column + occupied > right && autoWrap
@@ -1878,7 +1888,7 @@ struct TerminalDocument {
     row.setCell(lead, at: column)
     if width == 2 {
       row.setCell(TerminalCell(text: "", kind: 3, style: lead.style,
-                                link: lead.link, flags: lead.flags & ~UInt8(1),
+                                link: lead.link, linkID: lead.linkID, flags: lead.flags & ~UInt8(1),
                                 protected: lead.protected), at: column + 1)
     }
     row.revision &+= 1
@@ -1886,15 +1896,15 @@ struct TerminalDocument {
 
   private static func replacePrintedScalar(in row: inout TerminalRow, at column: Int,
                                            scalar: Unicode.Scalar, kind: UInt8, style: TerminalStyle,
-                                           link: String?, flags: UInt8, protected: Bool) {
+                                           link: String?, linkID: String? = nil, flags: UInt8, protected: Bool) {
     guard column >= 0, column < row.count else { return }
     let width = kind == 2 ? 2 : 1
     guard column + width <= row.count else { return }
     guard preparePrintedReplacement(in: &row, at: column, count: width, eraseStyle: style.erased()) else { return }
-    row.setScalar(scalar, at: column, kind: kind, style: style, link: link, flags: flags,
+    row.setScalar(scalar, at: column, kind: kind, style: style, link: link, linkID: linkID, flags: flags,
                   protected: protected)
     if width == 2 {
-      row.setCell(TerminalCell(text: "", kind: 3, style: style, link: link,
+      row.setCell(TerminalCell(text: "", kind: 3, style: style, link: link, linkID: linkID,
                                 flags: flags & ~UInt8(1), protected: protected), at: column + 1)
     }
     row.revision &+= 1

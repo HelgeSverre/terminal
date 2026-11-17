@@ -126,7 +126,7 @@ private final class TerminalEmulator {
   }
   private var currentLink: String? {
     get { attributes.link }
-    set { captureRepeatAttributes(); attributes.link = newValue }
+    set { captureRepeatAttributes(); attributes.link = newValue; attributes.linkID = nil }
   }
   private var protectedOutput: Bool {
     get { attributes.protected }
@@ -913,14 +913,14 @@ private final class TerminalEmulator {
   private func saveCursor() {
     var s = screen
     s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap
-    s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink
+    s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; s.savedLinkID = attributes.linkID
     s.savedCharsetSpecial = charsetSpecial; s.savedCharsetSlot = charsetSlot
     s.savedProtected = protectedOutput
     screen = s
   }
   private func restoreCursor() {
     var s = screen
-    originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink
+    originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; attributes.linkID = s.savedLinkID
     charsetSpecial = s.savedCharsetSpecial; charsetSlot = s.savedCharsetSlot
     protectedOutput = s.savedProtected
     s.cursorRow = min(rowCount - 1, s.savedRow); s.cursorColumn = min(columns - 1, s.savedColumn)
@@ -1710,7 +1710,22 @@ private final class TerminalEmulator {
       else if command == "8" {
         if let parameterSeparator = value.firstIndex(of: ";") {
           let uri = String(value[value.index(after: parameterSeparator)...])
-          if uri.utf8.count <= 8192 { currentLink = uri.isEmpty ? nil : uri }
+          if uri.utf8.count <= 8192 {
+            currentLink = uri.isEmpty ? nil : uri
+            if !uri.isEmpty {
+              // OSC 8 parameters are colon-separated key=value pairs. Retain
+              // only the defined id field; reject overlong/control IDs rather
+              // than truncating two distinct identities to the same value.
+              let parameters = value[..<parameterSeparator].split(separator: ":", omittingEmptySubsequences: false)
+              if let field = parameters.first(where: { $0.hasPrefix("id=") }) {
+                let id = String(field.dropFirst(3))
+                if !id.isEmpty, id.utf8.count <= 256,
+                   !id.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) {
+                  attributes.linkID = id
+                }
+              }
+            }
+          }
         }
       }
       else if ["4", "5", "6", "10", "11", "12", "104", "105", "106", "110", "111", "112"].contains(command) {
@@ -2242,14 +2257,14 @@ private final class TerminalEmulator {
       let margins = (current.topMargin, current.bottomMargin, current.leftMargin, current.rightMargin)
       let promptPhase = current.promptPhase
       let promptRedraw = current.promptRedraw
-      let saved = (current.savedRow, current.savedColumn, current.savedPendingWrap, current.savedOrigin, current.savedStyle, current.savedLink)
+      let saved = (current.savedRow, current.savedColumn, current.savedPendingWrap, current.savedOrigin, current.savedStyle, current.savedLink, current.savedLinkID)
       let keyboard = (current.keyboardFlags, current.keyboardStack)
       let cursorAppearance = (current.cursorVisible, current.cursorShape)
       current = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns)
       current.topMargin = margins.0; current.bottomMargin = margins.1
       current.leftMargin = margins.2; current.rightMargin = margins.3
       current.savedRow = saved.0; current.savedColumn = saved.1; current.savedPendingWrap = saved.2
-      current.savedOrigin = saved.3; current.savedStyle = saved.4; current.savedLink = saved.5
+      current.savedOrigin = saved.3; current.savedStyle = saved.4; current.savedLink = saved.5; current.savedLinkID = saved.6
       current.keyboardFlags = keyboard.0; current.keyboardStack = keyboard.1
       current.cursorVisible = cursorAppearance.0; current.cursorShape = cursorAppearance.1
       current.promptPhase = promptPhase
@@ -2384,7 +2399,7 @@ private final class TerminalEmulator {
           italic: flags & 4 != 0, inverse: flags & 8 != 0, conceal: flags & 16 != 0,
           strike: flags & 32 != 0, overline: flags & 64 != 0, blink: flags & 128 != 0)
         cells.append(CellSnapshot(text: cell.text, kind: kinds[Int(cell.kind)], style: style,
-                                  link: cell.link, flags: Int(cell.flags)))
+                                  link: cell.link, linkID: cell.linkID, flags: Int(cell.flags)))
       }
       rows.append(RowSnapshot(cells: cells, soft_wrapped: row.softWrapped, id: row.id, revision: row.revision))
     }
@@ -2733,6 +2748,13 @@ private final class TerminalEmulator {
     }
     return (current, others)
   }
+  private func snapshotLinkIDs(_ rows: [TerminalRow]) -> [String: String] {
+    var ids: [String: String] = [:]
+    for (row, cells) in rows.enumerated() {
+      cells.forEachLinkID { column, id in ids[String(row * columns + column)] = id }
+    }
+    return ids
+  }
   func publishBinary(scroll: Int?, now: UInt64, context: UnsafeMutableRawPointer?, callback: SnapshotCallback?) -> Bool {
     tick(now)
     guard !publicationGated else { return false }
@@ -2741,6 +2763,7 @@ private final class TerminalEmulator {
     var metadataObject = snapshotMetadata(cursor: screen, offset: selected.offset,
                                           followingTail: selected.followingTail,
                                           search: visibleSearchHighlights(in: selected.rows, offset: selected.offset))
+    metadataObject["link_ids"] = snapshotLinkIDs(selected.rows)
     metadataObject["row_identities"] = selected.rows.map { ["id": $0.id, "revision": $0.revision] }
     #if SNAPSHOT_ABI_DIAGNOSTICS
     SnapshotABIDiagnostics.jsonPublications += 1
@@ -2787,7 +2810,7 @@ private final class TerminalEmulator {
     let source: [TerminalRow]; let offset: Int
     let selected = selectSnapshot(scroll: scroll)
     source = selected.rows; offset = selected.offset
-    let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in let resolved = palette.presentationStyle(cell.style); return ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(resolved.foreground), "background": colorJSON(resolved.background), "underline_color": colorJSON(resolved.underline), "underline": Int(resolved.underlineKind), "bold": resolved.flags & 1 != 0, "faint": resolved.flags & 2 != 0, "italic": resolved.flags & 4 != 0, "inverse": resolved.flags & 8 != 0, "conceal": resolved.flags & 16 != 0, "strike": resolved.flags & 32 != 0, "overline": resolved.flags & 64 != 0, "blink": resolved.flags & 128 != 0], "link": cell.link as Any, "flags": Int(cell.flags)] } ] }
+    let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in let resolved = palette.presentationStyle(cell.style); return ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(resolved.foreground), "background": colorJSON(resolved.background), "underline_color": colorJSON(resolved.underline), "underline": Int(resolved.underlineKind), "bold": resolved.flags & 1 != 0, "faint": resolved.flags & 2 != 0, "italic": resolved.flags & 4 != 0, "inverse": resolved.flags & 8 != 0, "conceal": resolved.flags & 16 != 0, "strike": resolved.flags & 32 != 0, "overline": resolved.flags & 64 != 0, "blink": resolved.flags & 128 != 0], "link": cell.link as Any, "linkID": cell.linkID as Any, "flags": Int(cell.flags)] } ] }
     var data = snapshotMetadata(cursor: screen, offset: offset,
                                 followingTail: selected.followingTail,
                                 search: visibleSearchHighlights(in: source, offset: offset))

@@ -78,6 +78,8 @@ public final class HeadlessTerminal {
     public let concealed: Bool
     /// The target of an OSC 8 hyperlink.
     public let link: String?
+    /// OSC 8's optional logical anchor identifier, without changing `link`.
+    public let linkID: String?
   }
 
   let core: OpaquePointer
@@ -230,7 +232,7 @@ public final class HeadlessTerminal {
           text: cell.kind == "Continuation" ? "" : cell.text, isContinuation: cell.kind == "Continuation",
           foreground: foreground, background: background, bold: cell.style.bold, italic: cell.style.italic,
           underlined: cell.style.underline != 0, struckThrough: cell.style.strike, concealed: cell.style.conceal,
-          link: cell.link)
+          link: cell.link, linkID: cell.linkID)
       }
     }
     let lines = snapshot.rows.map { row -> String in

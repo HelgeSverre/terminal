@@ -35,6 +35,7 @@ enum BinarySnapshotOracle {
     let default_fg: [Int]
     let default_bg: [Int]
     let cursor_color: UInt32?
+    let link_ids: [String: String]?
   }
   private final class Capture {
     var snapshot: TerminalSnapshot?
@@ -137,6 +138,7 @@ enum BinarySnapshotOracle {
             output.append(
               CellSnapshot(
                 text: text, kind: kinds[Int(cell.kind)], style: style, link: link,
+                linkID: header.link_ids?[String(row * header.cols + column)],
                 flags: Int(cell.cell_flags)))
           }
           rows.append(RowSnapshot(cells: output, soft_wrapped: wraps[row] != 0,

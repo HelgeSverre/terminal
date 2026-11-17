@@ -22,6 +22,8 @@ typedef struct {
   uint8_t kind, cell_flags, underline;
 } TerminalCellView;
 bool helge_terminal_snapshot_binary(Terminal *,size_t,uint64_t,void *,void (*)(void *,const uint8_t *,size_t,const TerminalCellView *,size_t,const uint8_t *,size_t));
+/* Snapshot metadata may include link_ids: a sparse dictionary from decimal
+ * flattened grid index to OSC 8 id. CellView.link remains the unchanged URI. */
 bool helge_terminal_view_snapshot_binary(Terminal *,uint64_t,void *,void (*)(void *,const uint8_t *,size_t,const TerminalCellView *,size_t,const uint8_t *,size_t));
 void helge_terminal_view_scroll(Terminal *,int64_t);
 void helge_terminal_view_follow_tail(Terminal *);

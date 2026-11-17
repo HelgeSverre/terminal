@@ -59,3 +59,18 @@ Helge-specific upstream patch and default-image startup configuration. It
 requires runtime validation in a frozen app; upstream recognition is a separate
 dependency. Source regressions are in `TerminalProtocolDiscoveryTests`,
 `TerminalPaletteTests`, `TransportTests` and `SnapshotBridgeTests`.
+
+OSC 8 retains its colon-separated `id` parameter separately from the URI.
+IDs are at most 256 UTF-8 bytes and exclude control characters; missing,
+empty or invalid IDs use the existing adjacent-same-URI heuristic. Unknown
+parameters are ignored. IDs survive wide/combining cells, repeats, save/restore,
+history and reflow, and their bytes count toward storage admission. The Swift
+cell APIs expose `linkID`; the layout-compatible C snapshot carries a sparse
+`link_ids` metadata dictionary keyed by flattened grid index. The actual link
+string and opened URI are unchanged.
+
+Hover occurrences group visible pieces with the same URI and nonempty ID,
+including disjoint pieces and hard-line breaks, while distinct IDs remain
+separate. Labels remain bounded and activations retain owner-validated row
+identity/revision proofs. An ID-only rewrite invalidates the prior activation.
+This follows the [OSC 8 identity semantics](https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda).

@@ -6,6 +6,8 @@ package struct CellSnapshot: Decodable, Equatable {
   package let kind: String
   package let style: CellStyle
   package let link: String?
+  /// OSC 8's logical anchor identity; the URI remains `link`.
+  package var linkID: String? = nil
   package let flags: Int
 }
 package struct TerminalColor: Decodable, Equatable {

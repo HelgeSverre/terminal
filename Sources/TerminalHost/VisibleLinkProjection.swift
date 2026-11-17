@@ -13,15 +13,18 @@ package struct VisibleLinkProjection {
   /// must not reconstruct either from a label, an AX string, or a pointer.
   package struct Activation: Equatable {
     package let target: URL
+    package let linkID: String?
     package let content: TerminalPresentedContent
 
-    fileprivate init(target: URL, content: TerminalPresentedContent) {
+    fileprivate init(target: URL, linkID: String?, content: TerminalPresentedContent) {
       self.target = target
+      self.linkID = linkID
       self.content = content
     }
   }
   package struct Occurrence: Equatable {
     package let target: URL
+    package let linkID: String?
     /// Physical cell ranges, including both cells of a wide grapheme.
     package let gridSegments: [Range<Int>]
     /// The visible spelling, without an artificial separator at a soft wrap.
@@ -30,19 +33,22 @@ package struct VisibleLinkProjection {
     /// remain visible to AX, but it cannot bypass owner validation.
     package let activation: Activation?
     private let snapshotIdentity: SnapshotIdentity
+    fileprivate let explicitURI: String?
 
-    fileprivate init(target: URL, gridSegments: [Range<Int>], label: String, activation: Activation?,
-                     snapshotIdentity: SnapshotIdentity) {
+    fileprivate init(target: URL, linkID: String?, gridSegments: [Range<Int>], label: String, activation: Activation?,
+                     snapshotIdentity: SnapshotIdentity, explicitURI: String?) {
       self.target = target
+      self.linkID = linkID
       self.gridSegments = gridSegments
       self.label = label
       self.activation = activation
       self.snapshotIdentity = snapshotIdentity
+      self.explicitURI = explicitURI
     }
 
     package static func == (lhs: Occurrence, rhs: Occurrence) -> Bool {
-      lhs.target == rhs.target && lhs.gridSegments == rhs.gridSegments && lhs.label == rhs.label
-        && lhs.activation == rhs.activation && lhs.snapshotIdentity == rhs.snapshotIdentity
+      lhs.target == rhs.target && lhs.linkID == rhs.linkID && lhs.gridSegments == rhs.gridSegments && lhs.label == rhs.label
+        && lhs.activation == rhs.activation && lhs.snapshotIdentity == rhs.snapshotIdentity && lhs.explicitURI == rhs.explicitURI
     }
   }
 
@@ -63,8 +69,10 @@ package struct VisibleLinkProjection {
     /// Non-nil means OSC 8 explicitly annotated this cell. Invalid annotations
     /// are still a boundary: they must not silently become plain-text links.
     package let explicit: String?
+    package let linkID: String?
   }
   private struct OccurrenceKey: Hashable { let target: String; let segments: [Range<Int>] }
+  private struct ExplicitIdentity: Hashable { let target: String; let id: String }
 
   package let occurrences: [Occurrence]
   private let byGrid: [Int32]
@@ -105,7 +113,7 @@ package struct VisibleLinkProjection {
     var grid = [Int32](repeating: -1, count: gridProduct.partialValue)
     var emitted = Set<OccurrenceKey>()
 
-    func append(_ target: URL, _ parts: [CellPart], label: String) {
+    func append(_ target: URL, _ parts: [CellPart], label: String, linkID: String? = nil) {
       guard !parts.isEmpty, found.count < Self.maximumOccurrences,
         Self.openableURL(for: target.absoluteString) != nil
       else { return }
@@ -119,10 +127,10 @@ package struct VisibleLinkProjection {
       }
       guard emitted.insert(OccurrenceKey(target: target.absoluteString, segments: segments)).inserted else { return }
       let occurrence = Occurrence(
-        target: target, gridSegments: segments, label: label,
-        activation: Self.activation(target: target, segments: segments, presentation: presentation,
+        target: target, linkID: linkID, gridSegments: segments, label: label,
+        activation: Self.activation(target: target, linkID: linkID, segments: segments, presentation: presentation,
                                     columns: snapshot.cols, rowCount: snapshot.rows.count),
-        snapshotIdentity: identity)
+        snapshotIdentity: identity, explicitURI: parts.first?.explicit)
       let occurrenceIndex = Int32(found.count)
       found.append(occurrence)
       for segment in segments where segment.lowerBound >= 0 && segment.upperBound <= grid.count {
@@ -135,6 +143,7 @@ package struct VisibleLinkProjection {
     // is useful to the recognizer, and that token is bounded below.
     var explicitParts: [CellPart] = []
     var explicitRaw: String?
+    var explicitID: String?
     var explicitUTF16 = 0
     var plainParts: [CellPart] = []
     var plainStart = 0
@@ -142,11 +151,12 @@ package struct VisibleLinkProjection {
     func emitExplicit() {
       defer { explicitParts.removeAll(keepingCapacity: true); explicitUTF16 = 0 }
       guard let raw = explicitRaw, let target = Self.openableURL(for: raw) else { return }
-      append(target, explicitParts, label: explicitParts.map(\.text).joined())
+      append(target, explicitParts, label: explicitParts.map(\.text).joined(), linkID: explicitID)
     }
     func finishExplicit() {
       emitExplicit()
       explicitRaw = nil
+      explicitID = nil
     }
     func discardOverlongPlainPrefix() {
       // A candidate that fell out of this suffix is already longer than the
@@ -182,10 +192,13 @@ package struct VisibleLinkProjection {
         let text = cell.kind == "Empty" ? " " : cell.text
         let width = cell.kind == "Lead2" ? 2 : 1
         let start = rowIndex * snapshot.cols + column
-        let part = CellPart(text: text, grid: start..<(start + width), explicit: cell.link)
+        let part = CellPart(text: text, grid: start..<(start + width), explicit: cell.link,
+          linkID: cell.linkID.flatMap { $0.isEmpty ? nil : $0 })
         if let raw = part.explicit {
           finishPlain()
-          if raw != explicitRaw { finishExplicit(); explicitRaw = raw }
+          if raw != explicitRaw || part.linkID != explicitID {
+            finishExplicit(); explicitRaw = raw; explicitID = part.linkID
+          }
           explicitParts.append(part)
           explicitUTF16 += text.utf16.count
           // A pathological OSC 8 target is emitted in bounded chunks.  Normal
@@ -209,7 +222,49 @@ package struct VisibleLinkProjection {
         finishExplicit(); finishPlain()
       }
     }
-    occurrences = found
+    guard found.contains(where: { $0.linkID != nil }) else {
+      occurrences = found; byGrid = grid; return
+    }
+    // A nonempty OSC 8 id connects disjoint visible pieces of the same URI,
+    // including hard-line breaks and editor panes. The existing occurrence,
+    // grid and candidate bounds still limit this work; labels stay bounded.
+    var groups: [ExplicitIdentity: Int] = [:]
+    var pieces: [[Occurrence]] = []
+    for occurrence in found {
+      if let id = occurrence.linkID {
+        let key = ExplicitIdentity(target: occurrence.explicitURI ?? occurrence.target.absoluteString, id: id)
+        if let index = groups[key] { pieces[index].append(occurrence) }
+        else { groups[key] = pieces.count; pieces.append([occurrence]) }
+      } else { pieces.append([occurrence]) }
+    }
+    var grouped: [Occurrence] = []
+    for parts in pieces {
+      let first = parts[0]
+      guard parts.count > 1 else { grouped.append(first); continue }
+      let segments = parts.flatMap(\.gridSegments)
+      var label = "", units = 0
+      var previousEnd: Int?
+      for part in parts {
+        let separator = previousEnd == nil || previousEnd == part.gridSegments.first?.lowerBound ? "" : " "
+        for scalar in (separator + part.label).unicodeScalars {
+          let width = scalar.utf16.count
+          guard units + width <= Self.maximumCandidateUTF16 else { break }
+          label.unicodeScalars.append(scalar); units += width
+        }
+        previousEnd = part.gridSegments.last?.upperBound
+      }
+      grouped.append(Occurrence(target: first.target, linkID: first.linkID, gridSegments: segments, label: label,
+        activation: Self.activation(target: first.target, linkID: first.linkID, segments: segments, presentation: presentation,
+          columns: snapshot.cols, rowCount: snapshot.rows.count), snapshotIdentity: identity, explicitURI: first.explicitURI))
+    }
+    // Reindex after merging identities; every piece points at the same hover
+    // occurrence and activation while the destination URL remains unchanged.
+    for (index, occurrence) in grouped.enumerated() {
+      for segment in occurrence.gridSegments where segment.lowerBound >= 0 && segment.upperBound <= grid.count {
+        for cell in segment { grid[cell] = Int32(index) }
+      }
+    }
+    occurrences = grouped
     byGrid = grid
   }
 
@@ -220,7 +275,7 @@ package struct VisibleLinkProjection {
   }
 
   private static func activation(
-    target: URL, segments: [Range<Int>], presentation: TerminalSelectionPresentation?, columns: Int, rowCount: Int
+    target: URL, linkID: String?, segments: [Range<Int>], presentation: TerminalSelectionPresentation?, columns: Int, rowCount: Int
   ) -> Activation? {
     guard let presentation, presentation.columns == columns, presentation.rows.count == rowCount,
       !segments.isEmpty
@@ -248,7 +303,7 @@ package struct VisibleLinkProjection {
       }
     }
     guard rows.count <= 4_096 else { return nil }
-    return Activation(target: target, content: TerminalPresentedContent(presentation: presentation, rows: rows))
+    return Activation(target: target, linkID: linkID, content: TerminalPresentedContent(presentation: presentation, rows: rows))
   }
 
   /// Mirrors the projection's proof boundary: an action must be based on the

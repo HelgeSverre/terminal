@@ -143,9 +143,9 @@ import TerminalInterop
   @Test static func historyStorageCharge() throws {
     let wide = helge_terminal_create(80, 1)!
     defer { helge_terminal_destroy(wide) }
-    // A retained row cannot cost less than its fixed cell slots, even when
-    // almost every cell is blank. Keep the budget below that lower bound.
-    let belowCellStorage = UInt64(80 * MemoryLayout<TerminalCell>.stride - 1)
+    // History retains its published 64-byte per-cell compatibility charge,
+    // independently of the richer transient TerminalCell projection's stride.
+    let belowCellStorage = UInt64(80 * 64 - 1)
     helge_terminal_set_history_byte_limit(wide, belowCellStorage)
     try feed(wide, "A\r\nB\r\nC")
     #expect((try snapshot(wide))["history_rows"] as? Int == 0, "history budget omitted fixed cell storage")
