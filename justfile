@@ -163,7 +163,7 @@ _verify-bundle:
 [group('test')]
 terminfo-test: build _terminfo-test
 
-# Glyph raster and residency tests; needs a real GPU.
+# Glyph raster, residency and offscreen presentation/image tests; needs a real GPU.
 [group('test')]
 glyph-rendering-tests: _test-build
     target/swiftpm/testing/debug/dev bundle testing "$PWD/target/swiftpm/testing/debug"
@@ -365,8 +365,8 @@ _glyph-rendering-tests:
     probe_status="${pipeline_status[0]}"
     if [[ "${pipeline_status[1]}" != "0" ]]; then exit "${pipeline_status[1]}"; fi
     if [[ "$probe_status" == "139" ]] && grep -q 'METAL_UPLOAD_DEVICE=name=Apple Paravirtual' reports/gpu-policy/metal-upload-probe.log && grep -q 'METAL_UPLOAD_PROBE=after_shared_texture_replace' reports/gpu-policy/metal-upload-probe.log && grep -q 'METAL_UPLOAD_PROBE=before_shared_heap_texture_replace' reports/gpu-policy/metal-upload-probe.log && ! grep -q 'METAL_UPLOAD_PROBE=after_shared_heap_texture_replace' reports/gpu-policy/metal-upload-probe.log; then
-    printf '%s\n' '{"status":"skipped","reason":"Apple Paravirtual SIGSEGV on shared heap texture replace after standalone upload passed","local_real_gpu_required":true}' > reports/gpu-policy/glyph-residency.json
-    echo 'SKIPPED glyph residency: hosted Apple Paravirtual shared-heap upload driver fault; local real-GPU gate remains required'
+    printf '%s\n' '{"status":"skipped","reason":"Apple Paravirtual SIGSEGV on shared heap texture replace after standalone upload passed","suites":["GlyphResidency","PresentationMetalTests","GraphicsRenderedGapTests"],"local_real_gpu_required":true}' > reports/gpu-policy/glyph-residency.json
+    echo 'SKIPPED shared-heap GPU suites (GlyphResidency, PresentationMetalTests, GraphicsRenderedGapTests): hosted Apple Paravirtual driver fault; local real-GPU gate remains required'
     elif [[ "$probe_status" == "0" ]]; then
     just _glyph-residency-tests
     else
@@ -379,7 +379,8 @@ _glyph-rendering-tests:
 
 [private]
 @_glyph-residency-tests:
-    {{swift_test}} --skip-build --filter GlyphResidency
+    # All shared-heap Metal suites pass through the same exact driver probe above.
+    {{swift_test}} --skip-build --filter GlyphResidency --filter PresentationMetalTests --filter GraphicsRenderedGapTests
 
 # Standalone Metal texture upload check, as the hosted-runner policy runs it.
 [group('test')]

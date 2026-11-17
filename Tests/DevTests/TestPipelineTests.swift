@@ -60,7 +60,7 @@ import Testing
                                                 withIntermediateDirectories: true)
       }
       try Data().write(to: URL(fileURLWithPath: bundle))
-      try writeScript("printf '%s\\n' \"$@\"; printf '%s\\n' \"$DYLD_FRAMEWORK_PATH\" \"$NO_COLOR\"; exit 7", to: helper)
+      try writeScript("printf '%s\\n' \"$@\"; printf '%s\\n' \"$NO_COLOR\"; exit 7", to: helper)
       let runner = try PrebuiltTests.runner(products: root + "/products", swift: root + "/toolchain/usr/bin/swift",
                                             platform: root + "/platform", environment: ["DYLD_FRAMEWORK_PATH": "/override"])
       let result = try runCommand(runner.arguments(["--filter", "DevTests", "--xunit-output", root + "/developer.xml"]),
@@ -70,7 +70,9 @@ import Testing
       #expect(arguments.contains(bundle))
       #expect(arguments.contains("--no-parallel") && arguments.contains("swift-testing"))
       #expect(arguments.contains("DevTests") && arguments.contains(root + "/developer.xml"))
-      #expect(arguments.contains("/override:" + root + "/platform/Developer/Library/Frameworks"))
+      // macOS strips DYLD_* when an interpreter is a protected system binary;
+      // inspect the native helper's launch environment rather than a shell's.
+      #expect(runner.environment["DYLD_FRAMEWORK_PATH"] == "/override:" + root + "/platform/Developer/Library/Frameworks")
       #expect(arguments.last == "1")
       try FileManager.default.removeItem(atPath: bundle)
       #expect(throws: Failure.self) {

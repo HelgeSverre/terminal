@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import dev
 
-/// Tests the justfile's `_glyph-rendering-tests` recipe: when the GPU glyph
-/// gate runs, and when a hosted runner's known driver fault may skip it.
+/// Tests the justfile's `_glyph-rendering-tests` recipe: when the shared-heap
+/// GPU suites run, and when a hosted runner's exact driver fault may skip them.
 ///
 /// The recipe itself is run by `just`, in a temporary directory, so its shell
 /// logic and exit status are what is tested. The compiler, the probe and the
@@ -50,12 +50,33 @@ import Testing
   @Test("glyph policy: cpu-failure") func cpuFailure() throws { try check(Self.scenarios[6]) }
 
   /// The recipe's lines, from its name to the end of its indented body.
-  func recipe() throws -> String {
+  func recipe(_ name: String = "_glyph-rendering-tests") throws -> String {
     let lines = try String(contentsOfFile: Repository.path("justfile"), encoding: .utf8)
       .split(separator: "\n", omittingEmptySubsequences: false)
-    guard let start = lines.firstIndex(where: { $0.hasPrefix("_glyph-rendering-tests:") }) else { throw Failure("missing glyph gate") }
+    guard let start = lines.firstIndex(where: { $0.hasPrefix(name + ":") || $0.hasPrefix("@" + name + ":") }) else {
+      throw Failure("missing GPU recipe \(name)")
+    }
     let body = lines[(start + 1)...].prefix { $0.hasPrefix("    ") || $0.allSatisfy(\.isWhitespace) }
     return ([lines[start]] + body).joined(separator: "\n") + "\n"
+  }
+
+  @Test func sharedHeapRecipeRunsEveryMetalSuiteAndPropagatesFailure() throws {
+    try withTemporaryDirectory("dev-metal-suites-") { directory in
+      let runner = directory + "/runner"
+      try writeScript("printf '%s\\n' \"$@\" > arguments; exit 7", to: runner)
+      try ("swift_test := \"\(runner)\"\n" + recipe("_glyph-residency-tests"))
+        .write(toFile: directory + "/justfile", atomically: true, encoding: .utf8)
+      let result = try runCommand(["just", "--justfile", directory + "/justfile", "_glyph-residency-tests"],
+                                 directory: directory)
+      #expect(result.status == 7)
+      let options = try String(contentsOfFile: directory + "/arguments", encoding: .utf8).split(separator: "\n").map(String.init)
+      #expect(options == ["--skip-build", "--filter", "GlyphResidency", "--filter", "PresentationMetalTests",
+                          "--filter", "GraphicsRenderedGapTests"])
+      for suite in ["GlyphResidency", "PresentationMetalTests", "GraphicsRenderedGapTests"] {
+        #expect(TestPipeline.applicationTestOptions.contains(suite), "the app lane must defer \(suite) to the probe gate")
+      }
+      #expect(!TestPipeline.applicationTestOptions.contains("PresentationTests"), "CPU geometry remains in the app gate")
+    }
   }
 
   private func check(_ scenario: Scenario) throws {
@@ -103,7 +124,9 @@ import Testing
       #expect(calls.contains("_glyph-residency-tests") == scenario.runsGPUGate, "wrong GPU gate")
       #expect(FileManager.default.fileExists(atPath: result) == scenario.writesSkip, "wrong skip report")
       if scenario.writesSkip {
-        #expect(try JSONValue(parsingFile: result)["status"]?.text == "skipped", "invalid skip report")
+        let receipt = try JSONValue(parsingFile: result)
+        #expect(receipt["status"]?.text == "skipped", "invalid skip report")
+        #expect(receipt["suites"]?.elements?.compactMap(\.text) == ["GlyphResidency", "PresentationMetalTests", "GraphicsRenderedGapTests"])
       }
     }
   }

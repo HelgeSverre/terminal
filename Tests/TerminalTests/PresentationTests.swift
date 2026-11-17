@@ -9,7 +9,7 @@ import TerminalInterop
 @Suite enum PresentationTests {
   /// Rasterize the same device-pixel rectangles consumed by Metal. The test
   /// compares pixels, including gaps, rather than merely counting primitives.
-  private static func pixels(kind: Int, width: Int = 12, height: Int = 20,
+  fileprivate static func pixels(kind: Int, width: Int = 12, height: Int = 20,
     scale: Int = 1, origin: Int = 0) -> [[Bool]] {
     var result = Array(repeating: Array(repeating: false, count: width), count: height)
     for rect in UnderlineGeometry.rectangles(kind: kind, x: origin, width: width, height: height, scale: scale) {
@@ -111,7 +111,12 @@ import TerminalInterop
     #expect(tail.presentationOverscan == nil)
   }
 
-  #if GLYPH_RESIDENCY_TESTING
+}
+
+#if GLYPH_RESIDENCY_TESTING
+/// Offscreen Metal tests share the explicit driver-probe gate with residency
+/// tests. CPU presentation geometry remains in PresentationTests.
+@Suite(.serialized) enum PresentationMetalTests {
   private static func render(_ request: RenderRequest, using rendering: TerminalRendering) async -> [UInt8]? {
     await withCheckedContinuation { continuation in
       rendering.renderPixelsForTesting(request) { continuation.resume(returning: $0) }
@@ -119,7 +124,7 @@ import TerminalInterop
   }
 
   @Test static func metalUnderlinesMatchColoredWideAndRetinaPixels() async throws {
-    guard MTLCreateSystemDefaultDevice() != nil else { return }
+    try #require(MTLCreateSystemDefaultDevice() != nil, "the local Metal gate requires a real GPU")
     let rendering = try TerminalRendering()
     let core = try #require(helge_terminal_create(2, 1))
     defer { helge_terminal_destroy(core) }
@@ -134,7 +139,7 @@ import TerminalInterop
           inset: 0, cellWidth: width, cellHeight: height, fontSize: CGFloat(14 * scale),
           focused: true, marked: "", linkUnderline: [], backingScale: scale, cursorVisible: false)
         let result = try #require(await render(request, using: rendering))
-        let expected = pixels(kind: kind, width: width * 2, height: height, scale: scale)
+        let expected = PresentationTests.pixels(kind: kind, width: width * 2, height: height, scale: scale)
         for y in 0..<height {
           for x in 0..<(width * 2) {
             let offset = (y * width * 2 + x) * 4
@@ -148,7 +153,7 @@ import TerminalInterop
   }
 
   @Test static func metalFractionalViewportClipsGuardRowAndBlinkHidesInk() async throws {
-    guard MTLCreateSystemDefaultDevice() != nil else { return }
+    try #require(MTLCreateSystemDefaultDevice() != nil, "the local Metal gate requires a real GPU")
     let rendering = try TerminalRendering()
     let core = try #require(helge_terminal_create(2, 2))
     defer { helge_terminal_destroy(core) }
@@ -173,5 +178,5 @@ import TerminalInterop
       hiddenPixels[$0] == 0 && hiddenPixels[$0 + 1] == 0 && hiddenPixels[$0 + 2] == 0
     })
   }
-  #endif
 }
+#endif

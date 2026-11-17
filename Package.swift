@@ -68,7 +68,7 @@ let application: [Target] = [
     name: "TerminalTests",
     dependencies: ["TerminalApp", "TerminalUI", "TerminalHost", "TerminalEngine", "TerminalInterop", "TerminalLauncher"],
     path: "Tests/TerminalTests", exclude: ["differential-fixtures.json"],
-    swiftSettings: [.swiftLanguageMode(.v5)]),
+    swiftSettings: [.swiftLanguageMode(.v5)] + testHooks),
 ]
 
 // Existing integration probes share the package's emulator instead of compiling

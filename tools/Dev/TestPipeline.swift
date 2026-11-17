@@ -29,6 +29,11 @@ enum TestPipeline {
     var environment: [String: String?] = [:]
   }
 
+  // The GPU recipe probes the exact hosted shared-heap driver fault before
+  // running these suites. Keep CPU geometry in the ordinary application gate.
+  static let applicationTestOptions = ["DevTests", "GlyphRasterWorkerTests", "GlyphResidency",
+    "PresentationMetalTests", "GraphicsRenderedGapTests"].flatMap { ["--skip", $0] }
+
   /// A lane is serial, including tests that mutate their process globals.
   /// Every started lane is joined before an error escapes; failed lanes do not
   /// run their remaining phases. No build command belongs inside these lanes.
@@ -100,7 +105,7 @@ enum TestPipeline {
     let terminfo = Phase(name: "terminfo", arguments: [dev, "terminfo-smoke"])
     let font = Phase(name: "font-catalog", arguments: [Repository.path("dist/Terminal.app/Contents/MacOS/Terminal"),
       "--font-catalog", Repository.path("reports/font-glyphs.txt")])
-    let application = tests("app-tests", ["--skip", "DevTests", "--skip", "GlyphRasterWorkerTests", "--skip", "GlyphResidency"], "app")
+    let application = tests("app-tests", applicationTestOptions, "app")
     if shards == "2" {
       // Font output and the bundle exist before either test process starts.
       // Sources and SwiftPM products stay frozen until both lanes have joined.
