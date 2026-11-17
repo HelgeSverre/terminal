@@ -10,19 +10,22 @@ import Testing
     let marked = NSMutableAttributedString(string: "日本語😀")
     marked.addAttributes([.markedClauseSegment: 1, .underlineStyle: NSUnderlineStyle.double.rawValue],
       range: NSRange(location: 1, length: 2))
-    #expect(storage.update(marked, selection: NSRange(location: 1, length: 2),
-      replacement: NSRange(location: NSNotFound, length: 0)))
+    let initialAccepted = storage.update(marked, selection: NSRange(location: 1, length: 2),
+      replacement: NSRange(location: NSNotFound, length: 0))
+    #expect(initialAccepted)
     #expect(storage.selection == NSRange(location: 1, length: 2))
     #expect(storage.text.attribute(.markedClauseSegment, at: 1, effectiveRange: nil) as? Int == 1)
-    #expect(storage.update(NSAttributedString(string: "本"), selection: NSRange(location: 1, length: 0),
-      replacement: NSRange(location: 1, length: 1)))
+    let replacementAccepted = storage.update(NSAttributedString(string: "本"), selection: NSRange(location: 1, length: 0),
+      replacement: NSRange(location: 1, length: 1))
+    #expect(replacementAccepted)
     #expect(storage.text.string == "日本語😀")
     #expect(storage.selection == NSRange(location: 2, length: 0))
     #expect(storage.committing("語句", replacement: NSRange(location: 2, length: 1)) == "日本語句😀")
     #expect(storage.committing("x", replacement: NSRange(location: 4, length: 1)) == nil,
       "A replacement must not split an emoji's UTF-16 surrogate pair")
-    #expect(!storage.update(NSAttributedString(string: "shell edit"), selection: .init(location: 0, length: 0),
-      replacement: NSRange(location: 100, length: 1)))
+    let invalidAccepted = storage.update(NSAttributedString(string: "shell edit"), selection: .init(location: 0, length: 0),
+      replacement: NSRange(location: 100, length: 1))
+    #expect(!invalidAccepted)
     #expect(storage.text.string == "日本語😀")
     storage.clear()
     #expect(!storage.hasText)
@@ -66,10 +69,12 @@ import Testing
 
   @Test func excessiveCompositionIsRejectedWithoutDiscardingCurrentInput() {
     var storage = MarkedTextStorage()
-    #expect(storage.update(NSAttributedString(string: "pending"), selection: NSRange(location: 7, length: 0),
-      replacement: NSRange(location: NSNotFound, length: 0)))
-    #expect(!storage.update(NSAttributedString(string: String(repeating: "x", count: 65_537)),
-      selection: NSRange(location: 0, length: 0), replacement: NSRange(location: NSNotFound, length: 0)))
+    let initialAccepted = storage.update(NSAttributedString(string: "pending"), selection: NSRange(location: 7, length: 0),
+      replacement: NSRange(location: NSNotFound, length: 0))
+    let oversizedAccepted = storage.update(NSAttributedString(string: String(repeating: "x", count: 65_537)),
+      selection: NSRange(location: 0, length: 0), replacement: NSRange(location: NSNotFound, length: 0))
+    #expect(initialAccepted)
+    #expect(!oversizedAccepted)
     #expect(storage.text.string == "pending")
   }
 

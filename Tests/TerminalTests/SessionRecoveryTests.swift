@@ -130,8 +130,10 @@ import Darwin
   @Test func quietAndMaximumAgeDoNotPollCleanPanes() {
     var timing = RecoveryCheckpointTiming()
     #expect(timing.delay(at: 0) == nil)
-    #expect(timing.output(at: 0))
-    #expect(!timing.output(at: 1_000_000_000))
+    let first = timing.output(at: 0)
+    let repeated = timing.output(at: 1_000_000_000)
+    #expect(first)
+    #expect(!repeated)
     #expect(timing.delay(at: 2_000_000_000) == 1)
     #expect(timing.delay(at: 3_000_000_000) == 0)
     for second in 2...60 { _ = timing.output(at: UInt64(second) * 1_000_000_000) }
