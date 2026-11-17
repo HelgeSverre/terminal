@@ -44,12 +44,11 @@ enum TestPipeline {
       let seconds = Double(Clock.now - started) / 1_000_000_000
       timings.append(["phase": name, "seconds": seconds, "status": result.status])
       try writeJSON(["phases": timings], to: Repository.path("reports/test-timing/phases.json"))
-      Console.done(String(format: "%@  %.2f s", name, seconds))
       guard result.succeeded else { throw Failure("test phase \(name) failed (\(result.status))") }
+      Console.done(String(format: "%@  %.2f s", name, seconds))
     }
     let dev = products + "/dev"
-    let tests = ["swift", "test", "--scratch-path", "target/swiftpm/testing", "-c", "debug", "-Xswiftc", "-O",
-                 "--no-parallel", "--disable-xctest", "--skip-build"]
+    let tests = ["just", "unit-test", "--skip-build"]
     try phase("syntax", [dev, "sources", "check"])
     try phase("bundle", [dev, "bundle", "testing", products])
     try phase("developer-tests", tests + ["--filter", "DevTests", "--xunit-output", "reports/test-timing/developer.xml"])

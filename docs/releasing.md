@@ -10,7 +10,7 @@ sign and notarize the release; it installs no Homebrew test tools and restores
 no test cache or artifacts. The test runner builds the developer tool, test app,
 suites and integration probes in one optimized SwiftPM graph. Its cache is
 scoped to the platform and toolchain, with content-verified input timestamps
-for reuse across checkouts. The signing runner independently compiles its tool
+for reuse between CI runs at the same workspace path. The signing runner independently compiles its tool
 and universal release app from source.
 
 The release app excludes smoke-test entry points, `--execute`, font-catalog
