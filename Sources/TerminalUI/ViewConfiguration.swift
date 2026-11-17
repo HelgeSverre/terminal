@@ -39,9 +39,9 @@ public struct TerminalViewConfiguration {
 /// the shaders, compiled (`Terminal.metallib`) or as source (`Terminal.metal`).
 private final class TerminalResourceAnchor {}
 package enum TerminalResources {
-  /// An app bundle that carries the compiled shaders is used as it is;
-  /// otherwise the resources are the ones the package builds beside the
-  /// program. Set before the first view or renderer is created.
+  /// SwiftPM owns the default resource bundle. A manually linked application
+  /// uses the bundle containing this module's anchor. The app may set its
+  /// explicit bundle before the first font, view or renderer is created.
   nonisolated(unsafe) package static var bundle: Bundle = {
     #if SWIFT_PACKAGE
     return .module

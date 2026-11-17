@@ -12,8 +12,8 @@ import PackageDescription
 let development = Context.environment["TERMINAL_DEVELOPMENT"] == "1"
 
 // Code that only the tests reach is compiled in when the suites are built
-// (`just unit-test` sets the variable) and left out of the app. An embedding
-// app's build never gets it, whatever its environment holds.
+// (`just unit-test` sets the variable) and left out of the app. Consumer mode
+// ignores test settings; hooks require the explicit development opt-in too.
 let testHooks: [SwiftSetting] = !development || Context.environment["TERMINAL_TEST_HOOKS"] == nil ? [] : [
   .define("SESSION_IO_TESTING"), .define("GLYPH_RESIDENCY_TESTING"), .define("SNAPSHOT_ABI_DIAGNOSTICS"),
 ]

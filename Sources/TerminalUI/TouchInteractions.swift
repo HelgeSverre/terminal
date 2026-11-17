@@ -4,6 +4,13 @@ import TerminalHost
 import UIKit
 
 extension TerminalCanvasView {
+  public override var keyCommands: [UIKeyCommand]? {
+    [UIKeyCommand(input: "c", modifierFlags: .command, action: #selector(copy(_:))),
+     UIKeyCommand(input: "v", modifierFlags: .command, action: #selector(paste(_:))),
+     UIKeyCommand(input: "a", modifierFlags: .command, action: #selector(selectAll(_:))),
+     UIKeyCommand(input: "f", modifierFlags: .command, action: #selector(findFromKeyboard))]
+  }
+  @objc private func findFromKeyboard() { showFind() }
   func gridIndex(at point: CGPoint) -> Int? {
     guard let snapshot else { return nil }
     let x = point.x * scale - CGFloat(insetPixels), y = point.y * scale - CGFloat(insetPixels)
@@ -58,6 +65,7 @@ extension TerminalCanvasView {
     _ = session.selection(.range(start: first, end: last, mode: .linear))
   }
   public override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+    if action == #selector(findFromKeyboard) { return true }
     if action == #selector(copy(_:)) { return hasSelection }
     if action == #selector(paste(_:)) { return UIPasteboard.general.hasStrings }
     if action == #selector(selectAll(_:)) { return snapshot != nil }

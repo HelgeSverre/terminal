@@ -18,13 +18,15 @@ enum TouchHardwareInput {
   static func mapped(_ key: UIKey, text: String? = nil, event: UInt32 = 0) -> TerminalKeyEvent {
     let hid = Int(key.keyCode.rawValue)
     let code = special[hid] ?? 200
-    let logical = key.charactersIgnoringModifiers.lowercased()
+    let logical = key.charactersIgnoringModifiers
+    let flags = key.modifierFlags
+    let onlyShiftOrCaps = flags.intersection([.alternate, .control, .command]).isEmpty
     // UIKit supplies layout-dependent characters plus a HID physical identity,
     // but no API equivalent to AppKit's characters(byApplyingModifiers:).
     // Keep unavailable alternates empty instead of inventing them.
     return TerminalKeyEvent(text: text ?? key.characters, logical: logical,
-      shifted: key.modifierFlags.contains(.shift) ? key.charactersIgnoringModifiers : "",
-      baseLayout: baseLayout(hid), legacyText: key.charactersIgnoringModifiers,
+      shifted: flags.contains(.shift) && onlyShiftOrCaps ? key.characters : "",
+      baseLayout: baseLayout(hid), legacyText: onlyShiftOrCaps ? key.characters : logical,
       key: code, modifiers: modifiers(key.modifierFlags), event: event)
   }
   static func handles(_ key: UIKey, optionSendsEscape: Bool) -> Bool {
