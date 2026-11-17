@@ -1406,6 +1406,7 @@ public final class TerminalSession: @unchecked Sendable {
     }
     for file in pending where downloadRequests[file.id] == nil {
       let request = TerminalDownloadRequest(suggestedFilename: file.suggestedFilename, byteCount: file.byteCount,
+        generation: file.generation,
         live: { [weak self] in self?.downloadsAvailable == true },
         resolve: { [weak self] take, completion in
           guard let self else { DispatchQueue.main.async { completion(nil) }; return }

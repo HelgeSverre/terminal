@@ -1,4 +1,5 @@
 import Foundation
+import TerminalEngine
 
 /// A completed file offered by terminal output. The payload remains bounded
 /// inside the engine until the application explicitly takes or dismisses it.
@@ -10,17 +11,19 @@ public final class TerminalDownloadRequest: @unchecked Sendable {
   private enum State: Equatable { case pending, requested, finished, cancelled }
   private let lock = NSLock()
   private var state = State.pending
+  private let generation: TerminalDownloadGeneration?
   private let live: () -> Bool
   private let resolve: (Bool, @escaping @MainActor (Data?) -> Void) -> Void
 
-  init(suggestedFilename: String, byteCount: Int, live: @escaping () -> Bool,
+  init(suggestedFilename: String, byteCount: Int, generation: TerminalDownloadGeneration? = nil, live: @escaping () -> Bool,
        resolve: @escaping (Bool, @escaping @MainActor (Data?) -> Void) -> Void) {
     self.suggestedFilename = suggestedFilename; self.byteCount = byteCount
+    self.generation = generation
     self.live = live; self.resolve = resolve
   }
   public var isAvailable: Bool {
     lock.lock(); let pending = state == .pending; lock.unlock()
-    return pending && live()
+    return pending && (generation?.isLive ?? true) && live()
   }
   /// Takes the payload once, on the session's owner queue. Completion always
   /// runs on the main actor. Close, reset, dismissal or a repeated take returns
@@ -33,7 +36,7 @@ public final class TerminalDownloadRequest: @unchecked Sendable {
       lock.lock()
       let accepted = state == .requested
       state = .finished; lock.unlock()
-      completion(accepted && live() ? data : nil)
+      completion(accepted && (generation?.isLive ?? true) && live() ? data : nil)
     }
   }
   /// Dismisses an offer without opening a file or writing its bytes. This also

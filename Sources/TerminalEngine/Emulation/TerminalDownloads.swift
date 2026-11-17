@@ -11,6 +11,16 @@ package struct TerminalPendingDownload: Sendable {
   package let id: UInt64
   package let suggestedFilename: String
   package let byteCount: Int
+  package let generation: TerminalDownloadGeneration
+}
+
+/// Reset invalidates the generation even after a file has left the pending
+/// queue but is still waiting for a host's main-actor delivery.
+package final class TerminalDownloadGeneration: @unchecked Sendable {
+  private let lock = NSLock()
+  private var valid = true
+  package var isLive: Bool { lock.lock(); defer { lock.unlock() }; return valid }
+  fileprivate func invalidate() { lock.lock(); valid = false; lock.unlock() }
 }
 
 /// Completed files remain charged until the host takes or dismisses them.
@@ -19,8 +29,10 @@ final class TerminalDownloads {
   static let maximumPending = 4
   static let maximumBytes = 32 * 1024 * 1024
   private var nextID: UInt64 = 1
+  private var generation = TerminalDownloadGeneration()
   private var files: [(id: UInt64, file: TerminalDownload)] = []
   private(set) var byteCount = 0
+  deinit { generation.invalidate() }
 
   @discardableResult func enqueue(name: String, data: Data) -> Bool {
     guard files.count < Self.maximumPending, data.count <= Self.maximumBytes - byteCount,
@@ -30,7 +42,8 @@ final class TerminalDownloads {
     return true
   }
   var pending: [TerminalPendingDownload] {
-    files.map { TerminalPendingDownload(id: $0.id, suggestedFilename: $0.file.suggestedFilename, byteCount: $0.file.data.count) }
+    files.map { TerminalPendingDownload(id: $0.id, suggestedFilename: $0.file.suggestedFilename,
+      byteCount: $0.file.data.count, generation: generation) }
   }
   func resolve(_ id: UInt64, take: Bool) -> TerminalDownload? {
     guard let index = files.firstIndex(where: { $0.id == id }) else { return nil }
@@ -39,10 +52,13 @@ final class TerminalDownloads {
     return take ? file : nil
   }
   func takeAll() -> [TerminalDownload] {
-    defer { clear() }
+    defer { files.removeAll(); byteCount = 0 }
     return files.map(\.file)
   }
-  func clear() { files.removeAll(); byteCount = 0 }
+  func clear() {
+    generation.invalidate(); generation = TerminalDownloadGeneration()
+    files.removeAll(); byteCount = 0
+  }
 
   /// Both common path separators are recognized; controls and bidi formatting
   /// cannot disguise the suggested basename. This is a label, never a path.

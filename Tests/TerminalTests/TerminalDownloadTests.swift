@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TerminalInterop
 @testable import TerminalEngine
 @testable import TerminalHost
 
@@ -72,6 +73,35 @@ import Testing
     request.takeData { deliveries.append($0) }
     #expect(await TestEnvironment.wait { deliveries.count == 2 })
     #expect(deliveries[1] == nil && !request.isAvailable)
+  }
+
+  @Test @MainActor func resetCancelsAlreadyResolvedDataBeforeQueuedMainDelivery() async throws {
+    let core = try #require(helge_terminal_create(8, 4)); defer { helge_terminal_destroy(core) }
+    TerminalGraphicsOracleTests.feed(core, file(Data([1, 2, 3])))
+    let pending = try #require(TerminalDownloadBridge.pending(core: core).first)
+    var queuedDelivery: (@MainActor () -> Void)?
+    let request = TerminalDownloadRequest(suggestedFilename: pending.suggestedFilename, byteCount: pending.byteCount,
+      generation: pending.generation, live: { true }) { take, completion in
+        // Match Session's owner decision: remove the engine's pending entry,
+        // then hold its Main delivery until after the next output is parsed.
+        let file = TerminalDownloadBridge.resolve(core: core, id: pending.id, take: take)
+        queuedDelivery = { completion(file?.data) }
+      }
+    var callbacks = 0, result: Data? = Data([99])
+    request.takeData { callbacks += 1; result = $0 }
+    #expect(TerminalDownloadBridge.pending(core: core).isEmpty)
+    #expect(pending.generation.isLive)
+    TerminalGraphicsOracleTests.feed(core, "\(esc)c")
+    #expect(!pending.generation.isLive, "RIS must retire in-flight data as well as pending metadata")
+    let deliver = try #require(queuedDelivery)
+    deliver()
+    #expect(callbacks == 1 && result == nil && !request.isAvailable)
+    request.takeData { callbacks += 1; result = $0 }
+    #expect(await TestEnvironment.wait { callbacks == 2 })
+    #expect(result == nil)
+    TerminalGraphicsOracleTests.feed(core, file(Data([4])))
+    let next = try #require(TerminalDownloadBridge.pending(core: core).first)
+    #expect(next.generation.isLive, "files after reset belong to a fresh generation")
   }
 
   private final class Transport: TerminalTransport, @unchecked Sendable {
