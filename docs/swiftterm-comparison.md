@@ -322,7 +322,7 @@ file is named; the function is given with its line. SwiftTerm's evidence is in
 | DA1 | yes: `?65;4;1;2;6;21;22;17;28c` for an `xterm` name (`cmdSendDeviceAttributes`, `:7489`) | yes: `?62;22c` (`handleCSI`, `:980`) |
 | DA2 | yes: `>65;20;1c` (`:7500`) | yes: `>1;10;0c` (`:977`) |
 | DSR 5 and 6, DECXCPR | yes (`cmdDeviceStatus`, `:6465`) | yes (`handleCSI` 0x6e, `:974`) |
-| DECRQM | yes, including permanently set and reset states (`cmdDecRqm`, `:6174`) | yes for the modes it implements, 0 otherwise (`modeReport`, `:1200`) |
+| DECRQM | yes, including permanently set and reset states (`cmdDecRqm`, `:6174`) | yes for the modes it implements, permanently reset for thirteen it can never enter, 0 otherwise (`modeReport`) |
 | DECRQSS | yes (`class DECRQSS`, `:1753`) | no: DCS strings are discarded (`handleEscapedByte`, `:673`; `BUGS.md`) |
 | XTGETTCAP | yes, from a generated terminfo table (`class XTGETTCAP`, `:1629`; `Sources/SwiftTermBuildInfoGenerator/XtgettcapTableGenerator.swift`) | no (`BUGS.md`) |
 | XTVERSION | yes (`cmdXTVERSION`, `:5856`) | no (`implementsCSI`, `:886`; `BUGS.md`) |

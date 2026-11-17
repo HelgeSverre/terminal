@@ -86,7 +86,9 @@ At source `71b2d9f` the full `just test` gate passed: 672 developer and
 application tests in 108 suites, the GPU suites, and the tooling, terminfo,
 font and PTY checks. Conformance at `556aa51` passed 460 cases with 68
 reported failures and 39 known xterm deviations; the known-good list protects
-the 460. The frozen-app runtime checks above were not repeated, except a
+the 460. On 2026-11-18, `25d3add` added the permanently-reset DECRQM status
+for thirteen modes: 473 cases pass with 55 reported failures, all protected.
+The frozen-app runtime checks above were not repeated, except a
 pane-lifecycle smoke. The review left these open:
 
 - `CSI 21 t` reports the window title a program set. xterm disables this

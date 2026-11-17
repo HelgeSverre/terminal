@@ -89,7 +89,9 @@ Two reruns followed. At `b945624`, 447 cases passed with 81 failures: the
 first two rows below are fixed, and five of the ten VT cases pass. At
 `556aa51`, 460 passed with 68 failures: the `DECID` row and the nine `DECDSR`
 cases are implemented and pass, `DECNKM` leaves the DECRQM row, and `DECSASD`
-and `DECSSDT` leave the DECRQSS row. The table keeps the `e0f79b3` counts.
+and `DECSSDT` leave the DECRQSS row. At `25d3add`, 473 passed with 55
+failures: thirteen DECRQM modes answer permanently reset. The table keeps the
+`e0f79b3` counts.
 
 | Recorded failures | Count | Disposition |
 | --- | ---: | --- |
@@ -99,7 +101,7 @@ and `DECSSDT` leave the DECRQSS row. The table keeps the `e0f79b3` counts.
 | `DA_0`, `DA_NoParameter`, `DA2_0`, `DA2_NoParameter` | 4 | Xterm-specific identity expectations: VT525/full xterm feature advertisement and xterm firmware range. Helge keeps its conservative VT220-class DA replies and supplies its actual implementation/version through XTVERSION. |
 | `DECID_Basic` | 1 | Implemented since: ESC Z answers as primary device attributes. |
 | Nine `DECDSR` cases listed below | 9 | Implemented since: each report answers with the value for absent hardware or nothing to report. |
-| 23 `DECRQM` modes listed below | 23 | Unsupported modes return status 0 (not recognized). Xterm's permanently-reset status 4 or toggling behavior is not claimed. |
+| 23 `DECRQM` modes listed below | 23 | Thirteen modes this terminal can never enter answer status 4 (permanently reset) since. The other unsupported modes return status 0 (not recognized); xterm's toggling behavior is not claimed. |
 | `DECRQSS_DECSACE`, `DECSASD`, `DECSCL`, `DECSLPP`, `DECSNLS`, `DECSSDT` | 6 | Outside the bounded status subset: attribute-change extent, status display/type, conformance switching and child-controlled page/screen geometry are not implemented. Negative replies remain truthful. |
 | Three `DECSCL` level-switching cases | 3 | Unsupported virtual VT conformance-level switching/gating. Available extensions do not imply an emulated VT100–VT525 mode hierarchy. |
 | Nine window-changing cases listed below | 9 | Intentional exclusion: child-controlled resize, move and iconify remain disabled. No window mutation is enabled to improve conformance counts. |
@@ -109,10 +111,12 @@ The DECDSR suffixes, now answered, are `DECCKSR`, `DECMSR`,
 `DSRDECLocatorStatus`, `DSRDataIntegrity`, `DSRKeyboard`,
 `DSRMultipleSessionStatus`, `DSRPrinterPort`, `DSRUDKLocked` and `LocatorType`.
 
-The unsupported DECRQM ANSI modes are `EBM`, `FEAM`, `FETM`, `GATM`, `HEM`,
+The DECRQM ANSI modes are `EBM`, `FEAM`, `FETM`, `GATM`, `HEM`,
 `KAM`, `MATM`, `PUM`, `SATM`, `SRM`, `SRTM`, `TSM`, `TTM` and `VEM`.
 The DEC modes are `DECBKM`, `DECCOLM`, `DECHCCM`, `DECHEBM`, `DECNRCM`,
-`DECPEX`, `DECPFF` and `DECSCLM`; `DECNKM` is implemented since.
+`DECPEX`, `DECPFF` and `DECSCLM`; `DECNKM` is implemented since. All but
+`KAM`, `SRM` and the DEC modes other than `DECHCCM` now answer status 4;
+those nine stay unrecognized because xterm expects them to toggle.
 
 The excluded window cases are `DECSLPP`, `IconifyDeiconfiy`, `MoveToXY`,
 `MoveToXY_Defaults`, and `ResizePixels` with `BothParameters`,

@@ -3,7 +3,7 @@
 Source triage uses the downloaded run `44069317138` (320 passed, 206 failed,
 41 known bugs, 567 total) and its checked-out esctest2 expectations. These are
 implementation dispositions. The integrated rerun at `b945624` passed 447 of
-567, and the run at `556aa51` passed 460; see [conformance](conformance.md).
+567, the run at `556aa51` passed 460 and the run at `25d3add` passed 473; see [conformance](conformance.md).
 
 ## Concrete defects repaired
 
