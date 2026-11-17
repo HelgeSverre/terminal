@@ -50,6 +50,7 @@ let commands = [
   TestPipeline.command,
   TestBuildCache.command,
   EmbeddingCheck.command,
+  CITiming.command,
 ]
 
 func printUsage() {

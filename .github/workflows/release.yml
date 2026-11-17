@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+
 concurrency:
   group: terminal-release
   cancel-in-progress: false
@@ -56,6 +60,7 @@ jobs:
       - name: Run tests
         env:
           TERMINAL_CI_GPU_POLICY: paravirtual
+          TERMINAL_TEST_SHARDS: "2"
         run: just test
 
   build:

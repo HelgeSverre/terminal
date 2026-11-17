@@ -19,6 +19,12 @@ on:
 permissions:
   contents: read
 
+# Fresh hosted runners install current formulae. Skip unrelated Homebrew
+# metadata refresh/cleanup; do not cache Cellar paths or dependency dylibs.
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -49,6 +55,7 @@ jobs:
       - name: Run Swift native tests
         env:
           TERMINAL_CI_GPU_POLICY: paravirtual
+          TERMINAL_TEST_SHARDS: "2"
         run: |
           mkdir -p reports
           set -o pipefail

@@ -23,6 +23,39 @@ enum TestPipeline {
     return prebuiltProduct(entry.value)
   }
 
+  struct Phase {
+    let name: String
+    let arguments: [String]
+    var environment: [String: String?] = [:]
+  }
+
+  /// A lane is serial, including tests that mutate their process globals.
+  /// Every started lane is joined before an error escapes; failed lanes do not
+  /// run their remaining phases. No build command belongs inside these lanes.
+  static func run(lanes: [[Phase]], phase: @escaping (Phase) throws -> Void) throws {
+    guard (1...2).contains(lanes.count) else { throw Failure("test gate supports one or two lanes") }
+    final class Failures: @unchecked Sendable {
+      let lock = NSLock()
+      var messages: [Int: String] = [:]
+      func record(_ index: Int, _ error: Error) {
+        lock.lock(); defer { lock.unlock() }
+        messages[index] = String(describing: error)
+      }
+    }
+    let failures = Failures(), queue = OperationQueue()
+    queue.maxConcurrentOperationCount = lanes.count
+    for (index, lane) in lanes.enumerated() {
+      queue.addOperation {
+        do { for entry in lane { try phase(entry) } }
+        catch { failures.record(index, error) }
+      }
+    }
+    queue.waitUntilAllOperationsAreFinished()
+    if !failures.messages.isEmpty {
+      throw Failure(failures.messages.keys.sorted().compactMap { failures.messages[$0] }.joined(separator: "\n"))
+    }
+  }
+
   static func run(_ arguments: [String]) throws {
     guard arguments.isEmpty else { throw Failure.usage(command) }
     let executable = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
@@ -37,28 +70,46 @@ enum TestPipeline {
     setenv("TERMINAL_TEST_HOOKS", "1", 1)
     try FileManager.default.createDirectory(atPath: Repository.path("reports/test-timing"), withIntermediateDirectories: true)
     var timings: [[String: Any]] = []
-    func phase(_ name: String, _ arguments: [String]) throws {
+    let reportLock = NSLock(), gateStarted = Clock.now
+    func phase(_ entry: Phase) throws {
       let started = Clock.now
-      let result = try runCommand(arguments, directory: Repository.root)
-      FileHandle.standardOutput.write(result.data)
+      let result = try runCommand(entry.arguments, adding: entry.environment, directory: Repository.root)
       let seconds = Double(Clock.now - started) / 1_000_000_000
-      timings.append(["phase": name, "seconds": seconds, "status": result.status])
-      try writeJSON(["phases": timings], to: Repository.path("reports/test-timing/phases.json"))
-      guard result.succeeded else { throw Failure("test phase \(name) failed (\(result.status))") }
-      Console.done(String(format: "%@  %.2f s", name, seconds))
+      reportLock.lock(); defer { reportLock.unlock() }
+      FileHandle.standardOutput.write(result.data)
+      timings.append(["phase": entry.name, "seconds": seconds, "status": result.status,
+                      "started_seconds": Double(started - gateStarted) / 1_000_000_000])
+      try writeJSON(["phases": timings, "wall_seconds": Double(Clock.now - gateStarted) / 1_000_000_000],
+                    to: Repository.path("reports/test-timing/phases.json"))
+      guard result.succeeded else { throw Failure("test phase \(entry.name) failed (\(result.status))") }
+      Console.done(String(format: "%@  %.2f s", entry.name, seconds))
     }
     let dev = products + "/dev"
-    let tests = ["just", "unit-test", "--skip-build"]
-    try phase("syntax", [dev, "sources", "check"])
-    try phase("bundle", [dev, "bundle", "testing", products])
-    try phase("developer-tests", tests + ["--filter", "DevTests", "--xunit-output", "reports/test-timing/developer.xml"])
-    try phase("tooling", ["just", "_workflow-tools"])
-    try phase("terminfo", [dev, "terminfo-smoke"])
-    try phase("font-catalog", [Repository.path("dist/Terminal.app/Contents/MacOS/Terminal"), "--font-catalog",
-                               Repository.path("reports/font-glyphs.txt")])
-    try phase("app-tests", tests + ["--skip", "DevTests", "--skip", "GlyphRasterWorkerTests", "--skip", "GlyphResidency",
-                                     "--xunit-output", "reports/test-timing/app.xml"])
-    try phase("glyph-tests", ["just", "_glyph-rendering-tests"])
-    try phase("pty", [products + "/PTYTests", Repository.path("dist/Terminal.app/Contents/MacOS/TerminalLauncher")])
+    let shards = ProcessInfo.processInfo.environment["TERMINAL_TEST_SHARDS"] ?? "1"
+    guard ["1", "2"].contains(shards) else { throw Failure("TERMINAL_TEST_SHARDS must be 1 or 2") }
+    let runner = shards == "2" ? try PrebuiltTests.runner(products: products) : nil
+    func tests(_ name: String, _ options: [String], _ report: String) -> Phase {
+      let options = options + ["--xunit-output", Repository.path("reports/test-timing/" + report + ".xml")]
+      return Phase(name: name, arguments: runner?.arguments(options) ?? (["just", "unit-test", "--skip-build"] + options),
+                   environment: runner?.environment ?? [:])
+    }
+    try phase(Phase(name: "syntax", arguments: [dev, "sources", "check"]))
+    try phase(Phase(name: "bundle", arguments: [dev, "bundle", "testing", products]))
+    let developer = tests("developer-tests", ["--filter", "DevTests"], "developer")
+    let tooling = Phase(name: "tooling", arguments: ["just", "_workflow-tools"])
+    let terminfo = Phase(name: "terminfo", arguments: [dev, "terminfo-smoke"])
+    let font = Phase(name: "font-catalog", arguments: [Repository.path("dist/Terminal.app/Contents/MacOS/Terminal"),
+      "--font-catalog", Repository.path("reports/font-glyphs.txt")])
+    let application = tests("app-tests", ["--skip", "DevTests", "--skip", "GlyphRasterWorkerTests", "--skip", "GlyphResidency"], "app")
+    if shards == "2" {
+      // Font output and the bundle exist before either test process starts.
+      // Sources and SwiftPM products stay frozen until both lanes have joined.
+      try phase(font)
+      try run(lanes: [[developer, tooling, terminfo], [application]], phase: phase)
+    } else {
+      for entry in [developer, tooling, terminfo, font, application] { try phase(entry) }
+    }
+    try phase(Phase(name: "glyph-tests", arguments: ["just", "_glyph-rendering-tests"]))
+    try phase(Phase(name: "pty", arguments: [products + "/PTYTests", Repository.path("dist/Terminal.app/Contents/MacOS/TerminalLauncher")]))
   }
 }
