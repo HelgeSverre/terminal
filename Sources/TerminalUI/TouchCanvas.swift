@@ -25,8 +25,7 @@ public final class TerminalCanvasView: UIView, UITextInput {
   var findController: TouchFindController?
   var clipboardRevision: UInt64 = 0
   private var scrollRemainder: CGFloat = 0
-  private var blinkWake: DispatchWorkItem?
-  private var blinkDeadline: TimeInterval?
+  private let blinkWake = BlinkWake()
   /// Called with the title the program set.
   public var onTitle: ((String) -> Void)?
   /// Return true when the host opened the validated link.
@@ -75,7 +74,7 @@ public final class TerminalCanvasView: UIView, UITextInput {
   public required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   deinit {
     NotificationCenter.default.removeObserver(self)
-    blinkWake?.cancel()
+    blinkWake.cancel()
     if let surface { rendering?.detach(surface) }
     let session = session
     MainActor.assumeIsolated { session.detachView() }
@@ -148,8 +147,7 @@ public final class TerminalCanvasView: UIView, UITextInput {
     guard let snapshot, let surface, window != nil, window?.isHidden == false, !isHidden,
           (window?.windowScene?.activationState ?? .foregroundActive) == .foregroundActive else { scheduleBlink(nil); return }
     let blink = TerminalBlinkPresentation(now: CACurrentMediaTime(), cursorShape: snapshot.cursor.shape,
-      cursor: snapshot.cursor.visible && snapshot.following_tail && isFirstResponder,
-      text: snapshot.rows.contains { $0.cells.contains { $0.style.blink && !$0.style.conceal && !$0.text.isEmpty } }, active: true)
+      cursor: snapshot.cursor.visible && snapshot.following_tail && isFirstResponder, text: snapshot.hasBlinkingText)
     scheduleBlink(blink.nextDeadline)
     rendering?.request(surface, latest: RenderRequest(
       snapshot: snapshot, width: Int(bounds.width * scale), height: Int(bounds.height * scale),
@@ -160,15 +158,7 @@ public final class TerminalCanvasView: UIView, UITextInput {
       textVisible: blink.textVisible, preedit: preeditPresentation))
   }
   private func scheduleBlink(_ deadline: TimeInterval?) {
-    guard deadline != blinkDeadline else { return }
-    blinkWake?.cancel(); blinkWake = nil; blinkDeadline = deadline
-    guard let deadline else { return }
-    let wake = DispatchWorkItem { [weak self] in
-      guard let self else { return }
-      self.blinkWake = nil; self.blinkDeadline = nil; self.redraw()
-    }
-    blinkWake = wake
-    DispatchQueue.main.asyncAfter(deadline: .now() + max(0.001, deadline - CACurrentMediaTime()), execute: wake)
+    blinkWake.schedule(deadline, now: CACurrentMediaTime()) { [weak self] in self?.redraw() }
   }
 
   // MARK: Touch

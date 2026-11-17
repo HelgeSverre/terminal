@@ -48,12 +48,13 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   private var cellHeight = 19
   private var scrollAccumulator = ScrollAccumulator()
   private var viewportPresentation = ViewportPresentation()
-  private var pendingViewportAnchor: Int?
-  private var blinkWake: DispatchWorkItem?
-  private var blinkDeadline: TimeInterval?
+  private let blinkWake = BlinkWake()
+  /// When the cursor last moved; its blink phase restarts there.
+  private var cursorBlinkEpoch: TimeInterval = 0
+  private var blinkingText: (revision: UInt64, value: Bool)?
   private var visibilityObservers: [NSObjectProtocol] = []
   var presentationOffsetPixels: CGFloat {
-    guard pendingViewportAnchor == nil, snapshot?.presentationOverscan != nil else { return 0 }
+    guard viewportPresentation.pending == nil, snapshot?.presentationOverscan != nil else { return 0 }
     return viewportPresentation.fraction * CGFloat(cellHeight)
   }
   var presentationGeometry: ViewportGeometry {
@@ -191,7 +192,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     self.surface = nil
   }
   deinit {
-    blinkWake?.cancel()
+    blinkWake.cancel()
     visibilityObservers.forEach { NotificationCenter.default.removeObserver($0) }
     if let linkModifierMonitor { NSEvent.removeMonitor(linkModifierMonitor) }
     detachRenderingSurface()
@@ -204,12 +205,14 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
       || snapshot?.alternate != value.alternate
       || snapshot?.viewport_clamp_revision != value.viewport_clamp_revision
     let beganReportingMouse = snapshot?.modes.mouse != value.modes.mouse && value.modes.mouse != 0
-    if geometryChanged || beganReportingMouse || value.following_tail && pendingViewportAnchor == nil {
+    if geometryChanged || beganReportingMouse || value.following_tail && viewportPresentation.pending == nil {
       viewportPresentation.reset(offset: value.scroll_offset)
-      pendingViewportAnchor = nil
-    } else if pendingViewportAnchor == nil || pendingViewportAnchor == value.scroll_offset {
-      pendingViewportAnchor = nil
-      viewportPresentation.reconcile(offset: value.scroll_offset)
+    } else {
+      let pinnedGrowth = snapshot.map { $0.following_tail ? 0 : value.history_rows - $0.history_rows } ?? 0
+      viewportPresentation.publish(offset: value.scroll_offset, pinnedGrowth: pinnedGrowth, now: CACurrentMediaTime())
+    }
+    if snapshot?.cursor.row != value.cursor.row || snapshot?.cursor.col != value.cursor.col {
+      cursorBlinkEpoch = CACurrentMediaTime()
     }
     snapshot = value
     accessible = AccessibilityProjection(snapshot: presentationSnapshot ?? value)
@@ -640,19 +643,12 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   private var requestedFirstFrame = false
   private func scheduleBlink(_ deadline: TimeInterval?) {
-    guard deadline != blinkDeadline else { return }
-    blinkWake?.cancel()
-    blinkWake = nil
-    blinkDeadline = deadline
-    guard let deadline else { return }
-    let wake = DispatchWorkItem { [weak self] in
-      guard let self else { return }
-      self.blinkWake = nil
-      self.blinkDeadline = nil
-      self.redraw()
-    }
-    blinkWake = wake
-    DispatchQueue.main.asyncAfter(deadline: .now() + max(0.001, deadline - CACurrentMediaTime()), execute: wake)
+    blinkWake.schedule(deadline, now: CACurrentMediaTime()) { [weak self] in self?.redraw() }
+  }
+  /// A pane hidden during the cursor's off phase would otherwise keep that frame.
+  public override func viewDidUnhide() {
+    super.viewDidUnhide()
+    redraw()
   }
   private func redraw() {
     let selected = accessibilitySelectedTextRanges()?.map(\.rangeValue) ?? []
@@ -670,9 +666,10 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     let shape = configuration.cursorStyle.flatMap {
       (1...6).contains(Int($0)) ? Int($0) : nil
     } ?? value.cursor.shape
-    let blink = TerminalBlinkPresentation(now: CACurrentMediaTime(), cursorShape: shape,
-      cursor: value.cursor.visible && value.following_tail && focused,
-      text: value.rows.contains { $0.cells.contains { $0.style.blink && !$0.style.conceal && !$0.text.isEmpty } }, active: true)
+    // Redraws outnumber snapshots; the cell scan runs once per snapshot.
+    if blinkingText?.revision != value.revision { blinkingText = (value.revision, value.hasBlinkingText) }
+    let blink = TerminalBlinkPresentation(now: CACurrentMediaTime(), cursorEpoch: cursorBlinkEpoch, cursorShape: shape,
+      cursor: value.cursor.visible && value.following_tail && focused, text: blinkingText?.value == true)
     scheduleBlink(blink.nextDeadline)
     if let surface {
       requestedFirstFrame = true
@@ -1022,22 +1019,26 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     guard let value = snapshot else { return }
     if event.hasPreciseScrollingDeltas, !value.alternate, value.rows.count < 4096,
       value.modes.mouse == 0 || event.modifierFlags.contains(.shift) {
+      let before = viewportPresentation.position
       let lines = viewportPresentation.scroll(delta: event.scrollingDeltaY,
         lineHeight: CGFloat(cellHeight) / scale, maximum: value.history_rows)
       if lines != 0 {
-        pendingViewportAnchor = viewportPresentation.anchor
+        viewportPresentation.awaitScroll(now: CACurrentMediaTime())
         session.scroll(lines)
-      } else {
+      } else if viewportPresentation.position != before {
+        // A scroll held at either end changes nothing to present.
         accessible = AccessibilityProjection(snapshot: presentationSnapshot ?? value)
         updateLinkHoverForCurrentPointer(modifiers: event.modifierFlags)
         redraw()
       }
       return
     }
-    viewportPresentation.reset(offset: value.scroll_offset)
-    pendingViewportAnchor = nil
-    accessible = AccessibilityProjection(snapshot: value)
-    redraw()
+    // Line scrolling drops a fractional position; without one there is nothing to redo.
+    if viewportPresentation.fraction != 0 || viewportPresentation.pending != nil {
+      viewportPresentation.reset(offset: value.scroll_offset)
+      accessible = AccessibilityProjection(snapshot: value)
+      redraw()
+    }
     let lines = scrollAccumulator.lines(for: event, lineHeight: CGFloat(cellHeight) / scale)
     guard lines != 0 else { return }
     if value.modes.mouse != 0 && !event.modifierFlags.contains(.shift) {

@@ -45,19 +45,68 @@ import TerminalInterop
 
   @Test static func blinkOnlySchedulesRelevantRequests() {
     for shape in [0, 2, 4, 6] {
-      let state = TerminalBlinkPresentation(now: 0.75, cursorShape: shape, cursor: true, text: false, active: true)
+      let state = TerminalBlinkPresentation(now: 0.75, cursorShape: shape, cursor: true, text: false)
       #expect(state.cursorVisible && state.nextDeadline == nil)
     }
     for shape in [1, 3, 5] {
-      let state = TerminalBlinkPresentation(now: 0.75, cursorShape: shape, cursor: true, text: false, active: true)
+      let state = TerminalBlinkPresentation(now: 0.75, cursorShape: shape, cursor: true, text: false)
       #expect(!state.cursorVisible && state.textVisible && state.nextDeadline == 1)
     }
-    let text = TerminalBlinkPresentation(now: 1.25, cursorShape: 0, cursor: false, text: true, active: true)
+    let text = TerminalBlinkPresentation(now: 1.25, cursorShape: 0, cursor: false, text: true)
     #expect(text.textVisible && text.nextDeadline == 1.5)
-    let hidden = TerminalBlinkPresentation(now: 1.75, cursorShape: 1, cursor: true, text: true, active: false)
-    #expect(hidden.cursorVisible && hidden.textVisible && hidden.nextDeadline == nil)
-    let idle = TerminalBlinkPresentation(now: 1.75, cursorShape: 1, cursor: false, text: false, active: true)
+    let idle = TerminalBlinkPresentation(now: 1.75, cursorShape: 1, cursor: false, text: false)
     #expect(idle.nextDeadline == nil)
+    // A cursor that moved at 1.7 is drawn at 1.75 and next changes at 2.2;
+    // blinking text beside it stays on the shared clock and is hidden.
+    let moved = TerminalBlinkPresentation(now: 1.75, cursorEpoch: 1.7, cursorShape: 1, cursor: true, text: true)
+    #expect(moved.cursorVisible && !moved.textVisible && moved.nextDeadline == 2)
+    let later = TerminalBlinkPresentation(now: 2.25, cursorEpoch: 1.7, cursorShape: 1, cursor: true, text: false)
+    #expect(!later.cursorVisible && later.nextDeadline == 2.7)
+  }
+
+  @Test static func oneBlinkWakeIsPendingAndFiresOnce() async {
+    let wake = BlinkWake()
+    var fired = 0
+    wake.schedule(10, now: 9.99) { fired += 1 }
+    wake.schedule(10, now: 9.995) { fired += 100 }
+    await TestEnvironment.wait { fired != 0 }
+    #expect(fired == 1, "asking again for the scheduled deadline keeps the first timer")
+    wake.schedule(20, now: 19.99) { fired += 1 }
+    wake.cancel()
+    wake.schedule(30, now: 29.999) { fired += 10 }
+    await TestEnvironment.wait { fired >= 11 }
+    #expect(fired == 11, "a cancelled wake never fires")
+  }
+
+  @Test static func scrollRequestsSurviveOutputUnderAPinnedViewport() {
+    var viewport = ViewportPresentation()
+    viewport.reset(offset: 10)
+    #expect(viewport.scroll(delta: 30, lineHeight: 20, maximum: 100) == 2)
+    viewport.awaitScroll(now: 0)
+    #expect(viewport.pending == 12)
+    // Output arrives before the scroll is applied: the pinned offset grows.
+    viewport.publish(offset: 11, pinnedGrowth: 1, now: 0.01)
+    #expect(viewport.pending == 13 && viewport.anchor == 13 && viewport.fraction == -0.5)
+    viewport.publish(offset: 13, pinnedGrowth: 0, now: 0.02)
+    #expect(viewport.pending == nil && viewport.anchor == 13 && viewport.fraction == -0.5)
+    // Scroll and output in the same publication.
+    #expect(viewport.scroll(delta: 20, lineHeight: 20, maximum: 100) == 1)
+    viewport.awaitScroll(now: 1)
+    viewport.publish(offset: 16, pinnedGrowth: 2, now: 1.01)
+    #expect(viewport.pending == nil && viewport.anchor == 16)
+    // Full history hides the growth; the wait ends by time instead of never.
+    #expect(viewport.scroll(delta: 20, lineHeight: 20, maximum: 100) == 1)
+    viewport.awaitScroll(now: 2)
+    viewport.publish(offset: 19, pinnedGrowth: 0, now: 2.1)
+    #expect(viewport.pending == 17, "an unexpected offset does not overwrite a fresh request")
+    viewport.publish(offset: 19, pinnedGrowth: 0, now: 2.3)
+    #expect(viewport.pending == nil && viewport.anchor == 19)
+    // A request for the tail is not moved by growth.
+    viewport.reset(offset: 1)
+    #expect(viewport.scroll(delta: -20, lineHeight: 20, maximum: 100) == -1)
+    viewport.awaitScroll(now: 3)
+    viewport.publish(offset: 0, pinnedGrowth: 1, now: 3.01)
+    #expect(viewport.pending == nil && viewport.anchor == 0)
   }
 
   @Test static func fractionalScrollAndGeometryAreInverse() {
@@ -92,6 +141,10 @@ import TerminalInterop
     #expect(!gate.blocked)
     gate.failed(submittedGeneration: 1, currentGeneration: 2)
     #expect(!gate.blocked, "an older failed frame cannot suppress a new view request")
+    gate.finished(.staleDrawable, submittedGeneration: 2, currentGeneration: 2)
+    #expect(!gate.blocked, "a drawable of the old size is replaced, not treated as a GPU failure")
+    gate.finished(.failed, submittedGeneration: 2, currentGeneration: 2)
+    #expect(gate.blocked)
   }
 
   @Test static func overscanPreservesViewportAndActionProofs() throws {

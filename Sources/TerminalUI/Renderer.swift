@@ -394,11 +394,12 @@ public final class TerminalRendering: @unchecked Sendable {
   }
   private func submit(_ submission: Submission?) {
     guard let submission else { return }
-    if !draw(
+    let outcome = draw(
       submission.request, texture: submission.drawable.texture, drawable: submission.drawable, surface: submission.surface,
       generation: submission.generation)
-    {
-      finishedWithoutSubmission(surface: submission.surface, generation: submission.generation)
+    if outcome != .submitted {
+      finishedWithoutSubmission(
+        surface: submission.surface, generation: submission.generation, failed: outcome == .failed)
     }
   }
   private func drainReady() {
@@ -488,11 +489,15 @@ public final class TerminalRendering: @unchecked Sendable {
     displayLinks.forEach { $0.requestFrame() }
     submit(submission)
   }
-  private func finishedWithoutSubmission(surface lease: SurfaceLease, generation: UInt64) {
+  /// A failed frame quiesces the surface until the view asks again. A frame
+  /// dropped for a stale drawable leaves the request pending, so the display
+  /// link supplies a drawable of the current size and the frame is retried.
+  private func finishedWithoutSubmission(surface lease: SurfaceLease, generation: UInt64, failed: Bool) {
     surfacesLock.lock()
     if var surface = surfaces[lease.id] {
       surface.rendering = false
-      surface.failure.failed(submittedGeneration: generation, currentGeneration: surface.generation)
+      surface.failure.finished(failed ? .failed : .staleDrawable,
+        submittedGeneration: generation, currentGeneration: surface.generation)
       surfaces[lease.id] = surface
     }
     gpuBusy = false
@@ -674,8 +679,8 @@ public final class TerminalRendering: @unchecked Sendable {
   private func draw(
     _ request: RenderRequest, texture: MTLTexture, drawable: CAMetalDrawable?, surface: SurfaceLease,
     generation: UInt64, completion: ((Bool) -> Void)? = nil
-  ) -> Bool {
-    guard request.width > 0, request.height > 0 else { return false }
+  ) -> DrawOutcome {
+    guard request.width > 0, request.height > 0 else { return .failed }
     glyphResidency.beginFrame(surface: surface.id)
     var residencySubmitted = false
     var frameLegacyIDs: Set<UUID> = []
@@ -880,17 +885,21 @@ public final class TerminalRendering: @unchecked Sendable {
             let linkHovered = linkSegment < request.linkUnderline.count
               && request.linkUnderline[linkSegment].contains(gridIndex)
             if cell.style.underline > 0 || linkHovered {
-              for shape in UnderlineGeometry.rectangles(kind: linkHovered ? 1 : cell.style.underline,
+              let color = linkHovered ? fg : colors.underline(matching: fg)
+              UnderlineGeometry.forEach(kind: linkHovered ? 1 : cell.style.underline,
                 x: c * request.cellWidth, width: request.cellWidth * cells,
-                height: request.cellHeight, scale: request.backingScale) {
-                decoration(x + shape.x, y + shape.y, shape.width, shape.height,
-                  linkHovered ? fg : colors.underline(matching: fg))
+                height: request.cellHeight, scale: request.backingScale) { shape in
+                decoration(x + shape.x, y + shape.y, shape.width, shape.height, color)
               }
             }
-            if cell.style.strike {
-              decoration(x, y + request.cellHeight / 2, request.cellWidth * cells, 1, fg)
+            if cell.style.strike || cell.style.overline {
+              // The same line weight as an underline, on every display.
+              let stroke = UnderlineGeometry.stroke(height: request.cellHeight, scale: request.backingScale)
+              if cell.style.strike {
+                decoration(x, y + (request.cellHeight - stroke) / 2, request.cellWidth * cells, stroke, fg)
+              }
+              if cell.style.overline { decoration(x, y, request.cellWidth * cells, stroke, fg) }
             }
-            if cell.style.overline { decoration(x, y, request.cellWidth * cells, 1, fg) }
           }
         }
       }
@@ -1016,22 +1025,22 @@ public final class TerminalRendering: @unchecked Sendable {
       }
     }
     let preparationMs = Double(DispatchTime.now().uptimeNanoseconds - preparationStart) / 1_000_000
-    guard let command = commands.makeCommandBuffer() else { return false }
+    guard let command = commands.makeCommandBuffer() else { return .failed }
     let drawableWidth = texture.width
     let drawableHeight = texture.height
     let matchesRequest = RendererMetrics.recordDrawable(
       requestWidth: request.width, requestHeight: request.height,
       drawableWidth: drawableWidth, drawableHeight: drawableHeight)
-    // The drawable belongs to a different viewport size than this request.
-    // Drop obsolete work; the geometry change queued a replacement request.
+    // The drawable was supplied for a different viewport size than this
+    // request. Drop it and keep the request for the next drawable.
     // This does not synchronize layer geometry with drawable presentation.
     guard matchesRequest else {
       RendererMetrics.recordStaleFrameDrop()
-      return false
+      return .staleDrawable
     }
     let clipWidth = min(drawableWidth - request.inset, snap.cols * request.cellWidth)
     let clipHeight = min(drawableHeight - request.inset, (request.viewportRows ?? snap.rows.count) * request.cellHeight)
-    guard request.inset >= 0, clipWidth > 0, clipHeight > 0 else { return false }
+    guard request.inset >= 0, clipWidth > 0, clipHeight > 0 else { return .failed }
     command.label = "Terminal frame \(submissions) revision \(snap.revision)"
     let descriptor = MTLRenderPassDescriptor()
     descriptor.colorAttachments[0].texture = texture
@@ -1041,7 +1050,7 @@ public final class TerminalRendering: @unchecked Sendable {
       red: Double(baseBackground.x), green: Double(baseBackground.y),
       blue: Double(baseBackground.z), alpha: 1)
     guard let encoder = command.makeRenderCommandEncoder(descriptor: descriptor) else {
-      return false
+      return .failed
     }
     encoder.setRenderPipelineState(pipeline)
     var extent = SIMD2<Float>(Float(drawableWidth), Float(drawableHeight))
@@ -1155,7 +1164,7 @@ public final class TerminalRendering: @unchecked Sendable {
     command.commit()
     submissions += 1
     RendererMetrics.record(preparationMs: preparationMs)
-    return true
+    return .submitted
   }
 
   #if GLYPH_RESIDENCY_TESTING
@@ -1183,7 +1192,7 @@ public final class TerminalRendering: @unchecked Sendable {
         }
         completion(bytes)
       }
-      if !submitted { completion(nil) }
+      if submitted != .submitted { completion(nil) }
     }
   }
   #endif
