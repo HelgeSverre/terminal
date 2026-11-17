@@ -408,7 +408,9 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     let point = convert(locationInWindow, from: nil)
     let x = point.x * scale - CGFloat(insetPixels)
     let y = point.y * scale - CGFloat(insetPixels) - presentationOffsetPixels
-    guard x >= 0, y >= 0 else { return nil }
+    let viewportY = point.y * scale - CGFloat(insetPixels)
+    guard x >= 0, y >= 0, viewportY >= 0,
+      viewportY < CGFloat(snapshot.rows.count * cellHeight) else { return nil }
     let column = Int(x / CGFloat(cellWidth))
     let row = Int(y / CGFloat(cellHeight))
     guard column < snapshot.cols, row < (presentationSnapshot?.rows.count ?? snapshot.rows.count) else { return nil }
@@ -635,7 +637,9 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     guard let value = presentationSnapshot, !isHiddenOrHasHiddenAncestor, window?.isMiniaturized != true,
       window?.occlusionState.contains(.visible) == true || awaitsFirstFrame
     else { scheduleBlink(nil); return }
-    let shape = configuration.cursorStyle.map(Int.init) ?? value.cursor.shape
+    let shape = configuration.cursorStyle.flatMap {
+      (1...6).contains(Int($0)) ? Int($0) : nil
+    } ?? value.cursor.shape
     let blink = TerminalBlinkPresentation(now: CACurrentMediaTime(), cursorShape: shape,
       cursor: value.cursor.visible && value.following_tail && focused,
       text: value.rows.contains { $0.cells.contains { $0.style.blink && !$0.style.conceal && !$0.text.isEmpty } }, active: true)
