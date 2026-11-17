@@ -236,6 +236,10 @@ final class TerminalConfigurePreferencesCommand: TerminalScriptCommand {
       let historyRows = text("HistoryRows", fallback: String(current.historyRows)),
       let optionSendsEscape = boolean("OptionSendsEscape", fallback: current.optionSendsEscape),
       let followTailOnInput = boolean("FollowTailOnInput", fallback: current.followTailOnInput),
+      let ligatures = boolean("Ligatures", fallback: current.ligatures),
+      let graphemeClustering = boolean("GraphemeClustering", fallback: current.graphemeClustering),
+      let showPaneTitles = boolean("ShowPaneTitles", fallback: current.showPaneTitles),
+      let fontFamily = text("FontFamily", fallback: current.fontFamily ?? ""),
       let startingDirectory = text("StartingDirectory", fallback: current.startingDirectory),
       let selectionWordCharacters = text(
         "SelectionWordCharacters", fallback: current.selectionWordProfile.punctuation)
@@ -248,15 +252,74 @@ final class TerminalConfigurePreferencesCommand: TerminalScriptCommand {
       defaultPaneColor = color
     }
     do {
+      var desktop = current.desktop
+      if let configuration = arguments["DesktopConfiguration"] {
+        guard let json = configuration as? String else { return fail("desktop configuration must be JSON text.", number: -1700) }
+        desktop = try DesktopConfiguration.decode(Data(json.utf8))
+      }
+      var inactivePaneDim = current.inactivePaneDim
+      if let raw = arguments["InactivePaneDim"] {
+        guard let value = raw as? NSNumber, let dim = PaneInactiveDim(rawValue: value.intValue),
+          value.doubleValue == Double(value.intValue) else { return fail("inactive pane dim must be 0, 5, 10, 20 or 50.", number: -1700) }
+        inactivePaneDim = dim
+      }
       let preferences = try TerminalPreferences.edited(
         fontSize: fontSize, historyRows: historyRows, optionSendsEscape: optionSendsEscape,
         followTailOnInput: followTailOnInput, startingDirectory: startingDirectory,
-        selectionWordCharacters: selectionWordCharacters, showPaneTitles: current.showPaneTitles,
-        inactivePaneDim: current.inactivePaneDim, defaultPaneColor: defaultPaneColor)
+        selectionWordCharacters: selectionWordCharacters, showPaneTitles: showPaneTitles,
+        inactivePaneDim: inactivePaneDim, defaultPaneColor: defaultPaneColor,
+        fontFamily: .some(fontFamily.isEmpty ? nil : fontFamily), ligatures: ligatures,
+        graphemeClustering: graphemeClustering, desktop: desktop)
       delegate.applyPreferences(preferences)
       return "font size \(String(format: "%.15g", Double(preferences.fontSize))), scrollback rows \(preferences.historyRows), starting directory \(preferences.startingDirectory), word characters \(preferences.selectionWordProfile.punctuation), default pane color \(preferences.defaultPaneColor.hex)"
     } catch {
       return fail(error.localizedDescription, number: -1700)
     }
+  }
+}
+
+@objc(TerminalReadPreferencesCommand)
+final class TerminalReadPreferencesCommand: TerminalScriptCommand {
+  override func performDefaultImplementation() -> Any? {
+    guard TerminalAutomation.delegate != nil else { return fail("Terminal is not ready.") }
+    let value = TerminalPreferences.load()
+    let fields: [String: Any] = ["fontSize": Double(value.fontSize), "fontFamily": value.fontFamily ?? "",
+      "ligatures": value.ligatures, "graphemeClustering": value.graphemeClustering,
+      "historyRows": value.historyRows, "optionSendsEscape": value.optionSendsEscape,
+      "followTailOnInput": value.followTailOnInput, "startingDirectory": value.startingDirectory,
+      "selectionWordCharacters": value.selectionWordProfile.punctuation,
+      "showPaneTitles": value.showPaneTitles, "inactivePaneDim": value.inactivePaneDim.rawValue,
+      "defaultPaneColor": value.defaultPaneColor.hex,
+      "desktopConfiguration": (try? value.desktop.encoded()).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"]
+    guard let data = try? JSONSerialization.data(withJSONObject: fields, options: [.prettyPrinted, .sortedKeys]) else {
+      return fail("Could not encode preferences.")
+    }
+    return String(data: data, encoding: .utf8)
+  }
+}
+
+@objc(TerminalReadDirectoryCommand)
+final class TerminalReadDirectoryCommand: TerminalScriptCommand {
+  override func performDefaultImplementation() -> Any? {
+    guard let pane = pane() else { return nil }
+    return pane.session.deliveredDirectory ?? ""
+  }
+}
+
+@objc(TerminalSelectTextCommand)
+final class TerminalSelectTextCommand: TerminalScriptCommand {
+  override func performDefaultImplementation() -> Any? {
+    guard let pane = pane() else { return nil }
+    func coordinate(_ key: String) -> Int? {
+      guard let value = evaluatedArguments?[key] as? NSNumber,
+        (1...4097).contains(value.intValue), value.doubleValue == Double(value.intValue) else { return nil }
+      return value.intValue - 1
+    }
+    guard let row = coordinate("FromRow"), let column = coordinate("FromColumn"),
+      let endRow = coordinate("ToRow"), let endColumn = coordinate("ToColumn"),
+      pane.selectVisibleText(fromRow: row, fromColumn: column, toRow: endRow, toColumn: endColumn) else {
+      return fail("Selection coordinates must be whole, one-based visible rows and column boundaries.", number: -1700)
+    }
+    return TerminalAutomation.paneID(pane)
   }
 }

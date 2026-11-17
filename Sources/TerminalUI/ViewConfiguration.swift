@@ -14,6 +14,9 @@ public struct TerminalViewConfiguration {
   /// ligatures for them: `->`, `!=`, `===`. Off unless set. The bundled
   /// font has none; choose a `fontFamily` that does.
   public var ligatures = false
+  /// Nil follows the application's DECSCUSR request; 1–6 choose blinking or
+  /// steady block, underline or bar, in DECSCUSR order.
+  public var cursorStyle: UInt8? = nil
   /// The space between the view's edge and the text, in points.
   public var contentInset: CGFloat = 8
   /// Whether Option sends Escape before the key instead of composing a character.

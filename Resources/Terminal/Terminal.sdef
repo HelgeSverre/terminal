@@ -2,6 +2,28 @@
 <!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
 <dictionary title="Helge Terminal Scripting Dictionary">
   <suite name="Terminal Suite" code="HTer" description="Automation commands for Helge Terminal.">
+    <class name="application" code="capp" description="Helge Terminal.">
+      <cocoa class="NSApplication"/>
+      <element type="terminal window" access="r"><cocoa key="terminalWindows"/></element>
+    </class>
+    <class name="terminal window" code="HTwi" description="A native terminal window, containing tabs.">
+      <cocoa class="TerminalScriptWindow"/>
+      <property name="id" code="ID  " type="text" access="r"><cocoa key="identifier"/></property>
+      <property name="name" code="pnam" type="text" access="r"/>
+      <element type="terminal tab" access="r"><cocoa key="terminalTabs"/></element>
+    </class>
+    <class name="terminal tab" code="HTta" description="A terminal tab, containing panes.">
+      <cocoa class="TerminalScriptTab"/>
+      <property name="id" code="ID  " type="text" access="r"><cocoa key="identifier"/></property>
+      <property name="name" code="pnam" type="text" access="r"/>
+      <element type="terminal pane" access="r"><cocoa key="terminalPanes"/></element>
+    </class>
+    <class name="terminal pane" code="HTpa" description="A terminal pane. Its id is accepted by pane commands.">
+      <cocoa class="TerminalScriptPane"/>
+      <property name="id" code="ID  " type="text" access="r"><cocoa key="identifier"/></property>
+      <property name="working directory" code="Hcwd" type="text" access="r" description="The latest shell-reported file URL, or empty when unknown."><cocoa key="workingDirectory"/></property>
+      <property name="selected text" code="Hsel" type="text" access="r" description="The bounded visible accessibility selection."><cocoa key="selectedText"/></property>
+    </class>
     <command name="send text" code="HTermsnt" description="Queue text in order for a terminal pane; this is not a simulated keyboard event.">
       <cocoa class="TerminalSendTextCommand"/>
       <direct-parameter type="text" description="The text to send."/>
@@ -75,7 +97,30 @@
       <parameter name="starting directory" code="Hdir" type="text" optional="yes"><cocoa key="StartingDirectory"/></parameter>
       <parameter name="word characters" code="Hwrd" type="text" optional="yes" description="Extra non-whitespace, non-control Unicode scalars treated as word characters for terminal selection."><cocoa key="SelectionWordCharacters"/></parameter>
       <parameter name="default pane color" code="Hdpc" type="text" optional="yes" description="The header color of panes without their own: a hex color or a palette color name."><cocoa key="DefaultPaneColor"/></parameter>
+      <parameter name="font family" code="Hfam" type="text" optional="yes" description="Empty uses the bundled font."><cocoa key="FontFamily"/></parameter>
+      <parameter name="ligatures" code="Hlig" type="boolean" optional="yes"><cocoa key="Ligatures"/></parameter>
+      <parameter name="join emoji" code="Hgrp" type="boolean" optional="yes"><cocoa key="GraphemeClustering"/></parameter>
+      <parameter name="show pane titles" code="Hspt" type="boolean" optional="yes"><cocoa key="ShowPaneTitles"/></parameter>
+      <parameter name="inactive pane dim" code="Hipd" type="integer" optional="yes" description="0, 5, 10, 20 or 50 percent."><cocoa key="InactivePaneDim"/></parameter>
+      <parameter name="desktop configuration" code="Hdcf" type="text" optional="yes" description="Validated JSON for profiles, shortcuts, theme, cursor, Option sides and visual bell; the same format as Settings import."><cocoa key="DesktopConfiguration"/></parameter>
       <result type="text" description="A summary of the saved preferences."/>
+    </command>
+    <command name="read preferences" code="HTermrpf" description="Return all saved preferences as JSON, including desktopConfiguration as JSON text.">
+      <cocoa class="TerminalReadPreferencesCommand"/><result type="text"/>
+    </command>
+    <command name="read directory" code="HTermrcd" description="Read the latest shell-reported working directory as a file URL, or empty when unknown.">
+      <cocoa class="TerminalReadDirectoryCommand"/>
+      <parameter name="from pane" code="HpID" type="text" optional="yes"><cocoa key="PaneID"/></parameter>
+      <result type="text"/>
+    </command>
+    <command name="select text" code="HTermsel" description="Select visible text using one-based row and column boundaries. The end boundary is exclusive.">
+      <cocoa class="TerminalSelectTextCommand"/>
+      <parameter name="in pane" code="HpID" type="text" optional="yes"><cocoa key="PaneID"/></parameter>
+      <parameter name="from row" code="Hfrw" type="integer"><cocoa key="FromRow"/></parameter>
+      <parameter name="from column" code="Hfcl" type="integer"><cocoa key="FromColumn"/></parameter>
+      <parameter name="to row" code="Htrw" type="integer"><cocoa key="ToRow"/></parameter>
+      <parameter name="to column" code="Htcl" type="integer"><cocoa key="ToColumn"/></parameter>
+      <result type="text"/>
     </command>
   </suite>
 </dictionary>

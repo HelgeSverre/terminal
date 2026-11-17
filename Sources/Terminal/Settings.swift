@@ -14,6 +14,12 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   private let wordCharacters = SettingsTextField(value: "")
   private let option = SettingsCheckbox(
     checkboxWithTitle: "Option key sends Escape", target: nil, action: nil)
+  private let leftOption = SettingsPopUpButton(frame: .zero, pullsDown: false)
+  private let rightOption = SettingsPopUpButton(frame: .zero, pullsDown: false)
+  private let cursorStyle = SettingsPopUpButton(frame: .zero, pullsDown: false)
+  private let visualBell = SettingsCheckbox(checkboxWithTitle: "Visual bell", target: nil, action: nil)
+  private var desktop = DesktopConfiguration.standard
+  private var desktopEditor: DesktopSettingsEditor?
   private let followTail = SettingsCheckbox(
     checkboxWithTitle: "Scroll to bottom when typing", target: nil, action: nil)
   private let showPaneTitles = SettingsCheckbox(
@@ -39,6 +45,8 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     window.tabbingMode = .disallowed
     TerminalTheme.apply(to: window)
     window.backgroundColor = TerminalTheme.color(TerminalTheme.Settings.surface)
+    for popup in [leftOption, rightOption] { popup.addItems(withTitles: ["Follow Option setting", "Native characters", "Send Escape"]) }
+    cursorStyle.addItems(withTitles: ["Application controlled", "Blinking block", "Steady block", "Blinking underline", "Steady underline", "Blinking bar", "Steady bar"])
     fontSize.onChange = { [weak self] in self?.validate() }
     defaultPaneColor.onPick = { [weak self] _ in self?.validate() }
     defaultPaneColor.onPreview = { [weak self] _ in self?.validate() }
@@ -191,6 +199,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     case segment(String, NSSegmentedControl, Presentation)
     case popup(String, String?, NSPopUpButton, Presentation)
     case palette(String, String?, PaneColorPaletteView, Presentation)
+    case action(String, Selector)
     case note(String)
   }
   private var navigation: [SettingsNavigationButton] = []
@@ -204,6 +213,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
         Presentation(id: "starting-directory", accessibilityLabel: "Starting directory",
           hint: "Blank uses your home directory. Existing shells keep their current directory.", width: 150), chooseDirectory: true),
       .note("Leave blank to use your home directory. Existing shells keep their current directory."),
+      .action("Profiles, Shortcuts & Theme…", #selector(editDesktop(_:))),
     ]),
     Section(id: "text", icon: "textformat", title: "Text", subtitle: "Font and word selection.", fields: [
       .popup("Font", "Featured fonts come with the app", fontFamily,
@@ -241,6 +251,13 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
         Presentation(id: "option-sends-escape", accessibilityLabel: "Option key sends Escape",
           hint: "Off uses native Option characters. Option arrows always move by word.")),
       .note("Off uses native Option characters. Option arrows always move by word."),
+      .popup("Left Option", nil, leftOption, Presentation(id: "left-option", accessibilityLabel: "Left Option behavior", width: 210)),
+      .popup("Right Option", nil, rightOption, Presentation(id: "right-option", accessibilityLabel: "Right Option behavior", width: 210)),
+    ]),
+    Section(id: "appearance", icon: "paintbrush", title: "Appearance", subtitle: "Cursor and quiet terminal feedback.", fields: [
+      .popup("Cursor", nil, cursorStyle, Presentation(id: "cursor-style", accessibilityLabel: "Cursor style", width: 210)),
+      .check("Visual bell", visualBell, Presentation(id: "visual-bell", accessibilityLabel: "Visual bell")),
+      .note("Profiles, Shortcuts & Theme in General lets you edit or import the terminal's colors and ANSI palette."),
     ]),
   ]
   private func configure(_ field: NSTextField, presentation: Presentation) {
@@ -259,6 +276,12 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     var helper: String?
     let control: NSView
     switch field {
+    case let .action(name, action):
+      title = "Customize"
+      let button = SettingsActionButton(title: name, target: self, action: action)
+      button.setAccessibilityIdentifier("no.helgesverre.terminal.settings.desktop-editor")
+      control = button
+      renderedKeyViews.append(button)
     case let .text(name, hint, input, presentation, choose):
       title = name; helper = hint
       configure(input, presentation: presentation)
@@ -392,6 +415,11 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     joinEmoji.state = prefs.graphemeClustering ? .on : .off
     historyRows.stringValue = String(prefs.historyRows)
     option.state = prefs.optionSendsEscape ? .on : .off
+    desktop = prefs.desktop
+    leftOption.selectItem(at: desktop.leftOptionSendsEscape.map { $0 ? 2 : 1 } ?? 0)
+    rightOption.selectItem(at: desktop.rightOptionSendsEscape.map { $0 ? 2 : 1 } ?? 0)
+    cursorStyle.selectItem(at: Int(desktop.cursorStyle ?? 0))
+    visualBell.state = desktop.visualBell ? .on : .off
     followTail.state = prefs.followTailOnInput ? .on : .off
     showPaneTitles.state = prefs.showPaneTitles ? .on : .off
     inactivePaneDim.selectedSegment = PaneInactiveDim.allCases.firstIndex(of: prefs.inactivePaneDim) ?? 1
@@ -407,6 +435,11 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   }
   func controlTextDidChange(_ notification: Notification) { validate() }
   private func value() throws -> TerminalPreferences {
+    var desktop = desktop
+    desktop.leftOptionSendsEscape = leftOption.indexOfSelectedItem == 0 ? nil : leftOption.indexOfSelectedItem == 2
+    desktop.rightOptionSendsEscape = rightOption.indexOfSelectedItem == 0 ? nil : rightOption.indexOfSelectedItem == 2
+    desktop.cursorStyle = cursorStyle.indexOfSelectedItem > 0 ? UInt8(cursorStyle.indexOfSelectedItem) : nil
+    desktop.visualBell = visualBell.state == .on
     let dimIndex = inactivePaneDim.selectedSegment
     let dim = PaneInactiveDim.allCases.indices.contains(dimIndex)
       ? PaneInactiveDim.allCases[dimIndex] : .five
@@ -418,7 +451,21 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       showPaneTitles: showPaneTitles.state == .on,
       inactivePaneDim: dim, defaultPaneColor: defaultPaneColor.selected ?? .standard,
       fontFamily: .some(fontFamily.selectedItem?.representedObject as? String),
-      ligatures: ligatures.state == .on, graphemeClustering: joinEmoji.state == .on)
+      ligatures: ligatures.state == .on, graphemeClustering: joinEmoji.state == .on, desktop: desktop)
+  }
+  @objc private func editDesktop(_ sender: Any?) {
+    guard let draft = try? value() else { validate(); return }
+    desktopEditor = DesktopSettingsEditor(value: draft.desktop) { [weak self] value in
+      guard let self else { return }
+      desktop = value
+      leftOption.selectItem(at: value.leftOptionSendsEscape.map { $0 ? 2 : 1 } ?? 0)
+      rightOption.selectItem(at: value.rightOptionSendsEscape.map { $0 ? 2 : 1 } ?? 0)
+      cursorStyle.selectItem(at: Int(value.cursorStyle ?? 0))
+      visualBell.state = value.visualBell ? .on : .off
+      validate()
+    }
+    desktopEditor?.showWindow(nil)
+    desktopEditor?.window?.makeKeyAndOrderFront(nil)
   }
   @objc private func popupChanged(_ sender: Any?) { validate() }
   /// Fills the font menu: the default, the fonts that come with the app,

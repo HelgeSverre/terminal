@@ -113,6 +113,7 @@ struct TerminalPreferences {
   var fontFamily: String?
   /// Whether runs of punctuation are joined when the font has ligatures.
   var ligatures = false
+  var desktop = DesktopConfiguration.standard
   enum ValidationError: LocalizedError {
     case font, history, directory, wordCharacters
     var errorDescription: String? {
@@ -160,6 +161,9 @@ struct TerminalPreferences {
     var value = TerminalViewConfiguration(
       fontSize: fontSize, fontFamily: fontFamily, optionSendsEscape: optionSendsEscape, session: session)
     value.ligatures = ligatures
+    value.leftOptionSendsEscape = desktop.leftOptionSendsEscape
+    value.rightOptionSendsEscape = desktop.rightOptionSendsEscape
+    value.cursorStyle = desktop.cursorStyle
     return value
   }
   var session: TerminalSessionConfiguration {
@@ -168,6 +172,7 @@ struct TerminalPreferences {
     value.identity = TerminalIdentity(name: "HelgeTerminal",
       version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
     value.graphemeClustering = graphemeClustering
+    value.colors = desktop.theme?.colors ?? .standard
     return value
   }
   static func edited(fontSize: String, historyRows: String, optionSendsEscape: Bool,
@@ -176,7 +181,8 @@ struct TerminalPreferences {
                      inactivePaneDim: PaneInactiveDim,
                      defaultPaneColor: PaneChromeColor,
                      fontFamily: String?? = nil, ligatures: Bool? = nil,
-                     graphemeClustering: Bool? = nil) throws -> Self {
+                     graphemeClustering: Bool? = nil,
+                     desktop: DesktopConfiguration? = nil) throws -> Self {
     guard let font = Double(fontSize), font.isFinite, (8...40).contains(font) else { throw ValidationError.font }
     guard let rows = Int(historyRows), (0...50_000).contains(rows) else { throw ValidationError.history }
     guard let directory = Self.directory(startingDirectory) else { throw ValidationError.directory }
@@ -191,6 +197,8 @@ struct TerminalPreferences {
       ?? ((UserDefaults.standard.object(forKey: "graphemeClustering") as? Bool) != false)
     value.fontFamily = fontFamily ?? UserDefaults.standard.string(forKey: "fontFamily")
     value.ligatures = ligatures ?? UserDefaults.standard.bool(forKey: "ligatures")
+    value.desktop = desktop ?? loadDesktop(from: .standard)
+    try value.desktop.validate()
     return value
   }
   // Transient launch options never modify saved preferences, nor inspect child argv.
@@ -239,9 +247,15 @@ struct TerminalPreferences {
     loaded.graphemeClustering = (defaults.object(forKey: "graphemeClustering") as? Bool) != false
     loaded.fontFamily = (defaults.object(forKey: "fontFamily") as? String).flatMap { $0.isEmpty ? nil : $0 }
     loaded.ligatures = (defaults.object(forKey: "ligatures") as? Bool) == true
+    loaded.desktop = loadDesktop(from: defaults)
     return loaded
   }
   func save() { save(to: .standard) }
+  private static func loadDesktop(from defaults: UserDefaults) -> DesktopConfiguration {
+    guard let data = defaults.data(forKey: "desktopConfiguration"),
+      let value = try? DesktopConfiguration.decode(data) else { return .standard }
+    return value
+  }
   func save(to d: UserDefaults) {
     d.set(fontSize, forKey: "fontSize")
     d.set(historyRows, forKey: "historyRows")
@@ -254,6 +268,7 @@ struct TerminalPreferences {
     d.set(defaultPaneColor.hex, forKey: "defaultPaneColor")
     if let fontFamily { d.set(fontFamily, forKey: "fontFamily") } else { d.removeObject(forKey: "fontFamily") }
     d.set(ligatures, forKey: "ligatures")
+    if let data = try? desktop.encoded() { d.set(data, forKey: "desktopConfiguration") }
     // Written only when chosen, so the default can still change.
     if !graphemeClustering || d.object(forKey: "graphemeClustering") != nil {
       d.set(graphemeClustering, forKey: "graphemeClustering")
@@ -265,9 +280,13 @@ extension LaunchSpec {
   /// The login shell in the starting directory the preferences name, started
   /// through the launcher this bundle carries.
   static var shell: LaunchSpec {
-    .loginShell(
-      cwd: TerminalPreferences.load().launchDirectory,
-      launcher: Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher").path)
+    let prefs = TerminalPreferences.load()
+    let launcher = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher").path
+    if let profile = prefs.desktop.profiles.first(where: { $0.id == prefs.desktop.defaultProfile }),
+      let launch = try? profile.launch(fallbackDirectory: prefs.launchDirectory, launcher: launcher) {
+      return launch
+    }
+    return .loginShell(cwd: prefs.launchDirectory, launcher: launcher)
   }
   func inheritingDirectory(_ location: String?) -> Self {
     Self(executable: executable, arguments: arguments,

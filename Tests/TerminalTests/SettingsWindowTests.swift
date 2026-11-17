@@ -164,12 +164,12 @@ import Testing
       (0..<count).map { _ in tab(backward: backward); return focused() }
     }
     let orders: [String: [String]] = [
-      "general": ["settings.starting-directory", "settings.choose-directory"],
+      "general": ["settings.starting-directory", "settings.choose-directory", "settings.desktop-editor"],
       "text": ["settings.font-family", "settings.font-size", "settings.ligatures", "settings.join-emoji",
         "settings.word-characters"],
       "scrollback": ["settings.scrollback-rows", "settings.follow-tail-on-input"],
       "panes": ["settings.show-pane-titles", "settings.inactive-pane-dim", "pane.color.onyx", "pane.color.hex"],
-      "keyboard": ["settings.option-sends-escape"],
+      "keyboard": ["settings.option-sends-escape", "settings.left-option", "settings.right-option"],
     ]
     for section in ["general", "text", "scrollback", "panes", "keyboard"] {
       let button = view("settings.section." + section)

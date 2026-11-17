@@ -23,6 +23,24 @@ final class TerminalPanePresentationView: NSView {
   private let colorPopover = PaneColorPopover()
   /// The pane's own color when the popover opened; Escape puts it back.
   private var colorBeforePopover: PaneChromeColor?
+  private var bellGate = VisualBellGate()
+  private let bellOutline = CALayer()
+
+  /// One subtle outline per burst. It never changes focus, plays a sound or
+  /// schedules repeated work while a program continuously emits BEL.
+  func indicateBell(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
+    guard window?.occlusionState.contains(.visible) == true, bellGate.admit(now: now) else { return }
+    bellOutline.frame = bounds.insetBy(dx: 1, dy: 1)
+    bellOutline.borderWidth = 2
+    bellOutline.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.55).cgColor
+    bellOutline.opacity = 0
+    if bellOutline.superlayer == nil { layer?.addSublayer(bellOutline) }
+    let fade = CABasicAnimation(keyPath: "opacity")
+    fade.fromValue = 0.8
+    fade.toValue = 0
+    fade.duration = 0.3
+    bellOutline.add(fade, forKey: "bell")
+  }
 
   var onSelect: (() -> Void)?
   var onClose: (() -> Void)?
@@ -113,6 +131,7 @@ final class TerminalPanePresentationView: NSView {
 
   override func layout() {
     super.layout()
+    bellOutline.frame = bounds.insetBy(dx: 1, dy: 1)
     let height = showsHeader ? Self.headerHeight : 0
     header.frame = NSRect(x: 0, y: 0, width: bounds.width, height: height)
     canvas.frame = NSRect(x: 0, y: height, width: bounds.width, height: max(0, bounds.height - height))
