@@ -121,8 +121,8 @@ final class DocumentReflowTransaction {
     }
     let required = State.sum(sourceBytes, promptBytes, largestPromptDictionary,
       primarySelection?.content.allocationBytes ?? 0, alternateSelection?.content.allocationBytes ?? 0,
-      State.product(source.history.count + source.primary.rows.count, 16), 4096)
-      + UInt64(min(graphicsAnchors.count, 256)) * 256
+      State.product(source.history.count + source.primary.rows.count, 16), 4096,
+      UInt64(min(graphicsAnchors.count, 256)) * 256)
     guard required <= ReflowReservationLedger.operationLimit else {
       if source.history.isEmpty { earlyStatus = .rejected(.operationBudget) }
       else {
@@ -558,6 +558,12 @@ final class DocumentReflowTransaction {
           }
         }
         if kind == 3 || kind == 4 { sourceColumn += 1; work += 1; return nil }
+        if occupied == 2, let current {
+          for anchor in graphicsAnchors[item.id] ?? [] where anchor.column == sourceColumn + 1 {
+            mappedGraphics[anchor.serial] = GraphicsReflowAnchor(serial: anchor.serial, row: current.id,
+              column: column + min(1, width - 1))
+          }
+        }
         primarySelection?.copy(source: item.id, columns: sourceColumn..<(sourceColumn + occupied),
                                target: column..<(column + width), retained: current != nil)
         if current == nil {

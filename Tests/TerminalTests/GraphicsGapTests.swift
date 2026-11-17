@@ -40,6 +40,20 @@ import TerminalInterop
     #expect(Oracle.rgba(core, parent) == Data([1, 2, 3, 255]))
   }
 
+  @Test func placeholderPlacementAndItsChildFollowReflowAndPartialScroll() throws {
+    let core = try #require(helge_terminal_create(8, 4)); defer { helge_terminal_destroy(core) }
+    let mark = String(UnicodeScalar(KittyPlaceholder.diacritics[0])!)
+    Oracle.feed(core, Oracle.command("a=T,f=24,s=1,v=1,i=1,p=1,U=1,c=1,r=1,C=1", [1, 2, 3]))
+    Oracle.feed(core, "abcde\(esc)[38;5;1m\u{10eeee}\(mark)\(mark)\(esc)[0m")
+    Oracle.feed(core, Oracle.command("a=T,f=24,s=1,v=1,i=2,p=1,P=1,Q=1,H=1,C=1", [4, 5, 6]))
+    #expect(helge_terminal_resize(core, 4, 4))
+    var child = try #require(Oracle.images(core).first { $0["image"] as? Int == 2 })
+    #expect(child["row"] as? Int == 1 && child["col"] as? Int == 2)
+    Oracle.feed(core, "\(esc)[?69h\(esc)[2;4s\(esc)[S")
+    child = try #require(Oracle.images(core).first { $0["image"] as? Int == 2 })
+    #expect(child["row"] as? Int == 0 && child["col"] as? Int == 2)
+  }
+
   @Test func partialWidthScrollMovesAndClipsPlacements() throws {
     let core = try #require(helge_terminal_create(8, 4)); defer { helge_terminal_destroy(core) }
     Oracle.feed(core, "\(esc)[2;2H")
@@ -165,7 +179,8 @@ import TerminalInterop
   @Test func inlineGifFramesUseTheTerminalClock() throws {
     let encoded = NSMutableData()
     let destination = try #require(CGImageDestinationCreateWithData(encoded, UTType.gif.identifier as CFString, 2, nil))
-    for color: [UInt8] in [[255, 0, 0, 255], [0, 255, 0, 255]] {
+    let colors: [[UInt8]] = [[255, 0, 0, 255], [0, 255, 0, 255]]
+    for color in colors {
       let provider = try #require(CGDataProvider(data: Data(color) as CFData))
       let image = try #require(CGImage(width: 1, height: 1, bitsPerComponent: 8, bitsPerPixel: 32,
         bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
