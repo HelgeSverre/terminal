@@ -172,7 +172,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   private func makePane(launch: LaunchSpec? = nil, state: PaneState? = nil) -> TerminalCanvasView {
     let delegate = NSApp.delegate as? AppDelegate
     let id = state?.id ?? PaneID()
-    let launch = state.map { LaunchSpec.shell.inheritingDirectory(URL(fileURLWithPath: $0.directory).absoluteString) }
+    let launch = state.map { LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString) }
       ?? initialLaunch ?? diagnosticSplitLaunch ?? launch ?? .shell
     let session: TerminalSession
     if let state, let store = delegate?.recovery {
@@ -1122,7 +1122,7 @@ helge_terminal_set_program_version(Bundle.main.object(forInfoDictionaryKey: "CFB
 let recoveryState = SessionStateStore.open(directory: StateLocation.directory(
   arguments: CommandLine.arguments, bundle: Bundle.main.bundleURL, home: FileManager.default.homeDirectoryForCurrentUser))
 let restoredFirstPane = recoveryState?.restored?.windows.first?.panes.first
-if let launch = restoredFirstPane.map({ LaunchSpec.shell.inheritingDirectory(URL(fileURLWithPath: $0.directory).absoluteString) })
+if let launch = restoredFirstPane.map({ LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString) })
   ?? AppDelegate.firstLaunch() {
   let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096)
   let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096)

@@ -1757,8 +1757,8 @@ struct TerminalDocument {
       screen.rows[row].revision &+= 1
     }
     func wrap() {
-      if (horizontal.left != 0 || horizontal.right != columns - 1), screen.cursorRow == screen.bottomMargin,
-        (horizontal.left...horizontal.right).contains(screen.cursorColumn) { effect.partialScrollCount += 1 }
+      if (horizontal.0 != 0 || horizontal.1 != columns - 1), screen.cursorRow == screen.bottomMargin,
+        (horizontal.0...horizontal.1).contains(screen.cursorColumn) { effect.partialScrollCount += 1 }
       effect.appendedHistoryCount += Self.wrapCursor(
         in: &screen, columns: columns, blankCellCapacity: blankCellCapacity, horizontal: horizontal,
         style: attributes.style, history: &history, nextRowID: &nextRowID, retainHistory: retainHistory)

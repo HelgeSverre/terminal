@@ -5,6 +5,17 @@ import Testing
 @testable import TerminalHost
 
 @Suite(.serialized) @MainActor enum DesktopConfigurationTests {
+  @Test static func recoveryDoesNotRunDefaultProfile() throws {
+    var preferences = TerminalPreferences.load(from: UserDefaults(suiteName: "recovery-profile-\(UUID().uuidString)")!)
+    preferences.desktop.profiles = [.init(id: "command", name: "Command", executable: "/bin/echo",
+      arguments: ["must-not-run-during-restore"], directory: "", environment: ["PROFILE_ONLY": "yes"])]
+    preferences.desktop.defaultProfile = "command"
+    let launch = LaunchSpec.recoveryShell(inheriting: "file:///", preferences: preferences)
+    #expect(launch.executable == LaunchSpec.loginShellPath)
+    #expect(launch.arguments == [LaunchSpec.loginShellPath, "-l"])
+    #expect(launch.cwd == "/" && launch.environment["PROFILE_ONLY"] == nil)
+  }
+
   @Test static func configurationRoundTripAndInvalidStorageFallback() throws {
     let name = "desktop-configuration-\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: name))

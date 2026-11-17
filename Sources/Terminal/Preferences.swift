@@ -277,6 +277,12 @@ struct TerminalPreferences {
 }
 
 extension LaunchSpec {
+  /// Recovery always creates a fresh login shell, independent of profiles.
+  static func recoveryShell(inheriting location: String?, preferences: TerminalPreferences = .load()) -> Self {
+    let launcher = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher").path
+    return .loginShell(cwd: preferences.launchDirectory(inheriting: location), launcher: launcher)
+  }
+
   /// The login shell in the starting directory the preferences name, started
   /// through the launcher this bundle carries.
   static var shell: LaunchSpec {
