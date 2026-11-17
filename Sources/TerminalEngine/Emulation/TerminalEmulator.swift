@@ -117,6 +117,7 @@ private final class TerminalEmulator {
   @exclusivity(unchecked) private var autoWrap = true
   @exclusivity(unchecked) private var reverseWrap = false
   @exclusivity(unchecked) private var reverseWrapUnlimited = false
+  @exclusivity(unchecked) private var cursesTabWrap = false
   @exclusivity(unchecked) private var savedPrivateModes: [Int: Bool] = [:]
   // SPA activates ISO erasure protection until terminal reset. EPA stops
   // protecting new cells but does not disable protection of existing cells.
@@ -907,7 +908,12 @@ private final class TerminalEmulator {
   }
   private func tab(_ reverse: Bool = false, count: Int = 1) {
     resetClusterBoundary()
+    if !reverse && cursesTabWrap && autoWrap && screen.pendingWrap {
+      index(reverse: false)
+      var next = screen; next.cursorColumn = 0; screen = next
+    }
     var s = screen
+    let previousColumn = s.cursorColumn
     // CBT searches page tab stops to the left edge. HT/CHT still stop at
     // the right margin, matching DEC terminals and xterm.
     let left = 0, right = writeBounds(s.cursorColumn).right
@@ -922,7 +928,8 @@ private final class TerminalEmulator {
           .first(where: { tabs[$0] }) ?? right
       }
     }
-    s.pendingWrap = false; screen = s; changed()
+    if reverse || s.cursorColumn != previousColumn { s.pendingWrap = false }
+    screen = s; changed()
   }
   private func reverseIndex() { index(reverse: true) }
   private func saveCursor() {
@@ -954,6 +961,7 @@ private final class TerminalEmulator {
     usingAlternate = false; viewAnchor = nil; viewOffset = 0
     pen = TerminalStyle(); originMode = false; leftRightMargins = false; autoWrap = true
     reverseWrap = false; reverseWrapUnlimited = false; savedPrivateModes.removeAll()
+    cursesTabWrap = false
     insertMode = false; newlineMode = false; protectedOutput = false; syncDeadline = nil
     attributes.isoProtected = false
     isoEraseProtection = false
@@ -1593,6 +1601,7 @@ private final class TerminalEmulator {
       case 6: enabled = originMode
       case 7: enabled = autoWrap
       case 45: enabled = reverseWrap
+      case 41: enabled = cursesTabWrap
       case 1045: enabled = reverseWrapUnlimited
       case 25: enabled = screen.cursorVisible
       case 47, 1047, 1049: enabled = usingAlternate
@@ -1624,6 +1633,7 @@ private final class TerminalEmulator {
       case 6: originMode = enabled; var s = screen; s.cursorRow = enabled ? s.topMargin : 0; s.cursorColumn = enabled ? horizontalMargins.left : 0; s.pendingWrap = false; screen = s; changedActiveScreen = true
       case 7: autoWrap = enabled; if !enabled { var s = screen; s.pendingWrap = false; screen = s }; changedActiveScreen = true
       case 45: reverseWrap = enabled
+      case 41: cursesTabWrap = enabled
       case 1045: reverseWrapUnlimited = enabled
       case 25:
         var s = screen; s.cursorVisible = enabled; screen = s
@@ -1685,6 +1695,7 @@ private final class TerminalEmulator {
   private func softReset() {
     originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false
     reverseWrap = false; reverseWrapUnlimited = false
+    cursesTabWrap = false
     newlineMode = false; protectedOutput = false
     attributes.isoProtected = false
     isoEraseProtection = false

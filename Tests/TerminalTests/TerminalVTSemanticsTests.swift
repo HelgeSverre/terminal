@@ -213,6 +213,31 @@ import TerminalInterop
     #expect(lines(terminal, count: 1)[0].hasPrefix("XXX"))
   }
 
+  @Test static func eraseWholeRowsClearsSoftWrapConnections() {
+    let terminal = Oracle.make(8, 6); defer { helge_terminal_destroy(terminal) }
+    Oracle.feed(terminal, "abcdefghijklmnopqrstuvwxyz\u{1b}[!p\u{1b}[2J")
+    Oracle.feed(terminal, "\u{1b}[?45h\u{1b}[3;1H******\n******\n\u{1b}[5;5H\u{1b}[16D")
+    #expect(cursor(terminal) == (3, 0), "CUB must stop at the current unwrapped logical line")
+    let rows = Oracle.snapshot(terminal)["rows"] as! [[String: Any]]
+    #expect(rows[2]["soft_wrapped"] as? Bool == false)
+    #expect(rows[3]["soft_wrapped"] as? Bool == true)
+  }
+
+  @Test static func cursesTabModeConsumesDeferredWrapOnlyWhenEnabled() {
+    let terminal = Oracle.make(16, 6); defer { helge_terminal_destroy(terminal) }
+    let row = String(repeating: "x", count: 16)
+    Oracle.feed(terminal, "\u{1b}[?41h\r\n\(row)\t")
+    #expect(cursor(terminal) == (2, 8))
+    Oracle.feed(terminal, "1\u{1b}[?41l\r\n\(row)\t")
+    #expect(cursor(terminal) == (3, 15))
+    let cursorBeforePrint = Oracle.snapshot(terminal)["cursor"] as! [String: Any]
+    #expect(cursorBeforePrint["pending_wrap"] as? Bool == true)
+    Oracle.feed(terminal, "2")
+    let value = Oracle.snapshot(terminal)
+    #expect(Oracle.cell(value, 2, 8)["text"] as? String == "1")
+    #expect(Oracle.cell(value, 4, 0)["text"] as? String == "2")
+  }
+
   @Test static func privateModeSaveRestoreAndBackwardTabsIgnoreLeftMargin() {
     let terminal = Oracle.make(24, 3); defer { helge_terminal_destroy(terminal) }
     Oracle.feed(terminal, "\u{1b}[?7l\u{1b}[?7s\u{1b}[?7h\u{1b}[?7r\u{1b}[1;24HXYZ")

@@ -1991,11 +1991,13 @@ struct TerminalDocument {
                       selective: Bool = false, respectISOProtection: Bool = false) {
     guard screen.rows.indices.contains(row) else { return }
     let lower = max(0, range.lowerBound), upper = min(columns, range.upperBound); guard lower < upper else { return }
+    var erasedAll = lower == 0 && upper == columns
     for column in lower..<upper {
-      if selective && screen.rows[row].isProtected(at: column) { continue }
-      if respectISOProtection && screen.rows[row].isISOProtected(at: column) { continue }
+      if selective && screen.rows[row].isProtected(at: column) { erasedAll = false; continue }
+      if respectISOProtection && screen.rows[row].isISOProtected(at: column) { erasedAll = false; continue }
       screen.rows[row].erase(at: column, style: style)
     }
+    if erasedAll { screen.rows[row].softWrapped = false }
     repairWidePairs(&screen.rows[row], eraseStyle: style); screen.rows[row].revision &+= 1
   }
   /// Rectangle edits retain destination row identities. Snapshot the source

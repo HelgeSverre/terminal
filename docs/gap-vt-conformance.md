@@ -25,6 +25,25 @@ The integrated build must rerun the suite before replacing those counts.
 | `XtermSave_SaveSetState`, `XtermSave_SaveResetState` | Private mode save/restore stores recognized mutable modes with bounded storage. | `privateModeSaveRestoreAndBackwardTabsIgnoreLeftMargin` |
 | `DECALN_ClearsMargins` integration regression | DECALN resets horizontal as well as vertical margins. Previously incorrect CUB behavior had concealed the stale horizontal region. | `screenAlignmentClearsAllMargins` |
 | `ED_0` integration regression after `ECH_respectsISOProtection` | DECSTR disables ISO erasure protection without erasing the page, so the runner's subsequent ED2 clears protected content from the preceding test. SPA enables protection again; EPA only stops marking new cells. | `softResetDisablesISOEraseProtectionWithoutErasingPage` |
+| `CUB_AfterNoWrappedInlines` | Whole-row erase clears the erased row's soft-wrap connection. Keeping its old connection when retaining row identity let reverse CUB cross into a previous logical line after ED2. | `eraseWholeRowsClearsSoftWrapConnections` |
+| `DECSET_MoreFix` | Mode 41 makes HT/CHT consume pending wrap before searching the next tab stop. With the mode disabled, a tab at the right edge retains pending wrap for subsequent printing. | `cursesTabModeConsumesDeferredWrapOnlyWhenEnabled` |
+
+## Disposition of the recorded ten VT failures
+
+The coordinator's `e0f79b3` run recorded 440 passes, 88 failures and 39 known
+bugs. Its ten VT-owned failures have these individual dispositions:
+
+| Cases | Count | Disposition |
+| --- | ---: | --- |
+| `DECALN_ClearsMargins`, `ED_0`, `NEL_MovesDoesNotScrollOutsideLeftRight` | 3 | Concrete defects repaired in follow-up commits, with focused regressions. |
+| `CUB_AfterNoWrappedInlines` | 1 | Concrete whole-row erasure metadata defect repaired; reverse-wrap mode 45 itself was correctly checking the row's soft-wrap flag. |
+| `DECSET_MoreFix` | 1 | Mode 41 is now implemented, including preservation of pending wrap when the mode is disabled. |
+| `DECSED_doesNotRespectISOProtect`, `DECSEL_doesNotRespectISOProtect` | 2 | **Unexpected passes in the xterm harness**, not failed character assertions. Both bodies complete successfully, then `knownBug(terminal="xterm")` raises `InternalError("Should have failed")` because Helge does not reproduce xterm's historical ISO/DEC protection coupling. Keep the independent protection semantics; report these as XPASS in conformance evidence rather than reintroducing the xterm behavior. |
+| `DECSET_DECCOLM`, `DECSET_Allow80To132`, `RIS_ResetDECCOLM` | 3 | Intentional policy exclusions: each case requires child-controlled 80/132-column resizing, which this task explicitly prohibits. |
+
+These dispositions do not replace the recorded counts with projected results.
+The coordinator must rerun the integrated app and retain the raw failures,
+distinguishing the two explicit XPASS decorators from implementation failures.
 
 ## Reverse-wrap version expectations
 
@@ -56,7 +75,6 @@ esctest deliberately expects different DECAWM behavior when its terminal is
 | --- | --- |
 | `DECSET_DECCOLM`, `DECSET_Allow80To132`, `RIS_ResetDECCOLM` | Child-driven 80/132-column window resizing remains prohibited by the implementation contract. These are intentional policy failures. |
 | `DECSCL_Level2DoesntSupportDECRQM`, `DSCSCL_Level3_SupportsDECRQMDoesntSupportDECSLRM`, `DECSCL_Level4_SupportsDECSLRMDoesntSupportDECNCSM` | Historical hardware conformance-level switching is unsupported. The terminal exposes its actual modern feature set rather than disabling queries/margins according to a simulated VT generation; the last case also requests prohibited column resizing. |
-| `DECSET_MoreFix` | Unsupported xterm mode 41, an optional workaround for old curses tab-after-wrap behavior. Normal HT/CHT behavior is retained. |
 | `RIS_ResetTitleMode` | Title encoding/query mode belongs to protocol discovery, not cursor/document semantics. Coordinate its disposition with that package. |
 | Identity, color, DECRQM/DECRQSS/DECDSR, window/title query failures | Owned by protocol discovery. Do not hide them under this C05 disposition or change identity to satisfy xterm-specific equality checks. |
 | Window manipulation and raw C1 expectations | Preserve the inventory's explicit exclusions. |
