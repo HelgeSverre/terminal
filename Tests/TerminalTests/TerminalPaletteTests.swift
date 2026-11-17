@@ -98,4 +98,21 @@ import Testing
       #expect(palette.snapshotDefaultForeground == [0, 0, 255])
     }
   }
+
+  @Test static func attributeColorsFollowXtermForegroundPriority() {
+    var palette = TerminalPalette()
+    _ = palette.applyOSC(command: "5", value: "0;#112233;1;#445566;2;#778899;3;#aabbcc;4;#ddeeff")
+    _ = palette.applyOSC(command: "106", value: "0;1;1;1;2;1;3;1;4;1")
+    let all = TerminalStyle(flags: 1 | 4 | 128, underlineKind: 3)
+    #expect(palette.presentationStyle(all).foreground == 0x02778899)
+    #expect(palette.presentationStyle(all).flags & 128 == 0)
+    let boldUnderline = TerminalStyle(flags: 1, underlineKind: 3)
+    #expect(palette.presentationStyle(boldUnderline).foreground == 0x02112233)
+    let underline = TerminalStyle(underline: 0x02010203, underlineKind: 3)
+    #expect(palette.presentationStyle(underline).foreground == 0x02445566)
+    #expect(palette.presentationStyle(underline).underline == 0x02010203)
+    #expect(palette.presentationStyle(underline).underlineKind == 0)
+    #expect(palette.presentationStyle(TerminalStyle(flags: 8)).background == 0x02aabbcc)
+    #expect(palette.presentationStyle(TerminalStyle(flags: 4)).foreground == 0x02ddeeff)
+  }
 }

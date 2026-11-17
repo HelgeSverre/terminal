@@ -37,6 +37,9 @@ reverse and italic colors. OSC 6/106 enables the corresponding attribute modes;
 they start disabled. Explicit SGR colors take precedence unless attribute-color
 override mode 5 is enabled. OSC 105 restores special colors. These colors are
 resolved at snapshot publication so changes affect retained output too.
+The foreground precedence is blink, bold, underline, then italic; the selected
+attribute is displayed in color instead of its usual visual effect. `colorUL`
+colors the characters, while SGR 58 independently sets an underline's line color.
 
 `CSI ? 996 n` reports whether the configured host background is dark or light
 using weighted RGB brightness. Mode 2031 subscribes to host scheme changes;

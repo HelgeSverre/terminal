@@ -71,13 +71,23 @@ struct TerminalPalette {
     var style = original
     let active = [style.flags & 1 != 0, style.underlineKind != 0,
                   style.flags & 128 != 0, style.flags & 8 != 0, style.flags & 4 != 0]
-    for slot in 0..<5 where active[slot] && specialEnabled[slot] {
-      let color = UInt32(0x0200_0000) | (special[slot] ?? RGB(scheme.foreground)).packed
-      if slot == 1 {
-        if style.underline == 0 || specialEnabled[5] { style.underline = color }
-      } else if slot == 3 {
-        if style.background == 0 || specialEnabled[5] { style.background = color }
-      } else if style.foreground == 0 || specialEnabled[5] { style.foreground = color }
+    // xterm's colorUL changes the characters' foreground, independently of
+    // SGR 58's line color. Color modes replace the selected attribute's visual
+    // effect. Foreground precedence is blink, bold, underline, then italic.
+    if original.foreground == 0 || specialEnabled[5],
+       let slot = [2, 0, 1, 4].first(where: { active[$0] && specialEnabled[$0] }) {
+      style.foreground = 0x0200_0000 | (special[slot] ?? RGB(scheme.foreground)).packed
+      switch slot {
+      case 0: style.flags &= ~UInt16(1)
+      case 1: style.underlineKind = 0
+      case 2: style.flags &= ~UInt16(128)
+      case 4: style.flags &= ~UInt16(4)
+      default: break
+      }
+    }
+    if active[3] && specialEnabled[3], original.background == 0 || specialEnabled[5] {
+      // Reverse swaps this background into the displayed foreground.
+      style.background = 0x0200_0000 | (special[3] ?? RGB(scheme.foreground)).packed
     }
     return style
   }

@@ -284,11 +284,13 @@ import TerminalInterop
     let core = try #require(helge_terminal_create(8, 3))
     defer { helge_terminal_destroy(core) }
     let before = try Self.check(core)
-    Self.feed(core, "\u{1b}[1;4:3mX\u{1b}]12;#123456\u{1b}\\\u{1b}]5;0;#abcdef;1;#010203\u{1b}\\\u{1b}]106;0;1;1;1\u{1b}\\")
+    Self.feed(core, "\u{1b}[1mX\u{1b}[0;4:3;58;2;4;5;6mY\u{1b}]12;#123456\u{1b}\\\u{1b}]5;0;#abcdef;1;#010203\u{1b}\\\u{1b}]106;0;1;1;1\u{1b}\\")
     let after = try Self.check(core)
     #expect(after.cursor_color == 0x123456)
     #expect(after.rows[0].cells[0].style.foreground.rgb == [171, 205, 239])
-    #expect(after.rows[0].cells[0].style.underline_color.rgb == [1, 2, 3])
+    #expect(after.rows[0].cells[1].style.foreground.rgb == [1, 2, 3])
+    #expect(after.rows[0].cells[1].style.underline_color.rgb == [4, 5, 6])
+    #expect(after.rows[0].cells[1].style.underline == 0 && !after.rows[0].cells[0].style.bold)
     #expect(after.revision > before.revision)
     let priorRevision = after.revision
     Self.feed(core, "\u{1b}]12;#654321\u{1b}\\")
