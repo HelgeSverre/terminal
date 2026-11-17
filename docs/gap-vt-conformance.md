@@ -2,8 +2,8 @@
 
 Source triage uses the downloaded run `44069317138` (320 passed, 206 failed,
 41 known bugs, 567 total) and its checked-out esctest2 expectations. These are
-implementation dispositions, not a claim that a new conformance run passed.
-The integrated build must rerun the suite before replacing those counts.
+implementation dispositions. The integrated rerun at `b945624` passed 447 of
+567, and the run at `556aa51` passed 460; see [conformance](conformance.md).
 
 ## Concrete defects repaired
 
@@ -41,9 +41,9 @@ bugs. Its ten VT-owned failures have these individual dispositions:
 | `DECSED_doesNotRespectISOProtect`, `DECSEL_doesNotRespectISOProtect` | 2 | **Unexpected passes in the xterm harness**, not failed character assertions. Both bodies complete successfully, then `knownBug(terminal="xterm")` raises `InternalError("Should have failed")` because Helge does not reproduce xterm's historical ISO/DEC protection coupling. Keep the independent protection semantics; report these as XPASS in conformance evidence rather than reintroducing the xterm behavior. |
 | `DECSET_DECCOLM`, `DECSET_Allow80To132`, `RIS_ResetDECCOLM` | 3 | Intentional policy exclusions: each case requires child-controlled 80/132-column resizing, which this task explicitly prohibits. |
 
-These dispositions do not replace the recorded counts with projected results.
-The coordinator must rerun the integrated app and retain the raw failures,
-distinguishing the two explicit XPASS decorators from implementation failures.
+The rerun confirmed these dispositions: the repaired cases pass, the two
+ISO-protection cases are reported as unexpected passes, and the three DECCOLM
+cases fail by policy.
 
 ## Reverse-wrap version expectations
 
@@ -75,7 +75,6 @@ esctest deliberately expects different DECAWM behavior when its terminal is
 | --- | --- |
 | `DECSET_DECCOLM`, `DECSET_Allow80To132`, `RIS_ResetDECCOLM` | Child-driven 80/132-column window resizing remains prohibited by the implementation contract. These are intentional policy failures. |
 | `DECSCL_Level2DoesntSupportDECRQM`, `DSCSCL_Level3_SupportsDECRQMDoesntSupportDECSLRM`, `DECSCL_Level4_SupportsDECSLRMDoesntSupportDECNCSM` | Historical hardware conformance-level switching is unsupported. The terminal exposes its actual modern feature set rather than disabling queries/margins according to a simulated VT generation; the last case also requests prohibited column resizing. |
-| `RIS_ResetTitleMode` | Title encoding/query mode belongs to protocol discovery, not cursor/document semantics. Coordinate its disposition with that package. |
 | Identity, color, DECRQM/DECRQSS/DECDSR, window/title query failures | Owned by protocol discovery. Do not hide them under this C05 disposition or change identity to satisfy xterm-specific equality checks. |
 | Window manipulation and raw C1 expectations | Preserve the inventory's explicit exclusions. |
 
@@ -90,14 +89,10 @@ retaining soft reset's screen contents.
 The checked-out esctest2 files supply exact before/after fixtures for each table
 row above.
 
-## Verification required at integration
+## Verification
 
-No compiler or test process was run in this package before its checkpoint:
-the coordinator owns the machine build slot. Run the focused
-`TerminalVTSemanticsTests`, `TerminalDocumentOracleTests`,
+The `TerminalVTSemanticsTests`, `TerminalDocumentOracleTests`,
 `TerminalDocumentOwnershipTests`, `TerminalSemanticRegressionTests`,
 `TerminalReflowSemanticTests`, `TerminalSchedulerOracleTests` and
-`TerminalSelectionTests` suites, followed by the integrated esctest and full
-`just test` gate. In particular, reflow must preserve the new saved charset and
-protection state and ISO cell flags, and alternate-screen changes must preserve
-the existing independent keyboard and appearance state.
+`TerminalSelectionTests` suites ran in the full `just test` gate at `5d46b01`,
+and esctest ran at `b945624`, `648a83c` and `556aa51`.

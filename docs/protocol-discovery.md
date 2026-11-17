@@ -55,9 +55,10 @@ can visually disguise a host/path. ZWJ and WORD JOINER remain valid. Titles
 remain cell-ordered text; this is not a general bidi rendering implementation.
 
 The [isolated Snacks fixture](../Tests/Fixtures/Snacks/README.md) contains the
-Helge-specific upstream patch and default-image startup configuration. It
-requires runtime validation in a frozen app; upstream recognition is a separate
-dependency. Source regressions are in `TerminalProtocolDiscoveryTests`,
+Helge-specific upstream patch and default-image startup configuration.
+Upstream recognition is a separate
+dependency. It passed direct runtime validation on the frozen `306a592` app;
+tmux and SSH paths are not qualified. Source regressions are in `TerminalProtocolDiscoveryTests`,
 `TerminalPaletteTests`, `TransportTests` and `SnapshotBridgeTests`.
 
 OSC 8 retains its colon-separated `id` parameter separately from the URI.
@@ -84,28 +85,34 @@ have been rerun. The implemented SGR/margin/cursor/protection DECRQSS subset,
 practical hex/`rgb:` color forms, special-color reset paths and nine other
 title query/stack cases passed.
 
+Two reruns followed. At `b945624`, 447 cases passed with 81 failures: the
+first two rows below are fixed, and five of the ten VT cases pass. At
+`556aa51`, 460 passed with 68 failures: the `DECID` row and the nine `DECDSR`
+cases are implemented and pass, `DECNKM` leaves the DECRQM row, and `DECSASD`
+and `DECSSDT` leave the DECRQSS row. The table keeps the `e0f79b3` counts.
+
 | Recorded failures | Count | Disposition |
 | --- | ---: | --- |
 | `XtermWinops_PushIconThenWindowThenPopBoth` | 1 | Implemented-feature defect: a partial stack frame must inherit missing fields from an older frame. Fixed with a focused regression. |
 | `ResetSpecialColor_Dynamic` | 1 | Harness defaults mismatch: upstream forces black/white before each case, while OSC 110 correctly restores the host's configured foreground. The esctest host now configures black/white resource defaults; the app's reset behavior is unchanged. |
 | `ChangeColor`, `ChangeDynamicColor`, `ChangeSpecialColor`: `CIELab`, `CIELuv`, `CIEXYZ`, `CIEuvY`, `CIExyY`, `RGBI`, `TekHVC` | 21 | Unsupported X11 color-space syntaxes. The implemented parser deliberately covers hex, `rgb:` and basic names; it does not silently approximate these formats. |
 | `DA_0`, `DA_NoParameter`, `DA2_0`, `DA2_NoParameter` | 4 | Xterm-specific identity expectations: VT525/full xterm feature advertisement and xterm firmware range. Helge keeps its conservative VT220-class DA replies and supplies its actual implementation/version through XTVERSION. |
-| `DECID_Basic` | 1 | Unsupported legacy ESC Z identity alias. This is distinct from the working DA and XTVERSION query paths. |
-| Nine `DECDSR` cases listed below | 9 | Unsupported DEC hardware/status reports; timeouts reflect absent query handlers, not broken supported replies. |
+| `DECID_Basic` | 1 | Implemented since: ESC Z answers as primary device attributes. |
+| Nine `DECDSR` cases listed below | 9 | Implemented since: each report answers with the value for absent hardware or nothing to report. |
 | 23 `DECRQM` modes listed below | 23 | Unsupported modes return status 0 (not recognized). Xterm's permanently-reset status 4 or toggling behavior is not claimed. |
 | `DECRQSS_DECSACE`, `DECSASD`, `DECSCL`, `DECSLPP`, `DECSNLS`, `DECSSDT` | 6 | Outside the bounded status subset: attribute-change extent, status display/type, conformance switching and child-controlled page/screen geometry are not implemented. Negative replies remain truthful. |
 | Three `DECSCL` level-switching cases | 3 | Unsupported virtual VT conformance-level switching/gating. Available extensions do not imply an emulated VT100–VT525 mode hierarchy. |
 | Nine window-changing cases listed below | 9 | Intentional exclusion: child-controlled resize, move and iconify remain disabled. No window mutation is enabled to improve conformance counts. |
-| Ten VT semantics cases | 10 | Owned by the VT package: CUB after nonwrapping inline output, DECALN margins, DECSED/DECSEL ISO-protection interaction, three DECSET cases, ED 0, NEL outside horizontal margins and RIS/DECCOLM. These require individual VT dispositions. |
+| Ten VT semantics cases | 10 | Owned by the VT package: CUB after nonwrapping inline output, DECALN margins, DECSED/DECSEL ISO-protection interaction, three DECSET cases, ED 0, NEL outside horizontal margins and RIS/DECCOLM. Dispositioned individually in [VT dispositions](gap-vt-conformance.md). |
 
-The unsupported DECDSR suffixes are `DECCKSR`, `DECMSR`,
+The DECDSR suffixes, now answered, are `DECCKSR`, `DECMSR`,
 `DSRDECLocatorStatus`, `DSRDataIntegrity`, `DSRKeyboard`,
 `DSRMultipleSessionStatus`, `DSRPrinterPort`, `DSRUDKLocked` and `LocatorType`.
 
 The unsupported DECRQM ANSI modes are `EBM`, `FEAM`, `FETM`, `GATM`, `HEM`,
 `KAM`, `MATM`, `PUM`, `SATM`, `SRM`, `SRTM`, `TSM`, `TTM` and `VEM`.
-The DEC modes are `DECBKM`, `DECCOLM`, `DECHCCM`, `DECHEBM`, `DECNKM`,
-`DECNRCM`, `DECPEX`, `DECPFF` and `DECSCLM`.
+The DEC modes are `DECBKM`, `DECCOLM`, `DECHCCM`, `DECHEBM`, `DECNRCM`,
+`DECPEX`, `DECPFF` and `DECSCLM`; `DECNKM` is implemented since.
 
 The excluded window cases are `DECSLPP`, `IconifyDeiconfiy`, `MoveToXY`,
 `MoveToXY_Defaults`, and `ResizePixels` with `BothParameters`,

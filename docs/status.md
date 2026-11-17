@@ -1,15 +1,14 @@
 # Implementation status
 
-Current source state was checked against integration commit `8f9f235` on
-2026-11-17. The [gap inventory](gap-inventory.md) distinguishes confirmed gaps,
-validation work and intentional choices; the [implementation plan](gap-implementation-plan.md)
-tracks their implementation and integration. Neither this source review nor the
-historical passes below certify the integrated commit. Builds, focused/full
-tests and external qualification must be recorded at the revision actually run.
+Current source state is the gap implementation integrated on 2026-11-17 and
+the review that followed it. The [gap inventory](gap-inventory.md)
+distinguishes confirmed gaps, validation work and intentional choices.
+[Gap implementation status](gap-implementation-status.md) records which
+revision each gate ran at and what still needs external qualification.
 
 The goal remains active. This is a working development milestone, not v1 completion.
 
-## Current source additions awaiting integrated qualification
+## Current source additions (locally verified; external qualification pending)
 
 - Truthful host-supplied identity, bounded XTVERSION/XTGETTCAP/DECRQSS replies,
   dynamic cursor/attribute colors, scheme notifications, geometry/title queries
@@ -20,7 +19,8 @@ The goal remains active. This is a working development milestone, not v1 complet
 - Palette-backed Kitty indexed samples, reflow/rectangular-scroll placement
   mapping and bounded asynchronous host transport; broader SIXEL background,
   aspect, palette and display modes; iTerm multipart, animation, cell-size and
-  capability reporting. Output-driven filesystem downloads remain excluded.
+  capability reporting. OSC 1337 file transfers are offered through a
+  Save/Dismiss strip; output alone never writes a file.
 - Distinct underline geometries, requested cursor/text blink with irrelevant or
   occluded wakeups suppressed, fractional AppKit scrolling with matching hit
   geometry, native preedit replacement/geometry and bounded accessibility history.
@@ -39,8 +39,9 @@ The goal remains active. This is a working development milestone, not v1 complet
   working context; a Resume strip/Resume All offers validated agent commands
   only after an explicit action. Normal quit clears recovery state.
 - CI's optional two-lane prebuilt test pipeline and complete-feedback timing
-  receipts. The estimated overlap saving is not a measured under-five-minute
-  pass. [Qualification](qualification.md) defines CI, distribution, platform
+  receipts. One hosted run (44163946100, `cbb5fb6`) measured 116 s of native
+  tests, 197 s for the headless job and 283 s of complete feedback; repeated
+  cold and warm runs are still required. [Qualification](qualification.md) defines CI, distribution, platform
   and SSH validation boundaries.
 
 The current acceptance gaps include natural-shell/tmux/graphics client behavior,
@@ -211,9 +212,9 @@ They retain historical scope and are not new validation claims.
 - A warm launch shows its window in about 111 ms; a quit removes the process
   and its Dock icon in about 18 ms, down from 3 s. Ghostty: 171 ms and 7 ms.
   See the [0.3.0 measurements](../reports/release-0.3.0-2026-11-11/README.md).
-- Recovery's [design plan](session-recovery-plan.md) now has source implementation
-  and authored regressions; the current source summary above distinguishes that
-  from completed crash/hard-reset qualification.
+- Recovery's [design plan](session-recovery-plan.md) is implemented. Crash
+  recovery of an owned process was exercised on a frozen `5d46b01` app;
+  power-loss, hard-reset and real-agent resume remain unqualified.
 
 - The 0.2.3 candidate fixes nested pane allocation on split and window resize.
   The headless macOS suite passes at `12330f0` (run `42630258871`).
@@ -351,7 +352,7 @@ They retain historical scope and are not new validation claims.
   per-session/shared-glyph budgets are not a complete process-memory budget.
   Transactional paste cancellation with bracket closure is implemented and tested
   at every partial-write offset.
-- Row/run shaping caches, ligatures, complete
+- Row/run shaping caches, complete
   geometric glyph coverage, GPU recovery testing and broader resource-retirement
   stress.
 - Real VoiceOver validation of bounded history fetching and visible projection,

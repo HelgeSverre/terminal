@@ -20,22 +20,27 @@ fails when one of them stops passing, and names cases that newly pass;
 | Measured | Value (cases) |
 | --- | --- |
 | Run | 567 |
-| Pass | 447 |
-| Reported failures | 81 |
+| Pass | 460 |
+| Reported failures | 68 |
 | Marked by esctest as known xterm deviations | 39 |
 
-Measured on 2026-11-17 at source `b945624`, esctest2 `2798f12`, with
+Measured on 2026-11-17 at source `556aa51`, esctest2 `2798f12`, with
 `--expected-terminal=xterm --xterm-checksum=334 --xterm-reverse-wrap=383`.
 These are now the harness defaults; the modern reverse-wrap profile matches
 the implemented mode 45/1045 behavior. No previously passing case regressed.
-The known-good gate now protects all 447 passes.
+The known-good gate now protects all 460 passes. The run at `b945624` earlier
+the same day passed 447; the thirteen added cases are the DECDSR reports for
+absent hardware, DECID, DECNKM and the DECSASD/DECSSDT status strings.
 
-The 81 reported failures include two correct ISO-protection results that
+The 68 reported failures include two correct ISO-protection results that
 upstream's known-bug decorators reject as unexpected passes. The remainder
-are unsupported color spellings/status queries/hardware profiles, unknown
-legacy modes, and intentionally prohibited window changes. See the exact
+are unsupported color spellings (21), DECRQM modes that are not recognized
+(22), window changes that are intentionally prohibited (9), xterm identity
+expectations for DA and DA2 (4), status strings outside the bounded subset
+(4), and conformance-level and 80/132-column switching (3 each). See the exact
 [protocol dispositions](protocol-discovery.md) and
-[VT dispositions](gap-vt-conformance.md); `reports/esctest.json` lists each case.
+[VT dispositions](gap-vt-conformance.md). A run writes each case to
+`reports/esctest.json`, which is not kept in the repository.
 The earlier 2026-11-15 baseline was 320 passes, 206 failures and 41 known
 xterm deviations with the legacy reverse-wrap profile.
 

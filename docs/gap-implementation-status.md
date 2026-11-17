@@ -9,7 +9,7 @@ The intentional exclusions in the inventory remain unchanged.
 
 | Inventory | Result |
 | --- | --- |
-| C01, C03 | Real terminal identity/version, bounded XTGETTCAP and DECRQSS replies for implemented capabilities. Unsupported requests receive truthful negative replies. |
+| C01, C03 | Real terminal identity/version, bounded XTGETTCAP and DECRQSS replies for implemented capabilities, DECID and DECDSR reports for absent hardware. Unsupported requests receive truthful negative replies. |
 | C02 | Pinned Snacks detection patch and isolated client fixture; upstream adoption is separate. Helge does not identify as Kitty. |
 | C04, C08 | Cursor/special colors, practical color parsing and resets, theme reports, read-only title queries and bounded title stacks. Exotic X11 color spellings and child-controlled window changes remain unsupported. |
 | C05 | Margin movement, erase/protection/reset/save semantics, rectangles, column edits, horizontal index, alternate screens, REP and modern reverse wrap. See the detailed conformance dispositions. |
@@ -21,8 +21,8 @@ The intentional exclusions in the inventory remain unchanged.
 | G05 | Bounded asynchronous file/shared-memory transport, timeout/cancellation and correct Darwin shared-memory calling convention. |
 | U01–U03 | Five underline styles, requested text/cursor blink with idle gating, and quiet coalesced visual bell. |
 | U04, U05 | Attributed preedit, UTF-16-safe replacement and geometry; bounded asynchronous accessibility history. |
-| U06, U07 | Fractional scrolling with a guard row and shared hit geometry; case/whole-word/bounded-regex search. |
-| U08 | Bash/fish/zsh integration, bounded command records and navigation. True Bash login shells retain login semantics and require explicit hook sourcing. |
+| U06, U07 | Fractional scrolling with a guard row; hit geometry is shared by the renderer and tests, and only partly adopted by the AppKit view. Case/whole-word/bounded-regex search with counted repetition and `\d`, `\s`, `\w`. |
+| U08 | Bash/fish/zsh integration, bounded command records and navigation that follows a width reflow. True Bash login shells retain login semantics and require explicit hook sourcing. |
 | U09 | Unclean-exit layout/text recovery with locked state, bounded checkpoints and fresh shells; data-driven agent offers execute only after Resume is clicked. Normal quit clears recovery state. |
 | U10, U11, U13 | Validated settings/theme import, shell profiles, shortcuts, pane focus/zoom/moves, and scripting collections/preferences/directory/history/selection. |
 | E01 | UIKit composition, selection, clipboard, links, find, hardware-key metadata and accessibility, including blank-screen focusability. |
@@ -30,7 +30,7 @@ The intentional exclusions in the inventory remain unchanged.
 | E03, E04 | Explicit consumer package graph without app/updater/tooling dependencies, packaged shell resources and documented public API policy. Swift 6 consumer hosts compile; libraries remain in Swift 5 language mode. |
 | V06 | GPU failure quiescence and existing bounded history/graphics/glyph/transport paths are tested. These are not a complete process-wide heap admission policy. |
 | V09 | Two coordinated prebuilt CI test lanes, preserving conformance, fuzz and explicit real-GPU gates. Timing evidence distinguishes test execution from total CI feedback. |
-| D01 | Living bug/status/protocol/embedding documentation reconciled; dated historical evidence retained. |
+| D01 | Living bug/status/protocol/embedding documentation reconciled, and corrected again in the review below; dated historical evidence retained. |
 
 ## Verification and remaining qualification
 
@@ -67,9 +67,38 @@ The standalone ASan build required a source-list correction at `648a83c`;
 the corrected binary passed a full 120-second fuzz run, and conformance
 retained all 447 protected passes. The first hosted app-test job also passed;
 its 7m14s overall workflow latency exceeded the target and its sanitizer-build
-failure required this follow-up. A fresh hosted run verifies the correction.
+failure required this follow-up. Hosted run 44163946100 at `cbb5fb6` then
+passed every gate: 116 s of native tests, 197 s for the headless job and
+283 s of complete feedback.
 See the [dated evidence](../reports/gap-implementation-2026-11-17/README.md)
 for commands, artifact identities and the distinction between tested revisions.
+
+## Review after integration
+
+A review of the 75 integration commits followed on 2026-11-17. It fixed
+defects in desktop configuration loading, split directories, recovery
+scheduling and resume records, the Bash prompt hook, command navigation after
+reflow, search, frame retry and fractional scrolling; split `main.swift`; and
+added regex counted repetition and shorthand classes, DECID, DECNKM and the
+DECDSR and DECRQSS answers listed in [conformance](conformance.md).
+
+At source `71b2d9f` the full `just test` gate passed: 672 developer and
+application tests in 108 suites, the GPU suites, and the tooling, terminfo,
+font and PTY checks. Conformance at `556aa51` passed 460 cases with 68
+reported failures and 39 known xterm deviations; the known-good list protects
+the 460. The frozen-app runtime checks above were not repeated, except a
+pane-lifecycle smoke. The review left these open:
+
+- `CSI 21 t` reports the window title a program set. xterm disables this
+  report by default because a program can place text on the command line with
+  it; whether to keep it is undecided.
+- One download offer is shown across the app; a file arriving meanwhile is
+  discarded rather than queued.
+- UIKit: touch selection cannot reach the end of a line, composition has a
+  second store with different limits, and accessibility elements are rebuilt
+  for every snapshot.
+- Recovery scheduling still lives in the app delegate without unit tests, and
+  resume sampling starts `ps` for each pane that runs a foreground program.
 
 Remaining qualification is explicit:
 

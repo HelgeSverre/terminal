@@ -1,8 +1,8 @@
 # Known bugs
 
-Current source disposition was checked against integration commit `8f9f235` on
-2026-11-17. This does not certify that commit's runtime behavior: its integrated
-build/test and hardware gates remain separate. The
+Current source disposition was checked on 2026-11-17.
+[Gap implementation status](docs/gap-implementation-status.md) records the
+revisions the gates ran at; hardware gates remain separate. The
 [gap inventory](docs/gap-inventory.md) and [implementation plan](docs/gap-implementation-plan.md)
 track the broader backlog and validation dependencies.
 
