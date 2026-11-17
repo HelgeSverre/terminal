@@ -1,13 +1,58 @@
 # Implementation status
 
-For the dated cross-app audit at `7573f72`, see the
-[2026-11-17 gap inventory](gap-inventory.md). It distinguishes confirmed gaps,
-validation work and intentional choices; older milestone lists below retain
-historical items that may already have been completed.
+Current source state was checked against integration commit `8f9f235` on
+2026-11-17. The [gap inventory](gap-inventory.md) distinguishes confirmed gaps,
+validation work and intentional choices; the [implementation plan](gap-implementation-plan.md)
+tracks their implementation and integration. Neither this source review nor the
+historical passes below certify the integrated commit. Builds, focused/full
+tests and external qualification must be recorded at the revision actually run.
 
 The goal remains active. This is a working development milestone, not v1 completion.
 
-Implemented and locally exercised:
+## Current source additions awaiting integrated qualification
+
+- Truthful host-supplied identity, bounded XTVERSION/XTGETTCAP/DECRQSS replies,
+  dynamic cursor/attribute colors, scheme notifications, geometry/title queries
+  and title filtering/stacks. OSC 8 anchor IDs survive cells, reflow and activation.
+- VT cursor/erase/rectangle/save repairs; negotiated modifyOtherKeys, UTF-8,
+  urxvt and pixel-SGR mouse encodings. These have authored protocol regressions;
+  they do not establish complete xterm or physical-keyboard conformance.
+- Palette-backed Kitty indexed samples, reflow/rectangular-scroll placement
+  mapping and bounded asynchronous host transport; broader SIXEL background,
+  aspect, palette and display modes; iTerm multipart, animation, cell-size and
+  capability reporting. Output-driven filesystem downloads remain excluded.
+- Distinct underline geometries, requested cursor/text blink with irrelevant or
+  occluded wakeups suppressed, fractional AppKit scrolling with matching hit
+  geometry, native preedit replacement/geometry and bounded accessibility history.
+- Case-sensitive/whole-word/bounded-regex find controls and public headless
+  selection/copy/search. [Search](search.md) documents the finite-state regex
+  dialect, leftmost-longest behavior and resource limits.
+- Validated shell profiles, shortcuts and per-side Option policy, theme/font/
+  cursor controls, directional pane actions/zoom/move, quiet visual bell and
+  expanded AppleScript preference/layout/history access.
+- Bash/fish integration alongside zsh, exit metadata and command navigation;
+  bundled shell resources and an explicit development-only package graph.
+  UIKit embedding adds native editing, touch selection/copy/link/find and
+  accessibility paths. Consumer and device checks remain distinct gates.
+- Unclean-exit layout and bounded literal scrollback recovery, locked state,
+  checked generations and asynchronous checkpoints. Fresh shells restore the
+  working context; a Resume strip/Resume All offers validated agent commands
+  only after an explicit action. Normal quit clears recovery state.
+- CI's optional two-lane prebuilt test pipeline and complete-feedback timing
+  receipts. The estimated overlap saving is not a measured under-five-minute
+  pass. [Qualification](qualification.md) defines CI, distribution, platform
+  and SSH validation boundaries.
+
+The current acceptance gaps include natural-shell/tmux/graphics client behavior,
+real IME/keyboard/VoiceOver interaction, sustained resource/GPU/display lifecycle,
+signed clean-machine/update/permission flows and repeated cold/warm CI timings.
+Unavailable hardware, an upstream Snacks allowlist change and unrun checks must
+remain explicit dependencies.
+
+## Earlier implementation milestones
+
+The following descriptions and passing results predate the integration above.
+They retain historical scope and are not new validation claims.
 
 - Native tab shortcuts: Cmd1–8 selects by position, Cmd9 selects the last tab,
   CmdOptionLeft/Right wraps between adjacent tabs. Menu routing consumes missing
@@ -17,7 +62,7 @@ Implemented and locally exercised:
   colors, and Off/5%/10% inactive dimming. Development and WMO pane-layout
   fixtures pass with real Metal viewport checks.
 
-- Native macOS 15 AppKit bundle, precompiled Metal shaders, ad-hoc signing, Run action.
+- Native AppKit bundle, precompiled Metal shaders, ad-hoc signing, Run action.
 - Swift-owned rows with stable identities, direct immutable snapshots, indexed
   history, symbolic styles and bounded history retention.
 - Streaming VT/UTF-8, bounded CSI/OSC and constant-memory unsupported string discard.
@@ -51,7 +96,7 @@ Implemented and locally exercised:
   OSC 52 writes. Word punctuation is a validated setting and AppleScript parameter.
   Accessibility reports disjoint rectangular ranges without selecting intervening
   text. The former frozen host snapshot and independent copy serializer are gone.
-- Bounded worker-based literal search over immutable rows with Unicode scalar
+- Bounded worker-based search over immutable rows with Unicode scalar
   lowercase matching, soft-wrap joining, cell decorations, query limits,
   latest-query cancellation, close cancellation and source-revision validation.
   The whole-transcript native search path has been removed.
@@ -80,12 +125,12 @@ Implemented and locally exercised:
   while preserving existing prompt-region semantics. Both snapshot paths expose
   the derived readiness value; missing legacy metadata remains unknown.
 - AppKit text-input callbacks, selection/copy, paste, mouse/focus, local history,
-  basic literal search, windows/tabs/nested splits and font size controls.
+  search, windows/tabs/nested splits and font size controls.
 - Minimal pane-only content with Obel Mono; geometric block and common box glyphs.
 - App icon, bundle identity `no.helgesverre.terminal`, Developer ID signing,
-  notarized/stapled app and PKG distribution artifacts, public GitHub repository
-  and a passing macOS CI test run. The matching notarized Swift app is installed
-  in the user's personal Applications folder.
+  historical notarized/stapled app and PKG distribution artifacts, public GitHub
+  repository and passing macOS CI test runs at their recorded revisions. Current
+  releases use ZIP artifacts; installed-app identity requires its own receipt.
 - Graphite/yellow visual style drawn from Helge's Trace/Splash/Glue/Shepherd
   projects, with backing-scale-aware 8-point insets, native dark window chrome,
   and a separate settings window with inline validation. Two visual rounds
@@ -94,8 +139,9 @@ Implemented and locally exercised:
   transport, image numbers, placement/cropping, Unicode placeholders, relative
   placements and animation; basic SIXEL and iTerm2 inline images share the
   image store and Metal textures. The [protocol audit](protocol-coverage.md)
-  records partial combinations and missing features. Primary width reflow
-  clears placements; complete deletion/scroll-region semantics remain work.
+  records implemented combinations and remaining validation. New source maps
+  placements through primary reflow and rectangular scrolling; complete graphics
+  conformance remains unclaimed.
 - Direct immutable Swift snapshots carry screen, history, viewport and image
   state without the former binary-cell bridge; indexed history/anchor lookups
   keep retained-snapshot and viewport work inside the document owner.
@@ -118,8 +164,8 @@ Implemented and locally exercised:
   are documented in `reports/presented-links-evidence/summary.md`.
 - DECLRMM/DECSLRM, per-screen horizontal margins, origin-aware coordinates/replies,
   regional wrap/tab/CR/BS, rectangular scrolling and insert/delete with wide-edge
-  repair and no partial-width history. Partial-width image scrolling currently
-  clears placements while retaining image resources.
+  repair and no partial-width history. New graphics source moves/clips placements
+  during partial-width image scrolling.
 - Numeric/application keypad modes with localized decimal text, distinct keypad
   Enter, enhanced press/repeat/release encoding, delivered-key identity tracking
   across releases, and focus-loss cleanup. A 64 KiB control reserve inside the
@@ -146,12 +192,12 @@ Implemented and locally exercised:
   including owner-validated link activation. Explicit close separately closes
   interaction admission and cancels undelivered results.
 - Project-owned terminfo source and compiled bundle database, with exact `tput`
-  expansion checks and real parser replay. The entry omits unrendered blink and
-  unsupported private extensions; the shell keeps the documented
-  `xterm-256color` fallback for remote compatibility. DEC Special Graphics now
+  expansion checks and real parser replay. The entry omits unsupported private
+  extensions; source rendering now handles requested blink. The shell keeps the
+  documented `xterm-256color` fallback for remote compatibility. DEC Special Graphics now
   maps the entire 32-character set, including scan lines and control pictures.
 
-Current automated evidence:
+## Historical automated and native evidence
 
 - Whole-app throughput is 241 / 283 / 205 / 142 MiB/s on short ASCII, long
   ASCII, truecolor and mixed Unicode, against Ghostty's 293 / 330 / 201 / 187
@@ -165,8 +211,9 @@ Current automated evidence:
 - A warm launch shows its window in about 111 ms; a quit removes the process
   and its Dock icon in about 18 ms, down from 3 s. Ghostty: 171 ms and 7 ms.
   See the [0.3.0 measurements](../reports/release-0.3.0-2026-11-11/README.md).
-- Session recovery after a crash or hard reset is planned, not built: see the
-  [plan](session-recovery-plan.md).
+- Recovery's [design plan](session-recovery-plan.md) now has source implementation
+  and authored regressions; the current source summary above distinguishes that
+  from completed crash/hard-reset qualification.
 
 - The 0.2.3 candidate fixes nested pane allocation on split and window resize.
   The headless macOS suite passes at `12330f0` (run `42630258871`).
@@ -175,8 +222,8 @@ Current automated evidence:
   Fresh Starship smoke offsets were traced to unowned desktop keystrokes
   entering the fixture. A [controlled red/green regression](../reports/editing-input-isolation-2026-11-09/README.md)
   proves isolation restores strict cursor and ZLE checks; development and WMO
-  release smokes pass. The installed app remains 0.2.2 with live sessions;
-  0.2.3 publication is pending its final CI/signing gate.
+  release smokes pass at the revisions in that report. Its installed-app and
+  publication statements describe that historical checkpoint.
 - Version 0.2.2/build 8 at `a8cf4bd` passes full macOS CI (run `42605737863`),
   including the isolated zsh editing, byte-partitioned prompt and erase/movement
   regressions. The exact notarized build passes signed normal/editing checks
@@ -269,7 +316,7 @@ Current automated evidence:
   `reports/comparison-003` are retained as historical parser evidence, not as
   claims about the frozen Swift runtime.
 
-Required work remaining before the requested completion gate:
+## Continuing validation and resource work
 
 - Broaden startup stability testing. One earlier combined-build native smoke
   timed out at its first command and an unchanged rerun passed. The former A/B
@@ -282,11 +329,12 @@ Required work remaining before the requested completion gate:
   natural shell redraw behavior and live mouse resize still need coverage.
   The native placement correction passes the strengthened per-pane compositor
   fixture; broader display/scale and arbitrary shell cases remain separate gates.
-- Resolve the host's Downloads authorization stall for Launch Services launches:
+- Reproduce the historical Downloads authorization stall for Launch Services launches:
   a read/discard probe blocks in `open` without a visible permission alert, despite
   a valid ad-hoc signature and Downloads usage description. Direct launch from
   the authorized coding session completes the real dump tests. No broad disk
-  permission was changed; `reports/downloads-access-probe.json` records this limit.
+  permission was changed; `reports/downloads-access-probe.json` records that
+  historical limit, not a confirmed failure at the integrated source revision.
 - Full command/capability audit and hardware keyboard/layout validation.
   The bundled custom terminfo is available;
   switching the default identity still needs local/remote compatibility evidence.
@@ -298,16 +346,20 @@ Required work remaining before the requested completion gate:
   validation. Selection now has owner-validated, eviction-aware endpoints and
   reflow mapping; multi-display and long-lived interaction coverage remains
   incomplete.
-- Shared reactor/owner lanes, complete end-to-end admission accounting, global
-  memory budgets and broader queue-race tests. Transactional paste cancellation
-  with bracket closure is implemented and tested at every partial-write offset.
-- Row/run shaping caches, asynchronous raster service, ligatures, complete
+- Complete end-to-end admission accounting, app-wide memory admission and broader
+  queue-race tests. Shared PTY and per-session owner lanes already exist;
+  per-session/shared-glyph budgets are not a complete process-memory budget.
+  Transactional paste cancellation with bracket closure is implemented and tested
+  at every partial-write offset.
+- Row/run shaping caches, ligatures, complete
   geometric glyph coverage, GPU recovery testing and broader resource-retirement
   stress.
-- Accessibility history fetching and real VoiceOver
-  validation, real CJK input methods and dead keys/layout/Option-policy testing,
-  composition routing during focus/resize.
-- Broader configuration validation and lifecycle/configuration tests. Persisted font size/history/Option settings are implemented.
+- Real VoiceOver validation of bounded history fetching and visible projection,
+  real CJK input methods and dead keys/layout/per-side Option testing, and
+  composition routing during focus/resize. Source paths and authored tests do
+  not substitute for physical input or spoken-output evidence.
+- Broader configuration and lifecycle validation of the expanded settings,
+  shell profiles, shortcuts, pane actions and automation surface.
 - Sustained idle/GPU/startup/latency/memory measurements and complete application
   interaction corpus, multi-display/sleep/scale and resource-retirement stress.
 - Performance: the runtime-34 standard visible-app gate passes in both orders,
@@ -315,9 +367,10 @@ Required work remaining before the requested completion gate:
   pair: 67.9361%) and remains below the 70% target. Sustained SQL throughput
   and Swift's higher footprint still need profiling; faster reflow does not
   materially improve this sustained-output case.
-- Clean-machine installation, update/rollback and broader signed-distribution
-  lifecycle tests. Final app/PKG notarization, stapling and trust validation
-  pass; development builds remain distinct from those distribution artifacts.
+- Clean-machine installation, cross-version/interrupted updates and broader
+  signed-distribution lifecycle tests. Historical app/PKG notarization, stapling
+  and trust passes apply to their recorded artifacts; current ZIP qualification
+  follows [qualification](qualification.md).
 
 The signed `0.2.0`/build `5` runtime milestone is frozen at source `34bd618`.
 Its app and PKG were accepted by Apple's notary service, stapled and passed
@@ -331,7 +384,7 @@ earlier inactive/key-window failure is retained with its cause unresolved.
 The Vulkan-specific requirements have been superseded by the authorized Metal
 platform decision; the terminal behavior and native quality gates remain the goal.
 
-Latest native evidence: Obel Mono is the configured font. `session-tests.json`
+Historical native evidence: Obel Mono was the configured font. `session-tests.json`
 checks input admission before a mode suffix behind a 500k REP, framed paste,
 oversize rejection, and saturation/cancel/close. `native-idle.json` records a
 60-second idle test on an M2 Max: zero submissions, ~0.013% of one CPU core,
@@ -340,7 +393,7 @@ M2-class MacBook with 32 GiB RAM; this Max-class result is not an equivalent
 reference configuration. `native-smoke.json` includes actual pane/layer geometry and
 Metal command times; `quit-smoke.json` also verified the process exits.
 
-Release preflight: CI `45c8f7f` failed its asynchronous word-selection polling
+Historical release preflight: CI `45c8f7f` failed its asynchronous word-selection polling
 limit. A [paused-worker regression](../reports/selection-word-worker-2026-11-09/README.md)
 reproduces the failure and validates bounded worker synchronization in tests.
 Current-head CI remains required; that failed run is not a final pass.

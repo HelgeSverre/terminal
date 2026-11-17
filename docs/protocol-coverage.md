@@ -1,24 +1,27 @@
 # Terminal protocol coverage
 
-Audit of the Swift implementation on 2026-11-16, starting at `3ad91fe`.
-Kitty graphics, SIXEL and iTerm2 images work, but none is a claim of complete
-conformance. This is the current coverage inventory; older comparison reports
-describe their recorded revisions. Tests named below are under `Tests/TerminalTests`.
+Current source coverage was reconciled against integration commit `8f9f235` on
+2026-11-17. This updates the earlier audit starting at `3ad91fe`; its dated
+validation record below remains historical. Tests named in the current tables
+are authored regressions under `Tests/TerminalTests`, not a claim that the new
+integrated commit passed them. Kitty graphics, SIXEL and iTerm2 images do not
+claim complete conformance. See the [gap inventory](gap-inventory.md),
+[implementation plan](gap-implementation-plan.md) and [qualification matrix](qualification.md).
 
 ## Graphics
 
 | Feature | Implementation and evidence | Limits or remaining work |
 | --- | --- | --- |
-| Kitty RGB, RGBA, PNG; zlib; chunks | `KittyGraphicsStore.consume`, bounded transport/decode; `TerminalGraphicsOracleTests` (PNG/zlib, chunk partitions, malformed atomicity, expiry) | No indexed `f=8/16`; 16 MiB per decoded image, 64 MiB live store, 64 images, 256 placements, 4096 pixels per side |
-| File, temporary-file, shared-memory transport; image numbers | `KittyTransport`, `KittyGraphicsExtensionTests.filesAndTemporaryFilesAreRead`, `.imageNumbersNameTheNewestImage` | Shared-memory success has no dedicated regression; transport executes synchronously on the session owner |
-| Placement, crop, offset, layering, cursor movement | `layout`, `visible`; oracle cursor/resize/screen tests and extension deletion tests | Primary width reflow clears placements; scroll-region/clipped-anchor deletion semantics need broader conformance cases |
+| Kitty RGB, RGBA, PNG, indexed `f=8/16`; zlib; chunks | `KittyGraphicsStore.consume`, bounded transport/decode; `TerminalGraphicsOracleTests` and `GraphicsGapTests.indexedSamplesFollowPaletteAndDefaultColors` | Indexed samples follow palette/default-color changes; indexed animation edits are rejected. 16 MiB per decoded image, 64 MiB live store, 64 images, 256 placements, 4096 pixels per side |
+| File, temporary-file, shared-memory transport; image numbers | `KittyTransport`, extension transport/number tests; `GraphicsGapTests` covers shared-memory offset/unlink, blocked-reader cancellation and timeout | Host transport yields asynchronously with bounded completion/cancellation; the C/headless path retains synchronous transport. Broader filesystem/PTY integration remains separate |
+| Placement, crop, offset, layering, cursor movement | `layout`, `visible`, `applyReflow`, `scrollRectangle`; graphics gap tests cover ordinary/relative/placeholder reflow, clipping, line feed and deferred-wrap scroll | Mapping and wide-cell anchor regressions exist; broader live-client and session-to-Metal conformance remains unqualified |
 | Unicode placeholders | `KittyPlaceholder`, `placeholderSlice`; extension tests verify slices, color IDs and unmarked continuation; real Neovim/Snacks images and splits checked directly and through tmux | Snacks requires its `SNACKS_KITTY=true` allowlist override; no exhaustive Metal pixel oracle |
 | Relative placements | `origin`, `pruneOrphans`; extension tests cover ordinary and virtual parents, movement, scrollback, screen changes, deletion, cycles and depth | Maximum depth 8; virtual parents cache at most 256 extrema pairs (512 row IDs plus a tail), scan appended history and the live grid, and rebuild on eviction/reflow/prototype changes |
 | Animation frames and playback | `addFrame`, `control`, `playback`; extension tests cover frames, composition, loops, loading, gap edits and frame deletion | Up to 1000 frames within shared storage budget; broader UI scheduling coverage remains separate |
 | Image/placement deletion | `delete`, `deleteFrame`; extension selectors, resolved relative origins, root promotion, resource accounting and oracle cross-screen/cache tests | Positional deletion leaves virtual prototypes intact; manipulate their placeholder text instead |
 | Queries and quiet replies | `consume`, `featureReply`, `outcome`; action-specific non-default keys, ignored payload and pending-upload preservation tests | Advertises implemented formats/actions only, not full protocol conformance |
-| SIXEL | `SixelDecoder`, DCS parser; `TerminalImageTests` covers RGB/HLS, repeat, raster size, scrolling, cropping to limits and DA1 advertisement | Transparent background only; header/raster aspect ratios, P2 background, DECSDM 80 and mode 8452 unsupported; palette resets per image |
-| iTerm2 inline images | `InlineImageDecoder`, `showInlineImage`; `TerminalImageTests` covers BEL/ST, aspect ratio, cells/pixels/percent/auto sizing and large images | Original `OSC 1337;File=...;inline=1` only; first frame only; no multipart, downloads, ReportCellSize or feature reporting |
+| SIXEL | `SixelDecoder`, DCS parser; `TerminalImageTests` plus `GraphicsGapTests.sixelBackgroundAspectPaletteAndDisplayModes` | Bounded decode now handles background/transparent holes, aspect scaling, persistent palette registers, DECSDM 80 and mode 8452; wider client/pixel compatibility still needs qualification |
+| iTerm2 inline images | `InlineImageDecoder`, `showInlineImage`; original sizing tests plus graphics gap multipart atomicity/cancellation, clock-driven GIF frames, ReportCellSize and capability replies; `GraphicsRenderedGapTests` | Bounded inline and multipart display only; arbitrary output-driven filesystem downloads are excluded. Broader animation/stretch/alpha client behavior remains a validation gate |
 | Shared image lifetime and rendering | `KittyGraphicsStore.show`, immutable image generations, session `ImageKey` cache and renderer textures | Engine/ABI checks exist; session-to-Metal pixel correctness for animation, crop, alpha and z order remains unverified |
 
 ## Input and other terminal protocols
@@ -26,12 +29,15 @@ describe their recorded revisions. Tests named below are under `Tests/TerminalTe
 | Feature | Coverage | Limits |
 | --- | --- | --- |
 | Kitty keyboard | All five flags, set/query/push/pop and independent main/alternate stacks; `TerminalInputEncoderTests`, `EmulatorTests` | Host key metadata/IME edge cases are not exhaustive |
-| Mouse, focus, paste | X10, 1000/1002/1003 and SGR 1006; focus 1004 and bracketed paste 2004; encoder and mode tests | No 1001/1005/1015/1016; UI mouse encoding lacks a direct regression |
+| xterm modifyOtherKeys | Levels 1/2, dispatch/query/reset, keyboard-protocol precedence; `TerminalInputCompatibilityTests` | Physical layout/Option/dead-key behavior and current interactive client combinations require native evidence |
+| Mouse, focus, paste | X10, 1000/1002/1003, UTF-8 1005, SGR 1006, urxvt 1015 and pixel-SGR 1016; focus 1004 and paste 2004; shared `TerminalMouseEncoder`, compatibility/encoder tests | Mode 1001 remains unsupported; pixel coordinates depend on native presentation geometry and require client validation |
 | Synchronized output 2026 | `TerminalSchedulerOracleTests.synchronizedOutputUsesABIClockDeadline` and session scheduling | A bounded timeout is intentional |
-| OSC 8 hyperlinks | URI storage and visible-link projection tests | OSC parameters, including `id`, are discarded |
+| OSC 8 hyperlinks | URI and bounded `id` storage; cell payload, headless screen, reflow and activation proofs preserve anchor identity; visible-link tests | Other unrecognized parameters are ignored; client/browser interaction still needs current-tip evidence |
 | OSC 52 clipboard | Strict bounded streaming decoder; `OSC52ProtocolTests`; application permission/cache tests | Selection `c` writes only; reads deliberately return empty; see [clipboard policy](osc52-clipboard.md) |
-| OSC 133 shell markers | A/B/C/D state and prompt clearing; `TerminalPromptClearOracleTests` | Shell-integration behavior beyond those markers is not implied |
-| Device attributes, status, modes and window size | `EmulatorTests.deviceReplies`, terminfo tests, [esctest baseline](conformance.md) | DECRQSS, XTGETTCAP, rectangular operations and many window/mode operations remain absent |
+| OSC 133 shell markers | A/B/C/D state, command exit metadata and prompt clearing; `TerminalPromptClearOracleTests`, `ShellIntegrationTests`; bundled zsh/Bash/fish hooks | Arbitrary shell configurations, prompt frameworks and remote hooks are not certified by protocol state tests |
+| Discovery/status/colors/titles | Host-supplied XTVERSION, bounded XTGETTCAP/DECRQSS, OSC 10/11/12 and attribute colors, scheme 996/2031, geometry/title queries/stacks; `TerminalProtocolDiscoveryTests` | Replies advertise selected implemented capabilities; child window movement/resizing remains excluded |
+| VT cursor, erase, rectangles and saved state | `TerminalVTSemanticsTests`, `EmulatorTests`, [esctest baseline](conformance.md) | Source repairs do not imply a full conformance pass; remaining xterm-specific deviations require explicit disposition and a new known-good run |
+| Underline, blink and fractional presentation | `UnderlineGeometry`, `TerminalBlinkPresentation`, viewport geometry; `PresentationTests` includes geometry/clock and Metal pixel oracles | Authored pixel oracles are distinct from a completed real-GPU/compositor/native-input qualification |
 | String framing | APC/OSC/DCS cancellation, termination and discard paths; graphics partition and OSC52 tests | Raw eight-bit C1 controls are intentionally excluded by `docs/spec.md` |
 
 Primary specifications: [Kitty graphics](https://sw.kovidgoyal.net/kitty/graphics-protocol/),
@@ -52,24 +58,26 @@ Capability statements above come from this repository's implementation and tests
 | G5 | Coordinate deletion checks a relative placement's stored cursor anchor rather than its resolved parent origin | Fixed: rendering and deletion share origin resolution; all positional selectors tested, including text movement without an intervening snapshot |
 | G6 | Feature query replies echo `I` and use one key list for all actions | Fixed: action-specific supported non-default keys; ignored payload, unsupported actions and in-progress upload preservation covered |
 | G7 | `Animation.firstGap=0` passes through the generic 40 ms default, so the root frame is displayed instead of initially gapless | Fixed: gapless root default, explicit root-gap edits, ignored zero-gap updates and bounded playback preserving elapsed time/completed loops |
-| G8 | Current `kitten icat` renders blank: its 128 KiB chunks, unpadded base64 and repeated action on continuations exceed older transport assumptions | Bounded compatibility with current client framing; canonical decoding and total decoded-image limits retained |
+| G8 | The tested `kitten icat` renders blank at baseline: its 128 KiB chunks, unpadded base64 and repeated action on continuations exceed older transport assumptions | Bounded compatibility with the examined client framing; canonical decoding and total decoded-image limits retained |
 
 G3–G8 were repaired in the 2026-11-17 follow-up. G8 was found in real-client testing;
-the [current Kitty client](https://github.com/kovidgoyal/kitty/blob/master/tools/tui/graphics/command.go)
+the [Kitty client examined in that run](https://github.com/kovidgoyal/kitty/blob/master/tools/tui/graphics/command.go)
 uses 128 KiB chunks and unpadded base64. The parser envelope is limited to
 128 KiB plus 4 KiB of header space. Relative graphics may perform indexed
 history lookups for bounded parent IDs; viewport FollowTail still avoids its
-own retained-history anchor resolution. Unlisted new
-protocol features are outside this repair batch. Runtime scheduling, PTY/renderer
-redesign, non-macOS builds and complete VT conformance are outside this audit.
+own retained-history anchor resolution. The G1–G8 dispositions and validation
+below describe that earlier repair batch. New source coverage is listed in the
+current tables above; complete VT or graphics conformance remains unclaimed.
 
 The [2026-11-17 real-client report](../reports/kitty-real-world-2026-11-17/README.md)
-records the final tests, frozen app identity, visible PNG/GIF/placeholder results
-and native checks. Remaining integration caveats: Snacks needs its terminal
+records that run's tests, frozen app identity, visible PNG/GIF/placeholder results
+and native checks. Its recorded integration caveats: Snacks needs its terminal
 allowlist override; interactive `icat --hold` under default tmux ignored exit
-keys even though its image rendered. The latter's cause is not yet isolated.
+keys even though its image rendered. That historical failure's cause is not
+isolated. A truthful Helge discovery fixture is now prepared in source, but
+upstream Snacks acceptance and a current-client rerun remain external gates.
 
-## State and ownership review
+## Earlier state and ownership review
 
 | Machine and owner | Transition and invariant | Evidence or disposition |
 | --- | --- | --- |
@@ -81,7 +89,7 @@ keys even though its image rendered. The latter's cause is not yet isolated.
 | Parser/input/clipboard | Owner-serialized negotiation and framing; independent keyboard screen stacks, bounded clipboard payload | Input/OSC52/scheduler tests; retained |
 | Session snapshots/Metal textures | Retain resources by image ID plus immutable generation until consumers release them | Source inspection and engine tests; pixel integration test deferred |
 
-## Module decisions
+## Earlier module decisions
 
 The graphics store earns its shared ownership: deleting it would distribute
 budgets, placement lifetimes and generations across three image decoders and
@@ -95,7 +103,7 @@ unused SIXEL overflow/redundant numeric state. Both blend callers supply a
 complete source rectangle; the decoder finishes numeric fields before drawing.
 These were private baseline interfaces; no public embedding interface changes.
 
-## Validation and review
+## Historical validation and review
 
 Baseline `3ad91fe`, clean main checkout; work performed in a detached scratch
 worktree. Swift 6.2.4, arm64 macOS 15.6 (24G84), repository development bundle plus optimized

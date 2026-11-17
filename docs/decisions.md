@@ -1,11 +1,19 @@
 # Implementation decisions
 
-## macOS 15 and Metal
+Current source decisions below were reconciled against integration commit
+`8f9f235` on 2026-11-17. Historical measurements retain their original revisions;
+see the [gap inventory](gap-inventory.md) and [implementation plan](gap-implementation-plan.md)
+for current acceptance work.
+
+## macOS 14 minimum and Metal
 
 The original spec selected macOS 26/KosmicKrisp/Vulkan. The implementation host
 runs macOS 15.6, Apple Silicon. During implementation Helge explicitly required
 that the app work on this Mac and authorized lowering requirements or using an
-alternative renderer. The implementation therefore targets macOS 15 and Metal.
+alternative renderer. Metal replaced Vulkan; the package now declares macOS 14
+and iOS 17 minimums. The desktop app is AppKit/Metal; UIKit embedding uses a
+transport without local PTY processes. Declared minimums and universal release
+architectures still require the [platform qualification matrix](qualification.md).
 The original spec remains preserved in `spec.md` for reference.
 
 This removes the need to bundle Vulkan Loader/ICD libraries, query Vulkan WSI
@@ -24,8 +32,12 @@ an optimization gap. Swift makes the executable smaller and removes the Rust
 toolchain from active development, while the measured full-app build is slightly
 slower. See [the cutover record](swift-cutover.md) for exact measurements and limits.
 
-The terminal emulator and document now share one Swift compiler module with the
-native host. Session queues retain exclusive mutation ownership; presentation
+The package separates `TerminalEngine`, `TerminalHost`, `TerminalUI` and the
+app target. The engine owns emulator/document state; the host owns session/PTY
+operations; UI owns native presentation; the app owns preferences and policy.
+Consumer mode is the default, including local-path dependencies. Repository
+tooling opts into app/updater/tests with `TERMINAL_DEVELOPMENT=1`, independent of
+checkout directory names. Session queues retain exclusive mutation ownership; presentation
 uses direct immutable snapshots. The versioned C and JSON APIs remain for
 compatibility tests and headless tools, rather than the normal rendering path.
 `Sources/TerminalEngine/Emulation` owns interpretation, document/history, protocol input, search,
@@ -130,8 +142,11 @@ Document/history/screen epochs cross both snapshot paths. A stale frozen host
 selection cannot suppress a new document, screen or geometry. Native composition
 cancellation clears marked storage under a reentrancy guard before discarding
 the input context's composition; an external unmark callback still commits once.
-Viewport anchors are owner-confined, but full owner selection, fractional pixel
-scrolling, unseen-output counts and indexed anchor resolution remain pending.
+Viewport anchors and selection are owner-confined, with indexed identity
+lookups. AppKit fractional scrolling translates presentation and hit geometry
+together; it does not move document ownership into the view. Unseen-output
+counts and broader long-lived/multi-display interaction qualification remain
+separate work.
 
 ## Native screen clearing and shell integration
 
@@ -142,10 +157,28 @@ screen state is untouched. This preserves a running TUI's coordinate model.
 Reference: [Ghostty's implementation](https://github.com/ghostty-org/ghostty/blob/v1.4.0/src/termio/Termio.zig#L605).
 
 The core owns clearing policy, identity changes, viewport/search invalidation and
-graphics cleanup. AppKit submits one ordered action. A narrow bundled zsh startup
-shim restores the original ZDOTDIR, sources user startup files at top level, then
-adds prompt/ZLE hooks. It does not edit dotfiles or replace the prompt. Explicit
-noninteractive commands use their existing startup path. Normal interactive
-zsh is detected and configured by the spawn module; callers do not construct
-integration environment variables. The obsolete spawn convenience entry point
-was removed, leaving the argument-aware spawn path as the single interface.
+graphics cleanup. AppKit submits one ordered action. Bundled zsh, Bash and fish
+integration adds OSC 133 lifecycle/exit metadata and command navigation without
+editing user startup files. zsh preserves the original ZDOTDIR; Bash/fish use
+their shell-specific startup seams. `LaunchSpec.preparedShellIntegration()`
+augments only implicit interactive shells; explicit command/startup arguments
+retain their requested behavior. Resources are carried by `TerminalHost` for
+embedding and copied into app bundles.
+
+## Bounded search and recovery
+
+Literal, case-sensitive, whole-word and bounded regex search share one streaming
+worker. Regex uses a finite-state machine with explicit pattern, work and match
+limits; it does not place an uninterruptible backtracking engine on the session
+owner. Public headless selection/copy/search uses the same proof validation and
+bounded work model. Syntax and limits are documented in [search](search.md).
+
+Recovery applies to unclean exits of ordinary installed-app launches, or an
+explicit isolated state directory. A locked running sentinel, validated layout
+generations and bounded literal scrollback checkpoints retain recoverable state;
+normal quit removes it. Restoring history feeds literal text rather than replaying
+terminal escapes. Fresh shells replace dead processes. Bundled, validated agent
+resume rules may offer a command, but execution requires an explicit Resume or
+Resume All action. Saved state/hook files cannot supply executable templates.
+This is not process reattachment or normal-quit restore. Source and authored
+tests exist; crash/update/hardware qualification remains separately tracked.

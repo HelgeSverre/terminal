@@ -1,16 +1,20 @@
 # Known bugs
 
-Found on 2026-11-11 by probing 0.3.0 (`22b9f69`) from a real window
-(`--execute`) and headlessly through `target/native/terminfo-probe`.
-Expected behaviour is xterm's unless noted. Each entry is removed when its
-fix and regression test land.
+Current source disposition was checked against integration commit `8f9f235` on
+2026-11-17. This does not certify that commit's runtime behavior: its integrated
+build/test and hardware gates remain separate. The
+[gap inventory](docs/gap-inventory.md) and [implementation plan](docs/gap-implementation-plan.md)
+track the broader backlog and validation dependencies.
 
-## Not implemented (no reply)
+## Discovery queries from the 0.3.0 probe
 
-Not bugs, listed so they are not rediscovered: XTVERSION (`CSI > q`),
-XTGETTCAP, DECRQSS, XTWINOPS 14t/16t/18t/21t, OSC 12 query, `CSI ? 996 n`.
-CSI parameters above 32 bits are treated as 0 (xterm clamps), which no real
-program relies on.
+The 2026-11-11 probe at `22b9f69` found no replies for XTVERSION (`CSI > q`),
+XTGETTCAP, DECRQSS, XTWINOPS 14t/16t/18t/21t, OSC 12 query and `CSI ? 996 n`.
+Source now implements those replies; they are no longer missing-feature entries.
+`TerminalProtocolDiscoveryTests` adds discovery, color and title regressions.
+Identity is host supplied and truthful. Query support does not authorize child
+window movement/resizing or imply complete xterm conformance. See
+[protocol coverage](docs/protocol-coverage.md).
 
 ## Shell line editing after emoji sequences
 
