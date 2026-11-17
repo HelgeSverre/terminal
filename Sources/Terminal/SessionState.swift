@@ -8,7 +8,7 @@ enum StateLocation {
     if let index = args.firstIndex(of: "--state-directory") {
       guard args.indices.contains(index + 1), !args[index + 1].isEmpty,
         !args[index + 1].hasPrefix("--") else { return nil }
-      return URL(fileURLWithPath: args[index + 1], isDirectory: true).standardizedFileURL
+      return URL(fileURLWithPath: args[index + 1], isDirectory: true).standardizedFileURL.resolvingSymlinksInPath()
     }
     guard args.isEmpty else { return nil }
     let path = bundle.standardizedFileURL.path
@@ -164,6 +164,9 @@ final class SessionStateStore: @unchecked Sendable {
   private func scrollbackURL(_ pane: PaneID) -> URL {
     directory.appendingPathComponent("panes/\(pane.string).scrollback")
   }
+  func resumeFile(_ pane: PaneID) -> URL {
+    directory.appendingPathComponent("panes/\(pane.string).resume")
+  }
   private func writeRunning(restoring: Bool) throws {
     let data = try JSONEncoder().encode(Running(pid: getpid(), started: Date(), restoring: restoring))
     guard ftruncate(descriptor, 0) == 0, lseek(descriptor, 0, SEEK_SET) >= 0 else { throw POSIXError(.EIO) }
@@ -186,7 +189,7 @@ final class SessionStateStore: @unchecked Sendable {
     guard values.isSymbolicLink != true, values.isDirectory == true else { throw POSIXError(.ENOTDIR) }
   }
   private static func read(_ url: URL, limit: Int) throws -> Data {
-    let fd = Darwin.open(url.path, O_RDONLY | O_NOFOLLOW)
+    let fd = Darwin.open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
     guard fd >= 0 else { throw POSIXError(.ENOENT) }
     defer { Darwin.close(fd) }
     var info = stat()

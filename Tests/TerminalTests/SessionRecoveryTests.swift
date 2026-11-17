@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import TerminalInterop
+import Darwin
 @testable import TerminalApp
 @testable import TerminalHost
 @testable import TerminalEngine
@@ -14,7 +15,7 @@ import TerminalInterop
       tabGroup: window, tabIndex: 0, selectedTab: true, zoomed: false, fullScreen: false)], keyWindow: window)
   }
   private func directory() throws -> URL {
-    let url = FileManager.default.temporaryDirectory.appendingPathComponent("terminal-recovery-\(UUID().uuidString)")
+    let url = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("terminal-recovery-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
   }
@@ -137,6 +138,19 @@ import TerminalInterop
     #expect(timing.delay(at: 60_000_000_000) == 0)
     timing.captured()
     #expect(timing.delay(at: 70_000_000_000, force: true) == nil)
+  }
+  @Test func specialFilesDoNotBlockRecoveryReads() async throws {
+    let dir = try directory(), good = fixture()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try writeRunning(dir)
+    try JSONEncoder().encode(good).write(to: dir.appendingPathComponent("layout.previous.json"))
+    #expect(mkfifo(dir.appendingPathComponent("layout.json").path, 0o600) == 0)
+    let store = try #require(SessionStateStore.open(directory: dir))
+    #expect(store.restored == good)
+    let pane = good.windows[0].panes[0].id
+    #expect(mkfifo(dir.appendingPathComponent("panes/\(pane.string).scrollback").path, 0o600) == 0)
+    #expect(store.scrollback(pane).unavailable)
+    await clean(store)
   }
 
   @Test func checkpointUsesPrimaryAndRestoresLiteralFaintText() throws {
