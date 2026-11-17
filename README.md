@@ -105,7 +105,7 @@ flowchart LR
 
 | Owner | Responsibility |
 | --- | --- |
-| [Window and pane tree](Sources/Terminal/main.swift) | Windows, tabs, splits, focus, and minimum sizes |
+| [Window and pane tree](Sources/Terminal/TerminalWindow.swift) | Windows, tabs, splits, focus, and minimum sizes |
 | [Pane presentation](Sources/Terminal/PanePresentation.swift) | Pane headers, colors, and inactive dimming |
 | [Pane color palette](Sources/Terminal/PaneColorPalette.swift) | Swatch grid and hex entry shared by the pane popover and Settings |
 | [Canvas](Sources/TerminalUI/Canvas.swift) | Native input, selection, geometry, and accessibility |

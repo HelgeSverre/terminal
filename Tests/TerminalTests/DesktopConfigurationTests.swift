@@ -132,11 +132,39 @@ import TerminalUI
     #expect(atDeadline)
     #expect(!invalid)
   }
+  private static let remappable = Set(TerminalShortcut.Action.allCases.map { NSSelectorFromString($0.selectorName) })
+  private static func menuItems(_ configuration: DesktopConfiguration) -> [NSMenuItem] {
+    func items(_ menu: NSMenu) -> [NSMenuItem] { menu.items.flatMap { [$0] + ($0.submenu.map(items) ?? []) } }
+    return items(MainMenu.build(delegate: nil, tabNavigation: TerminalTabNavigation { nil }, configuration: configuration).bar)
+  }
+
+  @Test static func menuTakesOverridesAndRestoresDefaultsWhenTheyAreRemoved() throws {
+    _ = NSApplication.shared
+    func chords(_ configuration: DesktopConfiguration) -> [Selector: String] {
+      Dictionary(uniqueKeysWithValues: menuItems(configuration).compactMap { item in
+        item.action.flatMap { remappable.contains($0) ? ($0, "\(item.keyEquivalentModifierMask.rawValue):\(item.keyEquivalent)") : nil }
+      })
+    }
+    let standard = chords(.standard)
+    #expect(standard.count == TerminalShortcut.Action.allCases.count)
+    for shortcut in TerminalShortcut.defaults {
+      #expect(standard[NSSelectorFromString(shortcut.action.selectorName)] == "\(shortcut.flags.rawValue):\(shortcut.key)")
+    }
+    var remapped = DesktopConfiguration.standard
+    remapped.shortcuts = [.init(action: .zoomPane, key: "u", modifiers: ["command", "option"])]
+    try remapped.validate()
+    var expected = standard
+    expected[#selector(TerminalWindow.togglePaneZoom(_:))] = "\(NSEvent.ModifierFlags([.command, .option]).rawValue):u"
+    #expect(chords(remapped) == expected)
+    remapped.profiles = [.init(id: "p", name: "Profile", executable: "/bin/sh", arguments: [], directory: "", environment: [:])]
+    #expect(menuItems(remapped).contains { $0.title == "Profile" && $0.representedObject as? String == "p" })
+  }
+
   @Test static func configurableActionsCannotClaimFixedMenuShortcuts() throws {
     _ = NSApplication.shared
-    let tabs = NSMenu(title: "Tabs")
-    TerminalTabNavigation { nil }.addMenuItems(to: tabs)
-    let fixedItems = tabs.items + TerminalEditMenu.make().items
+    // Every fixed command in the real menu bar, not a hand-kept list of menus.
+    let fixedItems = menuItems(.standard).filter { item in item.action.map { !remappable.contains($0) } ?? false }
+    #expect(fixedItems.contains { $0.keyEquivalent == "q" } && fixedItems.contains { $0.keyEquivalent == "c" })
     func modifierNames(_ flags: NSEvent.ModifierFlags) -> [String] {
       [("command", NSEvent.ModifierFlags.command), ("shift", .shift), ("control", .control), ("option", .option)]
         .filter { flags.contains($0.1) }.map(\.0)

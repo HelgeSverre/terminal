@@ -77,9 +77,8 @@ final class DesktopSettingsEditor: NSWindowController {
   }
   @objc private func addShortcuts() {
     edit { value in
-      for (action, key) in [(TerminalShortcut.Action.focusLeft, "h"), (.focusDown, "j"), (.focusUp, "k"),
-        (.focusRight, "l"), (.zoomPane, "z"), (.movePaneToWindow, "n")] where !value.shortcuts.contains(where: { $0.action == action }) {
-        value.shortcuts.append(TerminalShortcut(action: action, key: key, modifiers: ["command", "control"]))
+      for shortcut in TerminalShortcut.defaults where !value.shortcuts.contains(where: { $0.action == shortcut.action }) {
+        value.shortcuts.append(shortcut)
       }
     }
   }

@@ -141,6 +141,20 @@ struct TerminalShortcut: Codable, Equatable {
   ]
   enum Action: String, Codable, CaseIterable {
     case newWindow, newTab, splitRight, splitBelow, focusLeft, focusRight, focusUp, focusDown, zoomPane, movePaneToWindow
+    var title: String {
+      switch self {
+      case .newWindow: return "New Window"
+      case .newTab: return "New Tab"
+      case .splitRight: return "Split Right"
+      case .splitBelow: return "Split Below"
+      case .focusLeft: return "Focus Pane Left"
+      case .focusRight: return "Focus Pane Right"
+      case .focusUp: return "Focus Pane Up"
+      case .focusDown: return "Focus Pane Down"
+      case .zoomPane: return "Zoom Pane"
+      case .movePaneToWindow: return "Move Pane to New Window"
+      }
+    }
     var selectorName: String {
       switch self {
       case .splitRight: return "splitVertical:"
@@ -150,6 +164,8 @@ struct TerminalShortcut: Codable, Equatable {
       }
     }
   }
+  /// The key an action has until a configuration remaps it.
+  static func standard(_ action: Action) -> TerminalShortcut { defaults.first { $0.action == action }! }
   var action: Action
   var key: String
   var modifiers: [String]

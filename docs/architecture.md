@@ -91,7 +91,9 @@ led to these rules.
 
 | Area | Entry point |
 | --- | --- |
-| Windows, pane tree, menus | [main.swift](../Sources/Terminal/main.swift) |
+| Windows and pane tree | [TerminalWindow.swift](../Sources/Terminal/TerminalWindow.swift) |
+| App lifecycle, recovery scheduling | [AppDelegate.swift](../Sources/Terminal/AppDelegate.swift) |
+| Menu bar and remappable actions | [MainMenu.swift](../Sources/Terminal/MainMenu.swift) |
 | Native input and accessibility | [Canvas.swift](../Sources/TerminalUI/Canvas.swift) |
 | PTY and terminal-state ordering | [Session.swift](../Sources/TerminalHost/TerminalSession.swift) |
 | Read admission, readiness, and descriptor lifetime | [IO](../Sources/TerminalHost/IO) |
