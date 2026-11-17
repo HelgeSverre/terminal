@@ -13,6 +13,8 @@ enum TerminalInputEncoder {
     /// Kitty progressive-enhancement flags (CSI > 1 u): disambiguate,
     /// report events, alternate keys, associated text, respectively.
     var kittyFlags: UInt32 = 0
+    /// Xterm XTMODKEYS resource 4. Kitty negotiation takes precedence.
+    var modifyOtherKeys = 0
   }
 
   struct Modifiers: Equatable {
@@ -135,6 +137,8 @@ enum TerminalInputEncoder {
       || modifiers.command
     if enhanced { return kitty(key, modifiers: modifiers, event: event, flags: flags, metadata: metadata) }
     if event == .release { return Data() }
+    if flags == 0, let encoded = modifiedOtherKey(key, modifiers: modifiers,
+      level: modes.modifyOtherKeys, metadata: metadata) { return encoded }
     if case .keypad(let keypad, let native) = key {
       if modes.applicationKeypad {
         var output = Data([27, 79, ascii(keypad.application)])
@@ -200,6 +204,45 @@ enum TerminalInputEncoder {
   static func focus(_ focused: Bool, modes: Modes) -> Data {
     guard modes.focusReporting else { return Data() }
     return Data((focused ? "\u{1b}[I" : "\u{1b}[O").utf8)
+  }
+
+  /// Xterm's default formatOtherKeys format. Shift which only produces a
+  /// printable character stays text in levels 1/2; level 2 disambiguates
+  /// Control chords and special keys. IME commits bypass physical-key encoding.
+  private static func modifiedOtherKey(_ key: Key, modifiers: Modifiers, level: Int,
+                                       metadata: KeyMetadata) -> Data? {
+    guard (1...3).contains(level), !modifiers.command else { return nil }
+    var modifier = modifiers.legacyKitty
+    let code: UInt32
+    switch key {
+    case .enter: code = 13
+    case .tab: code = 9
+    case .escape: code = 27
+    case .backspace:
+      guard level >= 2 else { return nil }
+      code = 127
+    case .character(let character):
+      // Xterm reports the shifted keysym (e.g. Control-Shift-1 is '!'),
+      // rather than Kitty's unshifted primary code plus alternate metadata.
+      guard let scalar = (modifiers.shift ? metadata.shifted : nil).flatMap(singleScalar)
+        ?? singleScalar(character), scalar.properties.generalCategory != .control else { return nil }
+      code = scalar.value
+      if level < 3 {
+        if !modifiers.control && !modifiers.option {
+          guard level == 2 && modifiers.shift && code == 32 else { return nil }
+        }
+        if level == 1 {
+          // Preserve the established Control-A..Z/[\\]^_ bindings. Additional
+          // modifiers still need an unambiguous report.
+          if modifiers.control && !modifiers.shift && !modifiers.option,
+             (0x40...0x7f).contains(code) { return nil }
+          if !modifiers.control && modifiers.shift { modifier -= 1 }
+        }
+      }
+    default: return nil // Cursor/function/keypad modes keep their own encoding.
+    }
+    guard modifier != 1 || level == 3 else { return nil }
+    return Data("\u{1b}[27;\(modifier);\(code)~".utf8)
   }
 
   private static func kitty(_ key: Key, modifiers: Modifiers, event: Event, flags: UInt32,

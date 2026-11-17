@@ -57,6 +57,15 @@ enum NativeKeyMap {
   }
   // Host editing bindings match the macOS Ghostty defaults. These are consumed
   // actions, so their physical releases must not leak into negotiated key events.
+  static func optionSendsEscape(_ flags: NSEvent.ModifierFlags, configuration: TerminalViewConfiguration) -> Bool {
+    // NX_DEVICELALTKEYMASK/NX_DEVICERALTKEYMASK from IOLLEvent.h. AppKit's
+    // aggregate .option flag alone cannot distinguish the physical sides.
+    let left = flags.rawValue & 0x20 != 0
+    let right = flags.rawValue & 0x40 != 0
+    guard left || right else { return configuration.optionSendsEscape }
+    return (left && (configuration.leftOptionSendsEscape ?? configuration.optionSendsEscape))
+      || (right && (configuration.rightOptionSendsEscape ?? configuration.optionSendsEscape))
+  }
   static func route(_ event: NSEvent, optionSendsEscape optionEsc: Bool = false) -> Route {
     let flags = modifiers(event.modifierFlags)
     switch (event.keyCode, flags) {

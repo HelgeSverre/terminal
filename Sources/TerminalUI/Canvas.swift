@@ -629,7 +629,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
       interpretKeyEvents([event])
       return
     }
-    switch NativeKeyMap.route(event, optionSendsEscape: configuration.optionSendsEscape) {
+    switch NativeKeyMap.route(event, optionSendsEscape: NativeKeyMap.optionSendsEscape(event.modifierFlags, configuration: configuration)) {
     case .shortcut(let text):
       _ = session.shortcut(text)
       redraw()
@@ -688,7 +688,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     markedSelection = NSRange(location: 0, length: 0)
     if !composing, text.unicodeScalars.count == 1, let event = originatingKey {
       let consumed: UInt32 =
-        !configuration.optionSendsEscape && event.modifierFlags.contains(.option)
+        !NativeKeyMap.optionSendsEscape(event.modifierFlags, configuration: configuration) && event.modifierFlags.contains(.option)
         ? 2 : 0
       let mods = modifiers(event.modifierFlags) & ~consumed
       let mapped = NativeKeyMap.textEvent(event, text: text, modifiers: mods)
@@ -852,6 +852,18 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   public override func rightMouseUp(with event: NSEvent) {
     _ = reportMouse(event, button: 2, release: true)
   }
+  public override func rightMouseDragged(with event: NSEvent) {
+    _ = reportMouse(event, button: 34, release: false)
+  }
+  public override func otherMouseDown(with event: NSEvent) {
+    if event.buttonNumber == 2 { _ = reportMouse(event, button: 1, release: false) }
+  }
+  public override func otherMouseUp(with event: NSEvent) {
+    if event.buttonNumber == 2 { _ = reportMouse(event, button: 1, release: true) }
+  }
+  public override func otherMouseDragged(with event: NSEvent) {
+    if event.buttonNumber == 2 { _ = reportMouse(event, button: 33, release: false) }
+  }
   private func reportMouse(_ event: NSEvent, button: Int, release: Bool) -> Bool {
     guard let value = snapshot, value.modes.mouse != 0, !event.modifierFlags.contains(.shift) else {
       return false
@@ -864,14 +876,12 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     let modifier =
       (event.modifierFlags.contains(.option) ? 8 : 0)
       + (event.modifierFlags.contains(.control) ? 16 : 0)
-    if value.modes.sgr_mouse {
-      session.rawInput(Data("\u{1b}[<\(button+modifier);\(x);\(y)\(release ? "m":"M")".utf8))
-    } else if x <= 223 && y <= 223 {
-      session.rawInput(
-        Data([
-          27, 91, 77, UInt8((release ? 3 : button) + modifier + 32), UInt8(x + 32), UInt8(y + 32),
-        ]))
-    }
+    let point = convert(event.locationInWindow, from: nil)
+    let pixels = NativeMouseCoordinates.position(point, scale: scale, inset: insetPixels,
+      width: value.cols * cellWidth, height: value.rows.count * cellHeight)
+    let encoding = value.modes.mouse_encoding ?? (value.modes.sgr_mouse ? 1006 : 0)
+    session.rawInput(TerminalMouseEncoder.encode(button: button, release: release, modifiers: modifier,
+      column: x, row: y, pixelX: pixels.x, pixelY: pixels.y, encoding: encoding, x10: value.modes.mouse == 9))
     return true
   }
   public override func scrollWheel(with event: NSEvent) {

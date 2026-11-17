@@ -177,6 +177,8 @@ package struct ModesSnapshot: Decodable, Equatable {
   package let focus: Bool
   package let mouse: Int
   package let sgr_mouse: Bool
+  /// Effective extended mouse encoding; absent in older serialized snapshots.
+  package var mouse_encoding: Int? = nil
   package let reverse_video: Bool
   package let newline: Bool?
 }

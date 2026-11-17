@@ -140,7 +140,9 @@ private final class TerminalEmulator {
   @exclusivity(unchecked) private var focusReporting = false
   @exclusivity(unchecked) private var reverseVideo = false
   @exclusivity(unchecked) private var mouseMode = 0
-  @exclusivity(unchecked) private var sgrMouse = false
+  @exclusivity(unchecked) private var mouseEncoding = 0
+  @exclusivity(unchecked) private var modifyOtherKeys = 0
+  private var sgrMouse: Bool { mouseEncoding == 1006 || mouseEncoding == 1016 }
   @exclusivity(unchecked) private var tabs: [Bool]
   @exclusivity(unchecked) private var tabsCleared = false
   @exclusivity(unchecked) private var revision: UInt64 = 1
@@ -891,7 +893,7 @@ private final class TerminalEmulator {
     insertMode = false; newlineMode = false; protectedOutput = false; syncDeadline = nil
     attributes.isoProtected = false
     applicationCursor = false; applicationKeypad = false; bracketedPaste = false
-    focusReporting = false; reverseVideo = false; mouseMode = 0; sgrMouse = false
+    focusReporting = false; reverseVideo = false; mouseMode = 0; mouseEncoding = 0; modifyOtherKeys = 0
     currentLink = nil
     palette.reset()
     colorSchemeReports = false; titleStack.removeAll(keepingCapacity: true)
@@ -996,10 +998,10 @@ private final class TerminalEmulator {
     switch (marker, intermediates.first) {
     case (nil, nil): return true
     // DECSED and DECSEL, DEC private modes, DSR, the keyboard-flags query.
-    case (0x3f, nil): return [0x4a, 0x4b, 0x68, 0x6c, 0x6e, 0x72, 0x73, 0x75].contains(final)
+    case (0x3f, nil): return [0x4a, 0x4b, 0x68, 0x6c, 0x6d, 0x6e, 0x72, 0x73, 0x75].contains(final)
     // Keyboard flags (set, push, pop); secondary device attributes.
     case (0x3d, nil), (0x3c, nil): return final == 0x75
-    case (0x3e, nil): return final == 0x75 || final == 0x63 || final == 0x71
+    case (0x3e, nil): return [0x75, 0x63, 0x6d, 0x6e, 0x71].contains(final)
     // DECSTR, DECSCA, DECSCUSR, DECRQM for an ANSI or a private mode.
     case (nil, 0x21): return final == 0x70
     case (nil, 0x24): return [0x70, 0x76, 0x78, 0x7a, 0x7b].contains(final)
@@ -1022,6 +1024,23 @@ private final class TerminalEmulator {
     // scroll. Combinations this terminal does not implement are ignored.
     guard Self.implementsCSI(final: final, raw: raw) else { return }
     guard let packet = Self.parseCSIParameters(raw, final: final, into: &csiParameterScratch) else { return }
+    if (raw.first == 0x3e && (final == 0x6d || final == 0x6e))
+      || (raw.first == 0x3f && final == 0x6d) {
+      // Resource controls must never reach SGR/DSR. Unsupported resources and
+      // subparameter masks are ignored without changing the current setting.
+      guard !packet.hasColon else { return }
+      let params = packet.values
+      if raw.first == 0x3f {
+        if params == [4] { replies.append(contentsOf: "\u{1b}[>4;\(modifyOtherKeys)m".utf8) }
+      } else if final == 0x6e {
+        if params == [4] { modifyOtherKeys = -1; changed() }
+      } else if params == [0] || params == [4] {
+        modifyOtherKeys = 0; changed()
+      } else if params.count == 2, params[0] == 4, (0...3).contains(params[1]) {
+        modifyOtherKeys = params[1]; changed()
+      }
+      return
+    }
     // SGR changes the pen only. Preserve the usual semantic revision without
     // copying and writing back an unchanged screen or clearing pending wrap.
     if final == 0x6d {
@@ -1504,7 +1523,7 @@ private final class TerminalEmulator {
       case 69: enabled = leftRightMargins
       case 9, 1000, 1002, 1003: enabled = mouseMode == mode
       case 1004: enabled = focusReporting
-      case 1006: enabled = sgrMouse
+      case 1005, 1006, 1015, 1016: enabled = mouseEncoding == mode
       case 2004: enabled = bracketedPaste
       case 2026: enabled = syncDeadline != nil
       default: return 0
@@ -1563,8 +1582,10 @@ private final class TerminalEmulator {
         if enabled { saveCursor() } else { restoreCursor() }
         changedActiveScreen = true
       case 1004: focusReporting = enabled
-      case 9, 1000, 1002, 1003: mouseMode = enabled ? mode : 0
-      case 1006: sgrMouse = enabled
+      case 9, 1000, 1002, 1003:
+        if enabled { mouseMode = mode } else if mouseMode == mode { mouseMode = 0 }
+      case 1005, 1006, 1015, 1016:
+        if enabled { mouseEncoding = mode } else if mouseEncoding == mode { mouseEncoding = 0 }
       case 2004: bracketedPaste = enabled
       case 2027: applyGraphemeClustering(enabled)
       case 2031: colorSchemeReports = enabled
@@ -1587,7 +1608,7 @@ private final class TerminalEmulator {
     newlineMode = false; protectedOutput = false
     attributes.isoProtected = false
     pen = TerminalStyle(); currentLink = nil; applicationCursor = false; applicationKeypad = false
-    bracketedPaste = false; focusReporting = false; reverseVideo = false; mouseMode = 0; sgrMouse = false; syncDeadline = nil
+    bracketedPaste = false; focusReporting = false; reverseVideo = false; mouseMode = 0; mouseEncoding = 0; modifyOtherKeys = 0; syncDeadline = nil
     forgetLastPrinted()
     charsetSpecial = [false, false]; charsetSlot = 0
     var s = screen
@@ -2130,7 +2151,8 @@ private final class TerminalEmulator {
              metadata: TerminalInputEncoder.KeyMetadata? = nil) -> Data? {
     let modes = TerminalInputEncoder.Modes(
       applicationCursor: applicationCursor, applicationKeypad: applicationKeypad, newline: newlineMode,
-      bracketedPaste: bracketedPaste, focusReporting: focusReporting, kittyFlags: screen.keyboardFlags)
+      bracketedPaste: bracketedPaste, focusReporting: focusReporting, kittyFlags: screen.keyboardFlags,
+      modifyOtherKeys: modifyOtherKeys)
     // The C ABI's key=0 path represents committed text, not a physical key.
     // It must retain every scalar (automation, IME commits, and multi-scalar
     // insertText: calls), so it is passed through as its UTF-8 bytes.
@@ -2249,7 +2271,7 @@ private final class TerminalEmulator {
       cursor: CursorSnapshot(row: cursor.cursorRow, col: cursor.cursorColumn, pending_wrap: cursor.pendingWrap,
                              visible: cursor.cursorVisible, shape: Int(cursor.cursorShape)),
       modes: ModesSnapshot(application_cursor: applicationCursor, bracketed_paste: bracketedPaste,
-                           focus: focusReporting, mouse: mouseMode, sgr_mouse: sgrMouse,
+                           focus: focusReporting, mouse: mouseMode, sgr_mouse: sgrMouse, mouse_encoding: mouseEncoding,
                            reverse_video: reverseVideo, newline: newlineMode),
       alternate: usingAlternate, title: title, cwd: currentDirectory, history_rows: history.count,
       palette: colors, default_fg: foreground, default_bg: background, cursor_color: palette.cursorRGB,
@@ -2578,6 +2600,10 @@ private final class TerminalEmulator {
     let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement, "extent": image.extent as Any? ?? NSNull()] as [String: Any] }
     var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search.current,"search_matches":search.others,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette.snapshotPalette,"default_fg":palette.snapshotDefaultForeground,"default_bg":palette.snapshotDefaultBackground]
     metadata["cursor_color"] = palette.cursorRGB
+    if var modes = metadata["modes"] as? [String: Any] {
+      modes["mouse_encoding"] = mouseEncoding
+      metadata["modes"] = modes
+    }
     metadata["cwd"] = currentDirectory as Any? ?? NSNull()
     return metadata
   }

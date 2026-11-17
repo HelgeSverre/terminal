@@ -18,12 +18,19 @@ public struct TerminalViewConfiguration {
   public var contentInset: CGFloat = 8
   /// Whether Option sends Escape before the key instead of composing a character.
   public var optionSendsEscape: Bool
+  /// Per-side Option policy. Nil inherits `optionSendsEscape`. If both sides
+  /// are held, either side configured to send Escape enables that behavior.
+  public var leftOptionSendsEscape: Bool?
+  public var rightOptionSendsEscape: Bool?
   public var session: TerminalSessionConfiguration
   public init(fontSize: CGFloat = 14, fontFamily: String? = nil, optionSendsEscape: Bool = false,
+       leftOptionSendsEscape: Bool? = nil, rightOptionSendsEscape: Bool? = nil,
        session: TerminalSessionConfiguration = TerminalSessionConfiguration()) {
     self.fontSize = fontSize
     self.fontFamily = fontFamily
     self.optionSendsEscape = optionSendsEscape
+    self.leftOptionSendsEscape = leftOptionSendsEscape
+    self.rightOptionSendsEscape = rightOptionSendsEscape
     self.session = session
   }
 }
