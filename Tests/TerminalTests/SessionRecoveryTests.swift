@@ -152,6 +152,21 @@ import Darwin
     #expect(store.scrollback(pane).unavailable)
     await clean(store)
   }
+  @Test func tornMetadataKeepsAuthoritativeRunStatus() async throws {
+    let dir = try directory(), good = fixture()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try JSONEncoder().encode(good).write(to: dir.appendingPathComponent("layout.json"))
+    try Data("N{partial-metadata".utf8).write(to: dir.appendingPathComponent("running"))
+    var store = try #require(SessionStateStore.open(directory: dir)) as SessionStateStore?
+    #expect(store?.restored == good)
+    store = nil
+    // The store set R before any restored view or shell could be created.
+    let marker = try Data(contentsOf: dir.appendingPathComponent("running"))
+    #expect(marker.first == 82)
+    store = try #require(SessionStateStore.open(directory: dir))
+    #expect(store?.restored == nil)
+    await clean(store)
+  }
 
   @Test func checkpointUsesPrimaryAndRestoresLiteralFaintText() throws {
     let source = try #require(helge_terminal_create(8, 3))

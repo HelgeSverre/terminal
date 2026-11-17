@@ -42,6 +42,8 @@ final class SessionStateStore: @unchecked Sendable {
   private var stopping = false
   private var isStopping: Bool { stopLock.lock(); defer { stopLock.unlock() }; return stopping }
   private var lastGoodLayout: Data?
+  private let runStarted = Date()
+  private var wroteRunMetadata = false
   private static let maximumTextBytes = 16 * 1024 * 1024
 
   static func open(directory: URL?) -> SessionStateStore? {
@@ -66,10 +68,13 @@ final class SessionStateStore: @unchecked Sendable {
       guard fstat(descriptor, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG,
         fchmod(descriptor, 0o600) == 0 else { throw POSIXError(.EACCES) }
       let old = try? Self.read(runningURL, limit: 4096)
-      let previousRun = old.flatMap { try? JSONDecoder().decode(Running.self, from: $0) }
+      let previousRestoring: Bool?
+      if old?.first == 82 { previousRestoring = true }
+      else if old?.first == 78 { previousRestoring = false }
+      else { previousRestoring = old.flatMap { try? JSONDecoder().decode(Running.self, from: $0).restoring } }
       var layout: SessionLayout?
       if existed {
-        if previousRun == nil || previousRun?.restoring == true { try Self.quarantine(directory) }
+        if previousRestoring == nil || previousRestoring == true { try Self.quarantine(directory) }
         else {
           let current = try? Self.read(directory.appendingPathComponent("layout.json"), limit: Self.maximumTextBytes)
           let previous = try? Self.read(directory.appendingPathComponent("layout.previous.json"), limit: Self.maximumTextBytes)
@@ -168,9 +173,18 @@ final class SessionStateStore: @unchecked Sendable {
     directory.appendingPathComponent("panes/\(pane.string).resume")
   }
   private func writeRunning(restoring: Bool) throws {
-    let data = try JSONEncoder().encode(Running(pid: getpid(), started: Date(), restoring: restoring))
-    guard ftruncate(descriptor, 0) == 0, lseek(descriptor, 0, SEEK_SET) >= 0 else { throw POSIXError(.EIO) }
-    try Self.write(data, descriptor: descriptor)
+    // Keep the flock inode stable. A single N/R byte is the authoritative
+    // restore-loop marker; normal saves never truncate or replace it. Even a
+    // partial metadata write on launch leaves the decision readable.
+    var status: UInt8 = restoring ? 82 : 78
+    guard pwrite(descriptor, &status, 1, 0) == 1, fsync(descriptor) == 0 else { throw POSIXError(.EIO) }
+    if !wroteRunMetadata {
+      let data = try JSONEncoder().encode(Running(pid: getpid(), started: runStarted, restoring: restoring))
+      guard lseek(descriptor, 1, SEEK_SET) >= 0 else { throw POSIXError(.EIO) }
+      try Self.write(data, descriptor: descriptor)
+      guard ftruncate(descriptor, off_t(data.count + 1)) == 0 else { throw POSIXError(.EIO) }
+      wroteRunMetadata = true
+    }
     guard fsync(descriptor) == 0 else { throw POSIXError(.EIO) }
   }
   private static func checksum(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
