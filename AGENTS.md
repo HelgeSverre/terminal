@@ -94,8 +94,10 @@ Tags and releases happen only on request. See Release credentials below.
 
 ## Building
 
-`Package.swift` compiles everything: the app, its launcher, the developer
-tool's tests and the test suites. `just build` runs `swift build` through
+`Package.swift` defaults to the embedding libraries and launcher. The `just`
+recipes set `TERMINAL_DEVELOPMENT=1` to include the app, developer tooling and
+test suites; set it explicitly when invoking SwiftPM for app development.
+`just build` runs `swift build` through
 `dev bundle`, which then adds what a package cannot make: the icon, the
 Metal library, the terminfo database, the bundle layout and the signature.
 A new source file needs no registration; each target takes every file under
