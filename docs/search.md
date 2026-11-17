@@ -14,26 +14,33 @@ screen rows, including wide characters and composed cell text.
 
 ## Bounded regex syntax
 
-The regex toggle is labelled **Bounded regex (shortest nonempty matches)**.
-This deliberately small syntax supports concatenated literal scalars, `.`,
-`[abc]`, `[a-z]`, `[^a-z]`, `?`, `*`, `+`, leading `^` and trailing `$`.
-Anchors describe hard lines; dot excludes newline. `\n`, `\r`, `\t` and
-backslash-escaped punctuation are supported. Case-insensitive class endpoints
-and regex atoms must lowercase to exactly one scalar. Unsupported syntax,
-including groups, alternation, counted repetition, lookaround, backreferences
-and shorthand classes such as `\w`, is rejected as `invalidQuery`.
+The regex toggle is labelled **Bounded regex (leftmost longest)**. It supports
+concatenated literal scalars, `.`, `[abc]`, `[a-z]`, `[^a-z]`, groups `(ab)`,
+alternation `a|b`, `?`, `*`, `+`, `^` and `$`. Anchors describe hard lines;
+dot excludes newline. `\n`, `\r`, `\t` and backslash-escaped punctuation are
+supported. Groups affect matching without capturing text. Case-insensitive
+class endpoints and regex atoms must lowercase to exactly one scalar.
+Unsupported syntax, including counted repetition, lazy quantifiers, lookaround,
+backreferences and shorthand classes such as `\w`, is rejected as `invalidQuery`.
+Empty groups and empty alternatives are also rejected.
 
-Matches are nonempty, nonoverlapping, and accepted at the earliest ending
-position, using the oldest viable start there. Thus `a+` finds each `a`
-separately, and `a.*b` stops at the first `b`. This is **not a general-purpose
-PCRE/ICU replacement** and does not promise greedy leftmost semantics.
+Matches are nonempty and nonoverlapping, with POSIX-style leftmost-longest
+semantics: choose the earliest matching start, then its longest match. Thus
+`a+` matches all three letters of `aaa`, `a.*b` stops at the final `b`, and
+`a|ab` matches `ab` when possible. Alternation order does not override the
+longest match. This is not full PCRE/ICU parity.
 
 The implementation is a streaming finite-state machine, with at most 256
-states and 128 ranges per class. It never uses a backtracking regex engine.
-Each worker turn processes at most 64 input scalars or empty/continuation
-cells. Each call performs bounded work, including for adversarial patterns.
+instructions, nesting depth 32 and 128 ranges per class. It never uses a backtracking regex engine.
+Each worker turn processes at most 64 input or replayed scalars, or
+empty/continuation cells. Each call performs bounded work, including for adversarial patterns.
 Active matches may consume at most 4096 scalars. An active path that would
 exceed this bound returns `resourceLimit`, rather than silently skipping it.
+Greedy lookahead is replayed from a bounded scalar window after a hit.
+A query also has a 64-million-operation evaluation budget (instruction visits,
+class-range tests and a conservative sorting allowance). Exhausting it reports
+`resourceLimit`, including repeated lookahead replay; cancellation remains
+available between bounded turns.
 The owner admits one immutable row at a time; the worker retains no terminal
 or history references.
 

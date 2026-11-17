@@ -192,6 +192,9 @@ struct TerminalSearchTask {
   private var candidate: (spans: [TerminalSearchSpan], endAnchored: Bool)?
   private var wordBeforeRecent: [Bool] = []
   private var recent: [TerminalSearchSpan] = []
+  private var recentScalars: [Unicode.Scalar] = []
+  private var recentLineStarts: [Bool] = []
+  private var replayPosition: Int?
   private var matches: [[TerminalSearchSpan]] = []
   private var retainedSpanCount = 0
   private var dropped = false
@@ -281,7 +284,17 @@ struct TerminalSearchTask {
   mutating func step() -> TerminalSearchStatus {
     guard status == .working, var page else { return status }
     var budget = Self.cellsPerStep
-    while page.column < page.end && budget > 0 {
+    while budget > 0 {
+      if let offset = replayPosition {
+        if offset < position {
+          if !scanRegex(at: offset) { replayPosition = offset + 1 }
+          budget -= 1
+          if status == .resourceLimit { self.page = nil; return status }
+          continue
+        }
+        replayPosition = nil
+      }
+      guard page.column < page.end else { break }
       let column = page.column
       let cell = page.row.cells[column]
       let span = TerminalSearchSpan(
@@ -298,10 +311,11 @@ struct TerminalSearchTask {
         page.scalarOffset += 1
         budget -= 1
         if status == .resourceLimit { self.page = nil; return status }
+        if replayPosition != nil { break }
       }
       if page.scalarOffset == scalars.count { page.column += 1; page.scalarOffset = 0 }
     }
-    if page.column == page.end && (!page.hardBreak || budget > 0) {
+    if page.column == page.end && replayPosition == nil && (!page.hardBreak || budget > 0) {
       if page.hardBreak {
         let point = TerminalSearchSpan(proof: TerminalSearchProof(page.row, softNextID: page.softNextID), start: page.end, end: page.end)
         push(Unicode.Scalar(0x0a)!, span: point)
@@ -309,7 +323,21 @@ struct TerminalSearchTask {
       self.page = nil
       if status != .resourceLimit {
         status = next == nil ? .complete : .needsPage
-        if status == .complete { finishCandidate(next: nil) }
+        if status == .complete {
+          if regex != nil {
+            let range = regex!.finish(position: position, lineStart: lineStart, wholeWord: options.wholeWord)
+            if regex!.exceeded { status = .resourceLimit }
+            else if let range {
+              storeRegexMatch(range)
+              // Greedy matching can consume lookahead after an earlier hit.
+              // Replay it in bounded turns before completing the document.
+              if status != .resourceLimit, let replayPosition, replayPosition < position {
+                self.page = page
+                status = .working
+              } else { self.replayPosition = nil }
+            }
+          } else { finishCandidate(next: nil) }
+        }
       }
     } else { self.page = page }
     if matches.count >= 2 * Self.maxMatches {
@@ -323,7 +351,7 @@ struct TerminalSearchTask {
 
   mutating func cancel() {
     status = .cancelled; page = nil; matches.removeAll(); recent.removeAll()
-    wordBeforeRecent.removeAll(); candidate = nil; regex?.reset()
+    wordBeforeRecent.removeAll(); recentScalars.removeAll(); recentLineStarts.removeAll(); replayPosition = nil; candidate = nil; regex?.reset()
   }
 
   /// Owner-only acceptance. It rechecks epochs and per-row proofs, so a stale
@@ -405,55 +433,82 @@ struct TerminalSearchTask {
     regex?.reset()
   }
 
+  /// Processes one already retained scalar. A hit rewinds only the bounded
+  /// lookahead, never a terminal row or history source.
+  private mutating func scanRegex(at offset: Int) -> Bool {
+    let index = offset - recentBase
+    guard recent.indices.contains(index) else { status = .resourceLimit; return false }
+    let range = regex!.push(recentScalars[index], position: offset,
+                            previousWord: wordBeforeRecent[index], lineStart: recentLineStarts[index],
+                            wholeWord: options.wholeWord)
+    if regex!.exceeded { status = .resourceLimit; return false }
+    if let range { storeRegexMatch(range); return true }
+    return false
+  }
+
+  private mutating func storeRegexMatch(_ range: Range<Int>) {
+    let first = range.lowerBound - recentBase, end = range.upperBound - recentBase
+    guard first >= 0, end <= recent.count, first < end else { status = .resourceLimit; return }
+    var spans: [TerminalSearchSpan] = []
+    if first > 0, recent[first - 1].proof != recent[first].proof {
+      let before = recent[first - 1]
+      spans.append(TerminalSearchSpan(proof: before.proof, start: before.end, end: before.end))
+    }
+    for span in recent[first..<end] { Self.append(span, to: &spans) }
+    if end < recent.count, spans.last?.proof != recent[end].proof {
+      let after = recent[end]
+      spans.append(TerminalSearchSpan(proof: after.proof, start: after.start, end: after.start))
+    }
+    storeMatch(spans)
+    regex?.reset()
+    replayPosition = range.upperBound
+  }
+
+  private static func append(_ span: TerminalSearchSpan, to spans: inout [TerminalSearchSpan]) {
+    if let index = spans.indices.last, spans[index].proof == span.proof {
+      spans[index].start = min(spans[index].start, span.start)
+      spans[index].end = max(spans[index].end, span.end)
+    } else { spans.append(span) }
+  }
+
   private mutating func push(_ scalar: Unicode.Scalar, span: TerminalSearchSpan) {
-    finishCandidate(next: scalar, span: span)
+    if regex == nil { finishCandidate(next: scalar, span: span) }
     if status == .resourceLimit { return }
     wordBeforeRecent.append(previousWord)
+    recentLineStarts.append(lineStart)
+    recentScalars.append(scalar)
     recent.append(span)
-    let range: Range<Int>?
-    let endAnchored: Bool
-    if regex != nil {
-      range = regex!.push(scalar, position: position, canStart: !options.wholeWord || !previousWord, lineStart: lineStart)
-      endAnchored = regex!.endAnchored
-      if regex!.exceeded { status = .resourceLimit; return }
-    } else {
+    if regex != nil { _ = scanRegex(at: position) }
+    else {
       var count = matched
       while count > 0 && scalar != pattern[count] { count = failure[count - 1] }
       if scalar == pattern[count] { count += 1 }
       if count == pattern.count {
-        range = (position + 1 - pattern.count)..<(position + 1)
+        let start = position + 1 - pattern.count - recentBase
+        if !options.wholeWord || !wordBeforeRecent[start] {
+          var spans: [TerminalSearchSpan] = []
+          if options.wholeWord, start > 0, recent[start - 1].proof != recent[start].proof {
+            let before = recent[start - 1]
+            spans.append(TerminalSearchSpan(proof: before.proof, start: before.end, end: before.end))
+          }
+          for span in recent[start...] { Self.append(span, to: &spans) }
+          if options.wholeWord { candidate = (spans, false) }
+          else { storeMatch(spans) }
+        }
         count = 0
-      } else { range = nil }
-      matched = count
-      endAnchored = false
-    }
-    if let range {
-      let start = range.lowerBound - recentBase
-      if start >= 0, (!options.wholeWord || !wordBeforeRecent[start]) {
-        var spans: [TerminalSearchSpan] = []
-        if (options.wholeWord || regex?.startAnchored == true), start > 0,
-           recent[start - 1].proof != recent[start].proof {
-          let before = recent[start - 1]
-          spans.append(TerminalSearchSpan(proof: before.proof, start: before.end, end: before.end))
-        }
-        for span in recent[start...] {
-          if let index = spans.indices.last, spans[index].proof == span.proof {
-            spans[index].start = min(spans[index].start, span.start)
-            spans[index].end = max(spans[index].end, span.end)
-          } else { spans.append(span) }
-        }
-        if options.wholeWord || endAnchored { candidate = (spans, endAnchored) }
-        else { storeMatch(spans); regex?.reset() }
       }
+      matched = count
     }
     previousWord = Self.word(scalar)
     lineStart = scalar == "\n"
     position += 1
-    let limit = (regex == nil ? pattern.count : BoundedSearchRegex.maxMatchScalars) + 1
+    let limit = regex == nil ? pattern.count + 1 : BoundedSearchRegex.maxMatchScalars + 2
     if recent.count > 2 * limit {
       let remove = recent.count - limit
       recent.removeFirst(remove)
       wordBeforeRecent.removeFirst(remove)
+      recentScalars.removeFirst(remove)
+      recentLineStarts.removeFirst(remove)
       recentBase += remove
     }
   }

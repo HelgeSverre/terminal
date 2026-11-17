@@ -46,7 +46,7 @@ import TerminalEngine
     #expect(terminal.advanceSearch() == .working)
     terminal.cancelSearch()
     #expect(terminal.advanceSearch() == .cancelled)
-    #expect(terminal.beginSearch("(a+)+$", options: .init(regularExpression: true)) == .invalidQuery)
+    #expect(terminal.beginSearch("a{2}", options: .init(regularExpression: true)) == .invalidQuery)
     #expect(terminal.beginSearch("") == .invalidQuery)
     #expect(terminal.beginSearch(String(repeating: "a", count: 4097)) == .invalidQuery)
     #expect(terminal.beginSearch("aaa") == .working)

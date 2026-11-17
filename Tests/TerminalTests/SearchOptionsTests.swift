@@ -28,19 +28,35 @@ import Testing
     #expect(try matches("cat", in: rows, options: .init(caseSensitive: true, wholeWord: true)).count == 3)
   }
 
-  @Test func boundedRegexSyntaxAndShortestNonemptySemantics() throws {
+  @Test func boundedRegexSyntaxAndLeftmostLongestSemantics() throws {
     let rows = document(["abc abbbc ac axc a9c", "ABC", "next"])
     let regex = TerminalSearchOptions(regularExpression: true)
     #expect(try matches("ab*c", in: rows, options: regex).count == 4)
     #expect(try matches("a[b-x]?c", in: rows, options: regex).count == 4)
     #expect(try matches("^abc$", in: rows, options: regex).count == 1)
     #expect(try matches("^abc$", in: rows, options: .init(caseSensitive: true, regularExpression: true)).isEmpty)
-    #expect(try matches("a[^0-9]*c", in: rows, options: regex).count == 5)
-    #expect(try matches("a+", in: document(["aaa"]), options: regex).count == 3)
+    #expect(try matches("a[^0-9]*c", in: rows, options: regex).count == 2)
+    #expect(try matches("a+", in: document(["aaa"]), options: regex).count == 1)
     #expect(try matches("a*", in: document(["bbb"]), options: regex).isEmpty, "zero-width matches are not navigation stops")
     #expect(try matches("abc\\nnext", in: document(["ABC", "next"]), options: regex).count == 1)
     #expect(try matches("abc.next", in: document(["ABC", "next"]), options: regex).isEmpty, "dot excludes hard newline")
-    for query in ["(", "(a+)+$", "a|b", "a{2}", "[", "[z-a]", "\\w", "a**", String(repeating: "a", count: 257)] {
+    let greedy = try matches("a.*b", in: document(["a1b a2b"]), options: regex)
+    #expect(greedy.count == 1)
+    #expect(greedy.first?.spans.first?.span.start == 0)
+    #expect(greedy.first?.spans.first?.span.end == 7)
+    let choice = try matches("(a|ab)+", in: document(["abab"]), options: regex)
+    #expect(choice.count == 1)
+    #expect(choice.first?.spans.first?.span.end == 4)
+    #expect(try matches("(a|b)c", in: document(["ac bc cc"]), options: regex).count == 2)
+    #expect(try matches("a.*b|c", in: document(["axxxc"]), options: regex).count == 1,
+      "a later hit survives lookahead from an earlier failing start")
+    #expect(try matches("a.*b|c", in: document(["acc"]), options: regex).count == 2,
+      "lookahead after the first hit is replayed to find the second")
+    #expect(try matches("ab|a", in: document(["aba"]), options: regex).count == 2)
+    #expect(try matches("a+", in: document(["aaa"]), options: .init(wholeWord: true, regularExpression: true)).count == 1)
+    #expect(try matches("(a+)+$", in: document([String(repeating: "a", count: 512) + "!"]), options: regex).isEmpty,
+      "nested repetition executes as a finite-state machine")
+    for query in ["(", "a|", "()", "a{2}", "[", "[z-a]", "\\w", "a**", String(repeating: "a", count: 257)] {
       #expect(throws: TerminalSearchAdmissionError.query) {
         _ = try TerminalSearchTask(query: query, source: rows.source, options: regex)
       }
@@ -83,7 +99,7 @@ import Testing
 
   @Test func aLongCellCanBeCancelledBetweenScalarSteps() throws {
     let rows = TerminalSearchDocument(stamp: stamp, rows: [TerminalSearchRow(id: 1, cells: [TerminalSearchCell(String(repeating: "a", count: 4096), .lead1)])])
-    var task = try TerminalSearchTask(query: "z", source: rows.source, options: .init(regularExpression: true))
+    var task = try TerminalSearchTask(query: "(a+)+$", source: rows.source, options: .init(regularExpression: true))
     #expect(task.fill(from: rows.source) == .working)
     #expect(task.step() == .working)
     task.cancel()

@@ -115,8 +115,8 @@ public final class TerminalFindBar: NSView, NSTextFieldDelegate {
 
     configureToggle(caseToggle, label: "Match case", identifier: "case")
     configureToggle(wordToggle, label: "Whole word", identifier: "word")
-    configureToggle(regexToggle, label: "Bounded regex (shortest nonempty matches)", identifier: "regex")
-    regexToggle.toolTip = "Bounded regex: . [a-z] [^a-z] ? * + ^ $ and escaped literals; shortest nonempty matches. No groups or alternation."
+    configureToggle(regexToggle, label: "Bounded regex (leftmost longest)", identifier: "regex")
+    regexToggle.toolTip = "Bounded regex: . [a-z] [^a-z] (groups) | ? * + ^ $ and escaped literals; leftmost longest nonempty matches."
     configure(previous, symbol: "chevron.up", label: "Previous match", hint: "Previous match (⇧ Return)",
       identifier: "previous", action: #selector(stepNewer(_:)))
     configure(next, symbol: "chevron.down", label: "Next match", hint: "Next match (Return)",
