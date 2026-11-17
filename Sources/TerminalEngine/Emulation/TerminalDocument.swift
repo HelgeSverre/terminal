@@ -614,6 +614,7 @@ struct TerminalRow: Equatable {
   func flags(at index: Int) -> UInt8 { storage.slots[index].flags }
   func style(at index: Int) -> TerminalStyle { storage.style(storage.slots[index].style) }
   func isProtected(at index: Int) -> Bool { storage.slots[index].protected }
+  func isISOProtected(at index: Int) -> Bool { storage.slots[index].flags & 8 != 0 }
   func scalarCount(at index: Int) -> Int {
     storage.payload(at: index)?.text?.unicodeScalars.count ?? (storage.slots[index].hasScalar ? 1 : 0)
   }
@@ -657,7 +658,7 @@ struct TerminalRow: Equatable {
     }
   }
   mutating func replaceASCII<C: Collection>(at column: Int, scalars: C, style: TerminalStyle,
-                                             link: String?, protected: Bool) where C.Element == Unicode.Scalar {
+                                             link: String?, protected: Bool, isoProtected: Bool = false) where C.Element == Unicode.Scalar {
     let count = scalars.count
     guard count > 0, column >= 0, column + count <= storage.slots.count else { return }
     ensureUniqueForCellEdit()
@@ -669,7 +670,7 @@ struct TerminalRow: Equatable {
       var index = column
       for scalar in scalars {
         slots[index] = TerminalRowSlot(scalar: scalar.value, style: styleIndex, hasScalar: true,
-                                       kind: 1, flags: protected ? 2 : 0, protected: protected,
+                                       kind: 1, flags: (protected ? 2 : 0) | (isoProtected ? 8 : 0), protected: protected,
                                        hasPayload: link != nil)
         index += 1
       }
@@ -690,7 +691,7 @@ struct TerminalRow: Equatable {
     if clearsRight { erase(at: upper, style: eraseStyle) }
   }
   mutating func writeASCII(_ bytes: UnsafeBufferPointer<UInt8>, at column: Int, style: TerminalStyle,
-                           link: String?, protected: Bool) {
+                           link: String?, protected: Bool, isoProtected: Bool = false) {
     let count = bytes.count
     guard count > 0, column >= 0, column + count <= storage.slots.count else { return }
     let range = column..<(column + count)
@@ -699,7 +700,7 @@ struct TerminalRow: Equatable {
     observeSelectionWrite(range)
     storage.replacePayloads(in: range, link: link)
     let slot = TerminalRowSlot(scalar: 0, style: storage.intern(style), hasScalar: true, kind: 1,
-                               flags: protected ? 2 : 0, protected: protected, hasPayload: link != nil)
+                               flags: (protected ? 2 : 0) | (isoProtected ? 8 : 0), protected: protected, hasPayload: link != nil)
     storage.slots.withUnsafeMutableBufferPointer { slots in
       slot.write(ascii: bytes, to: UnsafeMutableBufferPointer(rebasing: slots[range]))
     }
@@ -712,7 +713,7 @@ struct TerminalRow: Equatable {
   fileprivate mutating func replaceClusters(at column: Int, scalars: UnsafeBufferPointer<Unicode.Scalar>,
                                             clusters: [TerminalDocument.PrintedCluster],
                                             texts: borrowing TerminalDocument.ClusterCache, cellCount: Int,
-                                            style: TerminalStyle, link: String?, protected: Bool) {
+                                            style: TerminalStyle, link: String?, protected: Bool, isoProtected: Bool = false) {
     guard cellCount > 0, column >= 0, column + cellCount <= storage.slots.count else { return }
     let range = column..<(column + cellCount)
     clearPairHalves(outside: range, eraseStyle: style.erased())
@@ -721,7 +722,7 @@ struct TerminalRow: Equatable {
     storage.replacePayloads(in: range, link: link)
     revision &+= UInt64(scalars.count)
     let styleIndex = storage.intern(style)
-    let flags: UInt8 = protected ? 2 : 0
+    let flags: UInt8 = (protected ? 2 : 0) | (isoProtected ? 8 : 0)
     let linked = link != nil
     var index = column, position = 0
     for cluster in clusters {
@@ -977,6 +978,9 @@ struct TerminalScreen: Equatable {
   var rows: [TerminalRow]; var cursorRow = 0; var cursorColumn = 0; var pendingWrap = false
   var savedRow = 0; var savedColumn = 0; var savedPendingWrap = false; var savedOrigin = false
   var savedStyle = TerminalStyle(); var savedLink: String?
+  var savedProtected = false
+  var savedCharsetSpecial = [false, false]
+  var savedCharsetSlot = 0
   var keyboardFlags: UInt32 = 0
   var keyboardStack: [UInt32] = []
   // DEC cursor appearance belongs to a screen, just like the keyboard stack.
@@ -1007,6 +1011,9 @@ struct TerminalDocument {
     var style: TerminalStyle
     var link: String?
     var protected: Bool
+    // ISO SPA/EPA protects against ordinary erasure; DEC DECSCA protects
+    // against selective erasure. They are independent protocols.
+    var isoProtected = false
   }
   /// The most recently printed cluster, retained for REP. A fresh scalar is the
   /// common case and needs no String until a repeat actually asks for one.
@@ -1241,14 +1248,14 @@ struct TerminalDocument {
         _ = scrollForIndex(&screen, columns: columns, blankCellCapacity: blankCellCapacity, recycleDiscarded: recycleDiscarded, top: screen.topMargin, bottom: screen.bottomMargin,
                            left: horizontal.0, right: horizontal.1, up: false, eraseStyle: eraseStyle,
                            history: &history, nextRowID: &nextRowID)
-      } else {
+      } else if screen.cursorRow != screen.topMargin {
         screen.cursorRow = max(0, screen.cursorRow - 1)
       }
     } else if screen.cursorRow == screen.bottomMargin && inside {
       return scrollForIndex(&screen, columns: columns, blankCellCapacity: blankCellCapacity, recycleDiscarded: recycleDiscarded, top: screen.topMargin, bottom: screen.bottomMargin,
                             left: horizontal.0, right: horizontal.1, up: true, eraseStyle: eraseStyle,
                             history: &history, nextRowID: &nextRowID)
-    } else {
+    } else if screen.cursorRow != screen.bottomMargin {
       screen.cursorRow = min(screen.rows.count - 1, screen.cursorRow + 1)
     }
     return nil
@@ -1433,7 +1440,7 @@ struct TerminalDocument {
       let count = appended > 0 ? 1 : min(bytes.count - consumed, room)
       screen.rows[row].writeASCII(UnsafeBufferPointer(rebasing: bytes[consumed..<(consumed + count)]),
                                   at: column, style: attributes.style, link: attributes.link,
-                                  protected: attributes.protected)
+                                  protected: attributes.protected, isoProtected: attributes.isoProtected)
       state.openCluster = (row, column + count - 1)
       state.retainedScalars = 1
       state.capped = false
@@ -1557,7 +1564,8 @@ struct TerminalDocument {
           screen.rows[row].replaceClusters(
             at: column, scalars: UnsafeBufferPointer(rebasing: scalars[consumed..<end]),
             clusters: state.runClusters, texts: state.clusters, cellCount: cells,
-            style: attributes.style, link: attributes.link, protected: attributes.protected)
+            style: attributes.style, link: attributes.link, protected: attributes.protected,
+            isoProtected: attributes.isoProtected)
           state.segmenter = segmenter
           state.openCluster = (row, column + cells - lastWidth)
           state.capped = false
@@ -1567,7 +1575,7 @@ struct TerminalDocument {
             // An extended cluster repeats with its lead cell's attributes,
             // which here are the caller's, stated outright as extension does.
             effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link,
-                                                      protected: attributes.protected)
+                                                      protected: attributes.protected, isoProtected: attributes.isoProtected)
           } else {
             state.retainedScalars = 1
             effect.lastPrinted = .scalar(scalars[end - 1])
@@ -1702,7 +1710,7 @@ struct TerminalDocument {
     screen.cursorColumn = min(right, owner.column + occupied)
     screen.pendingWrap = owner.column + occupied > right && autoWrap
     effect.lastPrinted = .cluster(text)
-    effect.repeatAttributes = PrintAttributes(style: lead.style, link: lead.link, protected: lead.protected)
+    effect.repeatAttributes = PrintAttributes(style: lead.style, link: lead.link, protected: lead.protected, isoProtected: lead.flags & 8 != 0)
     return true
   }
 
@@ -1791,7 +1799,7 @@ struct TerminalDocument {
         screen.cursorRow = owner.row; screen.cursorColumn = min(right, owner.column + occupied); screen.pendingWrap = owner.column + occupied > right && autoWrap
       }
       effect.lastPrinted = .cluster(combined)
-      effect.repeatAttributes = PrintAttributes(style: cell.style, link: cell.link, protected: cell.protected)
+      effect.repeatAttributes = PrintAttributes(style: cell.style, link: cell.link, protected: cell.protected, isoProtected: cell.flags & 8 != 0)
       return
     }
     state.openCluster = nil; state.retainedScalars = 0
@@ -1836,14 +1844,14 @@ struct TerminalDocument {
     let row = screen.cursorRow, column = screen.cursorColumn
     let truncated = width == 2 && occupied < width
     let kind: UInt8 = width == 2 && occupied == 2 ? 2 : 1
-    let flags: UInt8 = (attributes.protected ? 2 : 0) | (truncated ? 1 : 0)
+    let flags: UInt8 = (attributes.protected ? 2 : 0) | (truncated ? 1 : 0) | (attributes.isoProtected ? 8 : 0)
     Self.replacePrintedScalar(in: &screen.rows[row], at: column, scalar: scalar, kind: kind,
                               style: attributes.style, link: attributes.link, flags: flags,
                               protected: attributes.protected)
     state.openCluster = (row, column); state.retainedScalars = 1
     effect.lastPrinted = .scalar(scalar)
     effect.repeatAttributes = PrintAttributes(style: attributes.style, link: attributes.link,
-                                              protected: attributes.protected)
+                                              protected: attributes.protected, isoProtected: attributes.isoProtected)
     screen.cursorColumn = min(right, column + occupied)
     screen.pendingWrap = column + occupied > right && autoWrap
   }
@@ -1961,11 +1969,62 @@ struct TerminalDocument {
     }
     repairWidePairs(&screen.rows[row], eraseStyle: eraseStyle); screen.rows[row].revision &+= 1
   }
-  mutating func erase(_ screen: inout TerminalScreen, row: Int, columns range: Range<Int>, style: TerminalStyle, selective: Bool = false) {
+  mutating func erase(_ screen: inout TerminalScreen, row: Int, columns range: Range<Int>, style: TerminalStyle,
+                      selective: Bool = false, respectISOProtection: Bool = false) {
     guard screen.rows.indices.contains(row) else { return }
     let lower = max(0, range.lowerBound), upper = min(columns, range.upperBound); guard lower < upper else { return }
-    for column in lower..<upper where !selective || !screen.rows[row].isProtected(at: column) { screen.rows[row].erase(at: column, style: style) }
+    for column in lower..<upper {
+      if selective && screen.rows[row].isProtected(at: column) { continue }
+      if respectISOProtection && screen.rows[row].isISOProtected(at: column) { continue }
+      screen.rows[row].erase(at: column, style: style)
+    }
     repairWidePairs(&screen.rows[row], eraseStyle: style); screen.rows[row].revision &+= 1
+  }
+  /// Rectangle edits retain destination row identities. Snapshot the source
+  /// before writing so overlapping copies have memmove semantics, and repair
+  /// wide characters cut by either edge of the rectangle.
+  mutating func copyRectangle(_ screen: inout TerminalScreen, top: Int, left: Int,
+                             bottom: Int, right: Int, destinationTop: Int,
+                             destinationLeft: Int, lastRow: Int, lastColumn: Int,
+                             eraseStyle: TerminalStyle) {
+    let source = screen.rows
+    let height = min(bottom - top + 1, lastRow - destinationTop + 1)
+    let width = min(right - left + 1, lastColumn - destinationLeft + 1)
+    guard height > 0, width > 0 else { return }
+    for offset in 0..<height {
+      let row = destinationTop + offset
+      // Detach an existing glyph crossing either destination boundary. A
+      // copied continuation must not pair with an unrelated old lead.
+      if destinationLeft > 0, screen.rows[row].kind(at: destinationLeft) == 3 {
+        screen.rows[row].erase(at: destinationLeft - 1, style: eraseStyle)
+      }
+      let destinationRight = destinationLeft + width - 1
+      if destinationRight + 1 < columns, screen.rows[row].kind(at: destinationRight) == 2 {
+        screen.rows[row].erase(at: destinationRight + 1, style: eraseStyle)
+      }
+      for column in 0..<width {
+        let cell = source[top + offset].cell(left + column)
+        if (column == 0 && cell.kind == 3) || (column == width - 1 && cell.kind == 2) {
+          screen.rows[row].erase(at: destinationLeft + column, style: eraseStyle)
+        } else {
+          screen.rows[row].setCell(cell, at: destinationLeft + column)
+        }
+      }
+      repairWidePairs(&screen.rows[row], eraseStyle: eraseStyle)
+      screen.rows[row].revision &+= 1
+    }
+  }
+  mutating func fillRectangle(_ screen: inout TerminalScreen, top: Int, left: Int,
+                             bottom: Int, right: Int, scalar: Unicode.Scalar,
+                             style: TerminalStyle) {
+    for row in top...bottom {
+      for column in left...right {
+        screen.rows[row].setScalar(scalar, at: column, kind: 1, style: style,
+                                   link: nil, flags: 0, protected: false)
+      }
+      repairWidePairs(&screen.rows[row], eraseStyle: style.erased())
+      screen.rows[row].revision &+= 1
+    }
   }
   mutating func scrollRectangle(_ screen: inout TerminalScreen, top: Int, bottom: Int, left: Int, right: Int, count: Int, up: Bool, eraseStyle: TerminalStyle) {
     Self.scrollRectangleInPlace(&screen, columns: columns, top: top, bottom: bottom, left: left, right: right,

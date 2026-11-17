@@ -156,6 +156,6 @@ import TerminalInterop
       #expect((0..<4).allSatisfy { line(snapshot(t), $0) == line(baseline, $0) })
     }
     let t = make(20, 3); defer { helge_terminal_destroy(t) }; feed(t, "\u{1b}[?69h\u{1b}[5;13s\u{1b}[1;7H\r\u{8}")
-    #expect(cursor(snapshot(t))["col"] as? Int == 4); feed(t, "\t\t\u{1b}[2Z"); #expect(cursor(snapshot(t))["col"] as? Int == 4)
+    #expect(cursor(snapshot(t))["col"] as? Int == 4); feed(t, "\t\t\u{1b}[2Z"); #expect(cursor(snapshot(t))["col"] as? Int == 0)
   }
 }

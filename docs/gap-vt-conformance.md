@@ -1,0 +1,79 @@
+# C05 VT semantics disposition — 2026-11-17
+
+Source triage uses the downloaded run `44069317138` (320 passed, 206 failed,
+41 known bugs, 567 total) and its checked-out esctest2 expectations. These are
+implementation dispositions, not a claim that a new conformance run passed.
+The integrated build must rerun the suite before replacing those counts.
+
+## Concrete defects repaired
+
+| Baseline failing cases | Behavior implemented | Focused regression |
+| --- | --- | --- |
+| `CUB_StopsAtLeftMarginInScrollRegion`, `CUF_StopsAtRightMarginInScrollRegion` | Relative movement stops at the directional margin when starting within it, or the page border when starting outside it. | `relativeMovementStopsAtMarginsAndIndexOutsideDoesNotScroll` |
+| `FF`, `IND`, `LF`, `NEL`, `RI`, `VT` `MovesDoesNotScrollOutsideLeftRight` | At a vertical margin outside the horizontal region, index neither scrolls nor crosses the vertical margin. | Same regression, exercising forward and reverse index |
+| `CBT_IgnoresRegion` | Backward tab searches to the page's left edge. Forward HT/CHT still stop at the right margin. An existing contradictory oracle assertion is corrected. | `privateModeSaveRestoreAndBackwardTabsIgnoreLeftMargin` |
+| `DECSEL_*_Protection` | DECSEL passes selective erasure through to the document, preserving DECSCA protection. | `selectiveAndISOProtectionAreIndependent` |
+| `DECSEL_doesNotRespectISOProtect`, `DECSED_doesNotRespectISOProtect`, `DECSERA_doesNotRespectISOProtect`, `ECH/ED/EL_respectsISOProtection` | SPA/EPA is independent of DECSCA. Ordinary ED/EL/ECH honor ISO protection; DEC selective erasure honors only DEC protection. Both scalar and batched print paths retain ISO protection. | Same regression |
+| `ED_3`, `DECSED_3`, `DECSED_3_Protection` | Parameter 3 erases saved lines and leaves the visible page intact. | `eraseSavedLinesPreservesVisiblePage` |
+| `DECCRA_*`, `DECERA_*`, `DECFRA_*`, `DECSERA_*` | Rectangular copy, erase, fill and selective erase. Defaults, origin offsets, page clipping, invalid rectangles, overlapping copies and single-page handling are implemented. Row identities remain destination-owned; cut wide characters are repaired. | `rectanglesCopyOverlapsAndIgnoreMarginsUntilOriginMode`, `rectanglesClipAndRepairWidePairs` |
+| `DECIC_*`, `DECDC_*` | Insert/delete columns across the vertical margin region, bounded by horizontal margins; no operation outside the region. | `columnEditsAndHorizontalIndexRespectRectangularMargins` |
+| `DECBI_*`, `DECFI_*` | Backward/forward index shifts the rectangle at a horizontal margin and moves normally outside horizontal margins. | Same regression |
+| `DECRC/SCORC/DECSETTiteInhibit_SaveRestoreCursor_Reset`, `DECSTR_CursorStaysPut`, `DECSTR_DECSC` | Soft reset keeps the live cursor and resets saved cursor state to home. | `softResetPreservesLiveCursorAndResetsSavedCursor` |
+| `DECSET_SaveRestoreCursor`, `DECSETTiteInhibit_*` | Mode 1048 calls the same save/restore implementation as DECSC/DECRC and ANSI save/restore. Saved rendition, charset, origin, protection and deferred wrap are restored; reverse wrap and insert mode remain independent. | Same regression |
+| `DECSET_ALTBUF`, `DECSET_OPT_ALTBUF` | 47 preserves alternate contents and carries the live cursor across the swap; 1047 additionally clears the alternate screen when leaving it; 1049 saves/restores the primary cursor and clears on entry. | `alternateScreenModesRetainTheirDistinctContracts` |
+| `REP_DefaultParam` | Omitted and zero counts both mean one repetition. | `reverseWrapModesAndRepeatDefault` |
+| `XtermSave_SaveSetState`, `XtermSave_SaveResetState` | Private mode save/restore stores recognized mutable modes with bounded storage. | `privateModeSaveRestoreAndBackwardTabsIgnoreLeftMargin` |
+
+## Reverse-wrap version expectations
+
+Modern xterm distinguishes mode 45 (traversal of wrapped rows) and mode 1045
+(unrestricted reverse traversal within margins). Both are implemented. Deferred
+wrap followed by BS consumes the pending-wrap state without moving a column
+when reverse wrapping is enabled. Cursor-backward traversal is bounded by page
+height; full-page cycles in mode 1045 are reduced arithmetically.
+
+The downloaded suite's `ReverseWraparound()` helper selects **45** unless
+`--xterm-reverse-wrap` is at least **383**, when it selects **1045**. Its older
+expectations require mode 45 to perform unrestricted traversal, which conflicts
+with modern mode 45. Run with the modern version option when evaluating
+`BS_ReverseWrapGoesToBottom`, `BS_ReverseWrapWithLeftRight`,
+`BS_ReversewrapFromLeftEdgeToRightMargin`, `BS_WrapsInWraparoundMode` and
+`DECSET_ReverseWraparound_*`. `BS/CUB_AfterNoWrappedInlines` and
+`BS/CUB_AfterOneWrappedInline` are also version-sensitive; compare their modern
+branch individually. The local regression explicitly covers wrapped traversal,
+stopping at an unwrapped row, pending wrap and unrestricted mode 1045.
+
+Save/restore retains xterm's existing choice to save deferred wrap rather than
+restoring the DECAWM mode itself. The VT510 manual describes an autowrap flag;
+esctest deliberately expects different DECAWM behavior when its terminal is
+`xterm`. This package preserves that practical compatibility choice.
+
+## Explicitly retained exclusions and unsupported legacy features
+
+| Cases | Disposition |
+| --- | --- |
+| `DECSET_DECCOLM`, `DECSET_Allow80To132`, `RIS_ResetDECCOLM` | Child-driven 80/132-column window resizing remains prohibited by the implementation contract. These are intentional policy failures. |
+| `DECSCL_Level2DoesntSupportDECRQM`, `DSCSCL_Level3_SupportsDECRQMDoesntSupportDECSLRM`, `DECSCL_Level4_SupportsDECSLRMDoesntSupportDECNCSM` | Historical hardware conformance-level switching is unsupported. The terminal exposes its actual modern feature set rather than disabling queries/margins according to a simulated VT generation; the last case also requests prohibited column resizing. |
+| `DECSET_MoreFix` | Unsupported xterm mode 41, an optional workaround for old curses tab-after-wrap behavior. Normal HT/CHT behavior is retained. |
+| `RIS_ResetTitleMode` | Title encoding/query mode belongs to protocol discovery, not cursor/document semantics. Coordinate its disposition with that package. |
+| Identity, color, DECRQM/DECRQSS/DECDSR, window/title query failures | Owned by protocol discovery. Do not hide them under this C05 disposition or change identity to satisfy xterm-specific equality checks. |
+| Window manipulation and raw C1 expectations | Preserve the inventory's explicit exclusions. |
+
+Primary references used for semantics:
+[VT510 DECSC](https://vt100.net/docs/vt510-rm/DECSC.html),
+[VT510 DECFI](https://vt100.net/docs/vt510-rm/DECFI.html), and
+[xterm control sequences](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html).
+The checked-out esctest2 files supply exact before/after fixtures for each table
+row above.
+
+## Verification required at integration
+
+No compiler or test process was run in this package before its checkpoint:
+the coordinator owns the machine build slot. Run the focused
+`TerminalVTSemanticsTests`, `TerminalDocumentOracleTests`,
+`TerminalDocumentOwnershipTests`, `TerminalSemanticRegressionTests`,
+`TerminalReflowSemanticTests`, `TerminalSchedulerOracleTests` and
+`TerminalSelectionTests` suites, followed by the integrated esctest and full
+`just test` gate. In particular, reflow must preserve the new saved charset and
+protection state and ISO cell flags, and alternate-screen changes must preserve
+the existing independent keyboard and appearance state.

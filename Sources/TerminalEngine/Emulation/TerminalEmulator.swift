@@ -98,6 +98,9 @@ private final class TerminalEmulator {
   @exclusivity(unchecked) private var originMode = false
   @exclusivity(unchecked) private var leftRightMargins = false
   @exclusivity(unchecked) private var autoWrap = true
+  @exclusivity(unchecked) private var reverseWrap = false
+  @exclusivity(unchecked) private var reverseWrapUnlimited = false
+  @exclusivity(unchecked) private var savedPrivateModes: [Int: Bool] = [:]
   @exclusivity(unchecked) private var insertMode = false
   @exclusivity(unchecked) private var newlineMode = false
   @exclusivity(unchecked) private var syncDeadline: UInt64?
@@ -733,6 +736,10 @@ private final class TerminalEmulator {
     case 0x20...0x2f: parser = .escapeIntermediate(byte)
     case 0x37: saveCursor()
     case 0x38: restoreCursor()
+    case 0x36: horizontalIndex(reverse: true)
+    case 0x39: horizontalIndex(reverse: false)
+    case 0x56: captureRepeatAttributes(); attributes.isoProtected = true
+    case 0x57: captureRepeatAttributes(); attributes.isoProtected = false
     case 0x48: tabs[screen.cursorColumn] = true
     // IND advances within the scroll region but, unlike LF/VT/FF, never
     // applies LNM's carriage return.
@@ -801,12 +808,44 @@ private final class TerminalEmulator {
     if newlineMode { carriageReturn() }
   }
   private func carriageReturn() { document.carriageReturn(usingAlternate: usingAlternate, leftRightMargins: leftRightMargins); changed() }
-  private func backspace() { resetClusterBoundary(); var s = screen; let left = horizontalMargins.left; s.cursorColumn = max(s.cursorColumn >= left ? left : 0, s.cursorColumn - 1); s.pendingWrap = false; screen = s; changed() }
+  private func backspace() {
+    resetClusterBoundary()
+    var s = screen
+    if s.pendingWrap && autoWrap && (reverseWrap || reverseWrapUnlimited) {
+      s.pendingWrap = false
+    } else { moveCursorBackward(&s, count: 1) }
+    s.pendingWrap = false; screen = s; changed()
+  }
+  private func moveCursorBackward(_ s: inout TerminalScreen, count: Int) {
+    let margins = horizontalMargins
+    var remaining = count
+    // At most one pass over the visible page, even for an enormous parameter.
+    for _ in 0...rowCount {
+      let left = s.cursorColumn >= margins.left ? margins.left : 0
+      let amount = min(remaining, max(0, s.cursorColumn - left))
+      s.cursorColumn -= amount; remaining -= amount
+      guard remaining > 0, autoWrap, reverseWrap || reverseWrapUnlimited else { break }
+      if s.cursorRow > s.topMargin {
+        guard reverseWrapUnlimited || s.rows[s.cursorRow - 1].softWrapped else { break }
+        s.cursorRow -= 1
+      } else if reverseWrapUnlimited && s.cursorRow == s.topMargin {
+        // Repeating a complete traversal returns to this same position.
+        // Reduce huge CUB parameters without an input-controlled loop.
+        let pageCells = (s.bottomMargin - s.topMargin + 1) * (margins.right - margins.left + 1)
+        if s.cursorColumn == margins.left { remaining %= pageCells }
+        if remaining == 0 { break }
+        s.cursorRow = s.bottomMargin
+      } else { break }
+      s.cursorColumn = margins.right; remaining -= 1
+      if remaining == 0 { break }
+    }
+  }
   private func tab(_ reverse: Bool = false, count: Int = 1) {
     resetClusterBoundary()
-    var s = screen; let margins = horizontalMargins
-    let left = s.cursorColumn >= margins.left ? margins.left : 0
-    let right = writeBounds(s.cursorColumn).right
+    var s = screen
+    // CBT searches page tab stops to the left edge. HT/CHT still stop at
+    // the right margin, matching DEC terminals and xterm.
+    let left = 0, right = writeBounds(s.cursorColumn).right
     for _ in 0..<min(count, columns) {
       if reverse {
         guard s.cursorColumn > left else { s.cursorColumn = left; continue }
@@ -821,8 +860,26 @@ private final class TerminalEmulator {
     s.pendingWrap = false; screen = s; changed()
   }
   private func reverseIndex() { index(reverse: true) }
-  private func saveCursor() { var s = screen; s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap; s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; screen = s }
-  private func restoreCursor() { var s = screen; originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = s.savedPendingWrap; screen = s; changed() }
+  private func saveCursor() {
+    var s = screen
+    s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap
+    s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink
+    s.savedCharsetSpecial = charsetSpecial; s.savedCharsetSlot = charsetSlot
+    s.savedProtected = protectedOutput
+    screen = s
+  }
+  private func restoreCursor() {
+    var s = screen
+    originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink
+    charsetSpecial = s.savedCharsetSpecial; charsetSlot = s.savedCharsetSlot
+    protectedOutput = s.savedProtected
+    s.cursorRow = min(rowCount - 1, s.savedRow); s.cursorColumn = min(columns - 1, s.savedColumn)
+    if originMode {
+      s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin)
+      s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right)
+    }
+    s.pendingWrap = s.savedPendingWrap && autoWrap; screen = s; changed()
+  }
   private func reset() {
     selectionDocumentGeneration = UUID(); selection.reset(); pendingSelectionRevision = nil
     graphics.clear()
@@ -830,7 +887,9 @@ private final class TerminalEmulator {
     advanceSearchGeneration()
     usingAlternate = false; viewAnchor = nil; viewOffset = 0
     pen = TerminalStyle(); originMode = false; leftRightMargins = false; autoWrap = true
+    reverseWrap = false; reverseWrapUnlimited = false; savedPrivateModes.removeAll()
     insertMode = false; newlineMode = false; protectedOutput = false; syncDeadline = nil
+    attributes.isoProtected = false
     applicationCursor = false; applicationKeypad = false; bracketedPaste = false
     focusReporting = false; reverseVideo = false; mouseMode = 0; sgrMouse = false
     currentLink = nil
@@ -937,16 +996,18 @@ private final class TerminalEmulator {
     switch (marker, intermediates.first) {
     case (nil, nil): return true
     // DECSED and DECSEL, DEC private modes, DSR, the keyboard-flags query.
-    case (0x3f, nil): return [0x4a, 0x4b, 0x68, 0x6c, 0x6e, 0x75].contains(final)
+    case (0x3f, nil): return [0x4a, 0x4b, 0x68, 0x6c, 0x6e, 0x72, 0x73, 0x75].contains(final)
     // Keyboard flags (set, push, pop); secondary device attributes.
     case (0x3d, nil), (0x3c, nil): return final == 0x75
     case (0x3e, nil): return final == 0x75 || final == 0x63 || final == 0x71
     // DECSTR, DECSCA, DECSCUSR, DECRQM for an ANSI or a private mode.
-    case (nil, 0x21), (nil, 0x24): return final == 0x70
+    case (nil, 0x21): return final == 0x70
+    case (nil, 0x24): return [0x70, 0x76, 0x78, 0x7a, 0x7b].contains(final)
     case (nil, 0x22), (nil, 0x20): return final == 0x71
     case (0x3f, 0x24): return final == 0x70
     // DECRQCRA.
     case (nil, 0x2a): return final == 0x79
+    case (nil, 0x27): return final == 0x7d || final == 0x7e
     default: return false
     }
   }
@@ -977,6 +1038,12 @@ private final class TerminalEmulator {
     let last = raw.last
     let privateMode = first == 0x3f
     let n = max(1, params.first ?? 0)
+    if last == 0x24, [0x76, 0x78, 0x7a, 0x7b].contains(final) {
+      editRectangle(params, final: final); changed(); return
+    }
+    if last == 0x27, final == 0x7d || final == 0x7e {
+      shiftColumns(n, inserting: final == 0x7d); changed(); return
+    }
     var s = screen
     var changedActiveScreen = false
     var semanticChange = true
@@ -984,8 +1051,8 @@ private final class TerminalEmulator {
     switch final {
     case 0x41: moveCursorVertically(&s, up: true, count: n)
     case 0x42: moveCursorVertically(&s, up: false, count: n)
-    case 0x43: s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, s.cursorColumn + n)
-    case 0x44: s.cursorColumn = max(originMode ? horizontalMargins.left : 0, s.cursorColumn - n)
+    case 0x43: s.cursorColumn = min(s.cursorColumn <= horizontalMargins.right ? horizontalMargins.right : columns - 1, s.cursorColumn + n)
+    case 0x44: moveCursorBackward(&s, count: n)
     case 0x45:
       moveCursorVertically(&s, up: false, count: n)
       let left = horizontalMargins.left
@@ -998,11 +1065,11 @@ private final class TerminalEmulator {
     case 0x64: s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + n - 1)
     // HPA, HPR and VPR do what CHA, CUF and CUD do, as in xterm.
     case 0x60: s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + n - 1)
-    case 0x61: s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, s.cursorColumn + n)
+    case 0x61: s.cursorColumn = min(s.cursorColumn <= horizontalMargins.right ? horizontalMargins.right : columns - 1, s.cursorColumn + n)
     case 0x65: moveCursorVertically(&s, up: false, count: n)
     case 0x48, 0x66: s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + max(0, (params.first ?? 1) - 1)); s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + max(0, (params.dropFirst().first ?? 1) - 1))
     case 0x4a: eraseDisplay(params.first ?? 0, selective: privateMode); changedActiveScreen = true
-    case 0x4b: eraseLine(params.first ?? 0); changedActiveScreen = true
+    case 0x4b: eraseLine(params.first ?? 0, selective: privateMode); changedActiveScreen = true
     case 0x40: insertCharacters(n); changedActiveScreen = true
     case 0x50: deleteCharacters(n); changedActiveScreen = true
     case 0x58: eraseCharacters(n); changedActiveScreen = true
@@ -1013,15 +1080,27 @@ private final class TerminalEmulator {
     case 0x67:
       if params.first == 3 { tabs = Array(repeating: false, count: columns); tabsCleared = true }
       else if params.first ?? 0 == 0 { tabs[s.cursorColumn] = false }
-    case 0x72: setVerticalMargins(params); changedActiveScreen = true
+    case 0x72 where !privateMode: setVerticalMargins(params); changedActiveScreen = true
     case 0x53: resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: true)
     case 0x54: resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: false, allowHistory: false)
     case 0x62:
-      repeatRemaining = lastPrinted == nil ? 0 : min(1_000_000, max(0, params.first ?? 1))
+      repeatRemaining = lastPrinted == nil ? 0 : min(1_000_000, n)
+      clearsPending = false
+    case 0x72 where privateMode:
+      for mode in params {
+        if let enabled = savedPrivateModes[mode] {
+          changedActiveScreen = setMode([mode], enabled: enabled, privateMode: true) || changedActiveScreen
+        }
+      }
+    case 0x73 where privateMode:
+      for mode in params {
+        let report = modeReport(mode, privateMode: true)
+        if report == 1 || report == 2 { savedPrivateModes[mode] = report == 1 }
+      }
       clearsPending = false
     case 0x73:
       if leftRightMargins { setHorizontalMargins(params); changedActiveScreen = true }
-      else { s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedOrigin = originMode }
+      else { saveCursor(); changedActiveScreen = true; clearsPending = false }
     case 0x75:
       clearsPending = false
       if first == 0x3e {
@@ -1037,7 +1116,7 @@ private final class TerminalEmulator {
         else if action == 2 { s.keyboardFlags |= flags }
         else if action == 3 { s.keyboardFlags &= ~flags }
       }
-      else { originMode = s.savedOrigin; s.cursorRow = s.savedRow; s.cursorColumn = s.savedColumn; if originMode { s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin); s.cursorColumn = min(max(s.cursorColumn, horizontalMargins.left), horizontalMargins.right) }; s.pendingWrap = false }
+      else { restoreCursor(); changedActiveScreen = true }
     case 0x6e: clearsPending = false; if privateMode && params.first == 996 { replies.append(contentsOf: colorSchemeReply.utf8) } else if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = max(1, s.cursorRow + 1 - (originMode ? s.topMargin : 0)); let column = max(1, s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0)); replies.append(contentsOf: "\u{1b}[\(privateMode ? "?" : "")\(row);\(column)R".utf8) }
     // Secondary device attributes: a VT220-class terminal, firmware version
     // 10, no ROM cartridge. Primary attributes otherwise.
@@ -1131,12 +1210,103 @@ private final class TerminalEmulator {
       screen.cursorRow += min(count, limit - screen.cursorRow)
     }
   }
-  private func eraseDisplay(_ mode: Int, selective: Bool = false) { if mode == 2 { graphics.clear(alternate: usingAlternate) }; var s = screen; switch mode { case 2, 3: if selective { for row in 0..<rowCount { document.erase(&s, row: row, columns: 0..<columns, style: eraseStyle(), selective: true) } } else { s.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) } }; if mode == 3 && !usingAlternate { document.clearHistory(); advanceSearchGeneration(); historyEpoch &+= 1 }; case 1: for row in 0...s.cursorRow { document.erase(&s, row: row, columns: 0..<(row == s.cursorRow ? s.cursorColumn + 1 : columns), style: eraseStyle(), selective: selective) }; default: for row in s.cursorRow..<rowCount { document.erase(&s, row: row, columns: (row == s.cursorRow ? s.cursorColumn : 0)..<columns, style: eraseStyle(), selective: selective) } }; s.pendingWrap = false; screen = s }
-  private func eraseLine(_ mode: Int) { var s = screen; let range: Range<Int>; switch mode { case 1: range = 0..<(s.cursorColumn + 1); case 2: range = 0..<columns; default: range = s.cursorColumn..<columns }; document.erase(&s, row: s.cursorRow, columns: range, style: eraseStyle()); s.pendingWrap = false; screen = s }
+  private func eraseDisplay(_ mode: Int, selective: Bool = false) {
+    guard (0...3).contains(mode) else { return }
+    if mode == 3 {
+      if !usingAlternate {
+        document.clearHistory(); advanceSearchGeneration(); historyEpoch &+= 1
+        viewAnchor = nil; viewOffset = 0
+      }
+      return
+    }
+    if mode == 2 && !selective { graphics.clear(alternate: usingAlternate) }
+    var s = screen
+    let top = mode == 0 ? s.cursorRow : 0
+    let bottom = mode == 1 ? s.cursorRow : rowCount - 1
+    for row in top...bottom {
+      let left = mode == 0 && row == s.cursorRow ? s.cursorColumn : 0
+      let right = mode == 1 && row == s.cursorRow ? s.cursorColumn + 1 : columns
+      document.erase(&s, row: row, columns: left..<right, style: eraseStyle(), selective: selective,
+                     respectISOProtection: !selective)
+    }
+    s.pendingWrap = false; screen = s
+  }
+  private func eraseLine(_ mode: Int, selective: Bool = false) {
+    guard (0...2).contains(mode) else { return }
+    var s = screen
+    let range = (mode == 0 ? s.cursorColumn : 0)..<(mode == 1 ? s.cursorColumn + 1 : columns)
+    document.erase(&s, row: s.cursorRow, columns: range, style: eraseStyle(), selective: selective,
+                   respectISOProtection: !selective)
+    s.pendingWrap = false; screen = s
+  }
+  /// DEC rectangle coordinates are page-relative unless DECOM is enabled.
+  /// A start outside the page is empty; only the bottom/right are clipped.
+  private func editRectangle(_ params: [Int], final: UInt8) {
+    var s = screen
+    let originRow = originMode ? s.topMargin : 0
+    let originColumn = originMode ? horizontalMargins.left : 0
+    let lastRow = originMode ? s.bottomMargin : rowCount - 1
+    let lastColumn = originMode ? horizontalMargins.right : columns - 1
+    func value(_ index: Int, _ fallback: Int) -> Int {
+      index < params.count && params[index] > 0 ? params[index] : fallback
+    }
+    let offset = final == 0x78 ? 1 : 0
+    let top = originRow + value(offset, 1) - 1
+    let left = originColumn + value(offset + 1, 1) - 1
+    let bottom = min(lastRow, originRow + value(offset + 2, lastRow - originRow + 1) - 1)
+    let right = min(lastColumn, originColumn + value(offset + 3, lastColumn - originColumn + 1) - 1)
+    guard top <= bottom, left <= right else { return }
+    if final == 0x76 {
+      // This emulator has one page. Page 0 means the current page.
+      guard value(4, 1) == 1, value(7, 1) == 1 else { return }
+      let destinationTop = originRow + value(5, 1) - 1
+      let destinationLeft = originColumn + value(6, 1) - 1
+      document.copyRectangle(&s, top: top, left: left, bottom: bottom, right: right,
+                             destinationTop: destinationTop, destinationLeft: destinationLeft,
+                             lastRow: lastRow, lastColumn: lastColumn, eraseStyle: eraseStyle())
+    } else if final == 0x78 {
+      let code = params.first ?? 0
+      guard (32...126).contains(code) || (160...255).contains(code),
+            let scalar = Unicode.Scalar(code) else { return }
+      document.fillRectangle(&s, top: top, left: left, bottom: bottom, right: right, scalar: scalar, style: pen)
+    } else {
+      for row in top...bottom {
+        document.erase(&s, row: row, columns: left..<(right + 1), style: eraseStyle(), selective: final == 0x7b)
+      }
+    }
+    // Rectangular operations do not move the cursor or change deferred wrap.
+    screen = s
+  }
+  private func shiftColumns(_ count: Int, inserting: Bool) {
+    var s = screen
+    let margins = horizontalMargins
+    guard (s.topMargin...s.bottomMargin).contains(s.cursorRow),
+          (margins.left...margins.right).contains(s.cursorColumn) else { return }
+    for row in s.topMargin...s.bottomMargin {
+      document.shift(&s, row: row, column: s.cursorColumn, right: margins.right,
+                     count: count, inserting: inserting, eraseStyle: eraseStyle())
+    }
+    s.pendingWrap = false; screen = s
+  }
+  private func horizontalIndex(reverse: Bool) {
+    resetClusterBoundary()
+    var s = screen
+    let margins = horizontalMargins
+    let edge = reverse ? margins.left : margins.right
+    if s.cursorColumn == edge, (s.topMargin...s.bottomMargin).contains(s.cursorRow) {
+      for row in s.topMargin...s.bottomMargin {
+        document.shift(&s, row: row, column: margins.left, right: margins.right,
+                       count: 1, inserting: reverse, eraseStyle: eraseStyle())
+      }
+    } else {
+      s.cursorColumn = min(columns - 1, max(0, s.cursorColumn + (reverse ? -1 : 1)))
+    }
+    s.pendingWrap = false; screen = s; changed()
+  }
   private func eraseCharacters(_ count: Int) {
     var s = screen
     let end = s.cursorColumn + min(count, columns - s.cursorColumn)
-    document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<end, style: eraseStyle())
+    document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<end, style: eraseStyle(), respectISOProtection: true)
     s.pendingWrap = false
     screen = s
   }
@@ -1327,6 +1497,8 @@ private final class TerminalEmulator {
       case 5: enabled = reverseVideo
       case 6: enabled = originMode
       case 7: enabled = autoWrap
+      case 45: enabled = reverseWrap
+      case 1045: enabled = reverseWrapUnlimited
       case 25: enabled = screen.cursorVisible
       case 47, 1047, 1049: enabled = usingAlternate
       case 69: enabled = leftRightMargins
@@ -1354,6 +1526,8 @@ private final class TerminalEmulator {
       case 1: applicationCursor = enabled
       case 6: originMode = enabled; var s = screen; s.cursorRow = enabled ? s.topMargin : 0; s.cursorColumn = enabled ? horizontalMargins.left : 0; s.pendingWrap = false; screen = s; changedActiveScreen = true
       case 7: autoWrap = enabled; if !enabled { var s = screen; s.pendingWrap = false; screen = s }; changedActiveScreen = true
+      case 45: reverseWrap = enabled
+      case 1045: reverseWrapUnlimited = enabled
       case 25:
         var s = screen; s.cursorVisible = enabled; screen = s
         changedActiveScreen = true
@@ -1361,8 +1535,15 @@ private final class TerminalEmulator {
         if usingAlternate != enabled {
           resetClusterBoundary()
           advanceSearchGeneration()
+          if enabled && mode == 1049 { saveCursor() }
+          // 47 and 1047 share the active cursor while retaining independent
+          // saved cursor slots and screen contents.
+          let previousCursor = (screen.cursorRow, screen.cursorColumn, screen.pendingWrap)
+          if !enabled && mode == 1047 {
+            alternate.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }
+          }
           usingAlternate = enabled
-          if enabled && (mode == 1047 || mode == 1049) {
+          if enabled && mode == 1049 {
             let keyboardFlags = alternate.keyboardFlags
             let keyboardStack = alternate.keyboardStack
             let cursorVisible = alternate.cursorVisible
@@ -1370,9 +1551,17 @@ private final class TerminalEmulator {
             alternate = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns)
             alternate.keyboardFlags = keyboardFlags; alternate.keyboardStack = keyboardStack
             alternate.cursorVisible = cursorVisible; alternate.cursorShape = cursorShape
+          } else {
+            var s = screen
+            s.cursorRow = previousCursor.0; s.cursorColumn = previousCursor.1; s.pendingWrap = previousCursor.2
+            screen = s
           }
+          if !enabled && mode == 1049 { restoreCursor() }
           changedActiveScreen = true
         }
+      case 1048:
+        if enabled { saveCursor() } else { restoreCursor() }
+        changedActiveScreen = true
       case 1004: focusReporting = enabled
       case 9, 1000, 1002, 1003: mouseMode = enabled ? mode : 0
       case 1006: sgrMouse = enabled
@@ -1394,12 +1583,18 @@ private final class TerminalEmulator {
   }
   private func softReset() {
     originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false
+    reverseWrap = false; reverseWrapUnlimited = false
     newlineMode = false; protectedOutput = false
+    attributes.isoProtected = false
     pen = TerminalStyle(); currentLink = nil; applicationCursor = false; applicationKeypad = false
     bracketedPaste = false; focusReporting = false; reverseVideo = false; mouseMode = 0; sgrMouse = false; syncDeadline = nil
     forgetLastPrinted()
+    charsetSpecial = [false, false]; charsetSlot = 0
     var s = screen
-    s.topMargin = 0; s.bottomMargin = rowCount - 1; s.cursorRow = 0; s.cursorColumn = 0
+    s.topMargin = 0; s.bottomMargin = rowCount - 1
+    s.savedRow = 0; s.savedColumn = 0; s.savedPendingWrap = false; s.savedOrigin = false
+    s.savedStyle = TerminalStyle(); s.savedLink = nil; s.savedProtected = false
+    s.savedCharsetSpecial = [false, false]; s.savedCharsetSlot = 0
     s.pendingWrap = false; s.cursorVisible = true; s.cursorShape = 0
     screen = s
     primary.leftMargin = 0; primary.rightMargin = columns - 1; alternate.leftMargin = 0; alternate.rightMargin = columns - 1
