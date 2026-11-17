@@ -33,5 +33,6 @@ submit changes upstream.
 
 Retain the source commit, frozen bundle hash, Neovim/Snacks/tmux versions,
 the JSON and a compact visual result according to `reports/README.md`.
-This fixture has been prepared without executing Neovim or a GUI session;
-runtime evidence must be added by the coordinator when the build slot permits.
+The direct native run passed detection and visual inspection on 2026-11-17;
+see the [dated evidence](../../../reports/gap-implementation-2026-11-17/README.md).
+The private tmux and SSH variants remain separate qualification.

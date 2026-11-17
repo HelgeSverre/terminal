@@ -1,5 +1,8 @@
 # App gap inventory — 2026-11-17
 
+Implementation follow-up: [current results and remaining qualification](gap-implementation-status.md).
+The dated findings below preserve the original audit baseline.
+
 Audited source: `7573f72` on `main` (application code is unchanged from
 `a9aa3e574b3de9daefe8ef864abdae80bb9161e7`). This is an inventory and suggested
 order of work, not approval to implement every feature below.
