@@ -7,17 +7,18 @@ import Foundation
 /// bundle's layout and its signature.
 enum AppBundle {
   static let command = Command(
-    name: "bundle", usage: "development|release|diagnostic",
+    name: "bundle", usage: "development|release|diagnostic|testing [PRODUCTS]",
     summary: "Compile the app and assemble dist/Terminal.app.",
     run: run)
 
   enum Configuration: String {
-    case development, release, diagnostic
+    case development, release, diagnostic, testing
 
   }
 
   static func run(_ arguments: [String]) throws {
-    guard arguments.count == 1, let configuration = Configuration(rawValue: arguments[0]) else {
+    guard let name = arguments.first, let configuration = Configuration(rawValue: name),
+      arguments.count == (configuration == .testing ? 2 : 1) else {
       throw Failure.usage(command)
     }
     let started = Clock.now
@@ -30,7 +31,8 @@ enum AppBundle {
     }
 
     let products = try Console.step("Compile Terminal (\(configuration.rawValue))") {
-      try configuration == .development ? compileIncrementally()
+      if configuration == .testing { return absolutePath(arguments[1], relativeTo: Repository.root) }
+      return try configuration == .development ? compileIncrementally()
         : compileWholeModule(into: scratch + "/" + configuration.rawValue, diagnostics: configuration == .diagnostic)
     }
     let frameworks = app + "/Contents/Frameworks"
@@ -54,7 +56,10 @@ enum AppBundle {
       try Console.quietly(["/usr/bin/ditto", Repository.path("Resources/Terminal/ShellIntegration"),
                            resources + "/ShellIntegration"])
       try Console.quietly(["/usr/bin/ditto", Repository.path("Sources/TerminalUI/Resources/Fonts"), resources + "/Fonts"])
-      try embedUpdater(into: frameworks, universal: configuration != .development)
+      try embedUpdater(into: frameworks, universal: configuration == .release || configuration == .diagnostic,
+        framework: configuration == .testing
+          ? Repository.path("target/swiftpm/testing/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework")
+          : updaterFramework)
       // Ad hoc: a local build is signed for this machine only.
       try Console.quietly(["/usr/bin/codesign", "--force", "--deep", "--sign", "-", frameworks + "/Sparkle.framework"])
       try Console.quietly(["/usr/bin/codesign", "--force", "--sign", "-", programs + "/TerminalLauncher"])
@@ -153,11 +158,11 @@ enum AppBundle {
 
   /// Copies the updater into the bundle without its headers. A release
   /// keeps both architectures; a development build keeps this Mac's only.
-  private static func embedUpdater(into frameworks: String, universal: Bool) throws {
+  private static func embedUpdater(into frameworks: String, universal: Bool, framework: String) throws {
     let destination = frameworks + "/Sparkle.framework"
     try? FileManager.default.removeItem(atPath: destination)
     try FileManager.default.createDirectory(atPath: frameworks, withIntermediateDirectories: true)
-    try Console.quietly(["/usr/bin/ditto", updaterFramework, destination])
+    try Console.quietly(["/usr/bin/ditto", framework, destination])
     for name in ["Headers", "PrivateHeaders", "Modules"] {
       try? FileManager.default.removeItem(atPath: destination + "/" + name)
       try? FileManager.default.removeItem(atPath: destination + "/Versions/B/" + name)

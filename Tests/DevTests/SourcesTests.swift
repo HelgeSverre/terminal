@@ -3,6 +3,15 @@ import Testing
 @testable import dev
 
 @Suite struct SourcesTests {
+  @Test("sources: separate top-level programs parse and invalid syntax is rejected") func syntaxFailures() throws {
+    try withTemporaryDirectory("syntax-check-") { root in
+      try "print(1)\n".write(toFile: root + "/One.swift", atomically: true, encoding: .utf8)
+      try "print(2)\n".write(toFile: root + "/Two.swift", atomically: true, encoding: .utf8)
+      try Sources.check(files: ["One.swift", "Two.swift"], root: root)
+      try "let =\n".write(toFile: root + "/Bad.swift", atomically: true, encoding: .utf8)
+      #expect(throws: Failure.self) { try Sources.check(files: ["One.swift", "Bad.swift"], root: root) }
+    }
+  }
   @Test("sources: files are listed in order and generated ones recognised") func filesAreListedInOrder() throws {
     try withTemporaryDirectory("dev-sources-") { root in
       for directory in Sources.directories {

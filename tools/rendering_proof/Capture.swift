@@ -78,6 +78,7 @@ final class RecordingState {
   }
 }
 
+@available(macOS 15.0, *)
 final class Capture:NSObject,SCStreamOutput,SCRecordingOutputDelegate,SCStreamDelegate {
   let directory:URL;let file:FileHandle;let context=CIContext();let logLock=NSLock()
   var count=0,complete=0,failures=0,inconclusive=0,correct=0,gaps=0
@@ -173,6 +174,12 @@ final class Capture:NSObject,SCStreamOutput,SCRecordingOutputDelegate,SCStreamDe
 @main struct Main {
   @MainActor static func main() async throws {
     if CommandLine.arguments.contains("--self-test") { MarkerOracle.selfTest();RecordingState.selfTest();return }
+    guard #available(macOS 15.0, *) else { fatalError("Recording requires macOS 15 or newer") }
+    try await record()
+  }
+
+  @available(macOS 15.0, *)
+  @MainActor static func record() async throws {
     guard CommandLine.arguments.count==5,let id=UInt32(CommandLine.arguments[1]),
       let pid=Int32(CommandLine.arguments[3]),let duration=Double(CommandLine.arguments[4]),duration>0,duration<=60 else {fatalError("Usage: Capture windowID output ownedPID seconds")}
     _=NSApplication.shared;NSApp.setActivationPolicy(.prohibited)

@@ -6,6 +6,7 @@ import CryptoKit
 // All distribution policy lives here. Recipes express package/release/status;
 // callers do not order signing, notarization, stapling or validation.
 struct Distribution {
+  var sleep: (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }
   enum Failure: Error, CustomStringConvertible {
     case message(String)
     case command(String, Int32)
@@ -35,7 +36,7 @@ struct Distribution {
       catch Failure.command(_, let status) where ticketCommand && status == EX_NOHOST && attempt < 3 {
         let delay = 1 << attempt
         print("Ticket service unavailable; retrying \(arguments[2]) in \(delay)s…")
-        Thread.sleep(forTimeInterval: Double(delay))
+        sleep(Double(delay))
       }
     }
     preconditionFailure("The final command attempt always returns or throws")

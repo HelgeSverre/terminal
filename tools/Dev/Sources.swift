@@ -18,13 +18,41 @@ enum Sources {
         throw Failure("swift-format failed")
       }
     case ["check"]:
-      for file in try swiftFiles() {
-        guard try runInherited(["/usr/bin/xcrun", "swiftc", "-frontend", "-parse", file]) else {
-          throw Failure("Swift syntax failed: \(file)")
-        }
-      }
+      try check(files: swiftFiles(), root: Repository.root)
     default:
       throw Failure.usage(command)
+    }
+  }
+
+  /// Keep file scopes separate (several tools have a main.swift), but amortize
+  /// compiler startup across at most three workers. Report errors in file order.
+  static func check(files: [String], root: String) throws {
+    let queue = OperationQueue()
+    queue.maxConcurrentOperationCount = 3
+    final class Failures: @unchecked Sendable {
+      private let lock = NSLock()
+      private var values: [String: String] = [:]
+      func record(_ file: String, _ message: String) { lock.lock(); values[file] = message; lock.unlock() }
+      var snapshot: [String: String] { lock.lock(); defer { lock.unlock() }; return values }
+    }
+    let collected = Failures()
+    for file in files {
+      queue.addOperation {
+        do {
+          let result = try runCommand(["/usr/bin/xcrun", "swiftc", "-frontend", "-parse", file], directory: root)
+          if !result.succeeded {
+            collected.record(file, result.output)
+          }
+        } catch {
+          collected.record(file, String(describing: error))
+        }
+      }
+    }
+    queue.waitUntilAllOperationsAreFinished()
+    let failures = collected.snapshot
+    if !failures.isEmpty {
+      throw Failure(files.compactMap { file in failures[file].map { "Swift syntax failed: \(file)\n\($0)" } }
+        .joined(separator: "\n"))
     }
   }
 

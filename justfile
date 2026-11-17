@@ -6,7 +6,7 @@ export TERMINAL_PROJECT_ROOT := justfile_directory()
 
 # The test suites run optimized, with testing enabled so they can reach
 # internal declarations, and one at a time: several hold process-wide state.
-swift_test := "TERMINAL_TEST_HOOKS=1 swift test -c release -Xswiftc -enable-testing --no-parallel --quiet --disable-xctest"
+swift_test := "TERMINAL_TEST_HOOKS=1 swift test --scratch-path target/swiftpm/testing -c debug -Xswiftc -O --jobs 3 --no-parallel --disable-xctest"
 
 # The emulator's sources, for the few programs still compiled directly.
 emulator_sources := "-package-name terminal -I Sources/TerminalInterop/include Sources/TerminalEngine/Text/*.swift Sources/TerminalEngine/Emulation/*.swift"
@@ -122,16 +122,12 @@ verify: build
 
 # Run every headless test suite.
 [group('test')]
-@test: lint build
-    just workflow-tests
-    just _terminfo-test
-    dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
-    {{swift_test}} --skip DevTests --skip GlyphRasterWorkerTests --skip GlyphResidency
-    just _glyph-rendering-tests
-    {{spawn_object}}
-    xcrun clang -Wall -Wextra -Werror -I Sources/TerminalInterop/include -c Tests/Programs/pty.c -o target/native/swift-pty-tests.o
-    xcrun swiftc -swift-version 5 -O {{emulator_sources}} target/native/swift-pty-tests.o target/native/Spawn.o -framework Foundation -framework CoreGraphics -framework ImageIO -framework CoreFoundation -framework Security -liconv -o target/native/pty-tests
-    target/native/pty-tests "$PWD/dist/Terminal.app/Contents/MacOS/TerminalLauncher"
+@test: _test-build
+    target/swiftpm/testing/debug/dev test
+
+[private]
+@_test-build:
+    TERMINAL_TEST_HOOKS=1 swift build --build-tests --scratch-path target/swiftpm/testing -c debug -Xswiftc -O --jobs 3
 
 # Arguments go to `swift test`: `just unit-test --filter SessionTests`.
 # Run the Swift Testing suites.
@@ -141,13 +137,16 @@ verify: build
 
 # Tooling tests; no app launch or GPU.
 [group('test')]
-@workflow-tests: _dev
-    mkdir -p target/native
+@workflow-tests: _test-build
     {{swift_test}} --filter DevTests
-    target/native/dev tui-stress --prepare
-    target/native/dev rendering-proof --prepare
-    xcrun swiftc -parse-as-library -O tools/tui_stress/Driver.swift -o target/native/tui-stress-driver-tests
-    target/native/tui-stress-driver-tests --self-test
+    TERMINAL_TEST_PRODUCTS="$PWD/target/swiftpm/testing/debug" just _workflow-tools
+
+[private]
+@_workflow-tools:
+    mkdir -p target/native
+    "$TERMINAL_TEST_PRODUCTS/dev" tui-stress --prepare
+    "$TERMINAL_TEST_PRODUCTS/dev" rendering-proof --prepare
+    "$TERMINAL_TEST_PRODUCTS/TUIStressDriver" --self-test
     xcrun clang -Wall -Wextra -Werror -O2 Benchmarks/TerminalBench/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
     target/native/terminal-bench-clock-test
     xcrun swiftc -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/DistributionTests.swift -o target/native/distribution-tests

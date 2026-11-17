@@ -66,8 +66,25 @@ let application: [Target] = [
   .testTarget(
     name: "TerminalTests",
     dependencies: ["TerminalApp", "TerminalUI", "TerminalHost", "TerminalEngine", "TerminalInterop", "TerminalLauncher"],
-    path: "Tests/TerminalTests",
+    path: "Tests/TerminalTests", exclude: ["differential-fixtures.json"],
     swiftSettings: [.swiftLanguageMode(.v5)]),
+]
+
+// Existing integration probes share the package's emulator instead of compiling
+// its sources again in each just recipe. They remain separate processes.
+let testPrograms = ["MetalUploadProbe.swift", "TerminfoProbe.swift", "pty.c", "Fuzz.swift", "EscTest.swift"]
+let testTools: [Target] = [
+  .executableTarget(name: "TerminfoProbe", dependencies: ["TerminalEngine", "TerminalInterop"],
+    path: "Tests/Programs", exclude: testPrograms.filter { $0 != "TerminfoProbe.swift" },
+    sources: ["TerminfoProbe.swift"], swiftSettings: [.swiftLanguageMode(.v5)]),
+  .executableTarget(name: "PTYTests", dependencies: ["TerminalEngine", "TerminalInterop"],
+    path: "Tests/Programs", exclude: testPrograms.filter { $0 != "pty.c" }, sources: ["pty.c"]),
+  .executableTarget(name: "TUIStressDriver", path: "tools/tui_stress", exclude: ["README.md"],
+    sources: ["Driver.swift"], swiftSettings: [.swiftLanguageMode(.v5)]),
+  .executableTarget(name: "RenderingCapture", path: "tools/rendering_proof", exclude: ["Driver.swift", "README.md"],
+    sources: ["Capture.swift"], swiftSettings: [.swiftLanguageMode(.v5)]),
+  .executableTarget(name: "RenderingDriver", path: "tools/rendering_proof", exclude: ["Capture.swift", "README.md"],
+    sources: ["Driver.swift"], swiftSettings: [.swiftLanguageMode(.v5)]),
 ]
 
 let package = Package(
@@ -87,4 +104,4 @@ let package = Package(
     // The updater. Pinned exactly: it installs software on the user's machine.
     .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1"),
   ],
-  targets: libraries + (embedded ? [] : application))
+  targets: libraries + (embedded ? [] : application + testTools))

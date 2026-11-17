@@ -28,7 +28,8 @@ import Darwin
       if let originalPath { setenv("PATH", originalPath, 1) } else { unsetenv("PATH") }
       for key in ["STAPLER_TEST_COUNTER", "STAPLER_TEST_FAILURES", "STAPLER_TEST_STATUS"] { unsetenv(key) }
     }
-    let distribution = Distribution()
+    var delays: [TimeInterval] = []
+    let distribution = Distribution(sleep: { delays.append($0) })
     let originalKeychain = ProcessInfo.processInfo.environment["APPLE_SIGNING_KEYCHAIN"]
     defer {
       if let originalKeychain { setenv("APPLE_SIGNING_KEYCHAIN", originalKeychain, 1) }
@@ -44,6 +45,7 @@ import Darwin
           "--keychain", "/temporary signing/owned.keychain-db"])
     }
     func scenario(status: Int, failures: Int, command: [String], attempts: Int, success: Bool) throws {
+      delays.removeAll()
       try? files.removeItem(at: counter)
       setenv("STAPLER_TEST_STATUS", String(status), 1)
       setenv("STAPLER_TEST_FAILURES", String(failures), 1)
@@ -55,6 +57,7 @@ import Darwin
       }
       let actualAttempts = try String(contentsOf: counter, encoding: .utf8)
       precondition(actualAttempts == String(attempts))
+      precondition(delays == (0..<(attempts - 1)).map { Double(1 << $0) })
     }
     let staple = ["xcrun", "stapler", "staple", "fixture.app"]
     try scenario(status: 68, failures: 2, command: staple, attempts: 3, success: true)

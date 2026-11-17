@@ -47,6 +47,7 @@ let commands = [
   // The app bundle, the tool and the sources themselves.
   AppBundle.command,
   Sources.command,
+  TestPipeline.command,
 ]
 
 func printUsage() {

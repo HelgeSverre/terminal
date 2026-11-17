@@ -129,6 +129,7 @@ enum TUIStress {
   /// it is kept for as long as its source is unchanged.
   static func compileHelper(_ name: String, source: String, into directory: String,
                             compiler: [String] = ["/usr/bin/xcrun", "swiftc"]) throws -> String {
+    if let product = TestPipeline.prebuiltHelper(source: source) { return product }
     let binary = directory + "/" + name
     let stamp = directory + "/\(name).build.json"
     let sourceHash = try sha256(ofFile: source)
