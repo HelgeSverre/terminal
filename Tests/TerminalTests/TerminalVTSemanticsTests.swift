@@ -213,6 +213,18 @@ import TerminalInterop
     #expect(lines(terminal, count: 1)[0].hasPrefix("XXX"))
   }
 
+  @Test static func unlimitedReverseWrapIsOneRingFromAnyRow() {
+    let terminal = Oracle.make(8, 4); defer { helge_terminal_destroy(terminal) }
+    Oracle.feed(terminal, "\u{1b}[?1045h\u{1b}[4;1H\u{1b}[40D")
+    #expect(cursor(terminal) == (2, 0), "40 back from cell 24 of 32")
+    Oracle.feed(terminal, "\u{1b}[4;8H\u{1b}[31D")
+    #expect(cursor(terminal) == (0, 0))
+    Oracle.feed(terminal, "\u{1b}[1D")
+    #expect(cursor(terminal) == (3, 7), "the first cell wraps to the last")
+    Oracle.feed(terminal, "\u{1b}[2;3r\u{1b}[?69h\u{1b}[3;6s\u{1b}[3;4H\u{1b}[2D")
+    #expect(cursor(terminal) == (1, 5), "the ring is the margin rectangle: 4 columns by 2 rows")
+  }
+
   @Test static func eraseWholeRowsClearsSoftWrapConnections() {
     let terminal = Oracle.make(8, 6); defer { helge_terminal_destroy(terminal) }
     Oracle.feed(terminal, "abcdefghijklmnopqrstuvwxyz\u{1b}[!p\u{1b}[2J")

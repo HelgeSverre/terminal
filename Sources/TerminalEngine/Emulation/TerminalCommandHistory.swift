@@ -3,7 +3,7 @@ import Foundation
 /// Shell-reported command boundaries. Output is untrusted: these describe
 /// protocol markers, not verified process execution or commands to rerun.
 public struct TerminalCommandRecord: Equatable, Sendable {
-  public let promptRowID: UInt64
+  public var promptRowID: UInt64
   public var commandRowID: UInt64?
   public var endRowID: UInt64?
   public var exitStatus: Int?
@@ -18,6 +18,24 @@ package struct TerminalCommandHistory {
   package private(set) var records: [TerminalCommandRecord] = []
   private var pendingPrompt: (row: UInt64, directory: String?)?
   private var running = false
+
+  /// Every row a record or the pending prompt names.
+  package var rowIDs: Set<UInt64> {
+    var ids = Set(records.flatMap { [$0.promptRowID, $0.commandRowID, $0.endRowID].compactMap { $0 } })
+    if let pendingPrompt { ids.insert(pendingPrompt.row) }
+    return ids
+  }
+  /// A width change gives reflowed rows new identities. A row that is not in
+  /// the map was evicted; its record keeps the old identity and is skipped.
+  package mutating func remap(_ rows: [UInt64: UInt64]) {
+    guard !rows.isEmpty else { return }
+    for index in records.indices {
+      records[index].promptRowID = rows[records[index].promptRowID] ?? records[index].promptRowID
+      records[index].commandRowID = records[index].commandRowID.map { rows[$0] ?? $0 }
+      records[index].endRowID = records[index].endRowID.map { rows[$0] ?? $0 }
+    }
+    if let prompt = pendingPrompt { pendingPrompt = (rows[prompt.row] ?? prompt.row, prompt.directory) }
+  }
 
   package mutating func marker(_ value: String, row: UInt64, directory: String?) {
     let fields = value.split(separator: ";", omittingEmptySubsequences: false)

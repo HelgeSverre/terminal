@@ -235,6 +235,9 @@ struct TerminalPalette {
     return index
   }
 
+  private static let namedColors: [String: UInt32] = ["black": 0x000000, "white": 0xffffff, "red": 0xff0000,
+    "green": 0x00ff00, "blue": 0x0000ff, "yellow": 0xffff00, "magenta": 0xff00ff, "cyan": 0x00ffff,
+    "gray": 0xbebebe, "grey": 0xbebebe]
   private static func parseColor(_ text: some StringProtocol) -> RGB? {
     let bytes = Array(text.utf8)
     if bytes.first == 0x23 {
@@ -251,11 +254,9 @@ struct TerminalPalette {
       }
       return RGB(red: components[0], green: components[1], blue: components[2])
     }
-    let named: [String: UInt32] = ["black": 0x000000, "white": 0xffffff, "red": 0xff0000,
-      "green": 0x00ff00, "blue": 0x0000ff, "yellow": 0xffff00, "magenta": 0xff00ff, "cyan": 0x00ffff,
-      "gray": 0xbebebe, "grey": 0xbebebe]
-    if let value = named[String(text).lowercased()] { return RGB(value) }
-    guard bytes.starts(with: [0x72, 0x67, 0x62, 0x3a]) else { return nil }
+    guard bytes.starts(with: [0x72, 0x67, 0x62, 0x3a]) else {
+      return Self.namedColors[String(text).lowercased()].map { RGB($0) }
+    }
     let components = text.dropFirst(4).split(separator: "/", omittingEmptySubsequences: false)
     guard components.count == 3 else { return nil }
     var values: [UInt8] = []

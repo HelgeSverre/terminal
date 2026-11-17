@@ -799,6 +799,8 @@ private final class TerminalEmulator {
     case 0x63: reset()
     case 0x3d: applicationKeypad = true
     case 0x3e: applicationKeypad = false
+    // DECID: the older request for the primary device attributes.
+    case 0x5a: replies.append(contentsOf: Self.primaryDeviceAttributes.utf8)
     case 0x1b: parser = .escape
     default: break
     }
@@ -884,6 +886,16 @@ private final class TerminalEmulator {
   }
   private func moveCursorBackward(_ s: inout TerminalScreen, count: Int) {
     let margins = horizontalMargins
+    if autoWrap && reverseWrapUnlimited && (s.topMargin...s.bottomMargin).contains(s.cursorRow)
+      && (margins.left...margins.right).contains(s.cursorColumn) {
+      // The margin rectangle is one ring of cells: any count is a single modulo.
+      let width = margins.right - margins.left + 1
+      let cells = (s.bottomMargin - s.topMargin + 1) * width
+      let position = (s.cursorRow - s.topMargin) * width + (s.cursorColumn - margins.left)
+      let target = (position - count % cells + cells) % cells
+      s.cursorRow = s.topMargin + target / width; s.cursorColumn = margins.left + target % width
+      return
+    }
     var remaining = count
     // At most one pass over the visible page, even for an enormous parameter.
     for _ in 0...rowCount {
@@ -935,16 +947,16 @@ private final class TerminalEmulator {
   private func saveCursor() {
     var s = screen
     s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap
-    s.savedOrigin = originMode; s.savedStyle = pen; s.savedLink = currentLink; s.savedLinkID = attributes.linkID
-    s.savedCharsetSpecial = charsetSpecial; s.savedCharsetSlot = charsetSlot
-    s.savedProtected = protectedOutput
+    s.savedRendition = SavedRendition(origin: originMode, style: pen, link: currentLink, linkID: attributes.linkID,
+      protected: protectedOutput, charsetSpecial: charsetSpecial, charsetSlot: charsetSlot)
     screen = s
   }
   private func restoreCursor() {
     var s = screen
-    originMode = s.savedOrigin; pen = s.savedStyle; currentLink = s.savedLink; attributes.linkID = s.savedLinkID
-    charsetSpecial = s.savedCharsetSpecial; charsetSlot = s.savedCharsetSlot
-    protectedOutput = s.savedProtected
+    let saved = s.savedRendition
+    originMode = saved.origin; pen = saved.style; currentLink = saved.link; attributes.linkID = saved.linkID
+    charsetSpecial = saved.charsetSpecial; charsetSlot = saved.charsetSlot
+    protectedOutput = saved.protected
     s.cursorRow = min(rowCount - 1, s.savedRow); s.cursorColumn = min(columns - 1, s.savedColumn)
     if originMode {
       s.cursorRow = min(max(s.cursorRow, s.topMargin), s.bottomMargin)
@@ -969,6 +981,7 @@ private final class TerminalEmulator {
     focusReporting = false; reverseVideo = false; mouseMode = 0; mouseEncoding = 0; modifyOtherKeys = 0
     currentLink = nil
     palette.reset()
+    refreshGraphicsPalette()
     colorSchemeReports = false; titleStack.removeAll(keepingCapacity: true)
     multipartImage = nil
     downloads.clear()
@@ -1212,12 +1225,14 @@ private final class TerminalEmulator {
         else if action == 3 { s.keyboardFlags &= ~flags }
       }
       else { restoreCursor(); changedActiveScreen = true }
+    case 0x6e where privateMode && Self.deviceStatus(params) != nil:
+      clearsPending = false; replies.append(contentsOf: Self.deviceStatus(params)!.utf8)
     case 0x6e: clearsPending = false; if privateMode && params.first == 996 { replies.append(contentsOf: colorSchemeReply.utf8) } else if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = max(1, s.cursorRow + 1 - (originMode ? s.topMargin : 0)); let column = max(1, s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0)); replies.append(contentsOf: "\u{1b}[\(privateMode ? "?" : "")\(row);\(column)R".utf8) }
     // Secondary device attributes: a VT220-class terminal, firmware version
     // 10, no ROM cartridge. Primary attributes otherwise.
     case 0x63 where first == 0x3e: clearsPending = false; replies.append(contentsOf: "\u{1b}[>1;10;0c".utf8)
     // VT220 with Sixel graphics (4) and ANSI color (22).
-    case 0x63: clearsPending = false; replies.append(contentsOf: "\u{1b}[?62;4;22c".utf8)
+    case 0x63: clearsPending = false; replies.append(contentsOf: Self.primaryDeviceAttributes.utf8)
     // DECRQCRA: the checksum of a rectangle's characters, as xterm (patch
     // 334 and later) gives it: their code points summed, an empty cell
     // counted as a space, modulo 65536. Coordinates follow origin mode.
@@ -1436,8 +1451,10 @@ private final class TerminalEmulator {
   private func scroll(_ s: inout TerminalScreen, top: Int, bottom: Int, count: Int, up: Bool, allowHistory: Bool) {
     let margins = horizontalMargins; let amount = min(count, bottom - top + 1); guard amount > 0 else { return }
     if margins.left != 0 || margins.right != columns - 1 {
-      graphics.scrollRectangle(alternate: usingAlternate, rows: s.rows.map(\.id), top: top, bottom: bottom,
-        left: margins.left, right: margins.right, amount: amount, up: up)
+      if graphics.hasPlacements {
+        graphics.scrollRectangle(alternate: usingAlternate, rows: s.rows.map(\.id), top: top, bottom: bottom,
+          left: margins.left, right: margins.right, amount: amount, up: up)
+      }
       document.scrollRectangle(&s, top: top, bottom: bottom, left: margins.left, right: margins.right, count: amount, up: up, eraseStyle: eraseStyle()); return
     }
     for _ in 0..<amount {
@@ -1605,6 +1622,7 @@ private final class TerminalEmulator {
       case 1045: enabled = reverseWrapUnlimited
       case 25: enabled = screen.cursorVisible
       case 47, 1047, 1049: enabled = usingAlternate
+      case 66: enabled = applicationKeypad
       case 69: enabled = leftRightMargins
       case 80: enabled = sixelDisplayMode
       case 8452: enabled = sixelCursorRight
@@ -1630,6 +1648,7 @@ private final class TerminalEmulator {
     for mode in params where privateMode {
       switch mode {
       case 1: applicationCursor = enabled
+      case 66: applicationKeypad = enabled
       case 6: originMode = enabled; var s = screen; s.cursorRow = enabled ? s.topMargin : 0; s.cursorColumn = enabled ? horizontalMargins.left : 0; s.pendingWrap = false; screen = s; changedActiveScreen = true
       case 7: autoWrap = enabled; if !enabled { var s = screen; s.pendingWrap = false; screen = s }; changedActiveScreen = true
       case 45: reverseWrap = enabled
@@ -1705,13 +1724,29 @@ private final class TerminalEmulator {
     charsetSpecial = [false, false]; charsetSlot = 0
     var s = screen
     s.topMargin = 0; s.bottomMargin = rowCount - 1
-    s.savedRow = 0; s.savedColumn = 0; s.savedPendingWrap = false; s.savedOrigin = false
-    s.savedStyle = TerminalStyle(); s.savedLink = nil; s.savedLinkID = nil; s.savedProtected = false
-    s.savedCharsetSpecial = [false, false]; s.savedCharsetSlot = 0
+    s.savedRow = 0; s.savedColumn = 0; s.savedPendingWrap = false; s.savedRendition = SavedRendition()
     s.pendingWrap = false; s.cursorVisible = true; s.cursorShape = 0
     screen = s
     primary.leftMargin = 0; primary.rightMargin = columns - 1; alternate.leftMargin = 0; alternate.rightMargin = columns - 1
     primary.keyboardFlags = 0; primary.keyboardStack.removeAll(); alternate.keyboardFlags = 0; alternate.keyboardStack.removeAll()
+  }
+  // VT220 with Sixel graphics (4) and ANSI color (22).
+  private static let primaryDeviceAttributes = "\u{1b}[?62;4;22c"
+  /// DEC status reports for hardware this terminal does not have. Each answer
+  /// is the documented "absent" or "nothing to report" value.
+  private static func deviceStatus(_ params: [Int]) -> String? {
+    switch params.first {
+    case 15: return "\u{1b}[?13n"      // no printer
+    case 25: return "\u{1b}[?21n"      // user-defined keys locked
+    case 26: return "\u{1b}[?27;1n"    // keyboard: North American
+    case 55: return "\u{1b}[?50n"      // no locator
+    case 56: return "\u{1b}[?57;0n"    // locator type: none
+    case 62: return "\u{1b}[0*{"       // no macro space
+    case 63: return "\u{1b}P\(params.count > 1 ? params[1] : 0)!~0000\u{1b}\\"  // memory checksum
+    case 75: return "\u{1b}[?70n"      // data integrity: no errors
+    case 85: return "\u{1b}[?83n"      // one session
+    default: return nil
+    }
   }
   private var colorSchemeReply: String { "\u{1b}[?997;\(palette.schemeIsDark ? 1 : 2)n" }
   func setIdentity(_ value: TerminalIdentity) { identity = value }
@@ -1813,7 +1848,7 @@ private final class TerminalEmulator {
     // path that needs live anchor membership.  Pruning here keeps ordinary
     // scalar output O(1) while retaining the placement cap semantics.
     pruneGraphicsAnchors()
-    refreshGraphicsPalette()
+    if graphicsPaletteStale { refreshGraphicsPalette() }
     let s = screen
     let outcome = graphics.consume(Data(payload.utf8), context: KittyGraphicsContext(
       alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
@@ -1994,7 +2029,7 @@ private final class TerminalEmulator {
     return DocumentReflowTransaction(source: document, geometry: geometry,
       anchor: viewAnchor, promptEraseStyle: promptStyle, historyRows: historyLimit, historyBytes: historyByteLimit,
       primarySelection: selection.reflowInput(.primary), alternateSelection: selection.reflowInput(.alternate),
-      graphicsAnchors: graphics.reflowAnchors)
+      graphicsAnchors: graphics.reflowAnchors, trackedRows: commandHistory.rowIDs)
   }
   func advanceResize() -> TerminalResizeProgress {
     guard var pending = pendingResize else { return .rejected(.noOperation, retained: resizeGeometry) }
@@ -2042,6 +2077,7 @@ private final class TerminalEmulator {
     cellPixelWidth = geometry.cellWidth; cellPixelHeight = geometry.cellHeight
     if columns != oldColumns {
       graphics.applyReflow(replacement.mapping.graphics)
+      commandHistory.remap(replacement.mapping.rows)
       tabs = Array(tabs.prefix(columns))
       if columns > oldColumns {
         tabs.append(contentsOf: (oldColumns..<columns).map { !tabsCleared && $0 > 0 && $0.isMultiple(of: 8) })
@@ -2277,7 +2313,11 @@ private final class TerminalEmulator {
     if changed && colorSchemeReports { replies.append(contentsOf: colorSchemeReply.utf8) }
     self.changed(document: false)
   }
+  /// Every palette change calls this; a graphics command only finds the
+  /// initial palette still unsent.
+  private var graphicsPaletteStale = true
   private func refreshGraphicsPalette() {
+    graphicsPaletteStale = false
     graphics.setPalette(palette.snapshotGraphicsPalette)
   }
   func setHistoryLimit(_ value: Int) { historyLimit = max(0, value); enforceHistoryLimits(); historyEpoch &+= 1; _ = resolveViewportAnchor(clamp: true) }
@@ -2292,17 +2332,14 @@ private final class TerminalEmulator {
       let margins = (current.topMargin, current.bottomMargin, current.leftMargin, current.rightMargin)
       let promptPhase = current.promptPhase
       let promptRedraw = current.promptRedraw
-      let saved = (current.savedRow, current.savedColumn, current.savedPendingWrap, current.savedOrigin, current.savedStyle, current.savedLink, current.savedLinkID)
-      let savedPresentation = (current.savedProtected, current.savedCharsetSpecial, current.savedCharsetSlot)
+      let saved = (current.savedRow, current.savedColumn, current.savedPendingWrap, current.savedRendition)
       let keyboard = (current.keyboardFlags, current.keyboardStack)
       let cursorAppearance = (current.cursorVisible, current.cursorShape)
       current = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns)
       current.topMargin = margins.0; current.bottomMargin = margins.1
       current.leftMargin = margins.2; current.rightMargin = margins.3
       current.savedRow = saved.0; current.savedColumn = saved.1; current.savedPendingWrap = saved.2
-      current.savedOrigin = saved.3; current.savedStyle = saved.4; current.savedLink = saved.5; current.savedLinkID = saved.6
-      current.savedProtected = savedPresentation.0
-      current.savedCharsetSpecial = savedPresentation.1; current.savedCharsetSlot = savedPresentation.2
+      current.savedRendition = saved.3
       current.keyboardFlags = keyboard.0; current.keyboardStack = keyboard.1
       current.cursorVisible = cursorAppearance.0; current.cursorShape = cursorAppearance.1
       current.promptPhase = promptPhase

@@ -210,6 +210,18 @@ import Darwin
     await clean(store)
   }
 
+  @Test func checkpointKeepsTheScreenWhenScrollbackIsDisabled() throws {
+    let source = try #require(helge_terminal_create(8, 3))
+    defer { helge_terminal_destroy(source) }
+    helge_terminal_set_history_limit(source, 0)
+    TerminalSelectionTests.feed(source, "old\r\nkept\r\nrows\r\nhere")
+    let capture = TerminalRecoveryBridge.capture(core: source)
+    var text: String?
+    for _ in 0..<10_000 { if let result = capture.advance() { text = result; break } }
+    #expect(text?.contains("kept") == true && text?.contains("here") == true)
+    #expect(text?.contains("old") == false, "the row that left the screen had no history to go to")
+  }
+
   @Test func checkpointUsesPrimaryAndRestoresLiteralFaintText() throws {
     let source = try #require(helge_terminal_create(8, 3))
     let target = try #require(helge_terminal_create(8, 3))

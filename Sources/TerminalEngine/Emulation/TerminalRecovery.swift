@@ -22,7 +22,8 @@ package final class TerminalRecoveryCapture {
     self.primary = primary
     self.maximumBytes = min(16 * 1024 * 1024, max(0, maximumBytes))
     let total = history.count + primary.count
-    first = max(0, total - limit)
+    // The limit bounds history; the screen itself is always captured.
+    first = max(0, history.count - limit)
     row = total - 1
     column = -1
     if row >= first { column = source(row).count - 1 }

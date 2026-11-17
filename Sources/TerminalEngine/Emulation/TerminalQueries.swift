@@ -68,6 +68,9 @@ enum TerminalQueries {
     case "s": value = "\(left + 1);\(right + 1)s"
     case " q": value = "\(cursorShape) q"
     case "\"q": value = "\(protected ? 1 : 0)\"q"
+    // No status line: the active display is the main one, and its type is none.
+    case "$}": value = "0$}"
+    case "$~": value = "0$~"
     default: value = nil
     }
     return "\u{1b}P\(value == nil ? 0 : 1)$r\(value ?? "")\u{1b}\\"

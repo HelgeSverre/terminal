@@ -99,7 +99,7 @@ final class DocumentReflowTransaction {
   init(source: TerminalDocument, geometry: TerminalResizeGeometry,
        anchor: UInt64?, promptEraseStyle: TerminalStyle?, historyRows: Int, historyBytes: Int,
        primarySelection: TerminalSelectionReflowInput? = nil, alternateSelection: TerminalSelectionReflowInput? = nil,
-       graphicsAnchors: [GraphicsReflowAnchor] = []) {
+       graphicsAnchors: [GraphicsReflowAnchor] = [], trackedRows: Set<UInt64> = []) {
     guard geometry.isValid else { earlyStatus = .rejected(.invalidGeometry); return }
     // At most 8192 active rows, each O(1). No retained generation or private
     // builder allocation exists until its complete input reservation succeeds.
@@ -122,7 +122,7 @@ final class DocumentReflowTransaction {
     let required = State.sum(sourceBytes, promptBytes, largestPromptDictionary,
       primarySelection?.content.allocationBytes ?? 0, alternateSelection?.content.allocationBytes ?? 0,
       State.product(source.history.count + source.primary.rows.count, 16), 4096,
-      UInt64(min(graphicsAnchors.count, 256)) * 256)
+      UInt64(min(graphicsAnchors.count, 256)) * 256, UInt64(trackedRows.count) * 64)
     guard required <= ReflowReservationLedger.operationLimit else {
       if source.history.isEmpty { earlyStatus = .rejected(.operationBudget) }
       else {
@@ -134,7 +134,8 @@ final class DocumentReflowTransaction {
     guard let lease = ReflowReservationLedger.shared.reserve(required) else { earlyStatus = .rejected(.processBudget); return }
     state = State(source: source, geometry: geometry, anchor: anchor, promptEraseStyle: promptEraseStyle,
                   historyRows: historyRows, historyBytes: historyBytes, lease: lease, alternateResources: alternateResources,
-                  primarySelection: primarySelection, alternateSelection: alternateSelection, graphicsAnchors: graphicsAnchors)
+                  primarySelection: primarySelection, alternateSelection: alternateSelection, graphicsAnchors: graphicsAnchors,
+                  trackedRows: trackedRows)
   }
   func advance() -> Progress {
     if let early = earlyStatus {
@@ -316,11 +317,15 @@ final class DocumentReflowTransaction {
     var selectionBudgetBase: UInt64 = 0
     var graphicsAnchors: [UInt64: [GraphicsReflowAnchor]] = [:]
     var mappedGraphics: [UInt64: GraphicsReflowAnchor] = [:]
+    /// Rows other state names by identity, and the new row each one starts in.
+    let trackedRows: Set<UInt64>
+    var mappedRows: [UInt64: UInt64] = [:]
 
     init(source: TerminalDocument, geometry: TerminalResizeGeometry, anchor: UInt64?, promptEraseStyle: TerminalStyle?,
          historyRows: Int, historyBytes: Int, lease: ReflowReservationLedger.Lease, alternateResources: UInt64,
          primarySelection: TerminalSelectionReflowInput?, alternateSelection: TerminalSelectionReflowInput?,
-         graphicsAnchors: [GraphicsReflowAnchor]) {
+         graphicsAnchors: [GraphicsReflowAnchor], trackedRows: Set<UInt64>) {
+      self.trackedRows = trackedRows
       self.source = source; self.geometry = geometry; self.anchor = anchor; self.promptEraseStyle = promptEraseStyle
       self.historyRows = max(0, historyRows); self.historyBytes = UInt64(max(0, historyBytes))
       self.lease = lease; self.alternateResources = alternateResources
@@ -517,6 +522,7 @@ final class DocumentReflowTransaction {
           if item.id == anchor, let current {
             mappedAnchor = index > 0 && row(index - 1).softWrapped ? (output!.last?.id ?? current.id) : current.id
           }
+          if let current, trackedRows.contains(item.id) { mappedRows[item.id] = current.id }
           enteredRow = true
         }
         let atEnd = sourceColumn >= ends[index]
@@ -645,7 +651,8 @@ final class DocumentReflowTransaction {
     }
     func replacement() -> Replacement {
       Replacement(document: working!, mapping: TerminalDocument.ReflowMapping(
-        anchor: widthChanges ? mappedAnchor : anchor, cursor: cursorMap, saved: savedMap, graphics: mappedGraphics),
+        anchor: widthChanges ? mappedAnchor : anchor, cursor: cursorMap, saved: savedMap, graphics: mappedGraphics,
+        rows: mappedRows),
         evictedHistory: retainedStart > 0, retainedRowIDs: retainedRowIDs,
         selection: TerminalSelectionReflowResult(primary: primarySelection?.output,
           alternate: alternateSelection?.output,
@@ -751,6 +758,7 @@ extension TerminalDocument {
     var cursor: (row: Int, column: Int, pending: Bool)
     var saved: (row: Int, column: Int, pending: Bool)
     var graphics: [UInt64: GraphicsReflowAnchor] = [:]
+    var rows: [UInt64: UInt64] = [:]
   }
 
 }

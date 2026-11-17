@@ -45,6 +45,44 @@ import TerminalInterop
     #expect(swiftTerminalCommands(terminal).isEmpty)
   }
 
+  @Test static func commandNavigationSurvivesWidthReflow() throws {
+    let terminal = try #require(helge_terminal_create(12, 3))
+    defer { helge_terminal_destroy(terminal) }
+    func feed(_ text: String) { OSC52ProtocolTests.feed(terminal, text, chunk: 64) }
+    func offset() -> Int? { swiftTerminalSnapshot(terminal, scroll: nil, now: 0).snapshot?.scroll_offset }
+    func firstLine() -> String? {
+      swiftTerminalSnapshot(terminal, scroll: nil, now: 0).snapshot?.rows.first?.cells.map(\.text).joined()
+    }
+    for name in ["first", "second"] {
+      feed("\u{1b}]133;A\u{7}$ \u{1b}]133;B\u{7}\(name)\r\n\u{1b}]133;C\u{7}a long line of output that wraps\r\nmore\r\n\u{1b}]133;D;0\u{7}")
+    }
+    feed("tail\r\ntail\r\ntail\r\n")
+    #expect(helge_terminal_resize(terminal, 20, 3))
+    let before = swiftTerminalCommands(terminal)
+    #expect(before.count == 2)
+    swiftTerminalNavigateCommand(terminal, older: true)
+    #expect(firstLine()?.hasPrefix("$ second") == true, "the newest prompt above the viewport")
+    swiftTerminalNavigateCommand(terminal, older: true)
+    #expect(firstLine()?.hasPrefix("$ first") == true)
+    swiftTerminalNavigateCommand(terminal, older: false)
+    #expect(firstLine()?.hasPrefix("$ second") == true)
+    swiftTerminalNavigateCommand(terminal, older: false)
+    #expect(offset() == 0)
+    #expect(helge_terminal_resize(terminal, 20, 5), "a height change keeps row identities")
+    #expect(swiftTerminalCommands(terminal) == before)
+  }
+
+  @Test static func commandRecordsFollowRemappedRowsAndKeepEvictedOnes() {
+    var history = TerminalCommandHistory()
+    history.marker("A", row: 1, directory: nil); history.marker("C", row: 2, directory: nil); history.marker("D;0", row: 3, directory: nil)
+    history.marker("A", row: 4, directory: nil)
+    #expect(history.rowIDs == [1, 2, 3, 4])
+    history.remap([1: 11, 3: 13, 4: 14])
+    #expect(history.records.first?.promptRowID == 11 && history.records.first?.commandRowID == 2 && history.records.first?.endRowID == 13)
+    history.marker("C", row: 15, directory: nil)
+    #expect(history.records.last?.promptRowID == 14, "a pending prompt follows its row too")
+  }
+
   @Test static func malformedMarkersAndBoundedRecords() {
     var history = TerminalCommandHistory()
     history.marker("D;99", row: 1, directory: nil)

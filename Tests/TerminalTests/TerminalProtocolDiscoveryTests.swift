@@ -30,6 +30,29 @@ import TerminalInterop
     #expect(unsafe.name == "Host\\Name" && unsafe.version?.utf8.count == 128)
   }
 
+  @Test func absentHardwareStatusReportsAreTruthful() throws {
+    let core = try terminal()
+    let reports = [("15", "\u{1b}[?13n"), ("25", "\u{1b}[?21n"), ("26", "\u{1b}[?27;1n"), ("55", "\u{1b}[?50n"),
+      ("56", "\u{1b}[?57;0n"), ("62", "\u{1b}[0*{"), ("63;123", dcs("123!~0000")), ("75", "\u{1b}[?70n"), ("85", "\u{1b}[?83n")]
+    for (request, reply) in reports { #expect(ask(core, "\u{1b}[?\(request)n") == reply, "DECDSR \(request)") }
+    #expect(ask(core, "\u{1b}[15n").isEmpty, "the ANSI form of a DEC report is not answered")
+    #expect(ask(core, "\u{1b}[?6n") == "\u{1b}[?1;1R" && ask(core, "\u{1b}[5n") == "\u{1b}[0n")
+    #expect(ask(core, "\u{1b}Z") == ask(core, "\u{1b}[c"), "DECID answers as primary device attributes")
+    #expect(ask(core, dcs("$q$}")) == dcs("1$r0$}") && ask(core, dcs("$q$~")) == dcs("1$r0$~"))
+  }
+
+  @Test func numericKeypadModeIsTheKeypadApplicationMode() throws {
+    let core = try terminal()
+    #expect(ask(core, "\u{1b}[?66$p") == "\u{1b}[?66;2$y")
+    #expect(ask(core, "\u{1b}[?66h\u{1b}[?66$p") == "\u{1b}[?66;1$y")
+    #expect(ask(core, "\u{1b}>\u{1b}[?66$p") == "\u{1b}[?66;2$y", "DECKPNM resets the same mode")
+    #expect(ask(core, "\u{1b}=\u{1b}[?66$p") == "\u{1b}[?66;1$y")
+    #expect(ask(core, "\u{1b}[?41$p\u{1b}[?45$p\u{1b}[?1045$p\u{1b}[?80$p\u{1b}[?8452$p")
+      == "\u{1b}[?41;2$y\u{1b}[?45;2$y\u{1b}[?1045;2$y\u{1b}[?80;2$y\u{1b}[?8452;2$y")
+    #expect(ask(core, "\u{1b}[?41;45;1045;80;8452h\u{1b}[?41$p\u{1b}[?45$p\u{1b}[?1045$p\u{1b}[?80$p\u{1b}[?8452$p")
+      == "\u{1b}[?41;1$y\u{1b}[?45;1$y\u{1b}[?1045;1$y\u{1b}[?80;1$y\u{1b}[?8452;1$y")
+  }
+
   @Test func capabilitiesAreBoundedAndDoNotOverclaim() throws {
     let core = try terminal()
     func hex(_ text: String) -> String { text.utf8.map { String(format: "%02x", $0) }.joined() }

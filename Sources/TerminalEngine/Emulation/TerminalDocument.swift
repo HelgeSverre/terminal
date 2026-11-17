@@ -981,14 +981,21 @@ struct TerminalHistory: RandomAccessCollection, Equatable {
     lhs.count == rhs.count && lhs.byteCount == rhs.byteCount && lhs.elementsEqual(rhs)
   }
 }
+/// What DECSC keeps besides the position, which reflow has to remap.
+struct SavedRendition: Equatable {
+  var origin = false
+  var style = TerminalStyle()
+  var link: String?
+  var linkID: String?
+  var protected = false
+  var charsetSpecial = [false, false]
+  var charsetSlot = 0
+}
 struct TerminalScreen: Equatable {
   enum PromptPhase { case none, drawing, inputReady }
   var rows: [TerminalRow]; var cursorRow = 0; var cursorColumn = 0; var pendingWrap = false
-  var savedRow = 0; var savedColumn = 0; var savedPendingWrap = false; var savedOrigin = false
-  var savedStyle = TerminalStyle(); var savedLink: String?; var savedLinkID: String?
-  var savedProtected = false
-  var savedCharsetSpecial = [false, false]
-  var savedCharsetSlot = 0
+  var savedRow = 0; var savedColumn = 0; var savedPendingWrap = false
+  var savedRendition = SavedRendition()
   var keyboardFlags: UInt32 = 0
   var keyboardStack: [UInt32] = []
   // DEC cursor appearance belongs to a screen, just like the keyboard stack.
