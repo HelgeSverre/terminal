@@ -76,24 +76,25 @@ import TerminalInterop
     var image = try #require(terminal.screen()?.images.first)
     var pixels = try #require(terminal.pixels(of: image))
     #expect(pixels.prefix(8) == Data([255, 0, 0, 255, 16, 32, 48, 255]))
+    var before = try #require(terminal.screen()).images
     terminal.feed("\(esc)P7;1q\"2;1;2;6#5@\(esc)\\")
-    image = try #require(terminal.screen()?.images.last)
+    image = try #require(terminal.screen()?.images.first { !before.contains($0) })
     pixels = try #require(terminal.pixels(of: image))
     #expect(image.pixelHeight == 12)
     #expect(pixels.prefix(8) == Data([255, 0, 0, 255, 0, 0, 0, 0]), "palette registers persist, P2=1 leaves holes")
+    before = try #require(terminal.screen()).images
     terminal.feed("\(esc)[3;4H\(esc)[?80h\(esc)P7q#5~\(esc)\\")
     let screen = try #require(terminal.screen())
     #expect(screen.cursorRow == 2 && screen.cursorColumn == 3)
-    #expect(screen.images.last?.row == 0 && screen.images.last?.column == 0)
+    let displayImage = try #require(screen.images.first { !before.contains($0) })
+    #expect(displayImage.row == 0 && displayImage.column == 0)
     terminal.feed("\(esc)[?80l\(esc)[?8452h\(esc)P7q#5~\(esc)\\")
     #expect(terminal.screen()?.cursorRow == 2 && terminal.screen()?.cursorColumn == 4)
   }
 
   @Test func sharedMemoryTransportReadsOffsetAndUnlinksObject() throws {
     let name = "/htg" + String(UUID().uuidString.prefix(16))
-    let create = unsafeBitCast(dlsym(UnsafeMutableRawPointer(bitPattern: -2), "shm_open")!,
-      to: (@convention(c) (UnsafePointer<CChar>, Int32, mode_t) -> Int32).self)
-    let descriptor = name.withCString { create($0, O_CREAT | O_EXCL | O_RDWR, 0o600) }
+    let descriptor = name.withCString { helge_terminal_graphics_shm_open($0, O_CREAT | O_EXCL | O_RDWR, 0o600) }
     #expect(descriptor >= 0); guard descriptor >= 0 else { return }
     defer { close(descriptor); shm_unlink(name) }
     #expect(ftruncate(descriptor, 4096) == 0)
@@ -104,6 +105,7 @@ import TerminalInterop
     bytes.withUnsafeBytes { mapped.copyMemory(from: $0.baseAddress!, byteCount: bytes.count) }
     let core = try #require(helge_terminal_create(8, 4)); defer { helge_terminal_destroy(core) }
     Oracle.feed(core, Oracle.command("a=T,t=s,f=32,s=1,v=1,O=2,S=4,i=1,C=1", Array(name.utf8)))
+    #expect(Oracle.replies(core).contains("OK"), "shared memory must be readable with its explicit creation permissions")
     let image = try #require(Oracle.images(core).first)
     #expect(Oracle.rgba(core, image) == Data([1, 2, 3, 4]))
     #expect(shm_unlink(name) < 0 && errno == ENOENT)
@@ -141,7 +143,10 @@ import TerminalInterop
     let context = KittyGraphicsContext(alternate: false, row: 1, column: 0, cellWidth: 8, cellHeight: 16)
     _ = store.consume(Data("Ga=T,t=f,f=32,s=1,v=1,I=7,C=1;L2ZpbGU=".utf8), context: context, now: 0)
     var result: KittyGraphicsOutcome?
-    #expect(await TestEnvironment.wait { result = store.completeTransport(); return result != nil })
+    #expect(await TestEnvironment.wait {
+      if result == nil { result = store.completeTransport() }
+      return result != nil
+    })
     let reply = String(decoding: try #require(result?.reply), as: UTF8.self)
     #expect(reply.contains("I=7;OK") && reply.contains("i="))
     #expect(store.visible(alternate: false, positions: [1: 0], height: 4).count == 1)

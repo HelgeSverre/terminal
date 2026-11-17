@@ -1,4 +1,5 @@
 import Foundation
+import TerminalInterop
 
 /// Where a Kitty graphics transmission keeps its data: in the escape code
 /// itself (`t=d`), in a file (`t=f`), in a temporary file the terminal
@@ -102,12 +103,15 @@ enum KittyTransport {
     return found
   }()
 
-  /// `shm_open` without its optional mode. Swift cannot call the variadic
-  /// declaration, and only the fixed arguments are passed here.
-  private static let openSharedMemory: @convention(c) (UnsafePointer<CChar>, Int32) -> Int32 = {
-    unsafeBitCast(dlsym(UnsafeMutableRawPointer(bitPattern: -2), "shm_open")!,
-                  to: (@convention(c) (UnsafePointer<CChar>, Int32) -> Int32).self)
-  }()
+  /// C owns the variadic call; casting it to a fixed-argument function is
+  /// not ABI-compatible on Darwin arm64 when a creation mode is supplied.
+  private static func openSharedMemory(_ name: UnsafePointer<CChar>, _ flags: Int32) -> Int32 {
+    #if os(macOS)
+    return helge_terminal_graphics_shm_open(name, flags, 0)
+    #else
+    errno = ENOTSUP; return -1
+    #endif
+  }
 
   /// Reads and removes a shared memory object, as kitty does.
   private static func sharedMemory(_ name: String, size: Int, offset: Int, limit: Int) throws -> Data {

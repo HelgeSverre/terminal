@@ -3,6 +3,17 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#if TARGET_OS_OSX
+#include <sys/mman.h>
+/* Fixed arguments preserve Darwin arm64's variadic calling convention.
+ * Header-only so standalone engine builds need no additional linked object. */
+static inline int helge_terminal_graphics_shm_open(const char *name,int flags,uint32_t mode){
+  return shm_open(name,flags,(mode_t)mode);
+}
+#endif
+#endif
 typedef struct Terminal Terminal;
 uint32_t helge_terminal_abi_version(void);
 Terminal *helge_terminal_create(uint32_t cols,uint32_t rows);
