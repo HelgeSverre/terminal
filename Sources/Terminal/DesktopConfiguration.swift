@@ -125,12 +125,18 @@ struct TerminalShortcut: Codable, Equatable {
   var key: String
   var modifiers: [String]
   var chord: String { modifiers.sorted().joined(separator: "+") + ":" + key.lowercased() }
+  /// Fixed App, Edit, View and Window commands cannot be remapped by the
+  /// desktop action list. TabNavigation always owns Command-1 through -9.
+  private static let reservedChords: Set<String> = Set(
+    ["q", "w", ",", "c", "v", "x", "a", "f", "h", "m", "k", "+", "=", "-", "0", "g", "z", "."]
+      .map { "command:" + $0 }
+      + (1...9).map { "command:\($0)" }
+      + ["g", "z", "=", "+"].map { "command+shift:" + $0 })
   func validate() throws {
     guard key.count == 1, key.utf8.count == 1, key.utf8.allSatisfy({ (33...126).contains($0) }),
       key == key.lowercased(), Set(modifiers).count == modifiers.count,
       modifiers.contains("command"), Set(modifiers).isSubset(of: ["command", "option", "control", "shift"]),
-      !(modifiers == ["command"] && ["q", "w", ",", "c", "v", "x", "a", "f", "h", "m", "k", "+", "-", "0", "g", "z", "."].contains(key)),
-      !(Set(modifiers) == Set(["command", "shift"]) && ["g", "z", "="].contains(key)) else {
+      !Self.reservedChords.contains(chord) else {
       throw DesktopConfiguration.Invalid.value("Shortcuts need one lowercase ASCII key and command, with optional option/control/shift. Standard editing and window shortcuts are reserved.")
     }
   }

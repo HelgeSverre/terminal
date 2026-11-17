@@ -3,6 +3,7 @@ import Foundation
 import Testing
 @testable import TerminalApp
 @testable import TerminalHost
+import TerminalUI
 
 @Suite(.serialized) @MainActor enum DesktopConfigurationTests {
   @Test static func recoveryDoesNotRunDefaultProfile() throws {
@@ -94,6 +95,41 @@ import Testing
     #expect(!beforeDeadline)
     #expect(atDeadline)
     #expect(!invalid)
+  }
+  @Test static func configurableActionsCannotClaimFixedMenuShortcuts() throws {
+    _ = NSApplication.shared
+    let tabs = NSMenu(title: "Tabs")
+    TerminalTabNavigation { nil }.addMenuItems(to: tabs)
+    let fixedItems = tabs.items + TerminalEditMenu.make().items
+    func modifierNames(_ flags: NSEvent.ModifierFlags) -> [String] {
+      [("command", NSEvent.ModifierFlags.command), ("shift", .shift), ("control", .control), ("option", .option)]
+        .filter { flags.contains($0.1) }.map(\.0)
+    }
+    for item in fixedItems where item.keyEquivalent.utf8.count == 1 && item.keyEquivalentModifierMask.contains(.command) {
+      var value = DesktopConfiguration.standard
+      value.shortcuts = [.init(action: .newWindow, key: item.keyEquivalent,
+        modifiers: modifierNames(item.keyEquivalentModifierMask))]
+      #expect(throws: (any Error).self) { try value.validate() }
+    }
+    for number in 1...9 {
+      var value = DesktopConfiguration.standard
+      value.shortcuts = [.init(action: .zoomPane, key: String(number), modifiers: ["command"])]
+      #expect(throws: (any Error).self) { try value.validate() }
+    }
+    // Additional modifiers distinguish a user binding from numbered-tab keys.
+    var accepted = DesktopConfiguration.standard
+    accepted.shortcuts = [.init(action: .zoomPane, key: "2", modifiers: ["control", "command"])]
+    try accepted.validate()
+    for item in fixedItems {
+      #expect(item.keyEquivalent != accepted.shortcuts[0].key
+        || item.keyEquivalentModifierMask != accepted.shortcuts[0].flags)
+    }
+    // The View menu's plus command also uses the shifted equals spelling.
+    for key in ["=", "+"] {
+      #expect(throws: (any Error).self) {
+        try TerminalShortcut(action: .newTab, key: key, modifiers: ["shift", "command"]).validate()
+      }
+    }
   }
   @Test static func directionalFocusUsesNestedPaneGeometry() {
     let source = CGRect(x: 0, y: 0, width: 100, height: 200)

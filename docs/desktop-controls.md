@@ -61,6 +61,7 @@ Shortcut actions are `newWindow`, `newTab`, `splitRight`, `splitBelow`,
 optionally `shift`, `option` and `control`. Standard editing/window shortcuts
 are reserved. Conflicting actions, including unchanged defaults, are rejected;
 remap both actions when moving a key. Removing an override restores its default.
+Command-1 through Command-9 remain assigned to numbered tab navigation.
 
 Add Theme inserts all five terminal colors and sixteen ANSI colors. Edit them as
 `#RRGGBB`. These colors become the terminal's reset defaults; applications can
