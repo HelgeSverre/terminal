@@ -10,6 +10,14 @@ package enum TerminalGraphicsTransportBridge {
   }
 }
 
+package enum TerminalDownloadBridge {
+  package static func pending(core pointer: OpaquePointer) -> [TerminalPendingDownload] { core(pointer)?.pendingDownloads ?? [] }
+  package static func resolve(core pointer: OpaquePointer, id: UInt64, take: Bool) -> TerminalDownload? {
+    core(pointer)?.resolveDownload(id, take: take)
+  }
+  package static func takeAll(core pointer: OpaquePointer) -> [TerminalDownload] { core(pointer)?.takeDownloads() ?? [] }
+}
+
 // Owns terminal emulation and the stable C compatibility boundary.  The public C-shaped surface is
 // deliberately thin: the state machine owns parsing, grid mutation, history,
 // snapshots, and input encoding so neither Session nor the renderer needs to
@@ -141,6 +149,7 @@ private final class TerminalEmulator {
   private var sixelDisplayMode = false
   private var sixelCursorRight = false
   private var multipartImage: InlineImageDecoder?
+  private let downloads = TerminalDownloads()
   @exclusivity(unchecked) private var title = ""
   @exclusivity(unchecked) private var iconTitle = ""
   @exclusivity(unchecked) private var titleStack: [(title: String?, icon: String?)] = []
@@ -651,7 +660,7 @@ private final class TerminalEmulator {
         if byte == 0x18 || byte == 0x1a { multipartImage = nil; parser = .ground }
         else if byte == 0x07 || (escaped && byte == 0x5c) {
           parser = .ground
-          if !decoder.waitsForFileEnd, let image = decoder.finish() {
+          if !decoder.waitsForFileEnd, let image = decoder.finish(download: { [self] in _ = downloads.enqueue(name: $0, data: $1) }) {
             showInlineImage(image.request, width: image.width, height: image.height, rgba: image.rgba, frames: image.frames)
           }
         } else if byte == 0x1b { parser = .inlineImage(decoder, escaped: true) }
@@ -947,6 +956,7 @@ private final class TerminalEmulator {
     palette.reset()
     colorSchemeReports = false; titleStack.removeAll(keepingCapacity: true)
     multipartImage = nil
+    downloads.clear()
     sixelPalette = nil; sixelDisplayMode = false; sixelCursorRight = false
     applyGraphemeClustering(hostGraphemeClustering)
     charsetSpecial = [false, false]; charsetSlot = 0
@@ -1760,15 +1770,15 @@ private final class TerminalEmulator {
           multipartImage = InlineImageDecoder(multipartHeader: String(value.dropFirst("MultipartFile=".count)))
         } else if value == "FileEnd" {
           let decoder = multipartImage; multipartImage = nil
-          if let image = decoder?.finish() {
+          if let image = decoder?.finish(download: { [self] in _ = downloads.enqueue(name: $0, data: $1) }) {
             showInlineImage(image.request, width: image.width, height: image.height, rgba: image.rgba, frames: image.frames)
           }
         } else if value == "ReportCellSize" {
           replies.append(Data("\u{1b}]1337;ReportCellSize=\(cellPixelHeight);\(cellPixelWidth)\u{1b}\\".utf8))
         } else if value == "Capabilities" {
-          // File download is deliberately not advertised: output cannot choose
-          // a path on the user's filesystem. Inline and multipart are accepted.
-          replies.append(Data("\u{1b}]1337;Capabilities=T24LrBFSyHSx\u{1b}\\".utf8))
+          // F is the File capability. Saving received bytes remains an explicit
+          // host action; receipt never chooses or writes a filesystem path.
+          replies.append(Data("\u{1b}]1337;Capabilities=T3LrBFSyHSx\u{1b}\\".utf8))
         }
       }
       return
@@ -2344,6 +2354,9 @@ private final class TerminalEmulator {
     parser = .ground
   }
   var hasPendingWork: Bool { repeatRemaining > 0 || graphics.transportPending }
+  fileprivate var pendingDownloads: [TerminalPendingDownload] { downloads.pending }
+  fileprivate func resolveDownload(_ id: UInt64, take: Bool) -> TerminalDownload? { downloads.resolve(id, take: take) }
+  fileprivate func takeDownloads() -> [TerminalDownload] { downloads.takeAll() }
   fileprivate func enableAsynchronousGraphics() { graphics.asynchronousTransport = true }
   fileprivate func whenGraphicsReady(_ callback: @escaping () -> Void) -> Bool {
     guard graphics.transportPending else { return false }

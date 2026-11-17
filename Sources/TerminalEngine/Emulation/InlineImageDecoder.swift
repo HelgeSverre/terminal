@@ -65,9 +65,10 @@ final class InlineImageDecoder {
 
   /// The request and the decoded picture, or nil when the sequence is not
   /// an inline image this terminal can show.
-  func finish() -> (request: Request, width: Int, height: Int, rgba: Data, frames: [Frame])? {
+  func finish(download: ((String, Data) -> Void)? = nil) -> (request: Request, width: Int, height: Int, rgba: Data, frames: [Frame])? {
     guard !failed, !inHeader, let fields = String(bytes: header, encoding: .utf8) else { return nil }
     var request = Request()
+    var filename = "Unnamed file"
     for field in fields.split(separator: ";") {
       guard let equals = field.firstIndex(of: "=") else { continue }
       let value = field[field.index(after: equals)...]
@@ -76,12 +77,14 @@ final class InlineImageDecoder {
       case "height": if let size = Self.size(value) { request.height = size }
       case "preserveAspectRatio": request.preservesAspectRatio = value != "0"
       case "inline": request.inline = value == "1"
+      case "name":
+        if let data = Data(base64Encoded: String(value)), let name = String(data: data, encoding: .utf8) { filename = name }
       default: break
       }
     }
-    // Without `inline=1` the file is a download, which is not offered.
-    guard request.inline, let file = Data(base64Encoded: encoded, options: .ignoreUnknownCharacters),
-      !file.isEmpty, file.count <= Self.maximumFileBytes,
+    guard let file = Data(base64Encoded: encoded), file.count <= Self.maximumFileBytes else { return nil }
+    if !request.inline { download?(filename, file); return nil }
+    guard !file.isEmpty,
       let picture = Self.decode(file),
       let source = CGImageSourceCreateWithData(file as CFData, [kCGImageSourceShouldCache: false] as CFDictionary)
     else { return nil }

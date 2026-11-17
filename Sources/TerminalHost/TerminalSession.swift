@@ -373,6 +373,7 @@ public final class TerminalSession: @unchecked Sendable {
     case clipboardDecision(UInt64, Bool, @MainActor (Bool) -> Void)
     case recoveryCheckpoint(Bool, @MainActor (String?, Int, Double?) -> Void)
     case recoveryRead(Int, @MainActor (String?) -> Void)
+    case downloadDecision(UInt64, Bool, @MainActor (Data?) -> Void)
     case eof, idle
   }
   private let launchSpec: LaunchSpec?
@@ -403,6 +404,7 @@ public final class TerminalSession: @unchecked Sendable {
   private var parserEnded = false
   private var ownerScheduled = false
   private var graphicsTransportWaiting = false
+  private var downloadRequests: [UInt64: TerminalDownloadRequest] = [:]
   private var core: OpaquePointer?
   private var master: Int32 = -1
   private var pid: Int32 = -1
@@ -494,6 +496,9 @@ public final class TerminalSession: @unchecked Sendable {
   /// Called once, when the child has exited and its last output is parsed.
   public var onEnd: (@MainActor (SessionEnd) -> Void)?
   package var onClipboardWrite: (@MainActor (ClipboardWriteRequest) -> Void)?
+  /// A bounded completed-file offer. No dialog or file write is initiated by
+  /// the session. With no handler, offers are dismissed.
+  public var onDownload: (@MainActor (TerminalDownloadRequest) -> Void)?
   private var onClipboardClosed: (@MainActor (UUID) -> Void)?
   /// With `startsAtFirstGrid` the child is started when the pane's first
   /// size arrives, on a terminal of that size. A pane is created before it
@@ -1071,6 +1076,7 @@ public final class TerminalSession: @unchecked Sendable {
       }
       drainReplies()
       drainClipboardWrites()
+      drainDownloads()
       if helge_terminal_take_bells(core) > 0 {
         DispatchQueue.main.async { [weak self] in self?.onBell?() }
       }
@@ -1139,6 +1145,12 @@ public final class TerminalSession: @unchecked Sendable {
     case .clipboardDecision(let requestID, let allowed, let completion):
       let accepted = acceptingClipboardRequests && helge_terminal_complete_clipboard_request(core, requestID)
       DispatchQueue.main.async { completion(accepted && allowed) }
+    case .downloadDecision(let requestID, let take, let completion):
+      let file = core.flatMap { TerminalDownloadBridge.resolve(core: $0, id: requestID, take: take) }
+      downloadRequests.removeValue(forKey: requestID)
+      DispatchQueue.main.async { [weak self] in
+        completion(self?.downloadsAvailable == true ? file?.data : nil)
+      }
     case .raw(let bytes, let cost):
       guard writeBytes + bytes.count <= 3 * 1024 * 1024 else { return }
       writeID += 1
@@ -1382,6 +1394,33 @@ public final class TerminalSession: @unchecked Sendable {
     }
   }
   private func drainClipboardWrites() { helge_terminal_take_clipboard_requests(core, Unmanaged.passUnretained(self).toOpaque(), Self.collectClipboard) }
+  private var downloadsAvailable: Bool {
+    admission.lock(); defer { admission.unlock() }; return !interactionClosed
+  }
+  private func drainDownloads() {
+    guard let core else { return }
+    let pending = TerminalDownloadBridge.pending(core: core)
+    let retained = Set(pending.map(\.id))
+    for id in Array(downloadRequests.keys) where !retained.contains(id) {
+      downloadRequests.removeValue(forKey: id)?.invalidate()
+    }
+    for file in pending where downloadRequests[file.id] == nil {
+      let request = TerminalDownloadRequest(suggestedFilename: file.suggestedFilename, byteCount: file.byteCount,
+        live: { [weak self] in self?.downloadsAvailable == true },
+        resolve: { [weak self] take, completion in
+          guard let self else { DispatchQueue.main.async { completion(nil) }; return }
+          self.readBroker.submit { [weak self] in
+            guard let self, !self.closed else { DispatchQueue.main.async { completion(nil) }; return }
+            self.enqueue(.downloadDecision(file.id, take, completion))
+          }
+        })
+      downloadRequests[file.id] = request
+      DispatchQueue.main.async { [weak self, request] in
+        guard let self, request.isAvailable, let handler = self.onDownload else { request.dismiss(); return }
+        handler(request)
+      }
+    }
+  }
   package func setClipboardClosedHandler(_ handler: @escaping @MainActor (UUID) -> Void) {
     readBroker.submit { [weak self] in
       guard let self else { return }
@@ -1921,6 +1960,8 @@ public final class TerminalSession: @unchecked Sendable {
       guard !closed else { return }
       notifyClipboardClosed()
       closed = true
+      for request in downloadRequests.values { request.invalidate() }
+      downloadRequests.removeAll()
       historySearch.cancel()
       // A completed copy can still be awaiting its main-actor callback. Close
       // changes every not-yet-delivered result to cancellation before teardown.
@@ -1953,6 +1994,7 @@ public final class TerminalSession: @unchecked Sendable {
         case .clipboardDecision(_, _, let completion): DispatchQueue.main.async { completion(false) }
         case .recoveryCheckpoint(_, let completion): DispatchQueue.main.async { completion(nil, 0, nil) }
         case .recoveryRead(_, let completion): DispatchQueue.main.async { completion(nil) }
+        case .downloadDecision(_, _, let completion): DispatchQueue.main.async { completion(nil) }
         case .selection(_, let completion, let cost, _, let retainsCopyResult):
           finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
                           result: .failure(.cancelled))

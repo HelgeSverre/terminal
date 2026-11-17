@@ -123,6 +123,12 @@ public final class HeadlessTerminal {
   }
   public func feed(_ text: String) { feed(Data(text.utf8)) }
 
+  /// Takes completed OSC 1337 file downloads as data, in wire order. This
+  /// terminal never writes them to disk. Up to four files and 32 MiB total
+  /// wait here; further files are discarded until the caller takes these.
+  /// Reset discards pending files; EOF discards only an incomplete transfer.
+  public func takeDownloads() -> [TerminalDownload] { TerminalDownloadBridge.takeAll(core: core) }
+
   /// Changes the grid and reflows the text. Returns false for a size the
   /// terminal does not accept; the old size then stands.
   /// Sets the colors the terminal starts from and reports to programs
