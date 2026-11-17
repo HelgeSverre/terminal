@@ -13,7 +13,8 @@ import TerminalUI
     return windows.compactMap { ($0.windowController as? TerminalWindow).map { TerminalScriptTab($0, parent: self) } }
   }
   override var objectSpecifier: NSScriptObjectSpecifier? {
-    NSUniqueIDSpecifier(containerClassDescription: NSApp.classDescription as? NSScriptClassDescription,
+    guard let description = NSApp.classDescription as? NSScriptClassDescription else { return nil }
+    return NSUniqueIDSpecifier(containerClassDescription: description,
       containerSpecifier: nil, key: "terminalWindows", uniqueID: identifier)
   }
 }
@@ -26,7 +27,8 @@ import TerminalUI
   @objc var name: String { controller.window?.title ?? "Terminal" }
   @objc var terminalPanes: [TerminalScriptPane] { controller.panes.map { TerminalScriptPane($0, parent: self) } }
   override var objectSpecifier: NSScriptObjectSpecifier? {
-    NSUniqueIDSpecifier(containerClassDescription: parent.classDescription as? NSScriptClassDescription,
+    guard let description = parent.classDescription as? NSScriptClassDescription else { return nil }
+    return NSUniqueIDSpecifier(containerClassDescription: description,
       containerSpecifier: parent.objectSpecifier, key: "terminalTabs", uniqueID: identifier)
   }
 }
@@ -39,7 +41,8 @@ import TerminalUI
   @objc var workingDirectory: String { pane?.session.deliveredDirectory ?? "" }
   @objc var selectedText: String { pane?.accessibilitySelectedText() ?? "" }
   override var objectSpecifier: NSScriptObjectSpecifier? {
-    NSUniqueIDSpecifier(containerClassDescription: parent.classDescription as? NSScriptClassDescription,
+    guard let description = parent.classDescription as? NSScriptClassDescription else { return nil }
+    return NSUniqueIDSpecifier(containerClassDescription: description,
       containerSpecifier: parent.objectSpecifier, key: "terminalPanes", uniqueID: identifier)
   }
 }
