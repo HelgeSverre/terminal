@@ -73,7 +73,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   var paneTitles: [ObjectIdentifier: PaneTitle] = [:]
   var panePresentations: [ObjectIdentifier: TerminalPanePresentationView] = [:]
   var paneZoom: PaneZoomState?
-  private var visualBellEnabled = TerminalPreferences.load().desktop.visualBell
+  private var visualBellEnabled = TerminalPreferences.current.desktop.visualBell
   struct PaneTransfer {
     let pane: TerminalCanvasView
     let presentation: TerminalPanePresentationView
@@ -124,7 +124,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     content.frame = container.bounds
     content.autoresizingMask = [.width, .height]
     reconcileLayout()
-    if let layout { applyRatios(layout.root, to: content) }
+    if let layout { applyRatios(layout.root, to: content); reconcileLayout() }
     let pane = layout.flatMap { saved in panes.first { $0.automationID == saved.activePane.string } } ?? panes[0]
     selectActivePane(pane)
     window.makeFirstResponder(pane)
@@ -176,8 +176,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     let delegate = NSApp.delegate as? AppDelegate
     let id = state?.id ?? initialPaneID ?? PaneID()
     initialPaneID = nil
-    let baseLaunch = state.map { LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString,
-      preferences: TerminalPreferences.load()) }
+    let baseLaunch = state.map { LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString) }
       ?? initialLaunch ?? diagnosticSplitLaunch ?? launch ?? .shell
     let launch = baseLaunch.withResumeFile(delegate?.recovery?.resumeFile(id))
     let session: TerminalSession
@@ -194,7 +193,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
       frame: .zero,
       session: session,
       rendering: delegate?.rendering, clipboard: delegate?.clipboardAccess,
-      configuration: TerminalPreferences.load().view, automationID: id.string)
+      configuration: TerminalPreferences.current.view, automationID: id.string)
     if delegate?.recovery != nil {
       session.onRecoveryActivity = { [weak delegate, weak pane] in
         if let pane { delegate?.recoveryOutput(pane) }
@@ -312,7 +311,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   /// Header visibility is a window-layout concern: it changes leaf minima, so
   /// update it before every reconciliation rather than drawing over a canvas.
   @discardableResult
-  func updatePanePresentation(_ preferences: TerminalPreferences = .load()) -> Bool {
+  func updatePanePresentation(_ preferences: TerminalPreferences = .current) -> Bool {
     let previousMinimum = root.map(terminalMinimumSize)
     let showHeader = preferences.showPaneTitles && panes.count > 1
     for pane in panes {
@@ -538,7 +537,6 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     let extent = (split.isVertical ? split.bounds.width : split.bounds.height) - split.dividerThickness
     split.setPosition(max(0, extent) * PaneLayout.boundedRatio(ratio), ofDividerAt: 0)
     applyRatios(first, to: split.arrangedSubviews[0]); applyRatios(second, to: split.arrangedSubviews[1])
-    reconcileLayout()
   }
 
   @objc func togglePaneZoom(_ sender: Any?) {
@@ -567,7 +565,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     zoom.presentation.autoresizingMask = [.width, .height]
     root?.isHidden = false
     reconcileLayout()
-    if let root { applyRatios(zoom.tree, to: root) }
+    if let root { applyRatios(zoom.tree, to: root); reconcileLayout() }
     window?.makeFirstResponder(zoom.pane)
     panes.forEach { $0.refresh() }
   }
@@ -609,6 +607,8 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
       return panes.count > 1 && focusedPane != nil
     }
     if item.action == #selector(movePaneToWindow(_:)) { return panes.count > 1 && focusedPane != nil }
+    if [#selector(focusLeft(_:)), #selector(focusRight(_:)), #selector(focusUp(_:)), #selector(focusDown(_:))]
+      .contains(item.action) { return panes.count > 1 }
     return true
   }
 }
@@ -1029,7 +1029,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     guard !filenames.isEmpty else { return true }
     do {
       let launches = try filenames.map {
-        try OpenTerminalFile.launch(path: $0, launcher: LaunchSpec.shell.launcher)
+        try OpenTerminalFile.launch(path: $0, launcher: LaunchSpec.bundledLauncher)
       }
       if finishedLaunching { launches.forEach { openTerminalWindow(launch: $0) } }
       else { pendingFileLaunches.append(contentsOf: launches) }
@@ -1190,7 +1190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     window.addItem(.separator())
     tabNavigation.addMenuItems(to: window)
     DesktopMenus.append(shell: shell, view: view, delegate: self)
-    DesktopMenus.applyShortcuts(to: bar, configuration: TerminalPreferences.load().desktop)
+    DesktopMenus.applyShortcuts(to: bar, configuration: TerminalPreferences.current.desktop)
   }
 }
 #if TERMINAL_DIAGNOSTICS
@@ -1216,8 +1216,7 @@ let restoredFirstPane = recoveryState?.restored?.windows.first.flatMap { window 
   window.panes.first { $0.id == window.root.panes.first }
 }
 let firstPaneID = restoredFirstPane?.id ?? (recoveryState != nil ? PaneID() : nil)
-if let baseLaunch = restoredFirstPane.map({ LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString,
-  preferences: TerminalPreferences.load()) })
+if let baseLaunch = restoredFirstPane.map({ LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString) })
   ?? AppDelegate.firstLaunch() {
   let launch = baseLaunch.withResumeFile(firstPaneID.flatMap { recoveryState?.resumeFile($0) })
   let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096)

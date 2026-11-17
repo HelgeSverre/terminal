@@ -22,7 +22,10 @@ do not animate and BEL does not play a sound.
 General → **Profiles, Shortcuts & Theme…** opens a native JSON editor. Its Add
 buttons insert working examples. Use Configuration updates the Settings draft;
 Apply saves it. Cancel discards the draft. Import accepts the same JSON format,
-with a 128 KiB limit. Unknown or invalid saved data falls back to defaults.
+with a 128 KiB limit. Every key is optional; a profile needs `id`, `name` and
+`executable`. Unknown keys are ignored. Saved data that no longer validates
+falls back to defaults for the session and stays stored until a new
+configuration is applied.
 
 An example with a non-login Bash profile:
 
@@ -51,7 +54,9 @@ the profile for ordinary new windows, tabs and split panes; omit it to use the
 login shell. Profiles use an absolute executable and an argument array. The app
 does not interpret shell syntax in arguments. To run a shell command deliberately,
 choose a shell executable and its `-c` arguments. Empty `directory` uses the
-normal starting-directory policy; splits inherit the current pane's directory.
+normal starting-directory policy. A split inherits the directory the current
+pane has reported through shell integration, and otherwise starts where the
+profile does.
 The executable and directory must exist when launched. A missing default profile
 executable or directory falls back to the login shell.
 
@@ -75,7 +80,8 @@ can be null (follow the original setting), false or true.
 The Shell menu provides directional focus, Zoom Pane and Move Pane to New
 Window. Default shortcuts are Control-Command-H/J/K/L for left/down/up/right,
 Control-Command-Z for zoom, and Control-Command-N to move the pane. Commands
-act on the pane whose canvas or find bar has focus.
+act on the pane whose canvas or find bar has focus. Splitting, closing, moving
+or focusing another pane ends a zoom first.
 
 See [automation](automation.md) for script targeting and bounded reads.
 

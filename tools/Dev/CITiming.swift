@@ -45,9 +45,12 @@ enum CITiming {
           Set(jobs.map(\.run_id)).count == 1, Set(jobs.map(\.head_sha)).count == 1 else {
       throw Failure("expected one complete CI jobs response with headless and aggregate checks")
     }
+    // Job times have whole seconds; step times carry milliseconds.
     let formatter = ISO8601DateFormatter()
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions.insert(.withFractionalSeconds)
     func date(_ value: String?) throws -> Date {
-      guard let value, let result = formatter.date(from: value) else { throw Failure("CI timing requires completed job and step timestamps") }
+      guard let value, let result = formatter.date(from: value) ?? fractional.date(from: value) else { throw Failure("CI timing requires completed job and step timestamps") }
       return result
     }
     func duration(_ start: String?, _ end: String?) throws -> Double {

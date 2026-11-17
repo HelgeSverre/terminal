@@ -46,6 +46,8 @@ extension TerminalWindow {
   @objc func focusUp(_ sender: Any?) { focusPane(direction: .up) }
   @objc func focusDown(_ sender: Any?) { focusPane(direction: .down) }
   private func focusPane(direction: PaneDirection) {
+    // With one pane there is no neighbour, and nothing to leave a zoom for.
+    guard panes.count > 1 else { return }
     endPaneZoom()
     guard let source = focusedPane, let sourceView = panePresentation(for: source), let window else { return }
     let candidates = panes.filter { $0 !== source }

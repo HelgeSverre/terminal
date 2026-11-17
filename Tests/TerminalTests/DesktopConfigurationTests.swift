@@ -36,9 +36,45 @@ import TerminalUI
     #expect(loaded.view.cursorStyle == 6)
     #expect(loaded.view.leftOptionSendsEscape == true && loaded.view.rightOptionSendsEscape == false)
     #expect(loaded.session.colors == preferences.desktop.theme?.colors)
-    defaults.set(Data("{}".utf8), forKey: "desktopConfiguration")
-    #expect(TerminalPreferences.load(from: defaults).desktop == .standard)
     #expect(try DesktopConfiguration.decode(preferences.desktop.encoded()) == preferences.desktop)
+  }
+
+  @Test static func partialConfigurationsDecodeWithDefaults() throws {
+    #expect(try DesktopConfiguration.decode(Data("{}".utf8)) == .standard)
+    let bell = try DesktopConfiguration.decode(Data(#"{"visualBell":false}"#.utf8))
+    #expect(!bell.visualBell && bell.profiles.isEmpty && bell.shortcuts.isEmpty)
+    let profile = try DesktopConfiguration.decode(Data(
+      #"{"profiles":[{"id":"sh","name":"Shell","executable":"/bin/sh"}],"defaultProfile":"sh"}"#.utf8))
+    #expect(profile.profiles == [.init(id: "sh", name: "Shell", executable: "/bin/sh", arguments: [], directory: "", environment: [:])])
+    #expect(profile.visualBell)
+    #expect(throws: (any Error).self) { try DesktopConfiguration.decode(Data(#"{"profiles":[{"id":"sh"}]}"#.utf8)) }
+  }
+
+  @Test static func unreadableStoredConfigurationSurvivesUnrelatedSaves() throws {
+    let name = "desktop-unreadable-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: name))
+    defer { defaults.removePersistentDomain(forName: name) }
+    let unreadable = Data(#"{"cursorStyle":9}"#.utf8)
+    defaults.set(unreadable, forKey: "desktopConfiguration")
+    var preferences = TerminalPreferences.load(from: defaults)
+    #expect(preferences.desktop == .standard)
+    preferences.save(to: defaults)
+    #expect(defaults.data(forKey: "desktopConfiguration") == unreadable)
+    preferences.desktop.visualBell = false
+    preferences.save(to: defaults)
+    #expect(TerminalPreferences.load(from: defaults).desktop.visualBell == false)
+  }
+
+  @Test static func splitKeepsProfileDirectoryUntilThePaneReportsOne() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("split-\(UUID().uuidString)").resolvingSymlinksInPath()
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let launch = LaunchSpec(executable: "/bin/sh", arguments: ["/bin/sh"], cwd: "/usr", environment: ["A": "b"])
+    #expect(launch.inheritingDirectory(nil) == launch)
+    #expect(launch.inheritingDirectory("file://remote.invalid/tmp") == launch)
+    #expect(launch.inheritingDirectory(root.appendingPathComponent("missing").absoluteString) == launch)
+    let inherited = launch.inheritingDirectory(root.absoluteString)
+    #expect(inherited.cwd == root.path && inherited.environment == ["A": "b"] && inherited.executable == "/bin/sh")
   }
 
   @Test static func profileLaunchIsLiteralAndChecksFilesystem() throws {

@@ -142,15 +142,19 @@ struct TerminalPreferences {
     return Self.directory(startingDirectory) ?? Self.home
   }
   func launchDirectory(inheriting location: String?) -> String {
+    Self.reportedDirectory(location) ?? launchDirectory
+  }
+  /// The existing local directory an OSC 7 report names, or nil.
+  static func reportedDirectory(_ location: String?) -> String? {
     guard let location, location.utf8.count <= 8192, let url = URL(string: location),
       url.isFileURL, url.user == nil, url.password == nil, url.port == nil,
       url.query == nil, url.fragment == nil,
       url.path.hasPrefix("/"), !url.path.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 })
-    else { return launchDirectory }
+    else { return nil }
     let host = (url.host ?? "").lowercased()
     guard host.isEmpty || host == "localhost" || host == ProcessInfo.processInfo.hostName.lowercased()
-    else { return launchDirectory }
-    return Self.directory(url.path) ?? launchDirectory
+    else { return nil }
+    return directory(url.path)
   }
   var startingDirectoryText: String {
     let path = (startingDirectory as NSString).expandingTildeInPath
@@ -208,6 +212,32 @@ struct TerminalPreferences {
       let value = Int(args[index + 1]), range.contains(value)
     else { return nil }
     return value
+  }
+  /// The saved preferences, read once and again only after defaults change.
+  /// Focus changes, splits and menus ask for these far more often than they change.
+  static var current: Self {
+    _ = cacheInvalidation
+    cacheLock.lock()
+    let cached = cache
+    let generation = cacheGeneration
+    cacheLock.unlock()
+    if let cached { return cached }
+    let loaded = load()
+    cacheLock.lock()
+    if generation == cacheGeneration { cache = loaded }
+    cacheLock.unlock()
+    return loaded
+  }
+  private static let cacheLock = NSLock()
+  private static var cache: Self?
+  private static var cacheGeneration: UInt64 = 0
+  private static let cacheInvalidation = NotificationCenter.default.addObserver(
+    forName: UserDefaults.didChangeNotification, object: nil, queue: nil
+  ) { _ in
+    cacheLock.lock()
+    cache = nil
+    cacheGeneration &+= 1
+    cacheLock.unlock()
   }
   static func load() -> Self {
     let defaults = UserDefaults.standard
@@ -268,7 +298,11 @@ struct TerminalPreferences {
     d.set(defaultPaneColor.hex, forKey: "defaultPaneColor")
     if let fontFamily { d.set(fontFamily, forKey: "fontFamily") } else { d.removeObject(forKey: "fontFamily") }
     d.set(ligatures, forKey: "ligatures")
-    if let data = try? desktop.encoded() { d.set(data, forKey: "desktopConfiguration") }
+    // Stored data this build cannot read stays until a configuration replaces it.
+    let unreadable = d.data(forKey: "desktopConfiguration").map { (try? DesktopConfiguration.decode($0)) == nil } ?? false
+    if !(unreadable && desktop == .standard), let data = try? desktop.encoded() {
+      d.set(data, forKey: "desktopConfiguration")
+    }
     // Written only when chosen, so the default can still change.
     if !graphemeClustering || d.object(forKey: "graphemeClustering") != nil {
       d.set(graphemeClustering, forKey: "graphemeClustering")
@@ -277,27 +311,30 @@ struct TerminalPreferences {
 }
 
 extension LaunchSpec {
+  /// The launcher helper this bundle carries.
+  static let bundledLauncher = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher").path
+
   /// Recovery always creates a fresh login shell, independent of profiles.
-  static func recoveryShell(inheriting location: String?, preferences: TerminalPreferences = .load()) -> Self {
-    let launcher = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher").path
-    return .loginShell(cwd: preferences.launchDirectory(inheriting: location), launcher: launcher)
+  static func recoveryShell(inheriting location: String?, preferences: TerminalPreferences = .current) -> Self {
+    .loginShell(cwd: preferences.launchDirectory(inheriting: location), launcher: bundledLauncher)
   }
 
   /// The login shell in the starting directory the preferences name, started
   /// through the launcher this bundle carries.
   static var shell: LaunchSpec {
-    let prefs = TerminalPreferences.load()
-    let launcher = Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/TerminalLauncher").path
+    let prefs = TerminalPreferences.current
+    let launcher = bundledLauncher
     if let profile = prefs.desktop.profiles.first(where: { $0.id == prefs.desktop.defaultProfile }),
       let launch = try? profile.launch(fallbackDirectory: prefs.launchDirectory, launcher: launcher) {
       return launch
     }
     return .loginShell(cwd: prefs.launchDirectory, launcher: launcher)
   }
+  /// A pane that has reported no usable directory leaves this launch's own.
   func inheritingDirectory(_ location: String?) -> Self {
-    Self(executable: executable, arguments: arguments,
-         cwd: TerminalPreferences.load().launchDirectory(inheriting: location), launcher: launcher,
-         environment: environment)
+    guard let directory = TerminalPreferences.reportedDirectory(location) else { return self }
+    return Self(executable: executable, arguments: arguments, cwd: directory, launcher: launcher,
+                environment: environment)
   }
 }
 

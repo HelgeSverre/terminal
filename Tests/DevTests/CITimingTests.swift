@@ -9,8 +9,8 @@ import Testing
       ["name": name, "run_id": 44, "head_sha": "fixture-commit", "conclusion": index == 3 ? aggregate : "success",
        "started_at": index == 3 ? "2026-11-17T00:05:40Z" : "2026-11-17T00:00:00Z",
        "completed_at": index == 3 ? finished : "2026-11-17T00:05:40Z",
-       "steps": index == 0 ? [["name": "Run Swift native tests", "started_at": "2026-11-17T00:00:30Z",
-                                "completed_at": "2026-11-17T00:05:15Z"]] : []]
+       "steps": index == 0 ? [["name": "Run Swift native tests", "started_at": "2026-11-17T00:00:30.000Z",
+                                "completed_at": "2026-11-17T00:05:15.000Z"]] : []]
     }
     return try JSONSerialization.data(withJSONObject: ["jobs": jobs])
   }

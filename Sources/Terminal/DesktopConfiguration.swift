@@ -59,6 +59,22 @@ struct DesktopConfiguration: Codable, Equatable {
   }
 }
 
+extension DesktopConfiguration {
+  /// Every key is optional, so a file names only what it changes.
+  init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    self.init()
+    profiles = try values.decodeIfPresent([TerminalLaunchProfile].self, forKey: .profiles) ?? []
+    defaultProfile = try values.decodeIfPresent(String.self, forKey: .defaultProfile)
+    shortcuts = try values.decodeIfPresent([TerminalShortcut].self, forKey: .shortcuts) ?? []
+    theme = try values.decodeIfPresent(TerminalUserTheme.self, forKey: .theme)
+    cursorStyle = try values.decodeIfPresent(UInt8.self, forKey: .cursorStyle)
+    visualBell = try values.decodeIfPresent(Bool.self, forKey: .visualBell) ?? true
+    leftOptionSendsEscape = try values.decodeIfPresent(Bool.self, forKey: .leftOptionSendsEscape)
+    rightOptionSendsEscape = try values.decodeIfPresent(Bool.self, forKey: .rightOptionSendsEscape)
+  }
+}
+
 struct TerminalLaunchProfile: Codable, Equatable {
   var id: String
   var name: String
@@ -94,6 +110,19 @@ struct TerminalLaunchProfile: Codable, Equatable {
     }
     return LaunchSpec(executable: executable, arguments: [executable] + arguments,
       cwd: path, launcher: launcher, environment: environment)
+  }
+}
+
+extension TerminalLaunchProfile {
+  /// A profile needs an identifier, a name and an executable; the rest defaults.
+  init(from decoder: Decoder) throws {
+    let values = try decoder.container(keyedBy: CodingKeys.self)
+    self.init(
+      id: try values.decode(String.self, forKey: .id), name: try values.decode(String.self, forKey: .name),
+      executable: try values.decode(String.self, forKey: .executable),
+      arguments: try values.decodeIfPresent([String].self, forKey: .arguments) ?? [],
+      directory: try values.decodeIfPresent(String.self, forKey: .directory) ?? "",
+      environment: try values.decodeIfPresent([String: String].self, forKey: .environment) ?? [:])
   }
 }
 

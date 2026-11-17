@@ -14,6 +14,10 @@ import Darwin
       panes: [PaneState(id: id, directory: "/", title: "test", color: nil)],
       tabGroup: window, tabIndex: 0, selectedTab: true, zoomed: false, fullScreen: false)], keyWindow: window)
   }
+  /// The declared result makes `#require` unwrap; assigned to an optional it checked nothing.
+  private func open(_ directory: URL) throws -> SessionStateStore {
+    try #require(SessionStateStore.open(directory: directory))
+  }
   private func directory() throws -> URL {
     let url = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("terminal-recovery-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -65,7 +69,7 @@ import Darwin
   @Test func lockGenerationsAndCleanQuit() async throws {
     let dir = try directory()
     defer { try? FileManager.default.removeItem(at: dir) }
-    var store = try #require(SessionStateStore.open(directory: dir)) as SessionStateStore?
+    var store = try open(dir) as SessionStateStore?
     #expect(store?.restored == nil)
     #expect(SessionStateStore.open(directory: dir) == nil)
     var complete = false
@@ -80,7 +84,7 @@ import Darwin
     let previous = try Data(contentsOf: dir.appendingPathComponent("layout.previous.json"))
     #expect(try JSONDecoder().decode(SessionLayout.self, from: previous) == first)
     store = nil // Simulates a dead process releasing only the lock.
-    store = try #require(SessionStateStore.open(directory: dir))
+    store = try open(dir)
     #expect(store?.restored == second)
     await clean(store)
     store = nil
@@ -98,7 +102,7 @@ import Darwin
       try writeRunning(dir)
       try bytes.write(to: dir.appendingPathComponent("layout.previous.json"))
       try bytes.prefix(count).write(to: dir.appendingPathComponent("layout.json"))
-      let store = try #require(SessionStateStore.open(directory: dir))
+      let store = try open(dir)
       #expect(store.restored == good, "truncated at byte \(count)")
       await clean(store)
     }
@@ -111,10 +115,10 @@ import Darwin
     try writeRunning(dir)
     try bytes.write(to: dir.appendingPathComponent("layout.previous.json"))
     try Data("stale".utf8).write(to: dir.appendingPathComponent("layout.json.tmp"))
-    var store = try #require(SessionStateStore.open(directory: dir)) as SessionStateStore?
+    var store = try open(dir) as SessionStateStore?
     #expect(store?.restored == good)
     store = nil // Dies before the restore is marked complete.
-    store = try #require(SessionStateStore.open(directory: dir))
+    store = try open(dir)
     #expect(store?.restored == nil)
     #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("quarantine/layout.previous.json").path))
     await clean(store); store = nil
@@ -122,7 +126,7 @@ import Darwin
     var future = good; future.version = 999
     try JSONEncoder().encode(future).write(to: dir.appendingPathComponent("layout.json"))
     try bytes.write(to: dir.appendingPathComponent("layout.previous.json"))
-    store = try #require(SessionStateStore.open(directory: dir))
+    store = try open(dir)
     #expect(store?.restored == nil)
     let preserved = try Data(contentsOf: dir.appendingPathComponent("quarantine/layout.json"))
     #expect(try JSONDecoder().decode(SessionLayout.self, from: preserved).version == 999)
@@ -149,7 +153,7 @@ import Darwin
     try writeRunning(dir)
     try JSONEncoder().encode(good).write(to: dir.appendingPathComponent("layout.previous.json"))
     #expect(mkfifo(dir.appendingPathComponent("layout.json").path, 0o600) == 0)
-    let store = try #require(SessionStateStore.open(directory: dir))
+    let store = try open(dir)
     #expect(store.restored == good)
     let pane = good.windows[0].panes[0].id
     #expect(mkfifo(dir.appendingPathComponent("panes/\(pane.string).scrollback").path, 0o600) == 0)
@@ -161,20 +165,20 @@ import Darwin
     defer { try? FileManager.default.removeItem(at: dir) }
     try JSONEncoder().encode(good).write(to: dir.appendingPathComponent("layout.json"))
     try Data("N{partial-metadata".utf8).write(to: dir.appendingPathComponent("running"))
-    var store = try #require(SessionStateStore.open(directory: dir)) as SessionStateStore?
+    var store = try open(dir) as SessionStateStore?
     #expect(store?.restored == good)
     store = nil
     // The store set R before any restored view or shell could be created.
     let marker = try Data(contentsOf: dir.appendingPathComponent("running"))
     #expect(marker.first == 82)
-    store = try #require(SessionStateStore.open(directory: dir))
+    store = try open(dir)
     #expect(store?.restored == nil)
     await clean(store)
   }
   @Test func checkpointChecksumAndPrivatePermissions() async throws {
     let dir = try directory(), layout = fixture()
     defer { try? FileManager.default.removeItem(at: dir) }
-    let store = try #require(SessionStateStore.open(directory: dir)), pane = layout.windows[0].panes[0].id
+    let store = try open(dir), pane = layout.windows[0].panes[0].id
     store.saveScrollback("saved output\n", rows: 1, pane: pane)
     var complete = false
     store.save(layout) { complete = true }

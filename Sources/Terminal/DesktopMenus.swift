@@ -15,7 +15,7 @@ enum DesktopMenus {
     }
     let profiles = NSMenuItem(title: "New Window with Profile", action: nil, keyEquivalent: "")
     profiles.submenu = NSMenu()
-    for profile in TerminalPreferences.load().desktop.profiles {
+    for profile in TerminalPreferences.current.desktop.profiles {
       let item = NSMenuItem(title: profile.name, action: #selector(AppDelegate.launchProfile(_:)), keyEquivalent: "")
       item.target = delegate
       item.representedObject = profile.id
@@ -40,11 +40,11 @@ enum DesktopMenus {
 
 extension AppDelegate {
   @objc func launchProfile(_ sender: NSMenuItem) {
+    let prefs = TerminalPreferences.current
     guard let id = sender.representedObject as? String,
-      let profile = TerminalPreferences.load().desktop.profiles.first(where: { $0.id == id }) else { return }
+      let profile = prefs.desktop.profiles.first(where: { $0.id == id }) else { return }
     do {
-      let prefs = TerminalPreferences.load()
-      let launch = try profile.launch(fallbackDirectory: prefs.launchDirectory, launcher: LaunchSpec.shell.launcher)
+      let launch = try profile.launch(fallbackDirectory: prefs.launchDirectory, launcher: LaunchSpec.bundledLauncher)
       let controller = TerminalWindow(launch: launch)
       windows.append(controller)
       controller.showWindow(nil)
