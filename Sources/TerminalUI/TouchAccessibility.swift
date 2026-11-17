@@ -11,7 +11,7 @@ extension TerminalCanvasView {
   /// The presented viewport only, capped by row, element and UTF-16 budgets.
   /// Older history is fetched by a session scroll, never an AX-thread core read.
   func updateAccessibility() {
-    guard let snapshot else { accessibilityElements = []; return }
+    guard let snapshot else { accessibilityElements = [emptyTerminalElement()]; return }
     var elements: [UIAccessibilityElement] = [], remaining = 65_536
     let rowLimit = min(256, snapshot.rows.count)
     for row in 0..<rowLimit {
@@ -68,7 +68,24 @@ extension TerminalCanvasView {
       notice.accessibilityFrameInContainerSpace = bounds
       elements.append(notice)
     }
-    accessibilityElements = elements
+    // A cleared or initially blank screen still needs an entry point for
+    // typing, Find and history navigation when the canvas is a container.
+    accessibilityElements = elements.isEmpty ? [emptyTerminalElement()] : elements
+  }
+  private func emptyTerminalElement() -> UIAccessibilityElement {
+    let element = TouchAccessibleElement(accessibilityContainer: self)
+    element.accessibilityLabel = "Terminal"
+    element.accessibilityValue = "No visible output"
+    element.accessibilityTraits = .button
+    element.accessibilityHint = "Double tap to type. Use actions to find or navigate output."
+    element.accessibilityFrameInContainerSpace = bounds
+    element.activate = { [weak self] in self?.becomeFirstResponder() ?? false }
+    element.accessibilityCustomActions = [
+      UIAccessibilityCustomAction(name: "Older output") { [weak self] _ in self?.accessibilityScroll(.up) ?? false },
+      UIAccessibilityCustomAction(name: "Newer output") { [weak self] _ in self?.accessibilityScroll(.down) ?? false },
+      UIAccessibilityCustomAction(name: "Find") { [weak self] _ in self?.showFind(); return self != nil },
+    ]
+    return element
   }
   public override func accessibilityScroll(_ direction: UIAccessibilityScrollDirection) -> Bool {
     guard let snapshot, direction == .up || direction == .down else { return false }

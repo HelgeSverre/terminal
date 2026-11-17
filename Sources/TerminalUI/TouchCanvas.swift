@@ -48,8 +48,13 @@ public final class TerminalCanvasView: UIView, UITextInput {
     if let layer = layer as? CAMetalLayer, let rendering { surface = rendering.attach(layer) }
     session.onSnapshot = { [weak self] value in
       guard let self else { return }
-      if let previous = self.snapshot, previous.document_epoch != value.document_epoch {
-        self.cancelComposition()
+      if let previous = self.snapshot,
+        previous.selectionPresentation?.documentGeneration != value.selectionPresentation?.documentGeneration
+          || previous.alternate != value.alternate || previous.geometry_epoch != value.geometry_epoch
+      {
+        // Output revisions are expected during composition. Only replacing
+        // its document, active screen or geometry invalidates the preedit.
+        if !self.composition.text.isEmpty { self.cancelComposition() }
       }
       self.snapshot = value
       self.updateAccessibility()
@@ -65,6 +70,7 @@ public final class TerminalCanvasView: UIView, UITextInput {
     accessibilityLabel = "Terminal"
     NotificationCenter.default.addObserver(self, selector: #selector(suspendInput), name: UIApplication.willResignActiveNotification, object: nil)
     NotificationCenter.default.addObserver(self, selector: #selector(resumeDrawing), name: UIApplication.didBecomeActiveNotification, object: nil)
+    updateAccessibility()
   }
   public required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   deinit {
