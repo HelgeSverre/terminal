@@ -2,7 +2,7 @@
 
 Authorized by Helge after the [40-entry inventory](gap-inventory.md), with
 GPT-6.1 Sol implementors. Baseline `dfd25d8`. Implementation is integrated;
-final validation is in progress. See [current status](gap-implementation-status.md)
+local validation has passed. See [current status](gap-implementation-status.md)
 for verified behavior and remaining qualification.
 
 ## Decisions and constraints

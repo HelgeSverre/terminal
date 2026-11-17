@@ -34,11 +34,13 @@ The intentional exclusions in the inventory remain unchanged.
 
 ## Verification and remaining qualification
 
-At source `306a592`, the full local gate passed: 126 developer tests,
-507 application tests, 16 GPU tests and the tooling, terminfo, font and PTY
-checks. The PTY corpus includes Bash, fish, Neovim, tmux and fzf. The serial
-post-build pipeline took 120.79 seconds on this machine; this is not a cold
-build or a hosted CI percentile.
+At source `5d46b01`, the full local gate passed: 126 developer tests,
+511 application tests, 16 GPU tests and the tooling, terminfo, font and PTY
+checks. The PTY corpus includes Bash, fish, Neovim, tmux and fzf. The two-lane
+post-build pipeline took 73.25 seconds, versus 120.79 seconds for the earlier
+serial run at `306a592`. These are local runs under different machine loads,
+not a controlled benchmark, cold-build measurement or hosted CI percentile.
+All seven iOS tests passed on an iPhone 16 simulator running iOS 26.3.1.
 
 At `b945624`, conformance passed its regression gate with 447 passing cases,
 81 reported failures and 39 known xterm deviations. The known-good list now
@@ -56,9 +58,11 @@ image detection with the pinned patch, all terminal overrides unset and
 `image.force = false`. Neovim displayed the expected image. Private tmux/SSH
 qualification of this new detection path remains outstanding.
 
-Final validation is still in progress at `129ca48`: the latest startup-routing
-and UIKit selector fixes need the complete gate and simulator rerun. Gitleaks
-found no secrets across the 77 implementation commits through that revision.
+The frozen `5d46b01` app passed normal, editing and pane-lifecycle smoke checks,
+cold/warm command-file opening, and unattended crash recovery with accessible
+saved text and cleanup on normal quit. The startup-routing and UIKit selector
+fixes are now verified. Gitleaks found no secrets through `129ca48`; the final
+documentation commit is scanned again before push.
 See the [dated evidence](../reports/gap-implementation-2026-11-17/README.md)
 for commands, artifact identities and the distinction between tested revisions.
 
