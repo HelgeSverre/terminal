@@ -29,6 +29,10 @@ struct TerminalPalette {
   private var defaultForeground: RGB
   private var defaultBackground: RGB
   private var cursor: RGB
+  private var overriddenEntries = Set<Int>()
+  private var foregroundOverridden = false
+  private var backgroundOverridden = false
+  private var cursorOverridden = false
   private var special: [RGB?] = Array(repeating: nil, count: 5)
   private var specialEnabled = Array(repeating: false, count: 6)
   /// What a reset returns to: the host's scheme.
@@ -44,11 +48,11 @@ struct TerminalPalette {
   /// Makes `value` the colors to start from. A color the program has set
   /// for itself is kept; the others change now.
   mutating func setScheme(_ value: TerminalColorScheme) {
-    let old = Self.entries(for: scheme), new = Self.entries(for: value)
-    for slot in 0..<16 where entries[slot] == old[slot] { entries[slot] = new[slot] }
-    if defaultForeground == RGB(scheme.foreground) { defaultForeground = RGB(value.foreground) }
-    if defaultBackground == RGB(scheme.background) { defaultBackground = RGB(value.background) }
-    if cursor == RGB(scheme.cursor) { cursor = RGB(value.cursor) }
+    let new = Self.entries(for: value)
+    for slot in 0..<16 where !overriddenEntries.contains(slot) { entries[slot] = new[slot] }
+    if !foregroundOverridden { defaultForeground = RGB(value.foreground) }
+    if !backgroundOverridden { defaultBackground = RGB(value.background) }
+    if !cursorOverridden { cursor = RGB(value.cursor) }
     scheme = value
   }
 
@@ -87,6 +91,8 @@ struct TerminalPalette {
     defaultForeground = RGB(scheme.foreground)
     defaultBackground = RGB(scheme.background)
     cursor = RGB(scheme.cursor)
+    overriddenEntries.removeAll(keepingCapacity: true)
+    foregroundOverridden = false; backgroundOverridden = false; cursorOverridden = false
     special = Array(repeating: nil, count: 5)
     specialEnabled = Array(repeating: false, count: 6)
   }
@@ -112,7 +118,8 @@ struct TerminalPalette {
           let color = slot < 256 ? entries[slot] : (special[slot - 256] ?? RGB(scheme.foreground))
           replies.append("\u{1b}]\(command);\(requestedSlot);\(color.oscValue)\u{1b}\\")
         } else if let color = Self.parseColor(requested) {
-          if slot < 256 { entries[slot] = color } else { special[slot - 256] = color }
+          if slot < 256 { entries[slot] = color; overriddenEntries.insert(slot) }
+          else { special[slot - 256] = color }
         }
         index += 2
       }
@@ -137,16 +144,16 @@ struct TerminalPalette {
           let color = slot == 10 ? defaultForeground : (slot == 11 ? defaultBackground : cursor)
           replies.append("\u{1b}]\(slot);\(color.oscValue)\u{1b}\\")
         } else if let color = Self.parseColor(requested) {
-          if slot == 10 { defaultForeground = color }
-          else if slot == 11 { defaultBackground = color }
-          else { cursor = color }
+          if slot == 10 { defaultForeground = color; foregroundOverridden = true }
+          else if slot == 11 { defaultBackground = color; backgroundOverridden = true }
+          else { cursor = color; cursorOverridden = true }
         }
       }
       return replies
 
-    case "110": defaultForeground = RGB(scheme.foreground); return []
-    case "111": defaultBackground = RGB(scheme.background); return []
-    case "112": cursor = RGB(scheme.cursor); return []
+    case "110": defaultForeground = RGB(scheme.foreground); foregroundOverridden = false; return []
+    case "111": defaultBackground = RGB(scheme.background); backgroundOverridden = false; return []
+    case "112": cursor = RGB(scheme.cursor); cursorOverridden = false; return []
     case "105":
       if value.isEmpty { special = Array(repeating: nil, count: 5) }
       else {
@@ -160,9 +167,10 @@ struct TerminalPalette {
       let defaults = Self.entries(for: scheme)
       if value.isEmpty {
         entries = defaults
+        overriddenEntries.removeAll(keepingCapacity: true)
       } else {
         for field in value.split(separator: ";") {
-          if let slot = Self.paletteIndex(field) { entries[slot] = defaults[slot] }
+          if let slot = Self.paletteIndex(field) { entries[slot] = defaults[slot]; overriddenEntries.remove(slot) }
         }
       }
       return []

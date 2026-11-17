@@ -60,4 +60,42 @@ import Testing
     #expect(palette.snapshotDefaultForeground == [230, 230, 230])
     #expect(palette.snapshotDefaultBackground == [10, 10, 11])
   }
+
+  @Test static func explicitOverridesSurviveEvenWhenEqualToTheOldScheme() {
+    var palette = TerminalPalette()
+    let original = TerminalColorScheme.standard
+    _ = palette.applyOSC(command: "10", value: "#e6e6e6;#0a0a0b;#facc15")
+    _ = palette.applyOSC(command: "4", value: "1;#ef4444")
+    var next = TerminalColorScheme(foreground: 0x010203, background: 0x040506, cursor: 0x070809)
+    next.ansi[1] = 0x112233
+    palette.setScheme(next)
+    #expect(palette.snapshotDefaultForeground == [230, 230, 230])
+    #expect(palette.snapshotDefaultBackground == [10, 10, 11])
+    #expect(palette.cursorRGB == original.cursor)
+    #expect(palette.snapshotPalette[1] == [239, 68, 68])
+    _ = palette.applyOSC(command: "110", value: "")
+    _ = palette.applyOSC(command: "111", value: "")
+    _ = palette.applyOSC(command: "112", value: "")
+    _ = palette.applyOSC(command: "104", value: "1")
+    #expect(palette.snapshotDefaultForeground == [1, 2, 3])
+    #expect(palette.snapshotDefaultBackground == [4, 5, 6])
+    #expect(palette.cursorRGB == 0x070809)
+    #expect(palette.snapshotPalette[1] == [17, 34, 51])
+    palette.setScheme(original)
+    #expect(palette.cursorRGB == original.cursor)
+  }
+
+  @Test static func practicalXParseColorSpellings() {
+    var palette = TerminalPalette()
+    for (spelling, expected) in [("#abc", [160, 176, 192]), ("#123456", [18, 52, 86]),
+                                  ("#123456789", [18, 69, 120]), ("#123456789abc", [18, 86, 154]),
+                                  ("rgb:a/b/c", [170, 187, 204]), ("BlUe", [0, 0, 255])] {
+      _ = palette.applyOSC(command: "10", value: spelling)
+      #expect(palette.snapshotDefaultForeground == expected)
+    }
+    for spelling in ["#ab", "#abcd", "#12345g", "rgb:1/2/", "rgb:12345/0/0"] {
+      _ = palette.applyOSC(command: "10", value: spelling)
+      #expect(palette.snapshotDefaultForeground == [0, 0, 255])
+    }
+  }
 }

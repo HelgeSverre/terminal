@@ -1697,9 +1697,12 @@ private final class TerminalEmulator {
       let bytes = payload.unicodeScalars.map { UInt8($0.value) }
       let decoded = String(decoding: bytes, as: UTF8.self)
       let parts = decoded.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)
-      let command = String(parts[0])
+      let command = parts.first.map(String.init) ?? ""
       let value = parts.count > 1 ? String(parts[1]) : ""
-      if command == "0" || command == "2" { title = sanitizedTitle(value); if command == "0" { iconTitle = title } }
+      if command == "0" || command == "2" {
+        title = sanitizedTitle(value); if command == "0" { iconTitle = title }
+        changed(document: false, screen: false)
+      }
       else if command == "1" { iconTitle = sanitizedTitle(value) }
       else if command == "7" {
         if value.utf8.count <= 8192 { currentDirectory = value }
@@ -1713,7 +1716,7 @@ private final class TerminalEmulator {
       else if ["4", "5", "6", "10", "11", "12", "104", "105", "106", "110", "111", "112"].contains(command) {
         for reply in palette.applyOSC(command: command, value: value) { replies.append(contentsOf: reply.utf8) }
         refreshGraphicsPalette()
-        changed(document: false)
+        changed(document: false, screen: false)
       }
       else if command == "133" {
         if !usingAlternate {

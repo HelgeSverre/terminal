@@ -34,6 +34,7 @@ enum BinarySnapshotOracle {
     let palette: [[Int]]
     let default_fg: [Int]
     let default_bg: [Int]
+    let cursor_color: UInt32?
   }
   private final class Capture {
     var snapshot: TerminalSnapshot?
@@ -151,7 +152,8 @@ enum BinarySnapshotOracle {
           following_tail: header.following_tail, viewport_clamp_revision: header.viewport_clamp_revision,
           cols: header.cols, rows: rows, cursor: header.cursor, modes: header.modes,
           alternate: header.alternate, title: header.title, cwd: header.cwd, history_rows: header.history_rows,
-          palette: header.palette, default_fg: header.default_fg, default_bg: header.default_bg)
+          palette: header.palette, default_fg: header.default_fg, default_bg: header.default_bg,
+          cursor_color: header.cursor_color)
       } catch {
         capture.error = "Snapshot metadata decode failed: \(error)"
       }

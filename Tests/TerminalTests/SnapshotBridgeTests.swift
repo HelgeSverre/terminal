@@ -37,6 +37,7 @@ import TerminalInterop
     #expect(value.cols == legacy.cols && value.history_rows == legacy.history_rows)
     #expect(value.palette == legacy.palette && value.default_fg == legacy.default_fg)
     #expect(value.default_bg == legacy.default_bg && value.title == legacy.title)
+    #expect(value.cursor_color == legacy.cursor_color)
     #expect(value.cwd == legacy.cwd)
   }
   static func legacySnapshot(_ core: OpaquePointer, scroll: Int = 0) throws -> TerminalSnapshot {
@@ -277,6 +278,23 @@ import TerminalInterop
     #expect(capped.rows[0].cells[0].link == nil && capped.rows[1].cells[0].link == nil)
     // Owned Swift values must survive mutation, screen changes, and actor destruction.
     #expect(styled.rows[0].cells[0] == first && image.images.count == 1)
+  }
+
+  @MainActor @Test func cursorAndAttributeColorsReachEverySnapshotPath() throws {
+    let core = try #require(helge_terminal_create(8, 3))
+    defer { helge_terminal_destroy(core) }
+    let before = try Self.check(core)
+    Self.feed(core, "\u{1b}[1;4:3mX\u{1b}]12;#123456\u{1b}\\\u{1b}]5;0;#abcdef;1;#010203\u{1b}\\\u{1b}]106;0;1;1;1\u{1b}\\")
+    let after = try Self.check(core)
+    #expect(after.cursor_color == 0x123456)
+    #expect(after.rows[0].cells[0].style.foreground.rgb == [171, 205, 239])
+    #expect(after.rows[0].cells[0].style.underline_color.rgb == [1, 2, 3])
+    #expect(after.revision > before.revision)
+    let priorRevision = after.revision
+    Self.feed(core, "\u{1b}]12;#654321\u{1b}\\")
+    let cursorOnly = try Self.check(core)
+    #expect(cursorOnly.cursor_color == 0x654321 && cursorOnly.revision > priorRevision)
+    #expect(cursorOnly.document_epoch == after.document_epoch)
   }
 
   /// Alternating styles exercise both ends of the sorted run index.

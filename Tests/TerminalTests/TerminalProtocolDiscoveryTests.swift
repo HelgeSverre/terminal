@@ -47,6 +47,26 @@ import TerminalInterop
     #expect(core.screen()?.rows.first == "safe")
   }
 
+  @Test func cHostsCanSupplyAnIdentityWithoutChangingTheABIVersion() throws {
+    let core = try #require(helge_terminal_create(12, 5))
+    defer { helge_terminal_destroy(core) }
+    #expect(helge_terminal_abi_version() == 1)
+    "EmbeddedHost".withCString { name in
+      "9.8.7".withCString { version in helge_terminal_set_identity(core, name, version) }
+    }
+    let query = Data("\u{1b}[>q".utf8)
+    query.withUnsafeBytes { bytes in
+      #expect(helge_terminal_feed(core, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count, 0) == bytes.count)
+    }
+    final class Capture { var bytes = Data() }
+    let result = Capture()
+    helge_terminal_replies(core, Unmanaged.passUnretained(result).toOpaque()) { context, bytes, count in
+      guard let context, let bytes else { return }
+      Unmanaged<Capture>.fromOpaque(context).takeUnretainedValue().bytes.append(bytes, count: count)
+    }
+    #expect(String(decoding: result.bytes, as: UTF8.self) == dcs(">|EmbeddedHost 9.8.7"))
+  }
+
   @Test func statusQueriesRoundTripThePenAndSettings() throws {
     let core = try terminal()
     core.feed("\u{1b}[2;4r\u{1b}[?69h\u{1b}[3;10s\u{1b}[5 q\u{1b}[1\"q")
@@ -140,5 +160,19 @@ import TerminalInterop
     // Child window move/resize commands still have no effect on geometry.
     core.feed("\u{1b}[3;10;10t\u{1b}[8;100;200t")
     #expect(core.columns == 12 && core.rows == 5)
+  }
+
+  @Test func titleStackRetainsTheNewestSixteenAndHandlesEmptyPops() throws {
+    let core = try terminal()
+    for index in 0..<20 { core.feed(osc("2;title-\(index)") + "\u{1b}[22;2t") }
+    core.feed(osc("2;temporary"))
+    for index in (4..<20).reversed() {
+      core.feed("\u{1b}[23;2t")
+      #expect(core.screen()?.title == "title-\(index)")
+    }
+    core.feed("\u{1b}[23;0t")
+    #expect(core.screen()?.title == "title-4")
+    core.feed("\u{1b}[22;2t\u{1b}c" + osc("2;after-reset") + "\u{1b}[23;2t")
+    #expect(core.screen()?.title == "after-reset")
   }
 }

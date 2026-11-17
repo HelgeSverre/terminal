@@ -1,0 +1,17 @@
+diff --git a/lua/snacks/image/terminal.lua b/lua/snacks/image/terminal.lua
+--- a/lua/snacks/image/terminal.lua
++++ b/lua/snacks/image/terminal.lua
+@@ -22,6 +22,13 @@ local environments = {
+     placeholders = false,
+   },
+   {
++    name = "helge",
++    terminal = "helgeterminal",
++    env = { TERM_PROGRAM = "HelgeTerminal" },
++    supported = true,
++    placeholders = true,
++  },
++  {
+     name = "tmux",
+     env = { TERM = "tmux", TMUX = true },
+     setup = function()
