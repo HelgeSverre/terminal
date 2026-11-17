@@ -118,6 +118,9 @@ private final class TerminalEmulator {
   @exclusivity(unchecked) private var reverseWrap = false
   @exclusivity(unchecked) private var reverseWrapUnlimited = false
   @exclusivity(unchecked) private var savedPrivateModes: [Int: Bool] = [:]
+  // SPA activates ISO erasure protection until terminal reset. EPA stops
+  // protecting new cells but does not disable protection of existing cells.
+  @exclusivity(unchecked) private var isoEraseProtection = false
   @exclusivity(unchecked) private var insertMode = false
   @exclusivity(unchecked) private var newlineMode = false
   @exclusivity(unchecked) private var syncDeadline: UInt64?
@@ -782,7 +785,7 @@ private final class TerminalEmulator {
     case 0x38: restoreCursor()
     case 0x36: horizontalIndex(reverse: true)
     case 0x39: horizontalIndex(reverse: false)
-    case 0x56: captureRepeatAttributes(); attributes.isoProtected = true
+    case 0x56: captureRepeatAttributes(); attributes.isoProtected = true; isoEraseProtection = true
     case 0x57: captureRepeatAttributes(); attributes.isoProtected = false
     case 0x48: tabs[screen.cursorColumn] = true
     // IND advances within the scroll region but, unlike LF/VT/FF, never
@@ -816,6 +819,7 @@ private final class TerminalEmulator {
     var s = screen
     s.rows = (0..<rowCount).map { _ in document.eraseRow(TerminalStyle()) }
     s.topMargin = 0; s.bottomMargin = rowCount - 1
+    s.leftMargin = 0; s.rightMargin = columns - 1
     screen = s
     let kept = attributes
     attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
@@ -950,6 +954,7 @@ private final class TerminalEmulator {
     reverseWrap = false; reverseWrapUnlimited = false; savedPrivateModes.removeAll()
     insertMode = false; newlineMode = false; protectedOutput = false; syncDeadline = nil
     attributes.isoProtected = false
+    isoEraseProtection = false
     applicationCursor = false; applicationKeypad = false; bracketedPaste = false
     focusReporting = false; reverseVideo = false; mouseMode = 0; mouseEncoding = 0; modifyOtherKeys = 0
     currentLink = nil
@@ -1309,7 +1314,7 @@ private final class TerminalEmulator {
       let left = mode == 0 && row == s.cursorRow ? s.cursorColumn : 0
       let right = mode == 1 && row == s.cursorRow ? s.cursorColumn + 1 : columns
       document.erase(&s, row: row, columns: left..<right, style: eraseStyle(), selective: selective,
-                     respectISOProtection: !selective)
+                     respectISOProtection: !selective && isoEraseProtection)
     }
     s.pendingWrap = false; screen = s
   }
@@ -1318,7 +1323,7 @@ private final class TerminalEmulator {
     var s = screen
     let range = (mode == 0 ? s.cursorColumn : 0)..<(mode == 1 ? s.cursorColumn + 1 : columns)
     document.erase(&s, row: s.cursorRow, columns: range, style: eraseStyle(), selective: selective,
-                   respectISOProtection: !selective)
+                   respectISOProtection: !selective && isoEraseProtection)
     s.pendingWrap = false; screen = s
   }
   /// DEC rectangle coordinates are page-relative unless DECOM is enabled.
@@ -1388,7 +1393,7 @@ private final class TerminalEmulator {
   private func eraseCharacters(_ count: Int) {
     var s = screen
     let end = s.cursorColumn + min(count, columns - s.cursorColumn)
-    document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<end, style: eraseStyle(), respectISOProtection: true)
+    document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<end, style: eraseStyle(), respectISOProtection: isoEraseProtection)
     s.pendingWrap = false
     screen = s
   }
@@ -1676,6 +1681,7 @@ private final class TerminalEmulator {
     reverseWrap = false; reverseWrapUnlimited = false
     newlineMode = false; protectedOutput = false
     attributes.isoProtected = false
+    isoEraseProtection = false
     pen = TerminalStyle(); currentLink = nil; applicationCursor = false; applicationKeypad = false
     bracketedPaste = false; focusReporting = false; reverseVideo = false; mouseMode = 0; mouseEncoding = 0; modifyOtherKeys = 0; syncDeadline = nil
     forgetLastPrinted()

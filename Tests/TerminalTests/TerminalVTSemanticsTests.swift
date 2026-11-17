@@ -55,6 +55,35 @@ import TerminalInterop
     #expect(lines(terminal, count: 1)[0].hasPrefix("abcdefghijklmnop"))
   }
 
+  @Test static func softResetDisablesISOEraseProtectionWithoutErasingPage() {
+    let terminal = Oracle.make(8, 5); defer { helge_terminal_destroy(terminal) }
+    // Match esctest's ECH ISO-protection fixture followed by its DECSTR/ED2
+    // reset and ED0 fixture. A retained ISO cell must not leak across reset.
+    Oracle.feed(terminal, "ab\u{1b}Vc\u{1b}W\r\u{1b}[3X")
+    #expect(lines(terminal, count: 1)[0] == "  c     ")
+    Oracle.feed(terminal, "\u{1b}[!p")
+    #expect(lines(terminal, count: 1)[0] == "  c     ")
+    Oracle.feed(terminal, "\u{1b}[2J\u{1b}[1;1Ha\u{1b}[3;1Hbcd\u{1b}[5;1He\u{1b}[3;2H\u{1b}[0J")
+    #expect(lines(terminal, count: 5) == ["a       ", "        ", "b       ", "        ", "        "])
+    Oracle.feed(terminal, "\u{1b}[1;1H\u{1b}Vx\u{1b}W\r\u{1b}[2K")
+    #expect(lines(terminal, count: 1)[0].hasPrefix("x"), "SPA activates ISO erasure protection again")
+  }
+
+  @Test static func screenAlignmentClearsAllMargins() {
+    let terminal = Oracle.make(8, 6); defer { helge_terminal_destroy(terminal) }
+    Oracle.feed(terminal, "\u{1b}[?69h\u{1b}[2;3s\u{1b}[4;5r\u{1b}#8")
+    #expect(cursor(terminal) == (0, 0))
+    #expect(lines(terminal, count: 6) == Array(repeating: "EEEEEEEE", count: 6))
+    Oracle.feed(terminal, "\u{1b}[4;2H\u{1b}[A")
+    #expect(cursor(terminal) == (2, 1))
+    Oracle.feed(terminal, "\u{1b}[5;2H\u{1b}[B")
+    #expect(cursor(terminal) == (5, 1))
+    Oracle.feed(terminal, "\u{1b}[4;2H\u{1b}[D")
+    #expect(cursor(terminal) == (3, 0))
+    Oracle.feed(terminal, "\u{1b}[4;3H\u{1b}[C")
+    #expect(cursor(terminal) == (3, 3))
+  }
+
   @Test static func eraseSavedLinesPreservesVisiblePage() {
     for erase in ["\u{1b}[3J", "\u{1b}[?3J"] {
       let terminal = Oracle.make(4, 2); defer { helge_terminal_destroy(terminal) }

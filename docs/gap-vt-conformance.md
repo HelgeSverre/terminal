@@ -23,6 +23,8 @@ The integrated build must rerun the suite before replacing those counts.
 | `DECSET_ALTBUF`, `DECSET_OPT_ALTBUF` | 47 preserves alternate contents and carries the live cursor across the swap; 1047 additionally clears the alternate screen when leaving it; 1049 saves/restores the primary cursor and clears on entry. | `alternateScreenModesRetainTheirDistinctContracts` |
 | `REP_DefaultParam` | Omitted and zero counts both mean one repetition. | `reverseWrapModesAndRepeatDefault` |
 | `XtermSave_SaveSetState`, `XtermSave_SaveResetState` | Private mode save/restore stores recognized mutable modes with bounded storage. | `privateModeSaveRestoreAndBackwardTabsIgnoreLeftMargin` |
+| `DECALN_ClearsMargins` integration regression | DECALN resets horizontal as well as vertical margins. Previously incorrect CUB behavior had concealed the stale horizontal region. | `screenAlignmentClearsAllMargins` |
+| `ED_0` integration regression after `ECH_respectsISOProtection` | DECSTR disables ISO erasure protection without erasing the page, so the runner's subsequent ED2 clears protected content from the preceding test. SPA enables protection again; EPA only stops marking new cells. | `softResetDisablesISOEraseProtectionWithoutErasingPage` |
 
 ## Reverse-wrap version expectations
 
@@ -63,6 +65,10 @@ Primary references used for semantics:
 [VT510 DECSC](https://vt100.net/docs/vt510-rm/DECSC.html),
 [VT510 DECFI](https://vt100.net/docs/vt510-rm/DECFI.html), and
 [xterm control sequences](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html).
+The ISO reset behavior follows xterm's
+[terminal reset implementation](https://github.com/ThomasDickey/xterm-snapshots/blob/master/charproc.c),
+which turns off erasure protection during both soft and hard reset while
+retaining soft reset's screen contents.
 The checked-out esctest2 files supply exact before/after fixtures for each table
 row above.
 
