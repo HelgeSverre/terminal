@@ -30,6 +30,11 @@ import TerminalInterop
     guard let core = helge_terminal_create(UInt32(columns), UInt32(rows)) else { print("no emulator"); exit(1) }
     defer { helge_terminal_destroy(core) }
     _ = helge_terminal_resize_pixels(core, UInt32(columns), UInt32(rows), 10, 20)
+    // esctest's reset() forces black text on white before every case and its
+    // OSC 110/111 tests expect a reset to return to those resource defaults.
+    // Configure this test host accordingly; application resets still return
+    // to the application's actual configured scheme.
+    swiftTerminalSetColorScheme(core, colors: TerminalColorScheme(foreground: 0x000000, background: 0xffffff))
 
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/env")

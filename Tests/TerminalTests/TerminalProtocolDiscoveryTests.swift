@@ -175,4 +175,15 @@ import TerminalInterop
     core.feed("\u{1b}[22;2t\u{1b}c" + osc("2;after-reset") + "\u{1b}[23;2t")
     #expect(core.screen()?.title == "after-reset")
   }
+
+  @Test func partialTitleStackFramesInheritMissingTitlesWhenPopped() throws {
+    let core = try terminal()
+    // Push the icon and window separately, then restore both in one pop.
+    core.feed(osc("1;original-icon") + osc("2;original-window") + "\u{1b}[22;1t\u{1b}[22;2t")
+    core.feed(osc("1;changed-icon") + osc("2;changed-window") + "\u{1b}[23;0t")
+    #expect(ask(core, "\u{1b}[20t\u{1b}[21t") == "\u{1b}]Loriginal-icon\u{1b}\\\u{1b}]loriginal-window\u{1b}\\")
+    // The older frame was only consulted, and remains on the stack.
+    core.feed(osc("1;again") + "\u{1b}[23;1t")
+    #expect(ask(core, "\u{1b}[20t") == "\u{1b}]Loriginal-icon\u{1b}\\")
+  }
 }

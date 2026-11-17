@@ -1232,8 +1232,12 @@ private final class TerminalEmulator {
       case 23:
         let which = params.count > 1 ? params[1] : 0
         if (0...2).contains(which), params.count <= 2 || params[2] == 0, let saved = titleStack.popLast() {
-          if which != 1, let value = saved.title { title = value }
-          if which != 2, let value = saved.icon { iconTitle = value }
+          // A partial frame inherits its missing title from the nearest
+          // older frame, matching xterm's mixed icon/window stack behavior.
+          let restoredTitle = saved.title ?? titleStack.reversed().first(where: { $0.title != nil })?.title
+          let restoredIcon = saved.icon ?? titleStack.reversed().first(where: { $0.icon != nil })?.icon
+          if which != 1, let value = restoredTitle { title = value }
+          if which != 2, let value = restoredIcon { iconTitle = value }
         }
       case 18, 19: replies.append(contentsOf: "\u{1b}[\((params.first ?? 18) == 18 ? 8 : 9);\(rowCount);\(columns)t".utf8)
       default: break
