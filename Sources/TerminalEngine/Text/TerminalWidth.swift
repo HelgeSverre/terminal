@@ -6,6 +6,9 @@
 
 import Foundation
 
+/// The UI uses the engine's Unicode table for temporary composition cells.
+package func terminalPreeditCellWidth(_ text: String) -> Int { TerminalWidth.width(of: text) }
+
 /// Unicode-18 terminal-cell width, with the non-CJK semantics of
 /// `unicode-width` 0.2.3.  This deliberately operates on Unicode scalars
 /// instead of `Character`: platform Unicode data must not change terminal

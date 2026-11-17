@@ -2420,6 +2420,60 @@ private final class TerminalEmulator {
     default: return .wrapSpacer
     }
   }
+  /// At most 64 rows, 32,768 cells and 65,536 UTF-16 units per owner turn.
+  /// Lookup uses the history row index; no full history array is constructed.
+  func accessibilityHistoryPage(_ request: TerminalHistoryPageRequest) -> TerminalHistoryPage? {
+    let historyCount = usingAlternate ? 0 : history.count
+    let screenRows = usingAlternate ? alternate.rows : primary.rows
+    let total = historyCount + screenRows.count
+    func index(_ cursor: TerminalHistoryCursor) -> Int? {
+      guard cursor.document == selectionDocumentGeneration, cursor.alternate == usingAlternate else { return nil }
+      if !usingAlternate, let index = history.index(ofRowID: cursor.row) { return index }
+      return screenRows.firstIndex(where: { $0.id == cursor.row }).map { historyCount + $0 }
+    }
+    let backwards: Bool, start: Int
+    switch request {
+    case .latest: backwards = true; start = total - 1
+    case .older(let cursor):
+      guard let anchor = index(cursor) else { return nil }
+      backwards = true; start = anchor - 1
+    case .newer(let cursor):
+      guard let anchor = index(cursor) else { return nil }
+      backwards = false; start = anchor + 1
+    }
+    var position = start, cellCount = 0, textCount = 0
+    var result: [(Int, TerminalHistoryPage.Row)] = []
+    while (0..<total).contains(position), result.count < 64 {
+      let row = position < historyCount ? history[position] : screenRows[position - historyCount]
+      guard cellCount + row.count <= 32_768, textCount < 65_472 else { break }
+      var text = "", pendingSpaces = 0, rowTextCount = 0, truncated = false
+      for cell in row.cells {
+        if cell.kind == 3 || cell.kind == 4 { continue }
+        if cell.kind == 0 { pendingSpaces += 1; continue }
+        let remaining = 65_472 - textCount - rowTextCount
+        guard remaining > pendingSpaces else { truncated = true; break }
+        text += String(repeating: " ", count: pendingSpaces)
+        rowTextCount += pendingSpaces
+        pendingSpaces = 0
+        let room = 65_472 - textCount - rowTextCount
+        let units = Array(cell.text.utf16.prefix(room + 1))
+        let clipped = units.count > room
+        let admitted = units.prefix(room)
+        let safe = admitted.last.map { (0xD800...0xDBFF).contains($0) } == true ? admitted.dropLast() : admitted
+        text += String(decoding: safe, as: UTF16.self)
+        rowTextCount += safe.count
+        if clipped { truncated = true; break }
+      }
+      let cursor = TerminalHistoryCursor(document: selectionDocumentGeneration, alternate: usingAlternate, row: row.id)
+      result.append((position, TerminalHistoryPage.Row(cursor: cursor, text: text, truncated: truncated)))
+      cellCount += row.count
+      textCount += rowTextCount + 1
+      position += backwards ? -1 : 1
+    }
+    if backwards { result.reverse() }
+    return TerminalHistoryPage(rows: result.map(\.1), hasOlder: (result.first?.0 ?? 0) > 0,
+      hasNewer: (result.last?.0 ?? total - 1) < total - 1)
+  }
   private func searchProjection(_ row: TerminalRow) -> TerminalSearchRow {
     // This conversion happens for one owner-admitted row only. In particular,
     // starting a search does not turn all retained scrollback into String
@@ -2774,6 +2828,9 @@ private extension TerminalEmulator {
 // row/cell storage. The returned value survives later mutation and destruction.
 package func swiftTerminalSnapshot(_ pointer: OpaquePointer?, scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
   core(pointer)?.snapshotValue(scroll: scroll, now: now) ?? (nil, nil)
+}
+package func swiftTerminalHistoryPage(_ pointer: OpaquePointer?, request: TerminalHistoryPageRequest) -> TerminalHistoryPage? {
+  core(pointer)?.accessibilityHistoryPage(request)
 }
 package enum TerminalSelectionBridge {
   package static func begin(core pointer: OpaquePointer, action: TerminalSelectionAction) -> TerminalSelectionProgress {

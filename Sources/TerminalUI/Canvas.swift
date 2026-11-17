@@ -13,6 +13,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   private var surface: TerminalRendering.SurfaceLease?
   private var snapshot: TerminalSnapshot?
   private var accessible: AccessibilityProjection?
+  private var accessibleHistory: AccessibleHistory?
   private var hoveredLink: VisibleLinkProjection.Occurrence?
   private var linkTargetPreview: LinkTargetPreview?
   private var linkModifierMonitor: Any?
@@ -39,9 +40,10 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   private var terminalKeys: [UInt16: DeliveredKey] = [:]
   private var modifierState = NativeKeyMap.ModifierState()
-  private var marked = NSMutableAttributedString(string: "")
+  private var composition = MarkedTextStorage()
+  private var preeditCache: (revision: UInt64, columns: Int, rows: Int, row: Int, column: Int, value: PreeditPresentation)?
   private var cancellingComposition = false
-  private var markedSelection = NSRange(location: 0, length: 0)
+  private var compositionMousePress = false
   private var cellWidth = 9
   private var cellHeight = 19
   private var scrollAccumulator = ScrollAccumulator()
@@ -211,6 +213,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     }
     snapshot = value
     accessible = AccessibilityProjection(snapshot: presentationSnapshot ?? value)
+    if hasMarkedText() { inputContext?.invalidateCharacterCoordinates() }
     if previousSelectionRevision != value.selection.revision,
       let failure = value.selection.issue {
       showSelectionNotice(failure)
@@ -285,7 +288,35 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     }) ?? []
     if let selectionNotice { children.append(selectionNotice) }
     if let linkTargetPreview { children.append(linkTargetPreview) }
+    if let accessibleHistory { children.append(accessibleHistory) }
     return children
+  }
+  public override func accessibilityCustomActions() -> [NSAccessibilityCustomAction]? {
+    [NSAccessibilityCustomAction(name: "Read output history", handler: { [weak self] in
+      self?.readAccessibleHistory(.latest) ?? false
+    })]
+  }
+  @discardableResult private func readAccessibleHistory(_ request: TerminalHistoryPageRequest) -> Bool {
+    session.accessibilityHistory(request) { [weak self] page in
+      guard let self else { return }
+      guard let page else {
+        NSAccessibility.post(element: self, notification: .announcementRequested,
+          userInfo: [.announcement: "History position expired. Read output history again.",
+                     .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+        return
+      }
+      if let history = accessibleHistory { history.update(page) }
+      else {
+        accessibleHistory = AccessibleHistory(page: page, parent: self, navigate: { [weak self] request in
+          self?.readAccessibleHistory(request) ?? false
+        })
+      }
+      NSAccessibility.post(element: self, notification: .layoutChanged)
+      if let history = accessibleHistory { NSAccessibility.post(element: history, notification: .valueChanged) }
+      NSAccessibility.post(element: self, notification: .announcementRequested,
+        userInfo: [.announcement: "Output history ready, \(page.rows.count) rows. Navigate to Terminal output history.",
+                   .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+    }
   }
   public override func accessibilityAttributedString(for range: NSRange) -> NSAttributedString? {
     accessible?.attributedString(in: range, fontSize: fontPoints, fontFamily: configuration.fontFamily, parent: self, activate: { [weak self] activation in
@@ -310,7 +341,10 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     let local = convert(
       window.convertFromScreen(NSRect(origin: point, size: .zero)).origin, from: nil)
     guard bounds.contains(local) else { return NSRange(location: NSNotFound, length: 0) }
-    let row = max(0, Int((local.y * scale - CGFloat(insetPixels)) / CGFloat(cellHeight)))
+    let row = presentationGeometry.row(at: local.y * scale)
+    guard row >= 0, row < (presentationSnapshot?.rows.count ?? 0) else {
+      return NSRange(location: NSNotFound, length: 0)
+    }
     let col = max(
       0,
       min(
@@ -324,10 +358,9 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     var frame = NSRect.null
     for span in accessible.spans(for: range) {
       let width = range.length == 0 ? 1 : max(1, span.cells * cellWidth)
-      let rect = NSRect(
-        x: CGFloat(insetPixels + min(accessible.columns, span.column) * cellWidth) / scale,
-        y: CGFloat(insetPixels + span.row * cellHeight) / scale,
-        width: CGFloat(width) / scale, height: CGFloat(cellHeight) / scale)
+      let pixels = presentationGeometry.rect(row: span.row, column: min(accessible.columns, span.column))
+      let rect = NSRect(x: pixels.minX / scale, y: pixels.minY / scale,
+        width: CGFloat(width) / scale, height: pixels.height / scale)
       frame = frame.union(rect)
     }
     guard !frame.isNull else { return .zero }
@@ -651,7 +684,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
         snapshot: value, width: Int(bounds.width * scale), height: Int(bounds.height * scale),
         inset: insetPixels, cellWidth: cellWidth, cellHeight: cellHeight,
         fontSize: fontPoints * scale,
-        focused: focused, marked: marked.string,
+        focused: focused, marked: composition.text.string,
         linkUnderline: hoveredLink?.gridSegments ?? [], colors: configuration.session.colors,
         fontFamily: configuration.fontFamily, ligatures: configuration.ligatures,
         backingScale: max(1, Int(scale.rounded())), cursorVisible: blink.cursorVisible,
@@ -750,10 +783,10 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   public func insertText(_ string: Any, replacementRange: NSRange) {
     guard !cancellingComposition else { return }
-    let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
+    let inserted = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
+    guard let text = composition.committing(inserted, replacement: replacementRange) else { return }
     let composing = hasMarkedText()
-    marked.mutableString.setString("")
-    markedSelection = NSRange(location: 0, length: 0)
+    composition.clear()
     if !composing, text.unicodeScalars.count == 1, let event = originatingKey {
       let consumed: UInt32 =
         !NativeKeyMap.optionSendsEscape(event.modifierFlags, configuration: configuration) && event.modifierFlags.contains(.option)
@@ -772,55 +805,76 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   public func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
     guard !cancellingComposition else { return }
-    let text = (string as? NSAttributedString)?.string ?? (string as? String) ?? ""
-    marked = NSMutableAttributedString(string: text)
-    markedSelection = selectedRange
+    let text = (string as? NSAttributedString) ?? NSAttributedString(string: (string as? String) ?? "")
+    guard composition.update(text, selection: selectedRange, replacement: replacementRange) else { return }
     inputContext?.invalidateCharacterCoordinates()
     redraw()
   }
   public func unmarkText() {
-    let text = marked.string
-    marked.mutableString.setString("")
-    markedSelection = NSRange(location: 0, length: 0)
+    let text = composition.text.string
+    composition.clear()
     if !cancellingComposition && !text.isEmpty { send(text) }
     redraw()
   }
   private func cancelComposition() {
     guard !cancellingComposition else { return }
     cancellingComposition = true
-    marked.mutableString.setString("")
-    markedSelection = NSRange(location: 0, length: 0)
+    composition.clear()
     inputContext?.discardMarkedText()
     cancellingComposition = false
     inputContext?.invalidateCharacterCoordinates()
     redraw()
   }
-  public func hasMarkedText() -> Bool { marked.length > 0 }
+  var preeditPresentation: PreeditPresentation? {
+    guard hasMarkedText(), let snapshot else { return nil }
+    if let cache = preeditCache, cache.revision == composition.revision,
+      cache.columns == snapshot.cols, cache.rows == snapshot.rows.count,
+      cache.row == snapshot.cursor.row, cache.column == snapshot.cursor.col { return cache.value }
+    let value = PreeditPresentation(text: composition.text, selection: composition.selection,
+      columns: snapshot.cols, rows: snapshot.rows.count,
+      cursorRow: snapshot.cursor.row, cursorColumn: snapshot.cursor.col)
+    preeditCache = (composition.revision, snapshot.cols, snapshot.rows.count,
+      snapshot.cursor.row, snapshot.cursor.col, value)
+    return value
+  }
+  public func hasMarkedText() -> Bool { composition.hasText }
   public func markedRange() -> NSRange {
     hasMarkedText()
-      ? NSRange(location: 0, length: marked.length) : NSRange(location: NSNotFound, length: 0)
+      ? NSRange(location: 0, length: composition.text.length) : NSRange(location: NSNotFound, length: 0)
   }
-  public func selectedRange() -> NSRange { markedSelection }
+  public func selectedRange() -> NSRange { composition.selection }
   public func validAttributesForMarkedText() -> [NSAttributedString.Key] {
-    [.underlineStyle, .foregroundColor, .backgroundColor]
+    [.underlineStyle, .markedClauseSegment]
   }
   public func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?)
     -> NSAttributedString?
   {
-    guard hasMarkedText(), range.location <= marked.length else { return nil }
-    let r = NSIntersectionRange(range, NSRange(location: 0, length: marked.length))
+    actualRange?.pointee = NSRange(location: NSNotFound, length: 0)
+    guard hasMarkedText(), range.location != NSNotFound, range.location >= 0,
+      range.length >= 0, range.location <= composition.text.length else { return nil }
+    let r = NSRange(location: range.location, length: min(range.length, composition.text.length - range.location))
     actualRange?.pointee = r
-    return marked.attributedSubstring(from: r)
+    return composition.text.attributedSubstring(from: r)
   }
-  public func characterIndex(for point: NSPoint) -> Int { 0 }
+  public func characterIndex(for point: NSPoint) -> Int {
+    guard let window, let preedit = preeditPresentation else { return NSNotFound }
+    let local = convert(window.convertFromScreen(NSRect(origin: point, size: .zero)).origin, from: nil)
+    guard bounds.contains(local) else { return NSNotFound }
+    let row = presentationGeometry.row(at: local.y * scale)
+    return preedit.characterIndex(row: row,
+      column: Double((local.x * scale - CGFloat(insetPixels)) / CGFloat(cellWidth)))
+  }
   public func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+    actualRange?.pointee = NSRange(location: NSNotFound, length: 0)
     let cursor = snapshot?.cursor
-    let rect = NSRect(
-      x: CGFloat(insetPixels + (cursor?.col ?? 0) * cellWidth) / scale,
-      y: CGFloat(insetPixels + (cursor?.row ?? 0) * cellHeight) / scale,
-      width: CGFloat(cellWidth) / scale,
-      height: CGFloat(cellHeight) / scale)
-    actualRange?.pointee = range
+    let segment = preeditPresentation?.firstSegment(for: range)
+    guard !hasMarkedText() || segment != nil else { return .zero }
+    guard hasMarkedText() || range == NSRange(location: 0, length: 0) else { return .zero }
+    actualRange?.pointee = segment?.range ?? NSRange(location: 0, length: 0)
+    let pixels = presentationGeometry.rect(row: segment?.row ?? cursor?.row ?? 0,
+      column: segment?.column ?? cursor?.col ?? 0, cells: max(1, segment?.cells ?? 1))
+    let rect = NSRect(x: pixels.minX / scale, y: pixels.minY / scale,
+      width: pixels.width / scale, height: pixels.height / scale)
     return window?.convertToScreen(convert(rect, to: nil)) ?? .zero
   }
   public override func doCommand(by selector: Selector) {
@@ -855,6 +909,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     return value.selectionHit(row: row, boundary: boundary)
   }
   public override func mouseDown(with event: NSEvent) {
+    compositionMousePress = false
     localLinkPress = false
     dragging = false
     window?.makeFirstResponder(self)
@@ -862,6 +917,11 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     activatingClick = nil
     // Neither select nor report the activating click to the terminal program.
     if activatingPress { return }
+    if hasMarkedText() {
+      // The input source gets first refusal for clause/caret clicks.
+      if inputContext?.handleEvent(event) == true { compositionMousePress = true; return }
+      cancelComposition()
+    }
     if event.clickCount == 1, event.modifierFlags.contains(.command),
       let occurrence = linkOccurrence(locationInWindow: event.locationInWindow) {
       // Resolve against the displayed generation at the user gesture; a
@@ -882,12 +942,18 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     dragging = requestSelection(.begin(hit, granularity: granularity))
   }
   public override func mouseDragged(with event: NSEvent) {
+    if compositionMousePress { _ = inputContext?.handleEvent(event); return }
     if localLinkPress || activatingPress { return }
     if dragging {
       if let hit = selectionHit(event) { requestSelection(.extend(hit)) }
     } else { _ = reportMouse(event, button: 32, release: false) }
   }
   public override func mouseUp(with event: NSEvent) {
+    if compositionMousePress {
+      compositionMousePress = false
+      _ = inputContext?.handleEvent(event)
+      return
+    }
     if activatingPress { activatingPress = false; return }
     if localLinkPress { localLinkPress = false; return }
     if dragging {
@@ -1018,6 +1084,15 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
       let end = value.selectionHit(row: value.rows.count - 1, boundary: value.cols)
     else { return }
     requestSelection(.range(start: start, end: end, mode: .linear))
+  }
+  /// Automation submits the same immutable displayed-row proof as a gesture.
+  @discardableResult package func selectVisibleText(
+    fromRow: Int, fromColumn: Int, toRow: Int, toColumn: Int
+  ) -> Bool {
+    guard let value = snapshot,
+      let start = value.selectionHit(row: fromRow, boundary: fromColumn),
+      let end = value.selectionHit(row: toRow, boundary: toColumn) else { return false }
+    return requestSelection(.range(start: start, end: end, mode: .linear))
   }
   @objc package func increaseFont(_ sender: Any?) {
     fontPoints = min(40, fontPoints + 1)

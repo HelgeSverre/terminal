@@ -355,6 +355,7 @@ public final class TerminalSession: @unchecked Sendable {
     case link(TerminalPresentedContent, URL, LinkCompletion, Int, Bool)
     case configure(TerminalSessionConfiguration)
     case scroll(Int)
+    case accessibilityHistory(TerminalHistoryPageRequest, @MainActor (TerminalHistoryPage?) -> Void)
     case find(String, SearchCompletion)
     case searchAdvance
     case searchNavigate(Bool, @MainActor (HistorySearchPosition?) -> Void)
@@ -431,6 +432,7 @@ public final class TerminalSession: @unchecked Sendable {
   // further copy requests receive bounded backpressure instead of retaining
   // an unbounded set of immutable completion payloads.
   private var outstandingSelectionCopyCompletions = 0
+  private var outstandingHistoryPage = false
   private var selectionDeliveries: [SelectionDelivery] = []
   private var linkDeliveries: [LinkDelivery] = []
   // EOF closes the PTY writer but leaves the retained terminal screen
@@ -1242,6 +1244,9 @@ public final class TerminalSession: @unchecked Sendable {
         _ = TerminalSelectionBridge.begin(core: core, action: .wordProfile(value.selectionWordProfile))
       }
     case .scroll(let delta): helge_terminal_view_scroll(core, Int64(delta))
+    case .accessibilityHistory(let request, let completion):
+      publishNeeded = false
+      finishHistoryPage(swiftTerminalHistoryPage(core, request: request), completion: completion)
     case .find(let query, let completion): historySearch.start(query, completion: completion)
     case .searchAdvance: historySearch.advance()
     case .searchNavigate(let older, let completion):
@@ -1667,6 +1672,33 @@ public final class TerminalSession: @unchecked Sendable {
       enqueue(.searchClear)
     }
   }
+  /// One bounded history page may wait for Main at a time. Reads are FIFO
+  /// terminal operations, and never synchronize Main with the owner queue.
+  @discardableResult package func accessibilityHistory(
+    _ request: TerminalHistoryPageRequest,
+    completion: @escaping @MainActor (TerminalHistoryPage?) -> Void
+  ) -> Bool {
+    admission.lock()
+    guard !interactionClosed, !outstandingHistoryPage else { admission.unlock(); return false }
+    outstandingHistoryPage = true
+    admission.unlock()
+    readBroker.submit { [self] in
+      guard !closed else { finishHistoryPage(nil, completion: completion); return }
+      enqueue(.accessibilityHistory(request, completion))
+    }
+    return true
+  }
+  private func finishHistoryPage(
+    _ page: TerminalHistoryPage?, completion: @escaping @MainActor (TerminalHistoryPage?) -> Void
+  ) {
+    DispatchQueue.main.async { [self] in
+      admission.lock()
+      outstandingHistoryPage = false
+      let cancelled = interactionClosed
+      admission.unlock()
+      completion(cancelled ? nil : page)
+    }
+  }
   // Urgent transport control: no semantic event or stalled write can trap it.
   package func cancelPaste() {
     readBroker.submit { [self] in
@@ -1839,6 +1871,7 @@ public final class TerminalSession: @unchecked Sendable {
         case .input(_, _, _, _, let cost), .keyInput(_, let cost), .raw(_, let cost), .shortcut(_, let cost): release(cost)
         case .find(_, let completion): DispatchQueue.main.async { completion(.cancelled, nil) }
         case .searchNavigate(_, let completion): DispatchQueue.main.async { completion(nil) }
+        case .accessibilityHistory(_, let completion): finishHistoryPage(nil, completion: completion)
         case .clipboardDecision(_, _, let completion): DispatchQueue.main.async { completion(false) }
         case .recoveryCheckpoint(_, let completion): DispatchQueue.main.async { completion(nil, 0, nil) }
         case .selection(_, let completion, let cost, _, let retainsCopyResult):
