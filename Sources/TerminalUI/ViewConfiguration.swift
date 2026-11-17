@@ -37,16 +37,16 @@ public struct TerminalViewConfiguration {
 
 /// Where the view finds what it loads at run time: the fonts (`Fonts/`) and
 /// the shaders, compiled (`Terminal.metallib`) or as source (`Terminal.metal`).
+private final class TerminalResourceAnchor {}
 package enum TerminalResources {
   /// An app bundle that carries the compiled shaders is used as it is;
   /// otherwise the resources are the ones the package builds beside the
   /// program. Set before the first view or renderer is created.
   nonisolated(unsafe) package static var bundle: Bundle = {
-    if Bundle.main.url(forResource: "Terminal", withExtension: "metallib") != nil { return .main }
     #if SWIFT_PACKAGE
     return .module
     #else
-    return .main
+    return Bundle(for: TerminalResourceAnchor.self)
     #endif
   }()
 

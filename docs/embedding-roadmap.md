@@ -1,4 +1,11 @@
-# Embedding: where the package stands and what it needs
+# Embedding audit: 2026-11-14 baseline
+
+This is a historical source audit at the commits below. It is not the current
+support matrix. The [embedding guide](embedding.md) now defines the consumer
+manifest boundary, API compatibility policy and concurrency qualification
+requirements. UIKit input/selection/find/link/accessibility and packaged shell
+resources have since been expanded; device/VoiceOver and full library Swift 6
+qualification still require runtime/compiler evidence.
 
 An audit of the package's public interface on 2026-11-14, set against the two
 libraries an app would otherwise choose: SwiftTerm and libghostty. It lists

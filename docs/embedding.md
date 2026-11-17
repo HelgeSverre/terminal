@@ -13,14 +13,13 @@ mode:
 
 ```shell
 cd Examples/Embedding
-swift build
+env -u TERMINAL_DEVELOPMENT -u TERMINAL_TEST_HOOKS swift build
 .build/debug/EmbeddingExample
 .build/debug/ReplayExample            # or with a file of recorded output
 ```
 
-The public interface is new. It can change between releases until the
-package has a 1.0 tag; [what is missing](#what-is-missing) lists what it does
-not cover.
+The public interface follows the [compatibility policy](#compatibility-policy)
+below. Pin a reviewed commit for reproducible builds.
 
 ## Requirements
 
@@ -55,9 +54,13 @@ targets: [
 | `TerminalEngine` | `HeadlessTerminal`: the emulator alone, with no window and no process |
 | `TerminalLauncher` | An optional helper executable that starts a session's child, as the app does |
 
-As a dependency the package brings no dependencies of its own: the app, its
-updater and the test suites are part of the manifest only in this
-repository.
+The default manifest contains only the libraries and launcher, with no external
+dependencies. This is the same for a local path, a URL dependency and a directory
+with any name. `TERMINAL_DEVELOPMENT=1` explicitly adds the app, Sparkle, tools
+and tests. `just` enables it and the developer tool sets it for app builds.
+Plain `swift build` builds the consumer products; use `just build` for the app.
+Do not export the development variable in a consumer's build environment.
+Consumer commands should clear it, as the example command above does.
 
 ## The emulator on its own
 
@@ -93,7 +96,14 @@ moving the terminal, `setColors(_:)` sets the colors programs are told,
 `setGraphemeClustering(_:)` sets the state mode 2027 starts in, and
 `encode(_:modifiers:)` gives the bytes a key sends in the terminal's current
 modes, for the host to write to its transport.
-Selection and key encoding are not public here.
+The headless API also provides bounded selection and incremental search. Capture
+opaque `selectionPoint(row:column:)` values from the presented viewport, call
+`select(from:to:rectangular:)`, and advance pending work with `advanceSelection()`.
+`copySelection(_:)` validates the captured selection instead of reinterpreting
+stale coordinates. `beginSearch(_:options:)` starts a search; call `advanceSearch()`
+while pending, then `navigateSearch(older:)` and `currentScreen()` to read the
+revealed match. `clearSelection()`, `cancelSearch()` and `clearSearch()` end the
+corresponding operation. See [search](search.md) for budgets and regex semantics.
 
 ## Show a terminal
 
@@ -138,8 +148,8 @@ The app starts its children through a small helper, `TerminalLauncher`,
 which does the same steps in a process of its own. A host may do so too by
 passing the helper's path as `launcher:`; it must then build the helper
 (`swift build --product TerminalLauncher`), copy it into its bundle and sign
-it. The zsh [shell integration](#shell-integration) is found beside the
-helper, so it needs one.
+it. The [shell integration](#shell-integration) is a package resource and also
+works without the helper.
 
 ### What to run
 
@@ -157,15 +167,14 @@ variables for the child and replaces any of these, so a host sets its own
 
 ### Shell integration
 
-For an interactive zsh (`zsh` or `zsh -l`), the launch looks for
-`../Resources/ShellIntegration/zsh/.zshenv` beside the launcher's directory.
-When it is there, zsh starts through it: the user's own configuration is
-loaded as usual, and the shell marks its prompts and reports its working
-directory, which is what `session.workingDirectory` reads. A host that
-wants this copies `Resources/Terminal/ShellIntegration/zsh` from this
-repository to `Contents/Resources/ShellIntegration/zsh` in its bundle, with
-the launcher in `Contents/MacOS`. Without the directory, zsh starts
-unchanged. No other shell is wrapped.
+`TerminalHost` carries the zsh, Bash and fish hooks as package resources.
+`TerminalShellIntegration.directory` exposes their root. A launch first uses an
+explicit `LaunchSpec.shellIntegrationDirectory`, then helper-relative
+`../Resources/ShellIntegration`, then the package resource directory. Hooks load
+the user's configuration and report prompts and working directories. Unsupported
+shells start normally. A manually linked host must copy
+`Sources/TerminalHost/Resources/ShellIntegration` into its resource bundle or
+pass an explicit directory; SwiftPM handles the resource bundle automatically.
 
 ### Lifetime
 
@@ -193,15 +202,34 @@ struct ContentView: View {
 }
 ```
 
-On iOS, `TerminalCanvasView` is a `UIView`. A tap brings up the keyboard;
-hardware keys such as the arrows, Escape, Tab and Control with a letter go to
-the program encoded for its modes, and a one-finger drag scrolls the
-history. iOS starts no processes, so the session runs over a
+On iOS, `TerminalCanvasView` is a `UIView` implementing `UITextInput`. A tap
+brings up the keyboard or opens a link after owner validation. A long press
+selects a word; dragging extends the selection and releasing offers Copy,
+Paste, Select All, Find and link actions. A one-finger drag scrolls history.
+`showFind()` presents an inline search bar and `hideFind()` clears it. Hosts
+may instead call the session's search methods and provide their own controls.
+iOS starts no processes, so the session runs over a
 `TerminalTransport` (an SSH library, for one); `LaunchSpec` fails there with
 `.spawn(errno: ENOTSUP)`. `Examples/iOSCheck` runs the view on the
-simulator with `just ios-check`. What the iOS view does not have yet:
-selection, copy and paste, search, links, the find bar and accessibility
-beyond a label.
+simulator with `just ios-check`.
+
+Composition edits a local document capped at 16,384 UTF-16 units, with
+grapheme-safe deletion and replacement. Only committing it sends text to the
+remote program; terminal output is never editable UIKit storage. Candidate,
+caret and selection geometry share the renderer's bounded preedit layout.
+Hardware keys retain press/repeat/release and modifier facts when UIKit exposes
+them; printable text follows the input method, including dead keys. UIKit does
+not expose AppKit's independent layout translation API, so unavailable key
+alternates are left empty. Focus loss and backgrounding cancel composition and
+release tracked hardware keys.
+
+VoiceOver exposes nonempty viewport rows and independently actionable links,
+with actions for older/newer output, selection, Copy and Find. Projection is
+bounded to 256 rows, 65,536 UTF-16 units and 128 links. Older history is reached
+through viewport navigation or search. It does not announce every output update.
+Source and simulator tests do not certify physical hardware keyboards, CJK input
+methods or VoiceOver speech/navigation on devices; those remain qualification
+requirements.
 
 ### A session without a local process
 
@@ -258,7 +286,7 @@ All callbacks run on the main thread.
 | `session.scroll(_:)` | Move the view over the history by lines; positive is toward older output |
 | `view.visibleText` | The text on screen, one line per row |
 | `view.hasSelection`, `view.selectedText(_:)`, `view.clearSelection()` | Whether text is selected, the selected text as Copy would give it, and removing the selection |
-| `session.search(_:completion:)` | Search the screen and its history, matching case. A hit selects the newest match and gives its one-based position and the number of matches. |
+| `session.search(_:options:completion:)` | Search the screen and history. `TerminalSearchOptions(caseSensitive:wholeWord:regularExpression:)` defaults all options to false. A hit selects the newest match and reports its one-based position and retained count; bounds and regex semantics are documented in [search](search.md). |
 | `session.searchNavigate(older:completion:)`, `session.searchClear()` | Step to the next match; remove the search |
 | `view.gridSize` | The columns and rows the view holds |
 | `session.clearDisplay()` | Clear the display, as the app's Clear Screen command does |
@@ -380,22 +408,64 @@ for them. The shader source is compiled when `TerminalRendering` is created; its
 The fonts keep their own licenses; see the
 [font directory](../Sources/TerminalUI/Resources/Fonts/README.md).
 
-## What is missing
+## Compatibility policy
 
-- **A stable interface.** Nothing here is versioned yet. Depend on a commit
-  or on `main`, and expect changes.
+The compatibility boundary is the documented `public` Swift API in the three
+library products. `package` declarations, internal C bridges, the app, diagnostics
+and serialized implementation snapshots are outside it. No binary ABI or
+library-evolution compatibility is promised; consumers rebuild the package.
+
+Before 1.0, a tagged `0.x.y` patch preserves documented source signatures and
+default behavior, except for fixes to incorrect terminal behavior. A breaking
+public API change requires a new `0.x` minor series, migration notes in the
+embedding guide, and rebuilding both Swift 6 hosts. After a separately approved
+1.0 release, breaking API changes require a major version; additions use a minor
+version and compatible fixes a patch. Existing published tags are immutable.
+`main` is development and can change; pin a full commit or an approved release
+tag rather than relying on its current shape. This policy creates no tag.
+
+macOS 14 and iOS 17 are deployment floors. Apple-silicon macOS is the automated
+test platform. Intel macOS and iOS devices require separate runtime evidence;
+declaring a deployment floor does not establish a complete hardware test matrix.
+
+### Concurrency contract and qualification
+
+Use the UI, renderer setup, view configuration, callback assignment and session
+lifecycle from `MainActor`. Session commands enqueue work onto the terminal owner
+queue; callbacks are delivered on `MainActor`. Each headless engine belongs to
+one actor or thread at a time and is not a concurrently mutable shared object.
+Transport methods run serially on their private queue. A transport sharing state
+with another queue must synchronize that state itself; `TerminalConnection` is
+the thread-safe ingress/termination interface.
+
+The library targets currently compile in Swift 5 language mode. The example
+hosts compile in Swift 6; that verifies consumer use of the public interface,
+not that library internals pass Swift 6 strict concurrency checking. Existing
+`@unchecked Sendable` queue/lock owners remain explicit audit obligations, not
+proof of race freedom. New unchecked annotations must identify the mutable state
+and its synchronization; do not add them just to silence diagnostics.
+
+Run `just embedding-check` for the default local-path graph and both Swift 6
+hosts. After pushing a candidate, run
+`just embedding-check --url https://github.com/HelgeSverre/terminal --revision <full-commit>`
+to build the same hosts through remote package resolution. Both commands clear
+development/test settings and reject a consumer graph containing Sparkle.
+`just ios-check` separately runs UIKit simulator tests with those settings
+cleared. Full library concurrency qualification additionally requires compiling
+each library with strict concurrency diagnostics, eliminating each unsupported
+isolation crossing, then exercising transport receive/end/close, callback
+lifetime, resize and rendering races under Thread Sanitizer. A passing host
+build alone must never be reported as that qualification.
+
+## Remaining qualification
+
 - **The rest of the look.** The find bar and the selection notice take
   their colors from the scheme but keep their shape.
-- **More of the emulator.** `HeadlessTerminal` has no selection and no
-  search.
-- **Shell integration without the helper.** The zsh integration is only
-  found beside `TerminalLauncher`.
-- **The iOS view is new.** It has no selection, copy and paste, search,
-  links or find bar yet, and has run on the simulator only.
-  There is no iOS view and no SwiftUI wrapper; wrap `TerminalCanvasView` in
-  an `NSViewRepresentable` for SwiftUI.
-- **Zsh shell integration.** The app's integration scripts are part of its
-  bundle and are not applied in an embedding app.
+- **The iOS view needs device evidence.** Complete real IME, touch selection,
+  external keyboard, link and VoiceOver workflows on supported devices.
+- **Library concurrency migration.** Swift 6 consumer compatibility and full
+  strict-concurrency qualification are separate gates, as described above.
+- **Stable release adoption.** No 1.0 tag is implied by this implementation.
 
 [The embedding roadmap](embedding-roadmap.md) lists the defects in this
 interface, what SwiftTerm and libghostty offer instead, and the order of work.
@@ -410,7 +480,7 @@ measures both as embedded libraries.
 | `TerminalInterop` | `Sources/TerminalInterop` | C declarations of the emulator interface, and the spawn |
 | `TerminalEngine` | `Sources/TerminalEngine` | `TerminalInterop` |
 | `TerminalHost` | `Sources/TerminalHost` | `TerminalEngine` |
-| `TerminalUI` | `Sources/TerminalUI` | `TerminalHost`, AppKit, Metal |
+| `TerminalUI` | `Sources/TerminalUI` | `TerminalHost`, AppKit or UIKit, Metal |
 | `TerminalApp` | `Sources/Terminal` | `TerminalUI`; the app itself |
 
 Declarations one target needs from another are `package`: visible inside this

@@ -8,16 +8,29 @@ import UIKit
 ///
 /// iOS starts no processes, so its session runs over a `TerminalTransport`
 /// (an SSH channel, say). Tap the view to bring up the keyboard.
-public final class TerminalCanvasView: UIView, UIKeyInput {
+public final class TerminalCanvasView: UIView, UITextInput {
   public let session: TerminalSession
   private let rendering: TerminalRendering?
   private var surface: TerminalRendering.SurfaceLease?
   private var configuration: TerminalViewConfiguration
-  private var snapshot: TerminalSnapshot?
-  private var cellWidth = 1, cellHeight = 1
+  var snapshot: TerminalSnapshot?
+  var cellWidth = 1, cellHeight = 1
+  let composition = TouchComposition()
+  public weak var inputDelegate: UITextInputDelegate?
+  public var markedTextStyle: [NSAttributedString.Key: Any]?
+  public lazy var tokenizer: UITextInputTokenizer = UITextInputStringTokenizer(textInput: self)
+  var heldKeys: [UIKeyboardHIDUsage: TerminalKeyEvent] = [:]
+  var interpretingKey: UIKey?
+  var selecting = false
+  var findController: TouchFindController?
+  var clipboardRevision: UInt64 = 0
   private var scrollRemainder: CGFloat = 0
+  private var blinkWake: DispatchWorkItem?
+  private var blinkDeadline: TimeInterval?
   /// Called with the title the program set.
   public var onTitle: ((String) -> Void)?
+  /// Return true when the host opened the validated link.
+  public var onOpenLink: ((URL) -> Bool)?
 
   public override class var layerClass: AnyClass { CAMetalLayer.self }
 
@@ -35,20 +48,28 @@ public final class TerminalCanvasView: UIView, UIKeyInput {
     if let layer = layer as? CAMetalLayer, let rendering { surface = rendering.attach(layer) }
     session.onSnapshot = { [weak self] value in
       guard let self else { return }
+      if let previous = self.snapshot, previous.document_epoch != value.document_epoch {
+        self.cancelComposition()
+      }
       self.snapshot = value
+      self.updateAccessibility()
       self.onTitle?(value.title)
       self.redraw()
     }
-    addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped)))
+    addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
+    addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(selected(_:))))
     let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
     pan.maximumNumberOfTouches = 1
     addGestureRecognizer(pan)
-    isAccessibilityElement = true
+    isAccessibilityElement = false
     accessibilityLabel = "Terminal"
-    accessibilityTraits = .allowsDirectInteraction
+    NotificationCenter.default.addObserver(self, selector: #selector(suspendInput), name: UIApplication.willResignActiveNotification, object: nil)
+    NotificationCenter.default.addObserver(self, selector: #selector(resumeDrawing), name: UIApplication.didBecomeActiveNotification, object: nil)
   }
   public required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   deinit {
+    NotificationCenter.default.removeObserver(self)
+    blinkWake?.cancel()
     if let surface { rendering?.detach(surface) }
     let session = session
     MainActor.assumeIsolated { session.detachView() }
@@ -63,8 +84,8 @@ public final class TerminalCanvasView: UIView, UIKeyInput {
 
   // MARK: Geometry and drawing
 
-  private var scale: CGFloat { window?.screen.scale ?? traitCollection.displayScale }
-  private var insetPixels: Int { Int((min(200, max(0, configuration.contentInset)) * scale).rounded()) }
+  var scale: CGFloat { window?.screen.scale ?? traitCollection.displayScale }
+  var insetPixels: Int { Int((min(200, max(0, configuration.contentInset)) * scale).rounded()) }
   private func updateMetrics() {
     let font = TerminalFont.core(size: configuration.fontSize, family: configuration.fontFamily)
     var glyph = CGGlyph(0)
@@ -117,19 +138,44 @@ public final class TerminalCanvasView: UIView, UIKeyInput {
     session.resize(cols: columns, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
     redraw()
   }
-  private func redraw() {
-    guard let snapshot, let surface, window != nil, !isHidden else { return }
+  func redraw() {
+    guard let snapshot, let surface, window != nil, window?.isHidden == false, !isHidden,
+          (window?.windowScene?.activationState ?? .foregroundActive) == .foregroundActive else { scheduleBlink(nil); return }
+    let blink = TerminalBlinkPresentation(now: CACurrentMediaTime(), cursorShape: snapshot.cursor.shape,
+      cursor: snapshot.cursor.visible && snapshot.following_tail && isFirstResponder,
+      text: snapshot.rows.contains { $0.cells.contains { $0.style.blink && !$0.style.conceal && !$0.text.isEmpty } }, active: true)
+    scheduleBlink(blink.nextDeadline)
     rendering?.request(surface, latest: RenderRequest(
       snapshot: snapshot, width: Int(bounds.width * scale), height: Int(bounds.height * scale),
       inset: insetPixels, cellWidth: cellWidth, cellHeight: cellHeight, fontSize: configuration.fontSize * scale,
-      focused: isFirstResponder, marked: "", linkUnderline: [], colors: configuration.session.colors,
-      fontFamily: configuration.fontFamily, ligatures: configuration.ligatures))
+      focused: isFirstResponder, marked: composition.text, linkUnderline: [], colors: configuration.session.colors,
+      fontFamily: configuration.fontFamily, ligatures: configuration.ligatures,
+      backingScale: max(1, Int(scale.rounded())), cursorVisible: blink.cursorVisible,
+      textVisible: blink.textVisible, preedit: preeditPresentation))
+  }
+  private func scheduleBlink(_ deadline: TimeInterval?) {
+    guard deadline != blinkDeadline else { return }
+    blinkWake?.cancel(); blinkWake = nil; blinkDeadline = deadline
+    guard let deadline else { return }
+    let wake = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      self.blinkWake = nil; self.blinkDeadline = nil; self.redraw()
+    }
+    blinkWake = wake
+    DispatchQueue.main.asyncAfter(deadline: .now() + max(0.001, deadline - CACurrentMediaTime()), execute: wake)
   }
 
   // MARK: Touch
 
-  @objc private func tapped() { _ = becomeFirstResponder() }
+  @objc private func tapped(_ gesture: UITapGestureRecognizer) {
+    _ = becomeFirstResponder()
+    if let index = gridIndex(at: gesture.location(in: self)),
+       let activation = snapshot.flatMap({ VisibleLinkProjection(snapshot: $0).occurrence(atGrid: index)?.activation }) {
+      activateLink(activation)
+    }
+  }
   @objc private func panned(_ gesture: UIPanGestureRecognizer) {
+    guard !selecting else { gesture.setTranslation(.zero, in: self); return }
     let lineHeight = CGFloat(cellHeight) / scale
     scrollRemainder += gesture.translation(in: self).y
     gesture.setTranslation(.zero, in: self)
@@ -150,50 +196,65 @@ public final class TerminalCanvasView: UIView, UIKeyInput {
   }
   public override func resignFirstResponder() -> Bool {
     let accepted = super.resignFirstResponder()
+    if accepted {
+      suspendInput()
+    }
     redraw()
     return accepted
   }
+  @objc private func suspendInput() {
+    cancelComposition()
+    for event in heldKeys.values { _ = session.input(event.released) }
+    heldKeys.removeAll()
+    scheduleBlink(nil)
+  }
+  @objc private func resumeDrawing() { redraw() }
   public var hasText: Bool { true }
   public func insertText(_ text: String) {
-    if text == "\n" { session.send(.enter) } else { session.send(text: text) }
+    let wasComposing = !composition.text.isEmpty
+    cancelComposition()
+    if let key = interpretingKey, !wasComposing {
+      let event = TouchHardwareInput.mapped(key, text: text, event: heldKeys[key.keyCode] == nil ? 0 : 1)
+      if session.input(event) { heldKeys[key.keyCode] = event }
+    } else if text == "\n" { session.send(.enter) } else { session.send(text: text) }
   }
-  public func deleteBackward() { session.send(.backspace) }
+  public func deleteBackward() {
+    if !composition.text.isEmpty { changeComposition { composition.deleteBackward() } }
+    else { session.send(.backspace) }
+  }
   public var autocorrectionType: UITextAutocorrectionType { get { .no } set {} }
   public var autocapitalizationType: UITextAutocapitalizationType { get { .none } set {} }
   public var smartQuotesType: UITextSmartQuotesType { get { .no } set {} }
   public var smartDashesType: UITextSmartDashesType { get { .no } set {} }
   public var spellCheckingType: UITextSpellCheckingType { get { .no } set {} }
-  public var keyboardType: UIKeyboardType { get { .asciiCapable } set {} }
+  public var keyboardType: UIKeyboardType { get { .default } set {} }
 
   /// A hardware keyboard's keys that type no text, and Control or Option
   /// with a letter, go to the program encoded; everything else arrives as
   /// text through `insertText`.
   public override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-    var unhandled = Set<UIPress>()
     for press in presses {
-      guard let key = press.key, send(key) else { unhandled.insert(press); continue }
+      guard let key = press.key else { super.pressesBegan([press], with: event); continue }
+      if composition.text.isEmpty, TouchHardwareInput.handles(key, optionSendsEscape: configuration.optionSendsEscape) {
+        let mapped = TouchHardwareInput.mapped(key, event: heldKeys[key.keyCode] == nil ? 0 : 1)
+        if session.input(mapped) { heldKeys[key.keyCode] = mapped }
+      } else {
+        interpretingKey = key
+        super.pressesBegan([press], with: event)
+        interpretingKey = nil
+      }
     }
-    if !unhandled.isEmpty { super.pressesBegan(unhandled, with: event) }
   }
-  private func send(_ key: UIKey) -> Bool {
-    var modifiers: TerminalKeyModifiers = []
-    if key.modifierFlags.contains(.shift) { modifiers.insert(.shift) }
-    if key.modifierFlags.contains(.alternate) { modifiers.insert(.option) }
-    if key.modifierFlags.contains(.control) { modifiers.insert(.control) }
-    let named: [UIKeyboardHIDUsage: TerminalKey] = [
-      .keyboardUpArrow: .up, .keyboardDownArrow: .down, .keyboardLeftArrow: .left, .keyboardRightArrow: .right,
-      .keyboardHome: .home, .keyboardEnd: .end, .keyboardPageUp: .pageUp, .keyboardPageDown: .pageDown,
-      .keyboardDeleteForward: .forwardDelete, .keyboardEscape: .escape, .keyboardTab: .tab,
-      .keyboardF1: .function(1), .keyboardF2: .function(2), .keyboardF3: .function(3), .keyboardF4: .function(4),
-      .keyboardF5: .function(5), .keyboardF6: .function(6), .keyboardF7: .function(7), .keyboardF8: .function(8),
-      .keyboardF9: .function(9), .keyboardF10: .function(10), .keyboardF11: .function(11), .keyboardF12: .function(12),
-    ]
-    if let terminalKey = named[key.keyCode] { return session.send(terminalKey, modifiers: modifiers) }
-    if modifiers.contains(.control) || modifiers.contains(.option),
-       let character = key.charactersIgnoringModifiers.lowercased().first {
-      return session.send(.character(character), modifiers: modifiers)
+  public override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+    for press in presses {
+      if let key = press.key, let held = heldKeys.removeValue(forKey: key.keyCode) {
+        let release = TouchHardwareInput.mapped(key, text: "", event: 2)
+        _ = session.input(TerminalKeyEvent(text: "", logical: held.logical, shifted: held.shifted,
+          baseLayout: held.baseLayout, legacyText: held.legacyText, key: held.key,
+          modifiers: release.modifiers, event: 2))
+      } else { super.pressesEnded([press], with: event) }
     }
-    return false
   }
+  public override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) { pressesEnded(presses, with: event) }
 }
 #endif
