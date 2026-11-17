@@ -54,6 +54,28 @@ import Testing
     #expect(layout.firstSegment(for: NSRange(location: NSNotFound, length: 0)) == nil)
   }
 
+  @Test func replacementEndpointsMustNotBisectUTF16SurrogatePairs() {
+    var storage = MarkedTextStorage()
+    #expect(storage.update(NSAttributedString(string: "A😀B𐐀C"),
+      selection: NSRange(location: 7, length: 0), replacement: NSRange(location: NSNotFound, length: 0)))
+    for range in [NSRange(location: 1, length: 1), NSRange(location: 2, length: 1),
+                  NSRange(location: 2, length: 0), NSRange(location: 4, length: 1),
+                  NSRange(location: 5, length: 1), NSRange(location: 5, length: 0)] {
+      #expect(storage.committing("x", replacement: range) == nil)
+      #expect(!storage.update(NSAttributedString(string: "x"),
+        selection: NSRange(location: 1, length: 0), replacement: range))
+      #expect(storage.text.string == "A😀B𐐀C", "A refused replacement preserves pending composition")
+    }
+    #expect(storage.committing("x", replacement: NSRange(location: 1, length: 2)) == "AxB𐐀C")
+    #expect(storage.committing("x", replacement: NSRange(location: 4, length: 2)) == "A😀BxC")
+    for boundary in [0, 1, 3, 4, 6, 7] {
+      #expect(storage.valid(NSRange(location: boundary, length: 0)))
+    }
+    #expect(storage.update(NSAttributedString(string: "x"),
+      selection: NSRange(location: 1, length: 0), replacement: NSRange(location: 4, length: 2)))
+    #expect(storage.text.string == "A😀BxC")
+  }
+
   @Test func boundedPreeditWindowFollowsCaretWithoutChangingDocumentOffsets() throws {
     let text = NSAttributedString(string: String(repeating: "あ", count: 500))
     let layout = PreeditPresentation(text: text, selection: NSRange(location: 490, length: 0),

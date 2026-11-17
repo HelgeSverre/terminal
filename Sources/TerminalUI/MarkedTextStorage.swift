@@ -10,9 +10,19 @@ struct MarkedTextStorage {
   var hasText: Bool { text.length > 0 }
 
   func valid(_ range: NSRange) -> Bool {
-    range.location != NSNotFound && range.location >= 0 && range.length >= 0
+    guard range.location != NSNotFound && range.location >= 0 && range.length >= 0
       && range.location <= text.length && range.length <= text.length - range.location
-      && Range(range, in: text.string) != nil
+    else { return false }
+    // A String.Index converted from a UTF-16 offset can still describe the
+    // middle of a surrogate pair. NSString replacement needs scalar-boundary
+    // proof at both endpoints or it silently creates a replacement character.
+    let characters = text.string as NSString
+    func isScalarBoundary(_ offset: Int) -> Bool {
+      guard offset > 0, offset < characters.length else { return true }
+      return !((0xD800...0xDBFF).contains(characters.character(at: offset - 1))
+        && (0xDC00...0xDFFF).contains(characters.character(at: offset)))
+    }
+    return isScalarBoundary(range.location) && isScalarBoundary(range.location + range.length)
   }
   @discardableResult mutating func update(
     _ value: NSAttributedString, selection: NSRange, replacement: NSRange
