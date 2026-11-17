@@ -33,6 +33,18 @@ import TerminalInterop
     #expect(cursor(terminal) == (2, 7))
   }
 
+  @Test static func nextLineUsesOriginalColumnToDecideWhetherToScroll() {
+    let terminal = Oracle.make(8, 6); defer { helge_terminal_destroy(terminal) }
+    Oracle.feed(terminal, "\u{1b}[?69h\u{1b}[2;5s\u{1b}[2;5r\u{1b}[5;3Hx\u{1b}[5;6H\u{1b}E")
+    #expect(cursor(terminal) == (4, 1))
+    #expect(Oracle.cell(Oracle.snapshot(terminal), 4, 2)["text"] as? String == "x")
+    Oracle.feed(terminal, "\u{1b}[4;6H\u{1b}E")
+    #expect(cursor(terminal) == (4, 1))
+    Oracle.feed(terminal, "\u{1b}[5;1H\u{1b}E")
+    #expect(cursor(terminal) == (4, 0))
+    #expect(Oracle.cell(Oracle.snapshot(terminal), 4, 2)["text"] as? String == "x")
+  }
+
   @Test static func selectiveAndISOProtectionAreIndependent() {
     for erase in ["\u{1b}[?2K", "\u{1b}[?2J", "\u{1b}[1;1;1;8${"] {
       let terminal = Oracle.make(); defer { helge_terminal_destroy(terminal) }

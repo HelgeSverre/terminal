@@ -792,7 +792,9 @@ private final class TerminalEmulator {
     // applies LNM's carriage return.
     case 0x44: resetClusterBoundary(); index(reverse: false)
     case 0x4d: reverseIndex()
-    case 0x45: carriageReturn(); lineFeed()
+    // NEL decides scrolling from the incoming column. Returning first could
+    // move a cursor outside the horizontal margins into the scroll region.
+    case 0x45: lineFeed(); carriageReturn()
     case 0x63: reset()
     case 0x3d: applicationKeypad = true
     case 0x3e: applicationKeypad = false
