@@ -663,6 +663,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var terminationRequested = false
   private var finishedLaunching = false
   private var pendingFileLaunches: [LaunchSpec] = []
+  private let startupFiles = StartupTerminalFileFilter(arguments: CommandLine.arguments,
+    currentDirectory: FileManager.default.currentDirectoryPath)
   let recovery: SessionStateStore?
   private var recoveryLayoutWork: DispatchWorkItem?
   private var recoveryCheckpointWork: DispatchWorkItem?
@@ -1020,6 +1022,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
   private func acceptTerminalFiles(_ filenames: [String]) -> Bool {
     guard !terminationRequested, !filenames.isEmpty else { return false }
+    let filenames = startupFiles.documents(from: filenames, duringStartup: !finishedLaunching,
+      currentEvent: NSAppleEventManager.shared().currentAppleEvent)
+    // Acknowledge AppKit's synthetic request without queuing a launch or an
+    // error panel. The normal diagnostic/recovery startup still runs below.
+    guard !filenames.isEmpty else { return true }
     do {
       let launches = try filenames.map {
         try OpenTerminalFile.launch(path: $0, launcher: LaunchSpec.shell.launcher)
