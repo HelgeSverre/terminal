@@ -117,7 +117,9 @@ final class SessionStateStore: @unchecked Sendable {
         let panes = directory.appendingPathComponent("panes")
         try Self.checkDirectory(panes)
         for file in try FileManager.default.contentsOfDirectory(at: panes, includingPropertiesForKeys: nil) {
-          if !retained.contains(file.deletingPathExtension().lastPathComponent) { try? FileManager.default.removeItem(at: file) }
+          // `<pane>.txt`, `<pane>.resume` and a hook's `<pane>.resume.tmp` all belong to the pane.
+          let owner = file.lastPathComponent.prefix { $0 != "." }
+          if !retained.contains(String(owner)) { try? FileManager.default.removeItem(at: file) }
         }
         try writeRunning(restoring: restoring)
         if let completion { DispatchQueue.main.async(execute: completion) }

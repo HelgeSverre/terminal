@@ -48,6 +48,20 @@ import Darwin
     #expect(StateLocation.directory(arguments: ["app"], bundle: URL(fileURLWithPath: "/Applications-other/App.app"), home: home) == nil)
   }
 
+  @Test func savePrunesOnlyFilesOfPanesThatAreGone() async throws {
+    let dir = try directory(), layout = fixture()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = try open(dir)
+    let panes = dir.appendingPathComponent("panes")
+    let kept = layout.windows[0].panes[0].id.string, gone = PaneID().string
+    let names = ["\(kept).txt", "\(kept).resume", "\(kept).resume.tmp", "\(gone).txt", "\(gone).resume.tmp"]
+    for name in names { try Data("x".utf8).write(to: panes.appendingPathComponent(name)) }
+    await withCheckedContinuation { continuation in store.save(layout) { continuation.resume() } }
+    let remaining = Set(try FileManager.default.contentsOfDirectory(atPath: panes.path))
+    #expect(remaining == Set(names.prefix(3)))
+    await clean(store)
+  }
+
   @Test func layoutRoundTripAndValidation() throws {
     var value = fixture()
     let other = PaneID()

@@ -117,6 +117,8 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   private func recordTitle(_ title: String, from pane: TerminalCanvasView) {
     guard panes.contains(where: { $0 === pane }) else { return }
     var state = paneTitles[ObjectIdentifier(pane)] ?? PaneTitle()
+    // Every snapshot reports its title; only a new one is a change to save.
+    guard state.reported != title else { return }
     state.reported = title
     paneTitles[ObjectIdentifier(pane)] = state
     panePresentation(for: pane)?.setTitle(state.windowTitle)

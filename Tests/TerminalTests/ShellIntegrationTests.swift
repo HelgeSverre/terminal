@@ -75,6 +75,9 @@ import TerminalInterop
       source "$HOOKS"
       [[ $(trap -p DEBUG) == "$before" ]] || exit 41
       [[ $PROMPT_COMMAND == *': user_hook'* ]] || exit 42
+      # A value ending in a semicolon, as zoxide and `history -a;` leave it.
+      (unset _HELGE_TERMINAL_BASH_INSTALLED; trap - DEBUG; PROMPT_COMMAND='user_ran=1;'
+       source "$HOOKS"; eval "$PROMPT_COMMAND" >/dev/null 2>&1; [[ $user_ran == 1 ]]) || exit 44
       _helge_terminal_ready
       [[ $PS1 == 'user prompt> '* ]] || exit 43
       source "$HOOKS"

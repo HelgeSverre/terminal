@@ -69,5 +69,8 @@ fi
 if [[ $(declare -p PROMPT_COMMAND 2>/dev/null) =~ ^declare\ -[^[:space:]]*a ]]; then
   PROMPT_COMMAND=(_helge_terminal_prompt "${PROMPT_COMMAND[@]}" _helge_terminal_ready)
 else
-  PROMPT_COMMAND="_helge_terminal_prompt${PROMPT_COMMAND:+; $PROMPT_COMMAND}; _helge_terminal_ready"
+  # Newlines, not semicolons: a value ending in ";" would otherwise form ";;".
+  PROMPT_COMMAND="_helge_terminal_prompt${PROMPT_COMMAND:+
+$PROMPT_COMMAND}
+_helge_terminal_ready"
 fi

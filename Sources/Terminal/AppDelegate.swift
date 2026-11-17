@@ -65,6 +65,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var recoveryObservers: [NSObjectProtocol] = []
   private var initialPaneID: PaneID?
   private var recoveryLayoutRevision: UInt64 = 0
+  private var recoveryLayoutPendingSince: DispatchTime?
+  private var resumeRecords: [PaneID: ResumeRecord] = [:]
+  private lazy var restoredResumeRecords: [PaneID: ResumeRecord] = Dictionary(
+    (recovery?.restored?.windows.flatMap(\.panes) ?? []).compactMap { pane in pane.resume.map { (pane.id, $0) } },
+    uniquingKeysWith: { first, _ in first })
   private var resumeSampling = false
   private var resumePending: (layout: SessionLayout, restoring: Bool, revision: UInt64)?
   lazy var resumeRules = ResumeRules.load(Bundle.main.url(forResource: "ResumeRules", withExtension: "json"))
@@ -121,13 +126,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     NSApp.setActivationPolicy(.regular)
     menu()
     finishedLaunching = true
+    // Saved windows come back even when a file launched the app; skipping
+    // them would let the next save discard their state.
+    if let layout = recovery?.restored { restoreWindows(layout) }
     if !pendingFileLaunches.isEmpty {
       let launches = pendingFileLaunches
       pendingFileLaunches.removeAll()
       launches.forEach { openTerminalWindow(launch: $0) }
-    } else if let layout = recovery?.restored {
-      restoreWindows(layout)
-    } else {
+    } else if recovery?.restored == nil {
       #if TERMINAL_DIAGNOSTICS
       if !openDiagnosticWindow() { newWindow(nil) }
       #else
@@ -192,16 +198,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     recoveryLayoutWork?.cancel()
     let work = DispatchWorkItem { [weak self] in self?.saveRecoveryLayout() }
     recoveryLayoutWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    // One second after the last change, and never more than five after the
+    // first: steady changes must not postpone the save indefinitely.
+    let now = DispatchTime.now()
+    let first = recoveryLayoutPendingSince ?? now
+    recoveryLayoutPendingSince = first
+    DispatchQueue.main.asyncAfter(deadline: min(now + 1, first + 5), execute: work)
+  }
+  /// The layout as it is saved: each pane with the resume record sampling last
+  /// found for it, or with the restored offer it still shows.
+  private func withResumeRecords(_ layout: SessionLayout) -> SessionLayout {
+    var offered: Set<String> = []
+    for controller in windows {
+      for pane in controller.panes where controller.panePresentation(for: pane)?.resumeStrip.isOffered == true {
+        offered.insert(pane.automationID)
+      }
+    }
+    var layout = layout
+    for window in layout.windows.indices {
+      for pane in layout.windows[window].panes.indices {
+        let id = layout.windows[window].panes[pane].id
+        layout.windows[window].panes[pane].resume = resumeRecords[id]
+          ?? (offered.contains(id.string) ? restoredResumeRecords[id] : nil)
+      }
+    }
+    return layout
   }
   private func saveRecoveryLayout() {
     recoveryLayoutWork = nil
+    recoveryLayoutPendingSince = nil
     guard let recovery, !terminationRequested else { return }
     let saved = windows.compactMap { $0.layout() }
     guard !saved.isEmpty else { return }
     let key = (NSApp.keyWindow?.windowController as? TerminalWindow).flatMap { UUID(uuidString: $0.automationID) }
-    let layout = SessionLayout(appBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
-      windows: saved, keyWindow: key)
+    let layout = withResumeRecords(SessionLayout(
+      appBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
+      windows: saved, keyWindow: key))
     guard layout.isValid else { return }
     let restoring = recovery.restored != nil && !windows.flatMap(\.panes).allSatisfy { recoveryReadyPanes.contains($0.automationID) }
     recovery.save(layout, restoring: restoring)
@@ -219,8 +251,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       guard let raw = UUID(uuidString: pane.automationID) else { continue }
       let id = PaneID(raw)
       group.enter()
-      pane.session.foregroundProcessIdentifier { pid in
-        if let pid { requests.append(ResumeSampler.Pane(id: id, pid: pid, hook: recovery.resumeFile(id))) }
+      pane.session.foregroundProcessIdentifier { [weak pane] pid in
+        // A shell at its prompt is its own foreground group; no rule matches it.
+        if let pid, pid != pane?.session.processIdentifier {
+          requests.append(ResumeSampler.Pane(id: id, pid: pid, hook: recovery.resumeFile(id)))
+        }
         group.leave()
       }
     }
@@ -230,15 +265,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       resumeSampler.sample(requests) { [weak self] records in
         guard let self else { return }
         resumeSampling = false
-        if !terminationRequested, pending.revision == recoveryLayoutRevision {
-          var layout = pending.layout
-          for window in layout.windows.indices {
-            for pane in layout.windows[window].panes.indices {
-              let id = layout.windows[window].panes[pane].id
-              layout.windows[window].panes[pane].resume = records[id]
-            }
-          }
-          recovery.save(layout, restoring: pending.restoring)
+        // Kept for every later save; a layout change during sampling brings one.
+        let changed = records != resumeRecords
+        resumeRecords = records
+        if changed, !terminationRequested, pending.revision == recoveryLayoutRevision {
+          recovery.save(withResumeRecords(pending.layout), restoring: pending.restoring)
         }
         sampleNextResume()
       }
