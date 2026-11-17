@@ -536,6 +536,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var recoveryCheckpointWork: DispatchWorkItem?
   private var recoveryPending: [String: (pane: TerminalCanvasView, due: Date)] = [:]
   private var recoveryCaptureInFlight = false
+  private var recoverySleepFlush = false
   private var recoveryReadyPanes: Set<String> = []
   private var recoveryObservers: [NSObjectProtocol] = []
   init(rendering setup: RenderingSetup, recovery: SessionStateStore? = nil) {
@@ -679,6 +680,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private func scheduleRecoveryCheckpoint() {
     recoveryCheckpointWork?.cancel()
     recoveryCheckpointWork = nil
+    if recoveryPending.isEmpty && !recoveryCaptureInFlight { recoverySleepFlush = false }
     guard !terminationRequested, !recoveryCaptureInFlight,
       let next = recoveryPending.values.map(\.due).min() else { return }
     let work = DispatchWorkItem { [weak self] in self?.captureNextRecoveryPane() }
@@ -695,7 +697,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       scheduleRecoveryCheckpoint(); return
     }
     recoveryCaptureInFlight = true
-    pane.session.recoveryCheckpoint(force: force) { [weak self, weak pane] text, rows, delay in
+    pane.session.recoveryCheckpoint(force: force || recoverySleepFlush) { [weak self, weak pane] text, rows, delay in
       guard let self else { return }
       recoveryCaptureInFlight = false
       if let pane, !terminationRequested,
@@ -710,6 +712,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private func checkpointBeforeSleep() {
     recoveryLayoutWork?.cancel()
     saveRecoveryLayout()
+    recoverySleepFlush = true
     for entry in recoveryPending { recoveryPending[entry.key]?.due = .distantPast }
     captureNextRecoveryPane(force: true)
   }
@@ -911,7 +914,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     recoveryLayoutWork?.cancel()
     recoveryCheckpointWork?.cancel()
     recoveryPending.removeAll()
-    recovery?.cleanExit()
+    let cleanups = DispatchGroup()
+    if let recovery {
+      cleanups.enter()
+      recovery.cleanExit { cleanups.leave() }
+    }
     windows.forEach { $0.close() }
     // Closing hangs every child up. The app leaves as soon as the last one
     // has been reaped, which for a shell at its prompt is a few milliseconds.
@@ -923,7 +930,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // AppKit's terminate-later loop runs in modalPanel mode, so a default-mode
     // dispatch callback can remain blocked by the very termination it resolves.
     let modes: [RunLoop.Mode] = [.modalPanel, .default]
-    LiveChildren.whenNoneRemain {
+    cleanups.enter()
+    LiveChildren.whenNoneRemain { cleanups.leave() }
+    cleanups.notify(queue: .global(qos: .userInteractive)) {
       RunLoop.main.perform(inModes: modes) { reply.send() }
       CFRunLoopWakeUp(CFRunLoopGetMain())
     }

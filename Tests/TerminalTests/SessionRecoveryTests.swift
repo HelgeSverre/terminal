@@ -22,6 +22,12 @@ import TerminalInterop
     try JSONEncoder().encode(SessionStateStore.Running(pid: 1, started: Date(), restoring: restoring))
       .write(to: directory.appendingPathComponent("running"))
   }
+  private func clean(_ store: SessionStateStore?) async {
+    await withCheckedContinuation { continuation in
+      guard let store else { continuation.resume(); return }
+      store.cleanExit { continuation.resume() }
+    }
+  }
 
   @Test func locationDoesNotUseBundleIdentifier() {
     let home = URL(fileURLWithPath: "/Users/test")
@@ -73,15 +79,15 @@ import TerminalInterop
     store = nil // Simulates a dead process releasing only the lock.
     store = try #require(SessionStateStore.open(directory: dir))
     #expect(store?.restored == second)
-    store?.cleanExit()
+    await clean(store)
     store = nil
     #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path).isEmpty)
     store = SessionStateStore.open(directory: dir)
     #expect(store?.restored == nil)
-    store?.cleanExit()
+    await clean(store)
   }
 
-  @Test func everyTruncationFallsBackToPrevious() throws {
+  @Test func everyTruncationFallsBackToPrevious() async throws {
     let good = fixture(), bytes = try JSONEncoder().encode(good)
     let dir = try directory()
     defer { try? FileManager.default.removeItem(at: dir) }
@@ -91,11 +97,11 @@ import TerminalInterop
       try bytes.prefix(count).write(to: dir.appendingPathComponent("layout.json"))
       let store = try #require(SessionStateStore.open(directory: dir))
       #expect(store.restored == good, "truncated at byte \(count)")
-      store.cleanExit()
+      await clean(store)
     }
   }
 
-  @Test func missingCurrentStaleTemporaryFutureAndRestoreLoop() throws {
+  @Test func missingCurrentStaleTemporaryFutureAndRestoreLoop() async throws {
     let dir = try directory(), good = fixture()
     defer { try? FileManager.default.removeItem(at: dir) }
     let bytes = try JSONEncoder().encode(good)
@@ -108,7 +114,7 @@ import TerminalInterop
     store = try #require(SessionStateStore.open(directory: dir))
     #expect(store?.restored == nil)
     #expect(FileManager.default.fileExists(atPath: dir.appendingPathComponent("quarantine/layout.previous.json").path))
-    store?.cleanExit(); store = nil
+    await clean(store); store = nil
     try writeRunning(dir)
     var future = good; future.version = 999
     try JSONEncoder().encode(future).write(to: dir.appendingPathComponent("layout.json"))
@@ -117,7 +123,7 @@ import TerminalInterop
     #expect(store?.restored == nil)
     let preserved = try Data(contentsOf: dir.appendingPathComponent("quarantine/layout.json"))
     #expect(try JSONDecoder().decode(SessionLayout.self, from: preserved).version == 999)
-    store?.cleanExit()
+    await clean(store)
   }
 
   @Test func quietAndMaximumAgeDoNotPollCleanPanes() {

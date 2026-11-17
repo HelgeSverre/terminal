@@ -38,7 +38,9 @@ final class SessionStateStore: @unchecked Sendable {
   let restored: SessionLayout?
   private let descriptor: Int32
   private let queue = DispatchQueue(label: "terminal.recovery.files", qos: .utility)
-  private var stopped = false
+  private let stopLock = NSLock()
+  private var stopping = false
+  private var isStopping: Bool { stopLock.lock(); defer { stopLock.unlock() }; return stopping }
   private var lastGoodLayout: Data?
   private static let maximumTextBytes = 16 * 1024 * 1024
 
@@ -98,7 +100,7 @@ final class SessionStateStore: @unchecked Sendable {
 
   func save(_ layout: SessionLayout, restoring: Bool = false, completion: (() -> Void)? = nil) {
     queue.async { [self] in
-      guard !stopped else { return }
+      guard !isStopping else { return }
       do {
         let data = try JSONEncoder().encode(layout)
         if let lastGoodLayout {
@@ -108,6 +110,7 @@ final class SessionStateStore: @unchecked Sendable {
         lastGoodLayout = data
         let retained = Set(layout.windows.flatMap(\.panes).map { $0.id.string })
         let panes = directory.appendingPathComponent("panes")
+        try Self.checkDirectory(panes)
         for file in try FileManager.default.contentsOfDirectory(at: panes, includingPropertiesForKeys: nil) {
           if !retained.contains(file.deletingPathExtension().lastPathComponent) { try? FileManager.default.removeItem(at: file) }
         }
@@ -119,7 +122,7 @@ final class SessionStateStore: @unchecked Sendable {
 
   func saveScrollback(_ text: String, rows: Int, pane: PaneID) {
     queue.async { [self] in
-      guard !stopped, text.utf8.count <= Self.maximumTextBytes else { return }
+      guard !isStopping, text.utf8.count <= Self.maximumTextBytes else { return }
       do {
         let body = Data(text.utf8)
         let header = ScrollbackHeader(rows: rows, bytes: body.count, capturedAt: Date(), checksum: Self.checksum(body))
@@ -132,6 +135,7 @@ final class SessionStateStore: @unchecked Sendable {
 
   func scrollback(_ pane: PaneID) -> Scrollback {
     do {
+      try Self.checkDirectory(directory.appendingPathComponent("panes"))
       let data = try Self.read(scrollbackURL(pane), limit: Self.maximumTextBytes + 4096)
       guard let newline = data.firstIndex(of: 10), newline < 4096 else { throw POSIXError(.EINVAL) }
       let header = try JSONDecoder().decode(ScrollbackHeader.self, from: data[..<newline])
@@ -143,12 +147,15 @@ final class SessionStateStore: @unchecked Sendable {
     } catch { return Scrollback(text: "", capturedAt: restored?.savedAt ?? Date(), unavailable: true) }
   }
 
-  func cleanExit() {
-    queue.sync {
-      stopped = true
+  func cleanExit(completion: @escaping @Sendable () -> Void = {}) {
+    stopLock.lock(); stopping = true; stopLock.unlock()
+    queue.async { [self] in
+      defer { completion() }
       do {
         try Self.removeSavedFiles(directory)
-        try FileManager.default.removeItem(at: directory.appendingPathComponent("running"))
+        if FileManager.default.fileExists(atPath: directory.appendingPathComponent("running").path) {
+          try FileManager.default.removeItem(at: directory.appendingPathComponent("running"))
+        }
         Self.syncDirectory(directory)
       } catch { NSLog("Session recovery cleanup failed: %@", String(describing: error)) }
     }
@@ -165,9 +172,18 @@ final class SessionStateStore: @unchecked Sendable {
   }
   private static func checksum(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
   private static func makeDirectory(_ url: URL) throws {
+    // Reject redirected ancestors before creation or destructive cleanup.
+    // This includes a replaced panes/ directory in otherwise valid state.
+    let parent = url.deletingLastPathComponent()
+    if FileManager.default.fileExists(atPath: parent.path) { try checkDirectory(parent) }
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    try checkDirectory(url)
+    guard chmod(url.path, 0o700) == 0 else { throw POSIXError(.EACCES) }
+  }
+  private static func checkDirectory(_ url: URL) throws {
+    guard url.standardizedFileURL.path == url.resolvingSymlinksInPath().standardizedFileURL.path else { throw POSIXError(.ELOOP) }
     let values = try url.resourceValues(forKeys: [.isSymbolicLinkKey, .isDirectoryKey])
-    guard values.isSymbolicLink != true, values.isDirectory == true, chmod(url.path, 0o700) == 0 else { throw POSIXError(.EACCES) }
+    guard values.isSymbolicLink != true, values.isDirectory == true else { throw POSIXError(.ENOTDIR) }
   }
   private static func read(_ url: URL, limit: Int) throws -> Data {
     let fd = Darwin.open(url.path, O_RDONLY | O_NOFOLLOW)
@@ -197,6 +213,7 @@ final class SessionStateStore: @unchecked Sendable {
     }
   }
   private static func atomicWrite(_ data: Data, to url: URL) throws {
+    try checkDirectory(url.deletingLastPathComponent())
     let temporary = url.appendingPathExtension("tmp")
     let fd = Darwin.open(temporary.path, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0o600)
     guard fd >= 0 else { throw POSIXError(.EACCES) }
@@ -211,6 +228,7 @@ final class SessionStateStore: @unchecked Sendable {
     if fd >= 0 { _ = fsync(fd); Darwin.close(fd) }
   }
   private static func removeSavedFiles(_ directory: URL) throws {
+    try checkDirectory(directory)
     for name in ["layout.json", "layout.previous.json", "layout.json.tmp", "layout.previous.json.tmp", "panes"] {
       let url = directory.appendingPathComponent(name)
       if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
