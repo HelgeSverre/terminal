@@ -107,12 +107,16 @@ static int make_environment(const char *launcher,const char *executable,char *co
     out->values[n++]=(char *)language;
     if(wrap){
         const char *original=getenv("ZDOTDIR");
+        for(size_t e=0;e<extras;e++)if(!strncmp(extra[e],"ZDOTDIR=",8))original=extra[e]+8;
         if(asprintf(&out->directory,"ZDOTDIR=%s",shim)<0||asprintf(&out->original,"HELGE_TERMINAL_ORIGINAL_ZDOTDIR=%s",original?original:"")<0)return ENOMEM;
         out->values[n++]=out->directory;out->values[n++]=out->original;
         out->values[n++]=original?"HELGE_TERMINAL_ZDOTDIR_SET=1":"HELGE_TERMINAL_ZDOTDIR_SET=0";
     }
     for(size_t e=0;e<extras;e++){
         const char *equals=strchr(extra[e],'=');if(!equals||equals==extra[e])continue;
+        // The host's original ZDOTDIR was saved above. Keep the shim active;
+        // its startup files restore that value before reading user config.
+        if(wrap&&!strncmp(extra[e],"ZDOTDIR=",8))continue;
         size_t key=(size_t)(equals-extra[e])+1,kept=0;
         for(size_t i=0;i<n;i++)if(strncmp(out->values[i],extra[e],key))out->values[kept++]=out->values[i];
         n=kept;out->values[n++]=extra[e];

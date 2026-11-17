@@ -90,3 +90,27 @@ import TerminalInterop
     #expect(String(decoding: output, as: UTF8.self).contains("HOOK_PRESERVED"))
   }
 }
+
+@Suite(.serialized) @MainActor struct ShellIntegrationSessionTests {
+  @Test func directZshLaunchPreservesExplicitConfigAndReportsExitStatus() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("shell-hooks-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try Data("PS1='integration> '; unset HISTFILE\n".utf8).write(to: directory.appendingPathComponent(".zshrc"))
+    let session = TerminalSession(launch: LaunchSpec(executable: "/bin/zsh", arguments: ["/bin/zsh"],
+      cwd: directory.path, environment: ["ZDOTDIR": directory.path],
+      shellIntegrationDirectory: ShellIntegrationTests.resources))
+    defer { session.close() }
+    var ready = false
+    session.onSnapshot = { ready = $0.input_ready }
+    #expect(await TestEnvironment.wait { ready })
+    session.rawInput(Data("false\r".utf8))
+    var commands: [TerminalCommandRecord] = []
+    #expect(await TestEnvironment.wait {
+      session.commandHistory { commands = $0 }
+      return commands.last?.completed == true
+    })
+    #expect(commands.last?.exitStatus == 1)
+    #expect(commands.last?.directory?.hasPrefix("file://localhost/") == true)
+  }
+}
