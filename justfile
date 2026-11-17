@@ -3,6 +3,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 set positional-arguments
 
 export TERMINAL_PROJECT_ROOT := justfile_directory()
+export TERMINAL_DEVELOPMENT := "1"
 
 # The test suites run optimized, with testing enabled so they can reach
 # internal declarations, and one at a time: several hold process-wide state.
@@ -412,7 +413,12 @@ esctest-update: _esctest-build
 # Run the terminal view on the iOS simulator: Examples/iOSCheck.
 [group('test')]
 ios-check device="iPhone 16":
-    cd Examples/iOSCheck && xcodebuild test -quiet -scheme iOSCheck-Package -destination "platform=iOS Simulator,name={{device}}" -derivedDataPath .build-xc
+    cd Examples/iOSCheck && env -u TERMINAL_DEVELOPMENT -u TERMINAL_TEST_HOOKS xcodebuild test -quiet -scheme iOSCheck-Package -destination "platform=iOS Simulator,name={{device}}" -derivedDataPath .build-xc
+
+# Verify the default consumer graph and public Swift 6 example hosts.
+[group('test')]
+embedding-check *arguments: _dev
+    target/native/dev embedding-check {{arguments}}
 
 # Fuzz the emulator for a number of seconds, with Address Sanitizer and
 # exclusivity checks. Heavy: one at a time, like the test suite.

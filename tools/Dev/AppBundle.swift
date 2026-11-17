@@ -53,7 +53,7 @@ enum AppBundle {
       try replace(app + "/Contents/Info.plist", with: Repository.path("Resources/Terminal/Info.plist"))
       try replace(resources + "/Terminal.sdef", with: Repository.path("Resources/Terminal/Terminal.sdef"))
       try replace(resources + "/Terminal.icns", with: scratch + "/Terminal.icns")
-      try Console.quietly(["/usr/bin/ditto", Repository.path("Resources/Terminal/ShellIntegration"),
+      try Console.quietly(["/usr/bin/ditto", Repository.path("Sources/TerminalHost/Resources/ShellIntegration"),
                            resources + "/ShellIntegration"])
       try Console.quietly(["/usr/bin/ditto", Repository.path("Sources/TerminalUI/Resources/Fonts"), resources + "/Fonts"])
       try embedUpdater(into: frameworks, universal: configuration == .release || configuration == .diagnostic,
@@ -77,7 +77,7 @@ enum AppBundle {
   private static func compileIncrementally() throws -> String {
     let build = ["swift", "build", "--package-path", Repository.root,
                  "--scratch-path", packageDirectory, "-c", "debug", "-Xswiftc", "-O"]
-    let withoutHooks: [String: String?] = ["TERMINAL_TEST_HOOKS": nil]
+    let withoutHooks: [String: String?] = ["TERMINAL_TEST_HOOKS": nil, "TERMINAL_DEVELOPMENT": "1"]
     for product in ["TerminalApp", "TerminalLauncher"] {
       try Console.quietly(build + ["--product", product], adding: withoutHooks)
     }
@@ -99,7 +99,8 @@ enum AppBundle {
   private static func compileWholeModule(into directory: String, diagnostics: Bool) throws -> String {
     try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
     // The package fetches the updater; this build only links against it.
-    try Console.quietly(["swift", "package", "--package-path", Repository.root, "--scratch-path", packageDirectory, "resolve"])
+    try Console.quietly(["swift", "package", "--package-path", Repository.root, "--scratch-path", packageDirectory, "resolve"],
+                       adding: ["TERMINAL_DEVELOPMENT": "1"])
     let slices = try releaseArchitectures.map {
       try compileWholeModule(for: $0, into: directory + "/" + $0, diagnostics: diagnostics)
     }

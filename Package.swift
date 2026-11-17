@@ -6,15 +6,15 @@ import PackageDescription
 // app, the developer tool and the test suites, and `just build` assembles the
 // app bundle around the compiled program.
 //
-// A package manager keeps the packages an app depends on in a `checkouts`
-// directory. There the app, its updater and the tests are left out, so an
-// embedding app resolves and builds only the libraries.
-let embedded = Context.packageDirectory.contains("/checkouts/")
+// Consumer mode is the default for both URL and local-path dependencies.
+// Repository tooling opts into the app/updater/tests explicitly; directory
+// names never determine the package graph.
+let development = Context.environment["TERMINAL_DEVELOPMENT"] == "1"
 
 // Code that only the tests reach is compiled in when the suites are built
 // (`just unit-test` sets the variable) and left out of the app. An embedding
 // app's build never gets it, whatever its environment holds.
-let testHooks: [SwiftSetting] = embedded || Context.environment["TERMINAL_TEST_HOOKS"] == nil ? [] : [
+let testHooks: [SwiftSetting] = !development || Context.environment["TERMINAL_TEST_HOOKS"] == nil ? [] : [
   .define("SESSION_IO_TESTING"), .define("GLYPH_RESIDENCY_TESTING"), .define("SNAPSHOT_ABI_DIAGNOSTICS"),
 ]
 
@@ -30,6 +30,7 @@ let libraries: [Target] = [
   // and the order of everything that touches the emulator.
   .target(
     name: "TerminalHost", dependencies: ["TerminalEngine", "TerminalInterop"], path: "Sources/TerminalHost",
+    resources: [.copy("Resources/ShellIntegration")],
     swiftSettings: [.swiftLanguageMode(.v5)] + testHooks),
   // The AppKit view of a session: Metal drawing, keyboard and mouse input,
   // selection, find and accessibility.
@@ -100,8 +101,8 @@ let package = Package(
     // carries it in its bundle.
     .executable(name: "TerminalLauncher", targets: ["TerminalLauncher"]),
   ],
-  dependencies: embedded ? [] : [
+  dependencies: development ? [
     // The updater. Pinned exactly: it installs software on the user's machine.
     .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1"),
-  ],
-  targets: libraries + (embedded ? [] : application + testTools))
+  ] : [],
+  targets: libraries + (development ? application + testTools : []))

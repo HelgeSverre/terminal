@@ -49,6 +49,7 @@ let commands = [
   Sources.command,
   TestPipeline.command,
   TestBuildCache.command,
+  EmbeddingCheck.command,
 ]
 
 func printUsage() {

@@ -16,9 +16,9 @@ enum UpdatePreview {
     try AppBundle.run(["development"])
     let scratch = Repository.path("target/update-preview")
     try Console.quietly(["swift", "build", "--package-path", Repository.root, "--scratch-path", scratch,
-                         "-c", "debug", "--product", "UpdatePreview"])
+                         "-c", "debug", "--product", "UpdatePreview"], adding: ["TERMINAL_DEVELOPMENT": "1"])
     let result = try runCommand(["swift", "build", "--package-path", Repository.root, "--scratch-path", scratch,
-                                 "-c", "debug", "--show-bin-path"])
+                                 "-c", "debug", "--show-bin-path"], adding: ["TERMINAL_DEVELOPMENT": "1"])
     let products = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
     // A unique cached bundle stays valid while the preview is open, even if
     // this checkout is removed or another preview is built.
