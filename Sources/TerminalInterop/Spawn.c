@@ -81,10 +81,12 @@ static int make_environment(const char *launcher,const char *executable,char *co
     out->values=calloc(count+9+extras,sizeof(char *));if(!out->values)return ENOMEM;
     const char *name=strrchr(executable,'/');name=name?name+1:executable;
     const char *parent=launcher?strrchr(launcher,'/'):NULL;
-    int wrap=!strcmp(name,"zsh")&&(argc==1||(argc==2&&!strcmp(argv[1],"-l")))&&parent;
+    const char *integration=NULL;
+    for(size_t e=0;e<extras;e++)if(!strncmp(extra[e],"HELGE_TERMINAL_INTEGRATION_DIRECTORY=",37))integration=extra[e]+37;
+    int wrap=!strcmp(name,"zsh")&&(argc==1||(argc==2&&!strcmp(argv[1],"-l")))&&(parent||integration);
     char shim[PATH_MAX],entry[PATH_MAX];
     if(wrap){
-        int len=snprintf(shim,sizeof(shim),"%.*s/../Resources/ShellIntegration/zsh",(int)(parent-launcher),launcher);
+        int len=integration?snprintf(shim,sizeof(shim),"%s/zsh",integration):snprintf(shim,sizeof(shim),"%.*s/../Resources/ShellIntegration/zsh",(int)(parent-launcher),launcher);
         int length=snprintf(entry,sizeof(entry),"%s/.zshenv",shim);
         wrap=len>0&&(size_t)len<sizeof(shim)&&length>0&&(size_t)length<sizeof(entry)&&access(entry,R_OK)==0;
     }

@@ -147,6 +147,7 @@ private final class TerminalEmulator {
   @exclusivity(unchecked) private var identity = TerminalIdentity.helgeTerminal
   @exclusivity(unchecked) private var colorSchemeReports = false
   @exclusivity(unchecked) private var currentDirectory: String?
+  @exclusivity(unchecked) private var commandHistory = TerminalCommandHistory()
   @exclusivity(unchecked) private var applicationCursor = false
   @exclusivity(unchecked) private var applicationKeypad = false
   @exclusivity(unchecked) private var bracketedPaste = false
@@ -930,6 +931,7 @@ private final class TerminalEmulator {
     s.pendingWrap = s.savedPendingWrap && autoWrap; screen = s; changed()
   }
   private func reset() {
+    commandHistory = TerminalCommandHistory()
     selectionDocumentGeneration = UUID(); selection.reset(); pendingSelectionRevision = nil
     graphics.clear()
     document = TerminalDocument(columns: columns, rows: rowCount)
@@ -1714,6 +1716,9 @@ private final class TerminalEmulator {
         changed(document: false)
       }
       else if command == "133" {
+        if !usingAlternate {
+          commandHistory.marker(value, row: screen.rows[screen.cursorRow].id, directory: currentDirectory)
+        }
         let marker = value.split(separator: ";", omittingEmptySubsequences: false).first
         var current = screen
         switch marker {
@@ -2017,6 +2022,19 @@ private final class TerminalEmulator {
     if amount > 0 { offset = min(history.count, current + amount) }
     else { offset = amount == Int.min ? 0 : max(0, current + amount) }
     setViewOffset(offset); changed(document: false, screen: false)
+  }
+  func commands() -> [TerminalCommandRecord] { commandHistory.records }
+  func navigateCommand(older: Bool) {
+    guard !usingAlternate else { return }
+    let top = history.count - resolveViewportAnchor(clamp: true)
+    let positions = commandHistory.records.compactMap { record -> Int? in
+      if let index = history.index(ofRowID: record.promptRowID) { return index }
+      return primary.rows.firstIndex(where: { $0.id == record.promptRowID }).map { history.count + $0 }
+    }
+    let target = older ? positions.filter { $0 < top }.max() : positions.filter { $0 > top }.min()
+    if let target {
+      setViewOffset(max(0, history.count - target)); changed(document: false, screen: false)
+    } else if !older { followTail() }
   }
   func followTail() { guard !usingAlternate else { return }; viewAnchor = nil; viewOffset = 0; viewportWasClamped = false; changed(document: false, screen: false) }
   private func setViewOffset(_ offset: Int) {
@@ -2824,6 +2842,8 @@ private extension TerminalEmulator {
     changed(history: true)
   }
 }
+package func swiftTerminalCommands(_ pointer: OpaquePointer?) -> [TerminalCommandRecord] { core(pointer)?.commands() ?? [] }
+package func swiftTerminalNavigateCommand(_ pointer: OpaquePointer?, older: Bool) { core(pointer)?.navigateCommand(older: older) }
 // Internal Swift adapter: same owner-confined handle, no C callback or borrowed
 // row/cell storage. The returned value survives later mutation and destruction.
 package func swiftTerminalSnapshot(_ pointer: OpaquePointer?, scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {

@@ -167,6 +167,10 @@ public struct LaunchSpec: Equatable {
   /// The path of the `TerminalLauncher` helper, or nil to start the program
   /// with no helper.
   public let launcher: String?
+  /// Directory containing the bundled `zsh`, `bash` and `fish` integrations.
+  /// With nil, resources are discovered beside the launcher or in the package. Hosts
+  /// carrying resources elsewhere can supply their own absolute directory.
+  public var shellIntegrationDirectory: String?
   /// Variables set for the child, replacing what it would otherwise get.
   /// The child inherits the host's environment, with `TERM`, `COLORTERM`,
   /// `TERM_PROGRAM` and `LANG` set by the terminal and the variables that
@@ -174,12 +178,13 @@ public struct LaunchSpec: Equatable {
   /// unless named here.
   public var environment: [String: String] = [:]
   public init(executable: String, arguments: [String], cwd: String, launcher: String? = nil,
-              environment: [String: String] = [:]) {
+              environment: [String: String] = [:], shellIntegrationDirectory: String? = nil) {
     self.executable = executable
     self.arguments = arguments
     self.cwd = cwd
     self.launcher = launcher
     self.environment = environment
+    self.shellIntegrationDirectory = shellIntegrationDirectory
   }
   /// Whether the arguments are within what a launch accepts.
   public var isValid: Bool {
@@ -188,8 +193,9 @@ public struct LaunchSpec: Equatable {
   }
   /// Starts the child on a new PTY of the given size.
   package func spawn(columns: Int, rows: Int) -> TerminalProcess {
-    var argv = arguments.map { strdup($0) } + [nil]
-    var extra = environment.sorted { $0.key < $1.key }.map { strdup($0.key + "=" + $0.value) } + [nil]
+    let integration = preparedShellIntegration()
+    var argv = integration.arguments.map { strdup($0) } + [nil]
+    var extra = integration.environment.sorted { $0.key < $1.key }.map { strdup($0.key + "=" + $0.value) } + [nil]
     defer {
       for value in argv { free(value) }
       for value in extra { free(value) }
@@ -357,6 +363,8 @@ public final class TerminalSession: @unchecked Sendable {
     case scroll(Int)
     case accessibilityHistory(TerminalHistoryPageRequest, @MainActor (TerminalHistoryPage?) -> Void)
     case find(String, TerminalSearchOptions, SearchCompletion)
+    case commandNavigate(Bool)
+    case commandHistory(@MainActor ([TerminalCommandRecord]) -> Void)
     case searchAdvance
     case searchNavigate(Bool, @MainActor (HistorySearchPosition?) -> Void)
     case searchClear
@@ -1249,6 +1257,11 @@ public final class TerminalSession: @unchecked Sendable {
       publishNeeded = false
       finishHistoryPage(swiftTerminalHistoryPage(core, request: request), completion: completion)
     case .find(let query, let options, let completion): historySearch.start(query, options: options, completion: completion)
+    case .commandNavigate(let older): swiftTerminalNavigateCommand(core, older: older)
+    case .commandHistory(let completion):
+      let commands = swiftTerminalCommands(core)
+      DispatchQueue.main.async { completion(commands) }
+      publishNeeded = false
     case .searchAdvance: historySearch.advance()
     case .searchNavigate(let older, let completion):
       var index: UInt32 = 0
@@ -1577,6 +1590,22 @@ public final class TerminalSession: @unchecked Sendable {
       enqueue(.scroll(amount))
     }
   }
+  /// Scrolls to a retained shell-reported command boundary. With no newer
+  /// retained command, forward navigation returns to live output.
+  public func navigateCommand(older: Bool) {
+    readBroker.submit { [self] in
+      guard !closed else { return }
+      enqueue(.commandNavigate(older))
+    }
+  }
+  /// Returns at most 512 command records in terminal output order. A record
+  /// may outlive its scrollback row; navigation skips evicted row identities.
+  public func commandHistory(_ completion: @escaping @MainActor ([TerminalCommandRecord]) -> Void) {
+    readBroker.submit { [self] in
+      guard !closed else { DispatchQueue.main.async { completion([]) }; return }
+      enqueue(.commandHistory(completion))
+    }
+  }
   public func clearDisplay() {
     readBroker.submit { [self] in
       guard !closed else { return }
@@ -1873,6 +1902,7 @@ public final class TerminalSession: @unchecked Sendable {
         case .find(_, _, let completion): DispatchQueue.main.async { completion(.cancelled, nil) }
         case .searchNavigate(_, let completion): DispatchQueue.main.async { completion(nil) }
         case .accessibilityHistory(_, let completion): finishHistoryPage(nil, completion: completion)
+        case .commandHistory(let completion): DispatchQueue.main.async { completion([]) }
         case .clipboardDecision(_, _, let completion): DispatchQueue.main.async { completion(false) }
         case .recoveryCheckpoint(_, let completion): DispatchQueue.main.async { completion(nil, 0, nil) }
         case .selection(_, let completion, let cost, _, let retainsCopyResult):

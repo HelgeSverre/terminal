@@ -966,9 +966,14 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     let menu = NSMenu()
     menu.addItem(withTitle: "Copy", action: #selector(copy(_:)), keyEquivalent: "")
     menu.addItem(withTitle: "Paste", action: #selector(paste(_:)), keyEquivalent: "")
+    menu.addItem(.separator())
+    menu.addItem(withTitle: "Previous Command", action: #selector(previousCommand(_:)), keyEquivalent: "")
+    menu.addItem(withTitle: "Next Command", action: #selector(nextCommand(_:)), keyEquivalent: "")
     onContextMenu?(menu)
     return menu
   }
+  @objc public func previousCommand(_ sender: Any?) { session.navigateCommand(older: true) }
+  @objc public func nextCommand(_ sender: Any?) { session.navigateCommand(older: false) }
   /// Hands a validated link to the host, or opens it. Returns whether the
   /// view opened it itself.
   @discardableResult func open(_ target: URL) -> Bool {

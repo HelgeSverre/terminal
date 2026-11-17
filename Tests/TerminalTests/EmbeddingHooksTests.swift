@@ -92,8 +92,8 @@ import TerminalEngine
       menu.addItem(withTitle: "Host item", action: nil, keyEquivalent: "")
     }
     let menu = view.contextMenu()
-    #expect(titles == ["Copy", "Paste"])
-    #expect(menu.items.map(\.title) == ["Copy", "Paste", "Host item"])
+    #expect(titles == ["Copy", "Paste", "", "Previous Command", "Next Command"])
+    #expect(menu.items.map(\.title) == ["Copy", "Paste", "", "Previous Command", "Next Command", "Host item"])
 
     var opened: [URL] = []
     view.onOpenLink = { opened.append($0); return true }

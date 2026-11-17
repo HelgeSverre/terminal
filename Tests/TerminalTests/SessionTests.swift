@@ -55,7 +55,7 @@ import TerminalInterop
     try FileManager.default.createSymbolicLink(atPath: launcher.path, withDestinationPath: TestEnvironment.launcher)
     try FileManager.default.createSymbolicLink(
       atPath: resources.appendingPathComponent("ShellIntegration").path,
-      withDestinationPath: TestEnvironment.repository.appendingPathComponent("Resources/Terminal/ShellIntegration").path)
+      withDestinationPath: TestEnvironment.repository.appendingPathComponent("Sources/TerminalHost/Resources/ShellIntegration").path)
     return (root, launcher.path)
   }
   func rubySpec(_ script: String, _ arguments: [String]) -> LaunchSpec {

@@ -63,7 +63,7 @@ import Testing
     let file = folder.appendingPathComponent("not-a-folder")
     let special = folder.appendingPathComponent("project 猫 #%")
     try FileManager.default.createDirectory(at: special, withIntermediateDirectories: false)
-    let hooks = TestEnvironment.repository.appendingPathComponent("Resources/Terminal/ShellIntegration/zsh/hooks.zsh")
+    let hooks = TestEnvironment.repository.appendingPathComponent("Sources/TerminalHost/Resources/ShellIntegration/zsh/hooks.zsh")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/zsh")
     process.arguments = ["-f", "-c", "source \"$1\"; _helge_terminal_report_directory", "fixture", hooks.path]
