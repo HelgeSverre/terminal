@@ -1671,7 +1671,7 @@ private final class TerminalEmulator {
     var s = screen
     s.topMargin = 0; s.bottomMargin = rowCount - 1
     s.savedRow = 0; s.savedColumn = 0; s.savedPendingWrap = false; s.savedOrigin = false
-    s.savedStyle = TerminalStyle(); s.savedLink = nil; s.savedProtected = false
+    s.savedStyle = TerminalStyle(); s.savedLink = nil; s.savedLinkID = nil; s.savedProtected = false
     s.savedCharsetSpecial = [false, false]; s.savedCharsetSlot = 0
     s.pendingWrap = false; s.cursorVisible = true; s.cursorShape = 0
     screen = s
@@ -2258,6 +2258,7 @@ private final class TerminalEmulator {
       let promptPhase = current.promptPhase
       let promptRedraw = current.promptRedraw
       let saved = (current.savedRow, current.savedColumn, current.savedPendingWrap, current.savedOrigin, current.savedStyle, current.savedLink, current.savedLinkID)
+      let savedPresentation = (current.savedProtected, current.savedCharsetSpecial, current.savedCharsetSlot)
       let keyboard = (current.keyboardFlags, current.keyboardStack)
       let cursorAppearance = (current.cursorVisible, current.cursorShape)
       current = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns)
@@ -2265,6 +2266,8 @@ private final class TerminalEmulator {
       current.leftMargin = margins.2; current.rightMargin = margins.3
       current.savedRow = saved.0; current.savedColumn = saved.1; current.savedPendingWrap = saved.2
       current.savedOrigin = saved.3; current.savedStyle = saved.4; current.savedLink = saved.5; current.savedLinkID = saved.6
+      current.savedProtected = savedPresentation.0
+      current.savedCharsetSpecial = savedPresentation.1; current.savedCharsetSlot = savedPresentation.2
       current.keyboardFlags = keyboard.0; current.keyboardStack = keyboard.1
       current.cursorVisible = cursorAppearance.0; current.cursorShape = cursorAppearance.1
       current.promptPhase = promptPhase

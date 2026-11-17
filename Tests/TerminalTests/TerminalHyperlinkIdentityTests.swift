@@ -80,6 +80,36 @@ import TerminalInterop
     #expect(cells[2...4].allSatisfy { $0.linkID == nil && $0.link == uri })
   }
 
+  @Test func softResetClearsSavedIdentityAlongWithSavedURI() throws {
+    let terminal = try #require(HeadlessTerminal(columns: 12, rows: 2))
+    terminal.feed(open("saved") + "\u{1b}7\u{1b}[!p\u{1b}8e\u{301}")
+    let cell = try #require(terminal.screen()).cells[0][0]
+    #expect(cell.text == "e\u{301}" && cell.link == nil && cell.linkID == nil)
+  }
+
+  @Test func promptClearPreservesSavedIdentityProtectionAndCharset() throws {
+    let core = try #require(helge_terminal_create(8, 3))
+    defer { helge_terminal_destroy(core) }
+    PresentedContentTests.feed(core, "\u{1b}(0\u{1b}[1\"q" + open("saved") + "\u{1b}7\u{1b}(B\u{1b}[0\"q" + close + "\u{1b}]133;A\u{1b}\\")
+    #expect(helge_terminal_clear_display(core) == 2)
+    PresentedContentTests.feed(core, "\u{1b}8q")
+    let cell = try SnapshotBridgeTests.check(core).rows[0].cells[0]
+    #expect(cell.text == "─", "DECSC's G0 charset survives prompt clearing")
+    #expect(cell.flags & 2 != 0, "DECSC's DEC protection survives prompt clearing")
+    #expect(cell.link == uri && cell.linkID == "saved")
+  }
+
+  @Test func isoProtectionAndIdentitySurviveRepeatAndReflowTogether() throws {
+    let core = try #require(helge_terminal_create(8, 3))
+    defer { helge_terminal_destroy(core) }
+    PresentedContentTests.feed(core, "\u{1b}V" + open("iso") + "X" + close + "\u{1b}W\u{1b}[2b")
+    #expect(helge_terminal_resize(core, 4, 3))
+    let cells = try SnapshotBridgeTests.check(core).rows[0].cells
+    #expect(cells.prefix(3).allSatisfy { $0.flags & 8 != 0 && $0.link == uri && $0.linkID == "iso" })
+    PresentedContentTests.feed(core, "\u{1b}[H\u{1b}[2J")
+    #expect(try SnapshotBridgeTests.check(core).rows[0].cells.prefix(3).allSatisfy { $0.text == "X" && $0.linkID == "iso" })
+  }
+
   @Test func sparseIdentityBytesAreChargedAndPreservedOnRowCopy() {
     var row = TerminalRow(columns: 4)
     row.setCell(TerminalCell(text: "X", kind: 1, link: uri), at: 0)
