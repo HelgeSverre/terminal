@@ -1,4 +1,5 @@
 import AppKit
+import QuartzCore
 import TerminalUI
 
 final class TerminalPanePresentationView: NSView {
