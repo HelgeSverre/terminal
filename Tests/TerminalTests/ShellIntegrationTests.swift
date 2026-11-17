@@ -89,9 +89,57 @@ import TerminalInterop
     #expect(process.terminationStatus == 0)
     #expect(String(decoding: output, as: UTF8.self).contains("HOOK_PRESERVED"))
   }
+
+  @Test static func fishPreservesPipelineStatus() throws {
+    guard let executable = ["/opt/homebrew/bin/fish", "/usr/local/bin/fish", "/usr/bin/fish"]
+      .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else { return }
+    let process = Process(), pipe = Pipe()
+    process.executableURL = URL(fileURLWithPath: executable)
+    process.arguments = ["--no-config", "-i", "-c", """
+      function fish_prompt
+        printf 'PIPE_%s\\n' (string join , $pipestatus)
+      end
+      source "$HOOKS"
+      false | true
+      fish_prompt
+      _helge_terminal_preexec
+      false
+      _helge_terminal_postexec
+      """]
+    process.environment = ["HOME": NSTemporaryDirectory(), "PATH": "/usr/bin:/bin", "TERM": "xterm",
+                           "HOOKS": resources + "/fish/hooks.fish"]
+    process.standardOutput = pipe; process.standardError = FileHandle.nullDevice
+    try process.run()
+    let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    process.waitUntilExit()
+    #expect(process.terminationStatus == 0)
+    #expect(output.contains("PIPE_1,0"))
+    #expect(output.contains("\u{1b}]133;D;1\u{7}"))
+  }
 }
 
 @Suite(.serialized) @MainActor struct ShellIntegrationSessionTests {
+  @Test func directBashLaunchReportsExitStatus() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent("bash-hooks-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try Data("PS1='bash> '; PROMPT_COMMAND=': original_hook'\n".utf8).write(to: directory.appendingPathComponent(".bashrc"))
+    let session = TerminalSession(launch: LaunchSpec(executable: "/bin/bash", arguments: ["/bin/bash"],
+      cwd: directory.path, environment: ["HOME": directory.path],
+      shellIntegrationDirectory: ShellIntegrationTests.resources))
+    defer { session.close() }
+    var ready = false
+    session.onSnapshot = { ready = $0.input_ready }
+    #expect(await TestEnvironment.wait { ready })
+    session.rawInput(Data("false\r".utf8))
+    var commands: [TerminalCommandRecord] = []
+    #expect(await TestEnvironment.wait {
+      session.commandHistory { commands = $0 }
+      return commands.last?.completed == true
+    })
+    #expect(commands.last?.exitStatus == 1)
+  }
+
   @Test func directZshLaunchPreservesExplicitConfigAndReportsExitStatus() async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("shell-hooks-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
