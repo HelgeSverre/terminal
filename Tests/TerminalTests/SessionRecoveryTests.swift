@@ -169,6 +169,26 @@ import Darwin
     #expect(store?.restored == nil)
     await clean(store)
   }
+  @Test func checkpointChecksumAndPrivatePermissions() async throws {
+    let dir = try directory(), layout = fixture()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = try #require(SessionStateStore.open(directory: dir)), pane = layout.windows[0].panes[0].id
+    store.saveScrollback("saved output\n", rows: 1, pane: pane)
+    var complete = false
+    store.save(layout) { complete = true }
+    #expect(await TestEnvironment.wait { complete })
+    #expect(store.scrollback(pane).text == "saved output\n")
+    let file = dir.appendingPathComponent("panes/\(pane.string).scrollback")
+    let permissions = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? NSNumber
+    #expect(permissions?.intValue == 0o600)
+    let directoryPermissions = try FileManager.default.attributesOfItem(atPath: dir.path)[.posixPermissions] as? NSNumber
+    #expect(directoryPermissions?.intValue == 0o700)
+    var bytes = try Data(contentsOf: file)
+    bytes[bytes.count - 1] ^= 1
+    try bytes.write(to: file)
+    #expect(store.scrollback(pane).unavailable)
+    await clean(store)
+  }
 
   @Test func checkpointUsesPrimaryAndRestoresLiteralFaintText() throws {
     let source = try #require(helge_terminal_create(8, 3))
@@ -201,5 +221,28 @@ import Darwin
     }
     #expect(text?.contains(lines[0]) == true)
     #expect(text?.contains(lines[299]) == true)
+  }
+
+  @Test func busyHistoryReadKeepsDirtyCheckpointRetryAndCloseCompletion() async throws {
+    let text = String(repeating: String(repeating: "x", count: 154) + "\n", count: 1000)
+    let session = TerminalSession(recovering: TestEnvironment.shell("stty raw -echo; printf READY; exec /bin/cat"),
+      text: text, startsAtFirstGrid: true)
+    defer { session.close() }
+    var dirty = false
+    session.onRecoveryActivity = { dirty = true }
+    session.configure(TerminalSessionConfiguration(historyRows: 2000))
+    session.resize(cols: 160, rows: 3)
+    #expect(await TestEnvironment.wait { dirty })
+    var readDelivered = false
+    var checkpointDelivered = false
+    var retry: Double?
+    session.recoveryHistory(maximumBytes: 131_072) { _ in readDelivered = true }
+    session.recoveryCheckpoint(force: true) { _, _, delay in
+      retry = delay; checkpointDelivered = true
+    }
+    #expect(await TestEnvironment.wait { checkpointDelivered })
+    #expect(retry != nil, "a concurrent read must retain the dirty pane's future checkpoint")
+    session.close()
+    #expect(await TestEnvironment.wait { readDelivered }, "close completes an outstanding capture")
   }
 }
