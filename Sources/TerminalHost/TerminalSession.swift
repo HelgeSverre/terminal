@@ -1882,9 +1882,14 @@ public final class TerminalSession: @unchecked Sendable {
   }
   private func beginRecoveryCheckpoint(force: Bool,
     completion: @escaping @MainActor (String?, Int, Double?) -> Void) {
-    guard !closed, !recoveryCapturing, let core,
+    guard !closed, let core,
       let delay = recoveryTiming.delay(at: DispatchTime.now().uptimeNanoseconds, force: force) else {
       DispatchQueue.main.async { completion(nil, 0, nil) }; return
+    }
+    guard !recoveryCapturing else {
+      // A read-only automation capture must not consume the app's one dirty
+      // wakeup. Keep its checkpoint pending until the capture slot is free.
+      DispatchQueue.main.async { completion(nil, 0, 0.05) }; return
     }
     guard delay == 0 else { DispatchQueue.main.async { completion(nil, 0, delay) }; return }
     recoveryCapturing = true
@@ -1900,12 +1905,13 @@ public final class TerminalSession: @unchecked Sendable {
     }
     if let text = capture.advance() {
       recoveryCapturing = false
-      DispatchQueue.main.async { completion(text, capture.capturedRows, nil) }
+      let rows = capture.capturedRows
+      DispatchQueue.main.async { completion(text, rows, nil) }
     } else {
       // Re-enter behind admitted input/output instead of holding the FIFO
       // head while capturing up to the existing 16 MiB copy limit.
-      queue.async { [weak self] in
-        self?.readBroker.submit { [weak self] in self?.advanceRecovery(capture, completion: completion) }
+      queue.async { [self] in
+        readBroker.submit { [self] in advanceRecovery(capture, completion: completion) }
       }
     }
   }
