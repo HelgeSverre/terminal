@@ -11,8 +11,8 @@ The goal remains active. This is a working development milestone, not v1 complet
 ## Current source additions (locally verified; external qualification pending)
 
 - Truthful host-supplied identity, bounded XTVERSION/XTGETTCAP/DECRQSS replies,
-  dynamic cursor/attribute colors, scheme notifications, geometry/title queries
-  and title filtering/stacks. OSC 8 anchor IDs survive cells, reflow and activation.
+  dynamic cursor/attribute colors, scheme notifications, geometry queries
+  and title filtering/stacks. Titles are never reported back to programs. OSC 8 anchor IDs survive cells, reflow and activation.
 - VT cursor/erase/rectangle/save repairs; negotiated modifyOtherKeys, UTF-8,
   urxvt and pixel-SGR mouse encodings. These have authored protocol regressions;
   they do not establish complete xterm or physical-keyboard conformance.

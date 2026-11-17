@@ -47,8 +47,10 @@ each change sends the same report. A child changing OSC colors does not change
 the reported user preference or trigger a notification. The behavior follows
 [Contour's palette notification protocol](https://contour-terminal.org/vt-extensions/color-palette-update-notifications/).
 
-Title/icon queries 20/21 and title stack operations 22/23 are supported without
-enabling child window movement or resizing. The stack retains the newest 16
+Title stack operations 22/23 are supported without enabling child window
+movement or resizing. Title/icon reports 20/21 are not answered: a title is
+set by output, so reporting it would let output place text in the input
+stream. The stack retains the newest 16
 bounded entries; indexed stack access is unsupported. Title text removes Cc
 controls plus bidi overrides, isolates and directional marks, which otherwise
 can visually disguise a host/path. ZWJ and WORD JOINER remain valid. Titles
@@ -90,8 +92,9 @@ first two rows below are fixed, and five of the ten VT cases pass. At
 `556aa51`, 460 passed with 68 failures: the `DECID` row and the nine `DECDSR`
 cases are implemented and pass, `DECNKM` leaves the DECRQM row, and `DECSASD`
 and `DECSSDT` leave the DECRQSS row. At `25d3add`, 473 passed with 55
-failures: thirteen DECRQM modes answer permanently reset. The table keeps the
-`e0f79b3` counts.
+failures: thirteen DECRQM modes answer permanently reset. At `c9b2eca`, 460
+passed with 66 failures: the title reports were removed, so thirteen cases
+that read a title back no longer pass. The table keeps the `e0f79b3` counts.
 
 | Recorded failures | Count | Disposition |
 | --- | ---: | --- |

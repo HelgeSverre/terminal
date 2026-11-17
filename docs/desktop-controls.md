@@ -90,7 +90,11 @@ See [automation](automation.md) for script targeting and bounded reads.
 A program can offer a bounded file download. A quiet strip at the bottom of its
 pane offers **Save filename…** and **Dismiss**. Output alone never opens a dialog
 or writes a file. Save opens the native Save panel with a sanitized basename;
-the file is written only to the destination you choose. Cancel or Dismiss
-releases the offered payload, as does closing its pane. The app accepts one
-pending offer across all panes, at most once per second, with a 32 MiB payload
-limit. Additional offers are discarded.
+the file is written only to the destination you choose.
+
+Files that arrive while one is offered wait their turn in the same pane.
+Saving a file, or cancelling its Save panel, moves on to the next one.
+**Dismiss All** refuses the offered file and every file waiting behind it, as
+does closing the pane. If a save fails, the strip says so and **Continue**
+moves on. A terminal holds at most four unanswered files and 32 MiB; a file
+beyond that is discarded.

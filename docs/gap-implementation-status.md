@@ -11,7 +11,7 @@ The intentional exclusions in the inventory remain unchanged.
 | --- | --- |
 | C01, C03 | Real terminal identity/version, bounded XTGETTCAP and DECRQSS replies for implemented capabilities, DECID and DECDSR reports for absent hardware. Unsupported requests receive truthful negative replies. |
 | C02 | Pinned Snacks detection patch and isolated client fixture; upstream adoption is separate. Helge does not identify as Kitty. |
-| C04, C08 | Cursor/special colors, practical color parsing and resets, theme reports, read-only title queries and bounded title stacks. Exotic X11 color spellings and child-controlled window changes remain unsupported. |
+| C04, C08 | Cursor/special colors, practical color parsing and resets, theme reports and bounded title stacks. Title reports were removed after review. Exotic X11 color spellings and child-controlled window changes remain unsupported. |
 | C05 | Margin movement, erase/protection/reset/save semantics, rectangles, column edits, horizontal index, alternate screens, REP and modern reverse wrap. See the detailed conformance dispositions. |
 | C06 | modifyOtherKeys, UTF-8/URXVT/pixel mouse encodings and per-side Option policies. Legacy highlight tracking (1001) remains unsupported. |
 | C07, U12 | Bounded OSC 8 identity through cells, reflow, snapshots and hover; title bidi controls filtered. |
@@ -87,15 +87,15 @@ application tests in 108 suites, the GPU suites, and the tooling, terminfo,
 font and PTY checks. Conformance at `556aa51` passed 460 cases with 68
 reported failures and 39 known xterm deviations; the known-good list protects
 the 460. On 2026-11-18, `25d3add` added the permanently-reset DECRQM status
-for thirteen modes: 473 cases pass with 55 reported failures, all protected.
+for thirteen modes: 473 cases passed. `c9b2eca` then removed the `CSI 20 t`
+and `CSI 21 t` title reports, because a program could place text on the
+command line with them, and made each pane queue its download offers instead
+of discarding all but one across the app. Thirteen conformance cases that
+read a title back no longer pass: 460 pass with 66 reported failures and 41
+known xterm deviations, all protected.
 The frozen-app runtime checks above were not repeated, except a
 pane-lifecycle smoke. The review left these open:
 
-- `CSI 21 t` reports the window title a program set. xterm disables this
-  report by default because a program can place text on the command line with
-  it; whether to keep it is undecided.
-- One download offer is shown across the app; a file arriving meanwhile is
-  discarded rather than queued.
 - UIKit: touch selection cannot reach the end of a line, composition has a
   second store with different limits, and accessibility elements are rebuilt
   for every snapshot.

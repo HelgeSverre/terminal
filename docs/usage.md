@@ -181,9 +181,8 @@ Three image protocols are shown, all within one 64 MiB budget and up to
   decodes, sized in cells, pixels or percent. Animated GIFs play and multipart
   transfers are accepted. A file sent without `inline=1` is offered in the
   pane as a download: nothing is written until you choose Save and a
-  destination. One offer is shown at a time across the app; a file that
-  arrives while another offer is showing, or within a second of the previous
-  one, is discarded.
+  destination. Files that arrive while one is offered wait their turn in
+  that pane; Dismiss refuses all of them.
 
 Support is bounded rather than complete. The [protocol coverage audit](protocol-coverage.md)
 records the tests and the limits: indexed animation edits, budgets and client
