@@ -24,8 +24,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  macos:
-    name: macOS · Swift native tests
+  headless:
+    name: macOS · Headless tests
     runs-on: macos-15
     timeout-minutes: 25
     steps:
@@ -111,3 +111,24 @@ jobs:
         with:
           name: fuzz-results
           path: reports/fuzz-current-seed
+
+  # Preserve the existing required-check name: a passing headless job alone
+  # must not hide failed conformance or sanitizer checks.
+  macos:
+    name: macOS · Swift native tests
+    needs: [headless, conformance, fuzz]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every selected gate
+        env:
+          HEADLESS_RESULT: ${{ needs.headless.result }}
+          CONFORMANCE_RESULT: ${{ needs.conformance.result }}
+          FUZZ_RESULT: ${{ needs.fuzz.result }}
+          TEST_TARGET: ${{ github.event.inputs.test_target || 'test' }}
+        run: |
+          test "$HEADLESS_RESULT" = success
+          if [ "$TEST_TARGET" = test ]; then
+            test "$CONFORMANCE_RESULT" = success
+            test "$FUZZ_RESULT" = success
+          fi
