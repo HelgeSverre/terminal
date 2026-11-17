@@ -81,3 +81,19 @@ Raw logs, receipts and copied bundles remain ignored under
 `reports/gap-implementation/`. No installed terminal was changed. Hardware,
 external-client and release qualification is tracked in
 [implementation status](../../docs/gap-implementation-status.md).
+
+## Standalone sanitizer build follow-up
+
+The first hosted run at `df3f951` passed conformance but found a sanitizer
+compiler failure: the standalone source glob also compiled the public
+`HeadlessTerminal` wrapper alongside its C ABI exports. Swift 6.1.2 asserted
+during serialized SIL linking; local Swift 6.3 reproduced wrong-linkage
+diagnostics for the wrapper's replies, key-input and image calls. Whole-module
+optimization did not resolve it.
+
+Narrowing the standalone root glob to `Terminal*.swift` removes the unused
+embedding wrapper while retaining the emulator and support types. The same
+optimized ASan command then compiled successfully. The resulting executable
+passed 120 seconds with seeds 1–654 (654 cases, 3,735 KiB). The SwiftPM graph
+continues compiling and testing the full public embedding API. Neither the
+sanitizer nor fuzz duration was reduced.
