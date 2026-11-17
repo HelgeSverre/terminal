@@ -248,7 +248,7 @@ public final class HeadlessTerminal {
               pixelWidth: $0.width, pixelHeight: $0.height, id: $0.image, generation: $0.generation)
       },
       historyRows: snapshot.history_rows,
-      searchHighlights: snapshot.search_matches.map { SearchSegment(row: $0.row, columns: $0.start..<$0.end) },
+      searchHighlights: (snapshot.search_matches + snapshot.search).map { SearchSegment(row: $0.row, columns: $0.start..<$0.end) },
       activeSearchHighlights: snapshot.search.map { SearchSegment(row: $0.row, columns: $0.start..<$0.end) },
       selection: Selection(snapshot.selection), presentation: snapshot.selectionPresentation)
   }

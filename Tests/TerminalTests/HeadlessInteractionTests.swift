@@ -34,6 +34,7 @@ import TerminalEngine
     #expect(try #require(terminal.currentScreen()).rows.contains("cat"))
     #expect(terminal.navigateSearch(older: true)?.index == 1)
     #expect(singleMatch(search(terminal, "^c.t!$", options: .init(regularExpression: true))))
+    #expect(try #require(terminal.currentScreen()).searchHighlights.count == 1)
     terminal.clearSearch()
     #expect(terminal.searchPosition == nil)
     #expect(terminal.navigateSearch(older: true) == nil)
