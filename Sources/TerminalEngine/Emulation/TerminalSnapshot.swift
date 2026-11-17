@@ -220,8 +220,8 @@ package struct TerminalSnapshot: Decodable {
   // Old persisted/remote snapshot metadata predates this field. Nil must not
   // be treated as shell readiness by callers.
   package let input_ready: Bool?
-  package let search: [SearchHighlight]
-  package let images: [ImagePlacementSnapshot]
+  package var search: [SearchHighlight]
+  package var images: [ImagePlacementSnapshot]
   package var imagePixels: [ImageKey: ImagePixels] = [:]
   package enum CodingKeys: String, CodingKey {
     case at_prompt, input_ready, search, images, revision, geometry_epoch, document_epoch, history_epoch, screen_epoch,
@@ -237,7 +237,7 @@ package struct TerminalSnapshot: Decodable {
   package let following_tail: Bool
   package let viewport_clamp_revision: UInt64
   package let cols: Int
-  package let rows: [RowSnapshot]
+  package var rows: [RowSnapshot]
   package let cursor: CursorSnapshot
   package let modes: ModesSnapshot
   package let alternate: Bool
@@ -252,9 +252,41 @@ package struct TerminalSnapshot: Decodable {
   package var selection: TerminalSelectionSnapshot = .none
   /// Visible matches other than the navigated one, which stays in `search`.
   package var search_matches: [SearchHighlight] = []
+  /// One immutable row beyond the advertised viewport, for fractional UI
+  /// translation. Never changes the core snapshot's terminal dimensions.
+  package var presentationOverscan: TerminalPresentationOverscan? = nil
 
   package func selectionHit(row: Int, boundary: Int, affinity: TerminalSelectionAffinity = .before) -> TerminalSelectionHit? {
     selectionPresentation?.hit(row: row, boundary: boundary, affinity: affinity)
+  }
+}
+
+package struct TerminalPresentationOverscan {
+  package let row: RowSnapshot
+  package let images: [ImagePlacementSnapshot]
+  package let selection: TerminalSelectionSnapshot
+  package let search: [SearchHighlight]
+  package let searchMatches: [SearchHighlight]
+}
+
+extension TerminalSnapshot {
+  /// A UI-local projection. The guard row carries the same generation and
+  /// exact row proofs as the advertised rows; validation remains unchanged.
+  package func includingPresentationOverscan() -> TerminalSnapshot {
+    guard let overscan = presentationOverscan, let proof = selectionPresentation,
+      Self.geometryError(columns: cols, rows: rows.count + 1) == nil else { return self }
+    var value = self
+    value.rows.append(overscan.row)
+    value.images = overscan.images
+    value.selectionPresentation = TerminalSelectionPresentation(snapshotID: proof.snapshotID,
+      documentGeneration: proof.documentGeneration, screen: proof.screen, geometryEpoch: proof.geometryEpoch,
+      columns: proof.columns, rows: proof.rows + [.init(id: overscan.row.id,
+        revision: overscan.row.revision, softWrapped: overscan.row.soft_wrapped)])
+    value.selection = overscan.selection
+    value.search = overscan.search
+    value.search_matches = overscan.searchMatches
+    value.presentationOverscan = nil
+    return value
   }
 }
 extension TerminalSnapshot {

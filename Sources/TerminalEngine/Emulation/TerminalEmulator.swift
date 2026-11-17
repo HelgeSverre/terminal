@@ -2335,7 +2335,18 @@ private final class TerminalEmulator {
     let kinds = ["Empty", "Lead1", "Lead2", "Continuation", "WrapSpacer"]
     var rows: [RowSnapshot] = []
     rows.reserveCapacity(selected.rows.count)
-    for row in selected.rows {
+    // At most one adjacent row is projected for smooth viewport presentation.
+    // Keep it separate from rows and the advertised geometry.
+    var presentationRows = selected.rows
+    if !usingAlternate, selected.offset > 0,
+      TerminalSnapshot.geometryError(columns: columns, rows: selected.rows.count + 1) == nil {
+      let next = history.count + primary.rows.count - selected.offset
+      if next < history.count { presentationRows.append(history[next]) }
+      else if primary.rows.indices.contains(next - history.count) {
+        presentationRows.append(primary.rows[next - history.count])
+      }
+    }
+    for row in presentationRows {
       guard row.count == columns else { return (nil, "Invalid snapshot dimensions or palette") }
       var cells: [CellSnapshot] = []
       cells.reserveCapacity(columns)
@@ -2360,18 +2371,19 @@ private final class TerminalEmulator {
       SearchHighlight(row: value["row"]!, start: value["start"]!, end: value["end"]!)
     }
     let search = highlights.current.map(highlight)
-    let images = visibleImages(offset: selected.offset).map {
-      ImagePlacementSnapshot(image: $0.image, generation: $0.generation, width: $0.width, height: $0.height,
-                             source: $0.source, row: $0.row, col: $0.column, columns: $0.columns,
-                             rows: $0.rows, offset: $0.offset, natural: $0.natural, z: $0.z, placement: $0.placement,
-                             extent: $0.extent)
+    func image(_ value: KittyImagePlacement) -> ImagePlacementSnapshot {
+      ImagePlacementSnapshot(image: value.image, generation: value.generation, width: value.width, height: value.height,
+        source: value.source, row: value.row, col: value.column, columns: value.columns,
+        rows: value.rows, offset: value.offset, natural: value.natural, z: value.z, placement: value.placement,
+        extent: value.extent)
     }
-    return (TerminalSnapshot(
+    let images = visibleImages(offset: selected.offset).map(image)
+    var snapshot = TerminalSnapshot(
       at_prompt: cursor.atPrompt, input_ready: cursor.inputReady, search: search, images: images,
       revision: revision, geometry_epoch: geometryEpoch, document_epoch: documentEpoch,
       history_epoch: historyEpoch, screen_epoch: screenEpoch, scroll_offset: selected.offset,
       following_tail: selected.followingTail, viewport_clamp_revision: viewportClampRevision,
-      cols: columns, rows: rows,
+      cols: columns, rows: Array(rows.prefix(selected.rows.count)),
       cursor: CursorSnapshot(row: cursor.cursorRow, col: cursor.cursorColumn, pending_wrap: cursor.pendingWrap,
                              visible: cursor.cursorVisible, shape: Int(cursor.cursorShape)),
       modes: ModesSnapshot(application_cursor: applicationCursor, bracketed_paste: bracketedPaste,
@@ -2383,7 +2395,15 @@ private final class TerminalEmulator {
         documentGeneration: selectionDocumentGeneration, screen: selectionScreen, geometryEpoch: geometryEpoch,
         columns: columns, rows: selected.rows.map { .init(id: $0.id, revision: $0.revision, softWrapped: $0.softWrapped) }),
       selection: selection.snapshot(screen: selectionScreen, rows: selected.rows),
-      search_matches: highlights.others.map(highlight)), nil)
+      search_matches: highlights.others.map(highlight))
+    if rows.count > selected.rows.count, let guardRow = rows.last {
+      let expandedHighlights = visibleSearchHighlights(in: presentationRows, offset: selected.offset)
+      snapshot.presentationOverscan = TerminalPresentationOverscan(row: guardRow,
+        images: visibleImages(offset: selected.offset, height: rowCount + 1).map(image),
+        selection: selection.snapshot(screen: selectionScreen, rows: presentationRows),
+        search: expandedHighlights.current.map(highlight), searchMatches: expandedHighlights.others.map(highlight))
+    }
+    return (snapshot, nil)
   }
   func isValid() -> Bool {
     document.hasValidInvariants(primary) && document.hasValidInvariants(alternate) &&

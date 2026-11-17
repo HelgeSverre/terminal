@@ -1725,9 +1725,10 @@ public final class TerminalSession: @unchecked Sendable {
       queue.asyncAfter(deadline: .now() + .milliseconds(150)) { [weak self] in self?.publish() }
       return
     }
-    let visibleKeys = Set(snapshot.images.map { $0.key })
+    let presentationImages = snapshot.presentationOverscan?.images ?? snapshot.images
+    let visibleKeys = Set(presentationImages.map { $0.key })
     imageCache = imageCache.filter { visibleKeys.contains($0.key) }
-    for image in snapshot.images where imageCache[image.key] == nil {
+    for image in presentationImages where imageCache[image.key] == nil {
       let capture = ImageCapture()
       let success = helge_terminal_image_rgba(
         core, image.image, image.generation, Unmanaged.passUnretained(capture).toOpaque(),

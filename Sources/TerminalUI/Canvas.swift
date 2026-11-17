@@ -45,6 +45,23 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   private var cellWidth = 9
   private var cellHeight = 19
   private var scrollAccumulator = ScrollAccumulator()
+  private var viewportPresentation = ViewportPresentation()
+  private var pendingViewportAnchor: Int?
+  private var blinkWake: DispatchWorkItem?
+  private var blinkDeadline: TimeInterval?
+  private var visibilityObservers: [NSObjectProtocol] = []
+  var presentationOffsetPixels: CGFloat {
+    guard pendingViewportAnchor == nil, snapshot?.presentationOverscan != nil else { return 0 }
+    return viewportPresentation.fraction * CGFloat(cellHeight)
+  }
+  var presentationGeometry: ViewportGeometry {
+    ViewportGeometry(inset: CGFloat(insetPixels), cellWidth: CGFloat(cellWidth),
+      cellHeight: CGFloat(cellHeight), offset: presentationOffsetPixels)
+  }
+  private var presentationSnapshot: TerminalSnapshot? {
+    guard let snapshot else { return nil }
+    return presentationOffsetPixels == 0 ? snapshot : snapshot.includingPresentationOverscan()
+  }
   private var fontPoints: CGFloat = 14
   private var focused = false
   private var tracking: NSTrackingArea?
@@ -172,6 +189,8 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     self.surface = nil
   }
   deinit {
+    blinkWake?.cancel()
+    visibilityObservers.forEach { NotificationCenter.default.removeObserver($0) }
     if let linkModifierMonitor { NSEvent.removeMonitor(linkModifierMonitor) }
     detachRenderingSurface()
     let session = session
@@ -179,8 +198,19 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   private func display(_ value: TerminalSnapshot) {
     let previousSelectionRevision = snapshot?.selection.revision
+    let geometryChanged = snapshot?.geometry_epoch != value.geometry_epoch
+      || snapshot?.alternate != value.alternate
+      || snapshot?.viewport_clamp_revision != value.viewport_clamp_revision
+    let beganReportingMouse = snapshot?.modes.mouse != value.modes.mouse && value.modes.mouse != 0
+    if geometryChanged || beganReportingMouse || value.following_tail && pendingViewportAnchor == nil {
+      viewportPresentation.reset(offset: value.scroll_offset)
+      pendingViewportAnchor = nil
+    } else if pendingViewportAnchor == nil || pendingViewportAnchor == value.scroll_offset {
+      pendingViewportAnchor = nil
+      viewportPresentation.reconcile(offset: value.scroll_offset)
+    }
     snapshot = value
-    accessible = AccessibilityProjection(snapshot: value)
+    accessible = AccessibilityProjection(snapshot: presentationSnapshot ?? value)
     if previousSelectionRevision != value.selection.revision,
       let failure = value.selection.issue {
       showSelectionNotice(failure)
@@ -377,11 +407,11 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     guard let snapshot, snapshot.cols > 0, !snapshot.rows.isEmpty else { return nil }
     let point = convert(locationInWindow, from: nil)
     let x = point.x * scale - CGFloat(insetPixels)
-    let y = point.y * scale - CGFloat(insetPixels)
+    let y = point.y * scale - CGFloat(insetPixels) - presentationOffsetPixels
     guard x >= 0, y >= 0 else { return nil }
     let column = Int(x / CGFloat(cellWidth))
     let row = Int(y / CGFloat(cellHeight))
-    guard column < snapshot.cols, row < snapshot.rows.count else { return nil }
+    guard column < snapshot.cols, row < (presentationSnapshot?.rows.count ?? snapshot.rows.count) else { return nil }
     return accessible?.occurrence(atGrid: row * snapshot.cols + column)
   }
   /// The only UI boundary that opens links. Session first validates the
@@ -436,6 +466,15 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   public override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
+    visibilityObservers.forEach { NotificationCenter.default.removeObserver($0) }
+    visibilityObservers.removeAll()
+    if let window {
+      for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification,
+        NSWindow.didDeminiaturizeNotification] {
+        visibilityObservers.append(NotificationCenter.default.addObserver(forName: name, object: window,
+          queue: .main) { [weak self] _ in self?.redraw() })
+      }
+    }
     window?.acceptsMouseMovedEvents = true
     updateGeometry()
   }
@@ -568,6 +607,21 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     return admitted
   }
   private var requestedFirstFrame = false
+  private func scheduleBlink(_ deadline: TimeInterval?) {
+    guard deadline != blinkDeadline else { return }
+    blinkWake?.cancel()
+    blinkWake = nil
+    blinkDeadline = deadline
+    guard let deadline else { return }
+    let wake = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      self.blinkWake = nil
+      self.blinkDeadline = nil
+      self.redraw()
+    }
+    blinkWake = wake
+    DispatchQueue.main.asyncAfter(deadline: .now() + max(0.001, deadline - CACurrentMediaTime()), execute: wake)
+  }
   private func redraw() {
     let selected = accessibilitySelectedTextRanges()?.map(\.rangeValue) ?? []
     if selected != lastAccessibleSelection {
@@ -578,9 +632,14 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
     // ordered in. The first frame does not wait for that report, so the
     // window arrives with its content instead of blank.
     let awaitsFirstFrame = !requestedFirstFrame && window?.isVisible == true
-    guard let value = snapshot, !isHidden, window?.isMiniaturized != true,
+    guard let value = presentationSnapshot, !isHiddenOrHasHiddenAncestor, window?.isMiniaturized != true,
       window?.occlusionState.contains(.visible) == true || awaitsFirstFrame
-    else { return }
+    else { scheduleBlink(nil); return }
+    let shape = configuration.cursorStyle.map(Int.init) ?? value.cursor.shape
+    let blink = TerminalBlinkPresentation(now: CACurrentMediaTime(), cursorShape: shape,
+      cursor: value.cursor.visible && value.following_tail && focused,
+      text: value.rows.contains { $0.cells.contains { $0.style.blink && !$0.style.conceal && !$0.text.isEmpty } }, active: true)
+    scheduleBlink(blink.nextDeadline)
     if let surface {
       requestedFirstFrame = true
       rendering?.request(
@@ -590,7 +649,11 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
         fontSize: fontPoints * scale,
         focused: focused, marked: marked.string,
         linkUnderline: hoveredLink?.gridSegments ?? [], colors: configuration.session.colors,
-        fontFamily: configuration.fontFamily, ligatures: configuration.ligatures))
+        fontFamily: configuration.fontFamily, ligatures: configuration.ligatures,
+        backingScale: max(1, Int(scale.rounded())), cursorVisible: blink.cursorVisible,
+        textVisible: blink.textVisible, cursorShape: shape,
+        scrollOffsetPixels: Float(presentationOffsetPixels), viewportRows: snapshot?.rows.count,
+        preedit: preeditPresentation))
     }
   }
   @discardableResult private func send(
@@ -774,17 +837,15 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   private func cellIndex(_ event: NSEvent) -> Int {
     guard let value = snapshot else { return 0 }
     let p = convert(event.locationInWindow, from: nil)
-    let row = max(
-      0, min(value.rows.count - 1, Int((p.y * scale - CGFloat(insetPixels)) / CGFloat(cellHeight))))
+    let row = max(0, min(value.rows.count - 1, presentationGeometry.row(at: p.y * scale)))
     let col = max(
       0, min(value.cols - 1, Int((p.x * scale - CGFloat(insetPixels)) / CGFloat(cellWidth))))
     return row * value.cols + col
   }
   private func selectionHit(_ event: NSEvent) -> TerminalSelectionHit? {
-    guard let value = snapshot, value.cols > 0, !value.rows.isEmpty else { return nil }
+    guard let value = presentationSnapshot, value.cols > 0, !value.rows.isEmpty else { return nil }
     let point = convert(event.locationInWindow, from: nil)
-    let row = max(0, min(value.rows.count - 1,
-      Int((point.y * scale - CGFloat(insetPixels)) / CGFloat(cellHeight))))
+    let row = max(0, min(value.rows.count - 1, presentationGeometry.row(at: point.y * scale)))
     let boundary = max(0, min(value.cols,
       Int((point.x * scale - CGFloat(insetPixels)) / CGFloat(cellWidth))))
     return value.selectionHit(row: row, boundary: boundary)
@@ -887,6 +948,24 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   }
   public override func scrollWheel(with event: NSEvent) {
     guard let value = snapshot else { return }
+    if event.hasPreciseScrollingDeltas, !value.alternate, value.rows.count < 4096,
+      value.modes.mouse == 0 || event.modifierFlags.contains(.shift) {
+      let lines = viewportPresentation.scroll(delta: event.scrollingDeltaY,
+        lineHeight: CGFloat(cellHeight) / scale, maximum: value.history_rows)
+      if lines != 0 {
+        pendingViewportAnchor = viewportPresentation.anchor
+        session.scroll(lines)
+      } else {
+        accessible = AccessibilityProjection(snapshot: presentationSnapshot ?? value)
+        updateLinkHoverForCurrentPointer(modifiers: event.modifierFlags)
+        redraw()
+      }
+      return
+    }
+    viewportPresentation.reset(offset: value.scroll_offset)
+    pendingViewportAnchor = nil
+    accessible = AccessibilityProjection(snapshot: value)
+    redraw()
     let lines = scrollAccumulator.lines(for: event, lineHeight: CGFloat(cellHeight) / scale)
     guard lines != 0 else { return }
     if value.modes.mouse != 0 && !event.modifierFlags.contains(.shift) {

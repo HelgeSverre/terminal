@@ -23,6 +23,13 @@ struct RenderRequest {
   var colors = TerminalColorScheme.standard
   var fontFamily: String? = nil
   var ligatures = false
+  var backingScale = 1
+  var cursorVisible = true
+  var textVisible = true
+  var cursorShape: Int? = nil
+  var scrollOffsetPixels: Float = 0
+  var viewportRows: Int? = nil
+  var preedit: PreeditPresentation? = nil
 }
 private struct Quad {
   var rect: SIMD4<Float>
@@ -96,6 +103,7 @@ public final class TerminalRendering: @unchecked Sendable {
     var rendering = false
     var targetTimestamp: CFTimeInterval = 0
     var targetPresentationTimestamp: CFTimeInterval = 0
+    var failure = RendererFailureGate()
   }
   private struct Submission {
     let request: RenderRequest
@@ -339,6 +347,7 @@ public final class TerminalRendering: @unchecked Sendable {
     if var surface = surfaces[lease.id] {
       surface.latest = value
       surface.generation &+= 1
+      surface.failure.requested()
       surfaces[lease.id] = surface
       if surface.pendingDrawable != nil { enqueueReadyLocked(lease.id) }
       displayLinks = armEligibleSurfacesLocked()
@@ -348,7 +357,7 @@ public final class TerminalRendering: @unchecked Sendable {
     scheduleDrain()
   }
   private func beginDisplayLinkLocked(_ surface: SurfaceState) -> SurfaceDisplayLink? {
-    guard !surface.awaitingDrawable, surface.pendingDrawable == nil, !surface.rendering,
+    guard !surface.failure.blocked, !surface.awaitingDrawable, surface.pendingDrawable == nil, !surface.rendering,
       surface.latest != nil
     else {
       return nil
@@ -370,7 +379,7 @@ public final class TerminalRendering: @unchecked Sendable {
     while !readySurfaces.isEmpty {
       let id = readySurfaces.removeFirst()
       readySet.remove(id)
-      guard var surface = surfaces[id], !surface.rendering,
+      guard var surface = surfaces[id], !surface.failure.blocked, !surface.rendering,
         let request = surface.latest, let drawable = surface.pendingDrawable
       else { continue }
       surface.pendingDrawable = nil
@@ -386,7 +395,7 @@ public final class TerminalRendering: @unchecked Sendable {
   private func submit(_ submission: Submission?) {
     guard let submission else { return }
     if !draw(
-      submission.request, drawable: submission.drawable, surface: submission.surface,
+      submission.request, texture: submission.drawable.texture, drawable: submission.drawable, surface: submission.surface,
       generation: submission.generation)
     {
       finishedWithoutSubmission(surface: submission.surface, generation: submission.generation)
@@ -483,6 +492,7 @@ public final class TerminalRendering: @unchecked Sendable {
     surfacesLock.lock()
     if var surface = surfaces[lease.id] {
       surface.rendering = false
+      surface.failure.failed(submittedGeneration: generation, currentGeneration: surface.generation)
       surfaces[lease.id] = surface
     }
     gpuBusy = false
@@ -507,6 +517,8 @@ public final class TerminalRendering: @unchecked Sendable {
           // Defensive release if a duplicate callback raced an older build.
           surface.pendingDrawable = nil
         }
+      } else {
+        surface.failure.failed(submittedGeneration: generation, currentGeneration: surface.generation)
       }
       surfaces[lease.id] = surface
     }
@@ -660,7 +672,8 @@ public final class TerminalRendering: @unchecked Sendable {
   private struct PrewarmKey: Hashable { let cellWidth: Int; let cellHeight: Int; let fontSize: CGFloat; let family: String? }
   private var prewarmed: Set<PrewarmKey> = []
   private func draw(
-    _ request: RenderRequest, drawable: CAMetalDrawable, surface: SurfaceLease, generation: UInt64
+    _ request: RenderRequest, texture: MTLTexture, drawable: CAMetalDrawable?, surface: SurfaceLease,
+    generation: UInt64, completion: ((Bool) -> Void)? = nil
   ) -> Bool {
     guard request.width > 0, request.height > 0 else { return false }
     glyphResidency.beginFrame(surface: surface.id)
@@ -769,7 +782,8 @@ public final class TerminalRendering: @unchecked Sendable {
           }
           // A Kitty image placeholder shows its image, never a glyph of its own.
           let placeholder = cell.text.unicodeScalars.first?.value == KittyPlaceholder.character
-          if !cell.text.isEmpty && !cell.style.conceal && cell.kind != "Continuation" && !placeholder {
+          if !cell.text.isEmpty && !cell.style.conceal && (!cell.style.blink || request.textVisible)
+            && cell.kind != "Continuation" && !placeholder {
             let cells = cell.kind == "Lead2" ? 2 : 1
             if cell.text == "▀" {
               rect(x, y, request.cellWidth, request.cellHeight / 2, fg)
@@ -860,8 +874,12 @@ public final class TerminalRendering: @unchecked Sendable {
             let linkHovered = linkSegment < request.linkUnderline.count
               && request.linkUnderline[linkSegment].contains(gridIndex)
             if cell.style.underline > 0 || linkHovered {
-              rect(x, y + request.cellHeight - 3, request.cellWidth * cells, 1,
-                   linkHovered ? fg : colors.underline(matching: fg))
+              for shape in UnderlineGeometry.rectangles(kind: linkHovered ? 1 : cell.style.underline,
+                x: c * request.cellWidth, width: request.cellWidth * cells,
+                height: request.cellHeight, scale: request.backingScale) {
+                rect(x + shape.x, y + shape.y, shape.width, shape.height,
+                  linkHovered ? fg : colors.underline(matching: fg))
+              }
             }
             if cell.style.strike {
               rect(x, y + request.cellHeight / 2, request.cellWidth * cells, 1, fg)
@@ -879,20 +897,52 @@ public final class TerminalRendering: @unchecked Sendable {
     quads.removeAll(keepingCapacity: true)
     glyphQuads = Array(repeating: [], count: atlases.count)
     directGlyphQuads.removeAll(keepingCapacity: true)
-    if snap.cursor.visible && snap.following_tail {
+    if snap.cursor.visible && snap.following_tail && request.cursorVisible {
       let x = request.inset + snap.cursor.col * request.cellWidth
       let y = request.inset + snap.cursor.row * request.cellHeight
       let tint =
         request.focused
-        ? TerminalTheme.linear(request.colors.cursor, alpha: 0.65)
+        ? TerminalTheme.linear(snap.cursor_color ?? request.colors.cursor, alpha: 0.65)
         : TerminalTheme.linear(chrome.muted, alpha: 0.25)
-      switch snap.cursor.shape {
+      switch request.cursorShape ?? snap.cursor.shape {
       case 3, 4: rect(x, y + request.cellHeight - 2, request.cellWidth, 2, tint)
       case 5, 6: rect(x, y, 2, request.cellHeight, tint)
       default: rect(x, y, request.cellWidth, request.cellHeight, tint)
       }
     }
-    if !request.marked.isEmpty {
+    if let preedit = request.preedit {
+      for span in preedit.spans {
+        let x = request.inset + span.column * request.cellWidth
+        let y = request.inset + span.row * request.cellHeight
+        let key = GlyphKey(text: span.text, cells: span.cells, bold: false, italic: false,
+          width: request.cellWidth * span.cells, height: request.cellHeight,
+          pointSize: Int(request.fontSize.rounded()), fontIdentity: CTFontCopyPostScriptName(font) as String)
+        rect(x, y, request.cellWidth * span.cells, request.cellHeight,
+          TerminalTheme.linear(span.selected ? chrome.accent : chrome.raised))
+        switch glyph(key, cells: span.cells, request: request) {
+        case .resident(let glyph):
+          appendGlyph(Quad(rect: SIMD4(Float(x), Float(y), Float(glyph.width), Float(request.cellHeight)),
+            uv: glyph.uv, color: glyph.kind == .color ? SIMD4(1, 1, 1, 1)
+              : TerminalTheme.linear(span.selected ? chrome.background : chrome.text)), glyph)
+        case .inFlight: RendererMetrics.recordInFlightGlyph()
+        case .unavailable:
+          let tint = TerminalTheme.linear(chrome.text)
+          rect(x, y, span.cells * request.cellWidth, 1, tint)
+          rect(x, y + request.cellHeight - 1, span.cells * request.cellWidth, 1, tint)
+          rect(x, y, 1, request.cellHeight, tint)
+          rect(x + span.cells * request.cellWidth - 1, y, 1, request.cellHeight, tint)
+          RendererMetrics.recordSubstituteGlyphFallback()
+        }
+        if span.underlineStyle != 0 {
+          let thickness = span.selected ? max(1, request.backingScale * 2) : max(1, request.backingScale)
+          rect(x, y + request.cellHeight - thickness, span.cells * request.cellWidth, thickness,
+            TerminalTheme.linear(chrome.accent))
+        }
+      }
+      rect(request.inset + preedit.caret.column * request.cellWidth,
+        request.inset + preedit.caret.row * request.cellHeight, max(1, request.backingScale),
+        request.cellHeight, TerminalTheme.linear(chrome.text))
+    } else if !request.marked.isEmpty {
       let smokeMarkedLimit = RenderingDiagnostics.atlasPressure || RenderingDiagnostics.atlasFallbackBudget
       let cells = min(smokeMarkedLimit ? 160 : 20, max(1, request.marked.count))
       let key = GlyphKey(
@@ -961,8 +1011,8 @@ public final class TerminalRendering: @unchecked Sendable {
     }
     let preparationMs = Double(DispatchTime.now().uptimeNanoseconds - preparationStart) / 1_000_000
     guard let command = commands.makeCommandBuffer() else { return false }
-    let drawableWidth = drawable.texture.width
-    let drawableHeight = drawable.texture.height
+    let drawableWidth = texture.width
+    let drawableHeight = texture.height
     let matchesRequest = RendererMetrics.recordDrawable(
       requestWidth: request.width, requestHeight: request.height,
       drawableWidth: drawableWidth, drawableHeight: drawableHeight)
@@ -973,9 +1023,12 @@ public final class TerminalRendering: @unchecked Sendable {
       RendererMetrics.recordStaleFrameDrop()
       return false
     }
+    let clipWidth = min(drawableWidth - request.inset, snap.cols * request.cellWidth)
+    let clipHeight = min(drawableHeight - request.inset, (request.viewportRows ?? snap.rows.count) * request.cellHeight)
+    guard request.inset >= 0, clipWidth > 0, clipHeight > 0 else { return false }
     command.label = "Terminal frame \(submissions) revision \(snap.revision)"
     let descriptor = MTLRenderPassDescriptor()
-    descriptor.colorAttachments[0].texture = drawable.texture
+    descriptor.colorAttachments[0].texture = texture
     descriptor.colorAttachments[0].loadAction = .clear
     descriptor.colorAttachments[0].storeAction = .store
     descriptor.colorAttachments[0].clearColor = MTLClearColor(
@@ -1003,7 +1056,12 @@ public final class TerminalRendering: @unchecked Sendable {
         RendererMetrics.recordQuadBufferDrop(items.count)
         return
       }
-      items.withUnsafeBytes { (frameQuads.contents() + frameQuadOffset).copyMemory(from: $0.baseAddress!, byteCount: length) }
+      let translated = request.scrollOffsetPixels == 0 ? items : items.map { item in
+        var item = item
+        item.rect.y += request.scrollOffsetPixels
+        return item
+      }
+      translated.withUnsafeBytes { (frameQuads.contents() + frameQuadOffset).copyMemory(from: $0.baseAddress!, byteCount: length) }
       encoder.setRenderPipelineState(state)
       encoder.setVertexBuffer(frameQuads, offset: frameQuadOffset, index: 0)
       encoder.setFragmentTexture(texture, index: 0)
@@ -1013,7 +1071,7 @@ public final class TerminalRendering: @unchecked Sendable {
     }
     func drawImages(_ accepts: (Int) -> Bool) {
       let clipWidth = min(drawableWidth - request.inset, snap.cols * request.cellWidth)
-      let clipHeight = min(drawableHeight - request.inset, snap.rows.count * request.cellHeight)
+      let clipHeight = min(drawableHeight - request.inset, (request.viewportRows ?? snap.rows.count) * request.cellHeight)
       guard clipWidth > 0, clipHeight > 0 else { return }
       encoder.setScissorRect(
         MTLScissorRect(x: request.inset, y: request.inset, width: clipWidth, height: clipHeight))
@@ -1038,9 +1096,9 @@ public final class TerminalRendering: @unchecked Sendable {
             sourceW / Float(p.width), sourceH / Float(p.height)), color: SIMD4(1, 1, 1, 1))
         drawQuads([quad], texture: texture, state: imagePipeline)
       }
-      encoder.setScissorRect(
-        MTLScissorRect(x: 0, y: 0, width: drawableWidth, height: drawableHeight))
+      // Keep the same viewport clip for text, backgrounds, and decorations.
     }
+    encoder.setScissorRect(MTLScissorRect(x: request.inset, y: request.inset, width: clipWidth, height: clipHeight))
     drawImages { $0 < -1_073_741_824 }
     drawQuads(backgrounds, texture: atlases[0], state: pipeline)
     drawImages { $0 < 0 && $0 >= -1_073_741_824 }
@@ -1059,7 +1117,13 @@ public final class TerminalRendering: @unchecked Sendable {
     RendererMetrics.recordPresentation(
       requestWidth: request.width, requestHeight: request.height,
       drawableWidth: drawableWidth, drawableHeight: drawableHeight)
-    command.present(drawable)
+    if let drawable { command.present(drawable) }
+    #if os(macOS)
+    if completion != nil, texture.storageMode == .managed, let blit = command.makeBlitCommandEncoder() {
+      blit.synchronize(resource: texture)
+      blit.endEncoding()
+    }
+    #endif
     let retiredFallbackIDs = frameLegacyIDs
     let completedRevision = snap.revision
     glyphResidency.finishFrameDemand()
@@ -1074,6 +1138,7 @@ public final class TerminalRendering: @unchecked Sendable {
         self?.glyphResidency.completedSubmission()
         self?.completed(
           surface: surface, generation: generation, revision: completedRevision, command: command)
+        completion?(command.error == nil)
       }
     }
     command.commit()
@@ -1081,6 +1146,36 @@ public final class TerminalRendering: @unchecked Sendable {
     RendererMetrics.record(preparationMs: preparationMs)
     return true
   }
+
+  #if GLYPH_RESIDENCY_TESTING
+  /// Runs the production frame assembly/shaders into a readable attachment.
+  /// Tests own the renderer instance; no window, display link, or app focus.
+  func renderPixelsForTesting(_ request: RenderRequest, completion: @escaping ([UInt8]?) -> Void) {
+    executor.async { [self] in
+      guard request.width > 0, request.height > 0 else { completion(nil); return }
+      let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm_srgb,
+        width: request.width, height: request.height, mipmapped: false)
+      descriptor.storageMode = TextureStorage.mode(for: device)
+      descriptor.usage = [.renderTarget, .shaderRead]
+      guard let target = device.makeTexture(descriptor: descriptor) else { completion(nil); return }
+      let lease = SurfaceLease()
+      let submitted = draw(request, texture: target, drawable: nil, surface: lease, generation: 0) { [self] success in
+        defer {
+          imageTextures = imageTextures.filter { $0.key.surface != lease.id }
+          glyphResidency.detachSurface(lease.id)
+        }
+        guard success else { completion(nil); return }
+        var bytes = [UInt8](repeating: 0, count: request.width * request.height * 4)
+        bytes.withUnsafeMutableBytes {
+          target.getBytes($0.baseAddress!, bytesPerRow: request.width * 4,
+            from: MTLRegionMake2D(0, 0, request.width, request.height), mipmapLevel: 0)
+        }
+        completion(bytes)
+      }
+      if !submitted { completion(nil) }
+    }
+  }
+  #endif
 }
 
 package final class RendererMetrics: @unchecked Sendable {
