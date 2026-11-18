@@ -93,11 +93,16 @@ settles on is, and only if it differs from the saved one.
 
 - **Sparkle is rehearsed, not released.** `Updates` postpones the relaunch
   until the handoff has finished (`shouldPostponeRelaunchForUpdate`). The
-  rehearsal below shows Sparkle then installing and relaunching with the
-  sessions adopted. It uses an ad hoc signed development build, a loopback
-  feed and a key made for the run, and it accepts the update without
-  Sparkle's windows. A Developer ID signed, notarized copy updating from the
-  published feed has not been observed.
+  rehearsals below show Sparkle then installing and relaunching with the
+  sessions adopted: with Developer ID signed, notarized copies, through
+  Sparkle's own windows, and, separately, taking the published release from
+  the published feed. What no rehearsal can show is a released version that
+  contains handoff updating to a later one; no such release exists yet.
+- **One stall was seen and not reproduced.** The first rehearsal through
+  Sparkle's windows left the old copy waiting in its quit: it had been asked
+  to quit twice and the second request waited for an answer already given.
+  That wait is fixed. What caused the second request is not known; seven
+  further runs passed.
 - **A failed claim loses the sessions.** If the new app cannot read the
   manifest or reach the keeper, it starts normally and the keeper times out.
 - **A failure after detaching leaves frozen panes.** The keeper is started
@@ -132,9 +137,20 @@ process, the claim rules and where handoff is allowed).
 ```shell
 just update-rehearsal                      # a shell, vim and a program that keeps printing
 just update-rehearsal --scenario FILE      # your own programs, in the smoke's scenario format
+just update-rehearsal --signed             # Developer ID, hardened runtime, notarized update
+just update-rehearsal --windows            # Sparkle's own windows, buttons pressed for you
 just update-rehearsal --manual             # Sparkle's own windows: you click Install
+just update-rehearsal --published          # the published release from the published feed
 just update-rehearsal --keep-open          # leave the updated copy open to look at
 ```
+
+| Option | What it adds | Needs |
+| --- | --- | --- |
+| `--signed` | Both copies signed as a release is; the update notarized and stapled; Gatekeeper's verdict on the bundle Sparkle installed | A Developer ID Application identity and the notary profile of `just release`. Uploads the rehearsal build to Apple's notary service |
+| `--windows` | Sparkle's standard windows instead of silent acceptance; the command presses Install Update and Install and Relaunch | Accessibility permission for the app running the command |
+| `--published` | The installed copy keeps the release's feed and key, so Sparkle downloads the published release, checks it with the published key and installs it. Implies a signed installed copy | Network. The published release decides what survives; one without handoff adopts nothing |
+
+Options combine, except `--manual` with `--windows`.
 
 Nothing is published and the installed app is not involved. The command:
 

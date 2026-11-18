@@ -5,7 +5,8 @@ import Testing
 @Suite struct UpdateRehearsalTests {
   /// A mistyped option must not start a build and open windows.
   @Test func unknownOrIncompleteArgumentsAreUsageErrors() {
-    for arguments in [["--bogus"], ["--scenario"], ["--timeout"], ["--timeout", "0"], ["--timeout", "soon"], ["extra"]] {
+    for arguments in [["--bogus"], ["--scenario"], ["--timeout"], ["--timeout", "0"], ["--timeout", "soon"], ["extra"],
+                      ["--manual", "--windows"]] {
       do {
         try UpdateRehearsal.run(arguments)
         Issue.record("accepted \(arguments)")

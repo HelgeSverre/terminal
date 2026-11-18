@@ -26,6 +26,7 @@ final class RenderingSetup: @unchecked Sendable {
 /// it back to the main run loop.
 private final class TerminationReply: @unchecked Sendable {
   private var sent = false
+  var isSent: Bool { sent }
   func send() {
     guard !sent else { return }
     sent = true
@@ -51,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var preferencesWindow: TerminalSettingsWindow?
   private weak var lastFocusedPane: TerminalCanvasView?
   private var terminationRequested = false
+  private var terminationReply: TerminationReply?
   private var finishedLaunching = false
   private var pendingFileLaunches: [LaunchSpec] = []
   private let startupFiles = StartupTerminalFileFilter(arguments: CommandLine.arguments,
@@ -554,7 +556,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     return true
   }
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-    guard !terminationRequested else { return .terminateLater }
+    // Asked again: the first answer is still to come, or it was given and
+    // the quit it allowed did not happen. Waiting for an answer that was
+    // already given would never end.
+    guard !terminationRequested else { return terminationReply?.isSent == true ? .terminateNow : .terminateLater }
     terminationRequested = true
     recoveryLayoutWork?.cancel()
     recoveryCheckpointWork?.cancel()
@@ -573,6 +578,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // by its session after two seconds; the timer is the limit for anything
     // that outlasts even that.
     let reply = TerminationReply()
+    terminationReply = reply
     // AppKit's terminate-later loop runs in modalPanel mode, so a default-mode
     // dispatch callback can remain blocked by the very termination it resolves.
     let modes: [RunLoop.Mode] = [.modalPanel, .default]

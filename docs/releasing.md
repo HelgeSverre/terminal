@@ -70,8 +70,10 @@ its bundle in the user’s Caches directory so it survives checkout cleanup.
 Sparkle, on this Mac, with nothing published: a private "installed" copy, a
 loopback feed and a key made for the run. It checks that programs in the
 copy's panes survive the update. See
-[session handoff](session-handoff.md#rehearsing-an-update). It does not
-exercise Developer ID signing, notarization or the published feed.
+[session handoff](session-handoff.md#rehearsing-an-update). With
+`--signed` the copies are Developer ID signed and the update notarized, with
+`--windows` Sparkle's own windows are used, and with `--published` Sparkle
+installs the published release from the published feed.
 
 ## Credentials
 
