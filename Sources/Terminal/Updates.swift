@@ -7,10 +7,10 @@ import Sparkle
 /// The app looks for an update once as it launches and when asked from the
 /// menu. It never looks on a timer: a running terminal does no background
 /// work of its own. An update is offered, never installed unasked.
-@MainActor final class Updates: NSObject {
+@MainActor final class Updates: NSObject, SPUUpdaterDelegate {
   static let shared = Updates()
 
-  private let controller: SPUStandardUpdaterController?
+  private var controller: SPUStandardUpdaterController?
 
   /// Whether this copy of the app updates itself at all.
   var isEnabled: Bool { controller != nil }
@@ -20,10 +20,10 @@ import Sparkle
       arguments: CommandLine.arguments,
       hasFeedKey: Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") is String,
       signedForRelease: Self.isSignedForRelease)
-    controller = enabled
-      ? SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
-      : nil
     super.init()
+    controller = enabled
+      ? SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: self, userDriverDelegate: nil)
+      : nil
     // Sparkle would otherwise schedule its own checks while the app runs.
     controller?.updater.automaticallyChecksForUpdates = false
   }
@@ -33,6 +33,18 @@ import Sparkle
   /// release; a run with arguments is a measurement or a test.
   nonisolated static func updates(arguments: [String], hasFeedKey: Bool, signedForRelease: Bool) -> Bool {
     hasFeedKey && signedForRelease && arguments.count <= 1
+  }
+
+  /// Before an update replaces the app, running programs are left with a
+  /// keeper for the new version to adopt, when this copy hands off at all.
+  /// The update goes ahead whether or not that worked.
+  nonisolated func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
+                           untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+    MainActor.assumeIsolated {
+      guard let delegate = NSApp.delegate as? AppDelegate, delegate.handoffDirectory != nil else { return false }
+      delegate.handOffSessions(relaunch: false, terminates: false) { _ in installHandler() }
+      return true
+    }
   }
 
   /// The one check made without being asked. It says nothing unless an

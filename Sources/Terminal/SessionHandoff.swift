@@ -29,15 +29,22 @@ struct HandoffManifest: Codable {
 }
 
 enum SessionHandoffLocation {
-  /// Where handoffs are left: beside the recovery state of an installed
-  /// copy, or where `--handoff-directory` says. A copy with neither does not
-  /// hand off, so a development build cannot take an installed app's panes.
-  static func directory(arguments: [String], bundle: URL, home: URL) -> URL? {
+  /// The preference that turns handoff on for an installed copy. It is an
+  /// experiment and off unless set:
+  /// `defaults write no.helgesverre.terminal KeepSessionsAcrossRelaunch -bool true`.
+  static let preference = "KeepSessionsAcrossRelaunch"
+  /// Where handoffs are left: where `--handoff-directory` says, or, for an
+  /// installed copy with the preference set, beside its recovery state. A
+  /// copy with neither does not hand off, so a development build cannot
+  /// take an installed app's panes.
+  static func directory(arguments: [String], bundle: URL, home: URL,
+                        enabled: Bool = UserDefaults.standard.bool(forKey: preference)) -> URL? {
     let args = Array(arguments.dropFirst().prefix { $0 != "--execute" })
     if let index = args.firstIndex(of: "--handoff-directory") {
       guard args.indices.contains(index + 1), !args[index + 1].isEmpty, !args[index + 1].hasPrefix("--") else { return nil }
       return URL(fileURLWithPath: args[index + 1], isDirectory: true).standardizedFileURL
     }
+    guard enabled else { return nil }
     return StateLocation.directory(arguments: arguments, bundle: bundle, home: home)?
       .deletingLastPathComponent().appendingPathComponent("Handoff", isDirectory: true)
   }

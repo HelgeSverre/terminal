@@ -28,6 +28,9 @@ import TerminalUI
     /// Leave after handing off and let the caller start the next app, as an
     /// update that replaces the bundle does.
     var externalRelaunch: Bool?
+    /// Windows and tabs opened besides the first window, each with a shell.
+    var extraWindows: Int?
+    var extraTabs: Int?
     var panes: [Pane]
   }
   struct Record: Codable {
@@ -126,11 +129,19 @@ import TerminalUI
     // A cell is about twice as tall as wide; the window is about 1.7 to 1.
     split(window, sizes: [(first, 1.7, 1.0)], remaining: scenario.panes.count - 1) {
       // Shells first reach their prompts; then each gets its command.
+      for _ in 0..<(scenario.extraTabs ?? 0) { delegate.newTab(nil) }
+      for _ in 0..<(scenario.extraWindows ?? 0) { delegate.newWindow(nil) }
       after(2.5) {
         var names: [String: String] = [:]
         for (pane, entry) in zip(window.panes, scenario.panes) {
           names[pane.automationID] = entry.name
           if !entry.command.isEmpty { pane.session.input(entry.command + "\r") }
+        }
+        for (index, extra) in delegate.windows.dropFirst().enumerated() {
+          for pane in extra.panes {
+            names[pane.automationID] = "extra-\(index + 1)"
+            pane.session.input("echo extra-\(index + 1)\r")
+          }
         }
         save(names, "names.json")
         after(scenario.settle) { handOff(delegate, scenario, names: names, round: 1) }
@@ -202,7 +213,9 @@ import TerminalUI
             probed: entry?.expect.map { later?.screen.contains($0) == true },
             screenBefore: old.screen, screenRestored: now?.screen ?? "", screenAfterProbe: later?.screen ?? ""))
         }
-        let passed = results.count == scenario.panes.count && results.allSatisfy {
+        let expected = scenario.panes.count + (scenario.extraTabs ?? 0) + (scenario.extraWindows ?? 0)
+        let passed = results.count == expected && delegate.windows.count == 1 + expected - scenario.panes.count
+          && results.allSatisfy {
           $0.sameProcess && $0.descendantsKept && $0.gridKept && $0.animated != false && $0.probed != false
         }
         save(Result(round: before.round, passed: passed, handoffMilliseconds: handoff["milliseconds"] ?? -1,

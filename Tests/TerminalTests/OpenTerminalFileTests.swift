@@ -6,10 +6,11 @@ import Testing
 @Suite(.serialized) @MainActor struct OpenTerminalFileTests {
   @Test func startupArgumentsDoNotBecomeDocumentRequests() {
     let arguments = ["Terminal", "--background", "--state-directory", "/launch/state",
+      "--handoff-directory", "/launch/handoff",
       "--columns", "40", "--rows", "10", "--execute", "/bin/sh", "-c", "printf READY",
       "recovery", "/launch/child.pid"]
     let filter = StartupTerminalFileFilter(arguments: arguments, currentDirectory: "/launch")
-    let accidental = ["/launch/state", "/launch/recovery", "/launch/child.pid"]
+    let accidental = ["/launch/state", "/launch/handoff", "/launch/recovery", "/launch/child.pid"]
     #expect(filter.documents(from: accidental, duringStartup: true, currentEvent: nil).isEmpty)
     #expect(filter.documents(from: accidental, duringStartup: true, currentEvent: nil).isEmpty,
       "repeated synthetic callbacks must not consume the launch arguments as files")

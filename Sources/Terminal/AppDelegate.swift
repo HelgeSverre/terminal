@@ -217,8 +217,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Leaves every running program with a keeper, then ends this app. With
   /// `relaunch`, the app at this bundle's path starts once this one is gone
   /// and takes them over; without, whatever starts next does, as after an
-  /// update that replaced the bundle.
-  @MainActor func handOffSessions(relaunch: Bool, completion: (@MainActor (Bool) -> Void)? = nil) {
+  /// update that replaced the bundle. An updater that ends the app itself
+  /// passes `terminates: false`.
+  @MainActor func handOffSessions(relaunch: Bool, terminates: Bool = true, completion: (@MainActor (Bool) -> Void)? = nil) {
     guard let handoffDirectory, !handingOff, !terminationRequested else { completion?(false); return }
     handingOff = true
     SessionHandoffCoordinator.handOff(windows: windows, directory: handoffDirectory) { [weak self] succeeded in
@@ -234,7 +235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
           + (CommandLine.arguments.count > 1 ? ["--args"] + CommandLine.arguments.dropFirst() : [])
         try? waiter.run()
       }
-      NSApp.terminate(nil)
+      if terminates { NSApp.terminate(nil) }
     }
   }
   @objc func relaunchKeepingSessions(_ sender: Any?) {

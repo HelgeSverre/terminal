@@ -180,6 +180,7 @@ The bundle identifier is `no.helgesverre.terminal`.
 | [Protocol coverage](docs/protocol-coverage.md) · [conformance](docs/conformance.md) | Image, input and query protocols, their tests and limits; esctest and fuzzing |
 | [Desktop controls](docs/desktop-controls.md) | Profiles, shortcuts, themes, cursor, Option keys and pane commands |
 | [Search](docs/search.md) | Find options, the bounded regex dialect and headless search |
+| [Session handoff](docs/session-handoff.md) | Experimental: relaunch or update the app while its programs keep running |
 | [Gap status](docs/gap-implementation-status.md) · [qualification](docs/qualification.md) | What the 2026-11-17 gap work implemented and what still needs external checks |
 | [Input and accessibility validation](docs/native-input-accessibility-validation.md) | Manual checks for input methods and VoiceOver |
 | [Clipboard protocol](docs/osc52-clipboard.md) | OSC 52 behavior and policy |
