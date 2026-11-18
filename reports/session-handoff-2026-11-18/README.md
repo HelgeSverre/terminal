@@ -53,13 +53,30 @@ In both, the bundle on disk and the copy that adopted the sessions were
 build 22, and every pane kept its process, descendants and grid, kept
 animating where expected and received typed input.
 
-The copies were ad hoc signed and the update was accepted without Sparkle's
-windows. `--manual`, which shows them, was not run.
+Those copies were ad hoc signed and the update was accepted without
+Sparkle's windows.
+
+## Signed, through Sparkle's windows, and from the published feed
+
+Source `ddd1f8a`, `just test` passed there; development bundle executable
+SHA-256 `97ce98e5ba582f55892bebf377cc9d1f153c4484d0ba0e52305ff25965965796`.
+
+| Run | What it proves | Result |
+| --- | --- | --- |
+| `--signed --windows`, the eight programs plus one more tab | Both copies signed with Developer ID and the hardened runtime, the update notarized (submission `6b01ea65-0560-4449-809a-4b209b408195`) and stapled; Sparkle's standard windows, with Install Update and Install and Relaunch pressed through accessibility | Passed: all 9 panes kept process, descendants and grid; Gatekeeper on the installed bundle: accepted, Notarized Developer ID |
+| `--published` | A Developer ID signed copy numbered 0.0.1 with the release's feed URL and public key: Sparkle downloaded the published 0.6.2 (22), checked it with the published key and installed it | Passed: the bundle became `no.helgesverre.terminal` 0.6.2 (22); Gatekeeper: accepted, Notarized Developer ID |
+
+Earlier the same day, before `ddd1f8a`: `--signed` alone passed once,
+`--windows` alone passed 7 times and failed once. In the failure the old copy
+stayed in its quit after Sparkle had handed off: it had been asked to quit a
+second time and waited for an answer already given. `ddd1f8a` answers a
+repeated request. What sent the second request was not found.
 
 ## Not covered
 
-- A released copy updating from the published feed: Developer ID signature
-  validation, notarization and the real update key.
+- A released version that contains handoff updating to a later one: none
+  exists yet. The published 0.6.2 has no handoff, so in the `--published`
+  run nothing adopted the sessions, as expected.
 - A separate window: the extra window joined the first window's tab group.
 - An installed, Developer ID signed copy; macOS 14; Intel.
 - Programs showing images, and panes scrolled back, at the moment of handoff.
