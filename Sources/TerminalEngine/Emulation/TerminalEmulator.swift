@@ -2952,6 +2952,146 @@ private extension TerminalEmulator {
     changed(history: true)
   }
 }
+package enum TerminalHandoffBridge {
+  /// False while an escape sequence, a UTF-8 character or a repeat is only
+  /// partly read. A capture taken then would lose the part already read.
+  package static func isAtBoundary(core pointer: OpaquePointer) -> Bool { core(pointer)!.handoffBoundary }
+  package static func capture(core pointer: OpaquePointer) -> TerminalHandoff { core(pointer)!.captureHandoff() }
+  /// Restores into a terminal that has read nothing yet and has the
+  /// handoff's size. False when the state cannot be read; the rows are
+  /// restored either way.
+  @discardableResult
+  package static func restore(core pointer: OpaquePointer, _ handoff: TerminalHandoff, now: UInt64) -> Bool {
+    core(pointer)!.restoreHandoff(handoff, now: now)
+  }
+}
+
+private extension TerminalEmulator {
+  var handoffBoundary: Bool {
+    guard case .ground = parser else { return false }
+    return utf8.isIdle && repeatRemaining == 0 && syncDeadline == nil
+  }
+  private func handoffScreen(_ screen: TerminalScreen) -> TerminalHandoffState.Screen {
+    let saved = screen.savedRendition
+    return TerminalHandoffState.Screen(
+      cursorRow: screen.cursorRow, cursorColumn: screen.cursorColumn, pendingWrap: screen.pendingWrap,
+      savedRow: screen.savedRow, savedColumn: screen.savedColumn, savedPendingWrap: screen.savedPendingWrap,
+      savedOrigin: saved.origin, savedStyle: .init(saved.style), savedLink: saved.link,
+      savedProtected: saved.protected, savedCharsetSpecial: saved.charsetSpecial, savedCharsetSlot: saved.charsetSlot,
+      keyboardFlags: screen.keyboardFlags, keyboardStack: screen.keyboardStack,
+      cursorVisible: screen.cursorVisible, cursorShape: screen.cursorShape,
+      top: screen.topMargin, bottom: screen.bottomMargin, left: screen.leftMargin, right: screen.rightMargin)
+  }
+  private func restore(_ state: TerminalHandoffState.Screen, into screen: inout TerminalScreen) {
+    let lastRow = rowCount - 1, lastColumn = columns - 1
+    func row(_ value: Int) -> Int { min(lastRow, max(0, value)) }
+    func column(_ value: Int) -> Int { min(lastColumn, max(0, value)) }
+    screen.cursorRow = row(state.cursorRow); screen.cursorColumn = column(state.cursorColumn)
+    screen.pendingWrap = state.pendingWrap
+    screen.savedRow = row(state.savedRow); screen.savedColumn = column(state.savedColumn)
+    screen.savedPendingWrap = state.savedPendingWrap
+    screen.savedRendition = SavedRendition(
+      origin: state.savedOrigin, style: state.savedStyle.style, link: state.savedLink, linkID: nil,
+      protected: state.savedProtected,
+      charsetSpecial: state.savedCharsetSpecial.count == 2 ? state.savedCharsetSpecial : [false, false],
+      charsetSlot: state.savedCharsetSlot == 1 ? 1 : 0)
+    screen.keyboardFlags = state.keyboardFlags
+    screen.keyboardStack = Array(state.keyboardStack.suffix(16))
+    screen.cursorVisible = state.cursorVisible; screen.cursorShape = state.cursorShape
+    if state.top < state.bottom, state.bottom <= lastRow, state.top >= 0 {
+      screen.topMargin = state.top; screen.bottomMargin = state.bottom
+    }
+    if state.left < state.right, state.right <= lastColumn, state.left >= 0 {
+      screen.leftMargin = state.left; screen.rightMargin = state.right
+    }
+  }
+  func captureHandoff() -> TerminalHandoff {
+    var content = TerminalHandoffContent()
+    content.paint(history: history, screen: primary.rows)
+    if usingAlternate {
+      content.paint(alternate: alternate.rows)
+    }
+    content.finish()
+    var state = TerminalHandoffState()
+    state.usingAlternate = usingAlternate
+    state.primary = handoffScreen(primary)
+    state.alternate = handoffScreen(alternate)
+    state.pen = .init(attributes.style); state.penLink = attributes.link; state.penProtected = attributes.protected
+    state.charsetSpecial = charsetSpecial; state.charsetSlot = charsetSlot
+    state.modes = [
+      "origin": originMode ? 1 : 0, "leftRightMargins": leftRightMargins ? 1 : 0, "autoWrap": autoWrap ? 1 : 0,
+      "reverseWrap": reverseWrap ? 1 : 0, "reverseWrapUnlimited": reverseWrapUnlimited ? 1 : 0,
+      "cursesTabWrap": cursesTabWrap ? 1 : 0, "isoEraseProtection": isoEraseProtection ? 1 : 0,
+      "insert": insertMode ? 1 : 0, "newline": newlineMode ? 1 : 0,
+      "applicationCursor": applicationCursor ? 1 : 0, "applicationKeypad": applicationKeypad ? 1 : 0,
+      "bracketedPaste": bracketedPaste ? 1 : 0, "focusReporting": focusReporting ? 1 : 0,
+      "reverseVideo": reverseVideo ? 1 : 0, "mouse": mouseMode, "mouseEncoding": mouseEncoding,
+      "modifyOtherKeys": modifyOtherKeys, "colorSchemeReports": colorSchemeReports ? 1 : 0,
+      "graphemeClustering": graphemeClustering ? 1 : 0,
+      "sixelDisplay": sixelDisplayMode ? 1 : 0, "sixelCursorRight": sixelCursorRight ? 1 : 0,
+    ]
+    state.savedPrivateModes = Dictionary(uniqueKeysWithValues: savedPrivateModes.map { (String($0.key), $0.value) })
+    state.tabs = tabs; state.tabsCleared = tabsCleared
+    state.title = title; state.iconTitle = iconTitle; state.directory = currentDirectory
+    state.colors = palette.handoffCommands
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = .sortedKeys
+    let encoded = (try? encoder.encode(state)) ?? Data()
+    return TerminalHandoff(columns: columns, rows: rowCount, content: content.bytes, state: encoded)
+  }
+  func restoreHandoff(_ handoff: TerminalHandoff, now: UInt64) -> Bool {
+    guard handoff.columns == columns, handoff.rows == rowCount else { return false }
+    handoff.content.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) in
+      guard let base = buffer.bindMemory(to: UInt8.self).baseAddress else { return }
+      var offset = 0, stalled = 0
+      while offset < buffer.count, stalled < 4 {
+        let consumed = feed(base + offset, count: buffer.count - offset, now: now)
+        offset += consumed
+        stalled = consumed == 0 ? stalled + 1 : 0
+      }
+    }
+    // Painting is this terminal's own text, and nothing in it asks a question.
+    replies.removeAll(keepingCapacity: true)
+    bells = 0
+    defer { forgetLastPrinted(); changed(history: true) }
+    guard let state = try? JSONDecoder().decode(TerminalHandoffState.self, from: handoff.state), state.version == 1 else {
+      if usingAlternate { usingAlternate = false }
+      return false
+    }
+    usingAlternate = state.usingAlternate
+    var screen = primary; restore(state.primary, into: &screen); primary = screen
+    screen = alternate; restore(state.alternate, into: &screen); alternate = screen
+    attributes = TerminalDocument.PrintAttributes(style: state.pen.style, link: state.penLink, protected: state.penProtected)
+    if state.charsetSpecial.count == 2 { charsetSpecial = state.charsetSpecial }
+    charsetSlot = state.charsetSlot == 1 ? 1 : 0
+    func flag(_ key: String, _ current: Bool) -> Bool { state.modes[key].map { $0 != 0 } ?? current }
+    originMode = flag("origin", originMode); leftRightMargins = flag("leftRightMargins", leftRightMargins)
+    autoWrap = flag("autoWrap", autoWrap); reverseWrap = flag("reverseWrap", reverseWrap)
+    reverseWrapUnlimited = flag("reverseWrapUnlimited", reverseWrapUnlimited)
+    cursesTabWrap = flag("cursesTabWrap", cursesTabWrap)
+    isoEraseProtection = flag("isoEraseProtection", isoEraseProtection)
+    insertMode = flag("insert", insertMode); newlineMode = flag("newline", newlineMode)
+    applicationCursor = flag("applicationCursor", applicationCursor)
+    applicationKeypad = flag("applicationKeypad", applicationKeypad)
+    bracketedPaste = flag("bracketedPaste", bracketedPaste); focusReporting = flag("focusReporting", focusReporting)
+    reverseVideo = flag("reverseVideo", reverseVideo)
+    if let value = state.modes["mouse"], [0, 9, 1000, 1002, 1003].contains(value) { mouseMode = value }
+    if let value = state.modes["mouseEncoding"], [0, 1005, 1006, 1015, 1016].contains(value) { mouseEncoding = value }
+    if let value = state.modes["modifyOtherKeys"], (0...2).contains(value) { modifyOtherKeys = value }
+    colorSchemeReports = flag("colorSchemeReports", colorSchemeReports)
+    graphemeClustering = flag("graphemeClustering", graphemeClustering)
+    sixelDisplayMode = flag("sixelDisplay", sixelDisplayMode); sixelCursorRight = flag("sixelCursorRight", sixelCursorRight)
+    savedPrivateModes = Dictionary(uniqueKeysWithValues: state.savedPrivateModes.compactMap { key, value in
+      Int(key).map { ($0, value) }
+    })
+    if state.tabs.count == columns { tabs = state.tabs; tabsCleared = state.tabsCleared }
+    title = sanitizedTitle(state.title); iconTitle = sanitizedTitle(state.iconTitle)
+    currentDirectory = state.directory
+    for command in state.colors where command.count == 2 { palette.applyOSC(command: command[0], value: command[1]) }
+    graphicsPaletteStale = true
+    return true
+  }
+}
 package func swiftTerminalCommands(_ pointer: OpaquePointer?) -> [TerminalCommandRecord] { core(pointer)?.commands() ?? [] }
 package func swiftTerminalNavigateCommand(_ pointer: OpaquePointer?, older: Bool) { core(pointer)?.navigateCommand(older: older) }
 // Internal Swift adapter: same owner-confined handle, no C callback or borrowed

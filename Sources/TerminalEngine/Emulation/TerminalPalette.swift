@@ -292,3 +292,15 @@ struct TerminalPalette {
     }
   }
 }
+
+extension TerminalPalette {
+  /// The OSC commands that set what a program has overridden, for a
+  /// terminal that takes this one's place.
+  var handoffCommands: [[String]] {
+    var commands = overriddenEntries.sorted().map { ["4", "\($0);\(entries[$0].oscValue)"] }
+    if foregroundOverridden { commands.append(["10", defaultForeground.oscValue]) }
+    if backgroundOverridden { commands.append(["11", defaultBackground.oscValue]) }
+    if cursorOverridden { commands.append(["12", cursor.oscValue]) }
+    return commands
+  }
+}

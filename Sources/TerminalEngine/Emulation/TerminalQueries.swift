@@ -78,7 +78,7 @@ enum TerminalQueries {
 
   /// A reset followed by all active attributes round-trips through SGR,
   /// including underline style and color. This describes the pen, not a cell.
-  private static func sgr(_ style: TerminalStyle) -> String {
+  static func sgr(_ style: TerminalStyle) -> String {
     var fields = ["0"]
     let flags: [(UInt16, Int)] = [(1, 1), (2, 2), (4, 3), (8, 7), (16, 8), (32, 9), (64, 53), (128, 5)]
     for (bit, code) in flags {
