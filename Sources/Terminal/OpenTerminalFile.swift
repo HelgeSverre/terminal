@@ -54,11 +54,12 @@ struct StartupTerminalFileFilter {
 
   private static var optionValueCounts: [String: Int] {
     var options = ["--background": 0, "--working-directory": 1, "--state-directory": 1,
+      "--handoff-directory": 1,
       "--font-size": 1, "--history-limit": 1, "--columns": 1, "--rows": 1]
     #if TERMINAL_DIAGNOSTICS
     for option in ["--self-test", "--editing-smoke", "--glyph-smoke", "--close-smoke", "--demo-smoke",
       "--resize-smoke", "--intense-resize-smoke", "--selection-smoke", "--pane-lifecycle-smoke",
-      "--font-catalog", "--first-frame-file", "--session-statistics-file"] { options[option] = 1 }
+      "--font-catalog", "--first-frame-file", "--session-statistics-file", "--handoff-smoke"] { options[option] = 1 }
     options["--cat-smoke"] = 2
     for option in ["--atlas-pressure-smoke", "--atlas-fallback-budget-smoke", "--cat-motion-stress",
       "--idle-test", "--keep-open", "--mute", "--quit-shortcut", "--smoke-stream", "--exit-after-command"] {

@@ -149,7 +149,10 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
       ?? initialLaunch ?? diagnosticSplitLaunch ?? launch ?? .shell
     let launch = baseLaunch.withResumeFile(delegate?.recovery?.resumeFile(id))
     let session: TerminalSession
-    if let state, let store = delegate?.recovery {
+    if let state, let adoption = delegate?.takeAdoption(state.id) {
+      // The program is already running; nothing is started.
+      session = TerminalSession(adopting: adoption.handoff, launch: adoption.launch)
+    } else if let state, let store = delegate?.recovery {
       let checkpoint = store.scrollback(id)
       let formatter = DateFormatter()
       formatter.dateFormat = "yyyy-MM-dd HH:mm"

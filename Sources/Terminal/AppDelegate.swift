@@ -74,9 +74,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private var resumePending: (layout: SessionLayout, restoring: Bool, revision: UInt64)?
   lazy var resumeRules = ResumeRules.load(Bundle.main.url(forResource: "ResumeRules", withExtension: "json"))
   private lazy var resumeSampler = ResumeSampler(rules: resumeRules, home: FileManager.default.homeDirectoryForCurrentUser)
-  init(rendering setup: RenderingSetup, recovery: SessionStateStore? = nil, paneID: PaneID? = nil) {
+  /// Where running programs are left for the app that replaces this one, or
+  /// nil when this copy does not hand off.
+  let handoffDirectory: URL?
+  /// The windows a replaced app left, until they are rebuilt.
+  private var claimedLayout: SessionLayout?
+  private var adoptions: [PaneID: SessionHandoffCoordinator.Adoption]
+  private var handingOff = false
+  init(rendering setup: RenderingSetup, recovery: SessionStateStore? = nil, paneID: PaneID? = nil,
+       handoffDirectory: URL? = nil, handoff: SessionHandoffCoordinator.Claimed? = nil) {
     self.recovery = recovery
-    initialPaneID = paneID
+    self.handoffDirectory = handoffDirectory
+    claimedLayout = handoff?.layout
+    adoptions = handoff?.adoptions ?? [:]
+    initialPaneID = handoff == nil ? paneID : nil
     #if TERMINAL_DIAGNOSTICS
     if let path = selectionSmokeReportPath() {
       let pasteboard = NSPasteboard(name: selectionSmokePasteboardName(reportPath: path))
@@ -128,12 +139,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     finishedLaunching = true
     // Saved windows come back even when a file launched the app; skipping
     // them would let the next save discard their state.
-    if let layout = recovery?.restored { restoreWindows(layout) }
+    let adopted = claimedLayout != nil
+    if let layout = claimedLayout {
+      claimedLayout = nil
+      restoreWindows(layout)
+      // A program whose pane was not rebuilt has no terminal any more.
+      for adoption in adoptions.values { Darwin.close(adoption.handoff.descriptor) }
+      adoptions.removeAll()
+    } else if let layout = recovery?.restored { restoreWindows(layout) }
     if !pendingFileLaunches.isEmpty {
       let launches = pendingFileLaunches
       pendingFileLaunches.removeAll()
       launches.forEach { openTerminalWindow(launch: $0) }
-    } else if recovery?.restored == nil {
+    } else if recovery?.restored == nil, !adopted {
       #if TERMINAL_DIAGNOSTICS
       if !openDiagnosticWindow() { newWindow(nil) }
       #else
@@ -149,6 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     #if TERMINAL_DIAGNOSTICS
     startDiagnostics()
+    MainActor.assumeIsolated { HandoffSmoke.startIfRequested(self, adopted: adopted) }
     #endif
     MainActor.assumeIsolated { Updates.shared.checkAtLaunch() }
     if recovery != nil {
@@ -190,6 +209,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       if launchesInBackground { controller.window?.orderBack(nil) }
       else { controller.window?.makeKeyAndOrderFront(nil) }
     }
+  }
+
+  /// The running program a replaced app left for this pane, once.
+  func takeAdoption(_ id: PaneID) -> SessionHandoffCoordinator.Adoption? { adoptions.removeValue(forKey: id) }
+
+  /// Leaves every running program with a keeper, then ends this app. With
+  /// `relaunch`, the app at this bundle's path starts once this one is gone
+  /// and takes them over; without, whatever starts next does, as after an
+  /// update that replaced the bundle.
+  @MainActor func handOffSessions(relaunch: Bool, completion: (@MainActor (Bool) -> Void)? = nil) {
+    guard let handoffDirectory, !handingOff, !terminationRequested else { completion?(false); return }
+    handingOff = true
+    SessionHandoffCoordinator.handOff(windows: windows, directory: handoffDirectory) { [weak self] succeeded in
+      guard let self else { return }
+      handingOff = false
+      completion?(succeeded)
+      guard succeeded else { NSSound.beep(); return }
+      if relaunch {
+        let waiter = Process()
+        waiter.executableURL = URL(fileURLWithPath: "/bin/sh")
+        waiter.arguments = ["-c", #"while kill -0 "$1" 2>/dev/null; do sleep 0.05; done; shift; exec /usr/bin/open -n "$@""#,
+          "sh", String(getpid()), Bundle.main.bundlePath]
+          + (CommandLine.arguments.count > 1 ? ["--args"] + CommandLine.arguments.dropFirst() : [])
+        try? waiter.run()
+      }
+      NSApp.terminate(nil)
+    }
+  }
+  @objc func relaunchKeepingSessions(_ sender: Any?) {
+    MainActor.assumeIsolated { handOffSessions(relaunch: true) }
   }
 
   func recoveryChanged() {

@@ -91,4 +91,8 @@ void helge_terminal_set_history_byte_limit(Terminal *,uint64_t);
 bool helge_terminal_image_rgba(Terminal *,uint32_t,uint64_t,void *,void (*)(void *,const uint8_t *,size_t));
 bool helge_terminal_resize_pixels(Terminal *,uint32_t,uint32_t,uint32_t,uint32_t);
 uint64_t helge_terminal_history_bytes(Terminal *);
+/* Passes an open descriptor over a Unix socket, and takes one: -1 when none
+ * arrived. The receiver owns what it takes. */
+bool helge_descriptor_send(int,int);
+int helge_descriptor_receive(int);
 #endif

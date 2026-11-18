@@ -34,6 +34,9 @@ enum MainMenu {
     item(app, "About Helge Terminal", #selector(NSApplication.orderFrontStandardAboutPanel(_:)), "")
     item(app, "Check for Updates…", #selector(AppDelegate.checkForUpdates(_:)), "", target: delegate)
     item(app, "Settings…", #selector(AppDelegate.settings(_:)), ",", target: delegate)
+    if delegate?.handoffDirectory != nil {
+      item(app, "Relaunch Keeping Sessions", #selector(AppDelegate.relaunchKeepingSessions(_:)), "", target: delegate)
+    }
     app.addItem(.separator())
     item(app, "Quit Helge Terminal", #selector(NSApplication.terminate(_:)), "q")
 

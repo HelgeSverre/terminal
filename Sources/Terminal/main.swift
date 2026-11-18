@@ -3,6 +3,9 @@ import TerminalInterop
 import TerminalHost
 import TerminalUI
 
+// A keeper holds the PTYs of a replaced app. It is this executable with no
+// interface, decided before anything of the app is set up.
+SessionKeeper.runIfRequested()
 // The app owns its bundle policy; embedded views use their module resources.
 TerminalResources.bundle = .main
 
@@ -25,11 +28,15 @@ SmokeStream.runIfRequested()
 helge_terminal_set_program_version(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String)
 let recoveryState = SessionStateStore.open(directory: StateLocation.directory(
   arguments: CommandLine.arguments, bundle: Bundle.main.bundleURL, home: FileManager.default.homeDirectoryForCurrentUser))
-let restoredFirstPane = recoveryState?.restored?.windows.first.flatMap { window in
+// Programs a replaced app left running come before anything saved or new.
+let handoffDirectory = SessionHandoffLocation.directory(
+  arguments: CommandLine.arguments, bundle: Bundle.main.bundleURL, home: FileManager.default.homeDirectoryForCurrentUser)
+let claimedHandoff = SessionHandoffCoordinator.claim(directory: handoffDirectory)
+let restoredFirstPane = claimedHandoff != nil ? nil : recoveryState?.restored?.windows.first.flatMap { window in
   window.panes.first { $0.id == window.root.panes.first }
 }
 let firstPaneID = restoredFirstPane?.id ?? (recoveryState != nil ? PaneID() : nil)
-if let baseLaunch = restoredFirstPane.map({ LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString) })
+if claimedHandoff == nil, let baseLaunch = restoredFirstPane.map({ LaunchSpec.recoveryShell(inheriting: URL(fileURLWithPath: $0.directory).absoluteString) })
   ?? AppDelegate.firstLaunch() {
   let launch = baseLaunch.withResumeFile(firstPaneID.flatMap { recoveryState?.resumeFile($0) })
   let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096)
@@ -53,6 +60,7 @@ let application = NSApplication.shared
 // Started only now: touching Metal before the application object exists
 // leaves the first window unable to become key when the app is launched
 // without coming to the front, and its first click is then spent on focus.
-let delegate = AppDelegate(rendering: RenderingSetup(), recovery: recoveryState, paneID: firstPaneID)
+let delegate = AppDelegate(rendering: RenderingSetup(), recovery: recoveryState, paneID: firstPaneID,
+                           handoffDirectory: handoffDirectory, handoff: claimedHandoff)
 application.delegate = delegate
 application.run()

@@ -392,6 +392,8 @@ public final class TerminalSession: @unchecked Sendable {
   }
   private let launchSpec: LaunchSpec?
   package var launchDirectory: String? { launchSpec?.cwd }
+  /// How the child was started, or nil for a transport.
+  package var launch: LaunchSpec? { launchSpec }
   private var recoverySeed: String?
   /// A child another process started, waiting for this session's first grid.
   private var adoption: SessionHandoff?
@@ -1025,6 +1027,19 @@ public final class TerminalSession: @unchecked Sendable {
     reap()
     publish()
     scheduleOwner()
+  }
+  /// A copy of the PTY's controlling end, for a process that keeps the child
+  /// from being hung up while this one is replaced. Nil when there is no
+  /// running child. The session itself is unchanged; the caller closes the
+  /// copy.
+  package func duplicatePTY(_ completion: @escaping @MainActor (Int32?) -> Void) {
+    readBroker.submit { [self] in
+      var copy: Int32 = -1
+      if !closed, connection == nil, pid > 0, !reaped, !readEnded, master >= 0, handoffDescriptor < 0 {
+        copy = fcntl(master, F_DUPFD_CLOEXEC, 10)
+      }
+      DispatchQueue.main.async { completion(copy >= 0 ? copy : nil) }
+    }
   }
   /// Gives up the running child for another process to adopt, once
   /// everything already read is on screen. The session shows what it has and
