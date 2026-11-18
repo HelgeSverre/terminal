@@ -63,6 +63,13 @@ enum SessionHandoffCoordinator {
   static func claim(directory: URL?) -> Claimed? {
     guard let directory, let data = read(directory.appendingPathComponent(manifestName)) else { return nil }
     defer { try? FileManager.default.removeItem(at: directory) }
+    #if TERMINAL_DIAGNOSTICS
+    // A smoke run keeps what it claimed, to compare with what it shows.
+    if CommandLine.arguments.contains(HandoffSmoke.flag) {
+      let kept = directory.deletingLastPathComponent().appendingPathComponent("claimed-\(Int(Date().timeIntervalSince1970))")
+      try? FileManager.default.copyItem(at: directory, to: kept)
+    }
+    #endif
     guard let manifest = try? JSONDecoder().decode(HandoffManifest.self, from: data), manifest.version == 1,
       manifest.layout.isValid, manifest.descriptorCount > 0,
       let descriptors = SessionKeeper.claim(socketPath: manifest.socket, count: manifest.descriptorCount)

@@ -400,6 +400,11 @@ public final class TerminalSession: @unchecked Sendable {
   /// The child is not this process's own: it cannot be waited for, only
   /// watched, and its exit status is unknown.
   private var adopted = false
+  /// An adopted child's window is still being rebuilt: its pane passes
+  /// through sizes it will not keep. They are not sent to the child, which
+  /// would redraw for each; the size the pane settles on is, if it differs.
+  private var adoptionSettling = false
+  private static let adoptionSettleMilliseconds = 500
   /// A copy of the PTY kept for the process that takes this session over.
   private var handoffDescriptor: Int32 = -1
   private var initialRecoveryConfiguration: TerminalSessionConfiguration?
@@ -1025,6 +1030,19 @@ public final class TerminalSession: @unchecked Sendable {
     process = p
     p.resume()
     reap()
+    adoptionSettling = true
+    queue.asyncAfter(deadline: .now() + .milliseconds(Self.adoptionSettleMilliseconds)) { [weak self] in
+      self?.readBroker.submit {
+        guard let self, !self.closed else { return }
+        self.adoptionSettling = false
+        guard self.queuedResizeCount == 0, let wanted = self.wantedGrid,
+          wanted.cols != self.columns || wanted.rows != self.rowCount
+            || wanted.cellWidth != self.cellWidthPx || wanted.cellHeight != self.cellHeightPx
+        else { return }
+        self.queuedResizeCount += 1
+        self.enqueue(.resize(wanted.cols, wanted.rows, wanted.cellWidth, wanted.cellHeight, false))
+      }
+    }
     publish()
     scheduleOwner()
   }
@@ -1804,6 +1822,7 @@ public final class TerminalSession: @unchecked Sendable {
         awaitingGrid = false
         launch(columns: cols, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
       }
+      guard !adoptionSettling else { return }
       if cols != columns || rows != rowCount || cellWidth != cellWidthPx
         || cellHeight != cellHeightPx || queuedResizeCount > 0
       {

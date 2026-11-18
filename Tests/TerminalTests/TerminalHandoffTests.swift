@@ -47,6 +47,20 @@ import TerminalInterop
     #expect(TerminalHandoffBridge.capture(core: copy.core) == TerminalHandoffBridge.capture(core: source.core))
   }
 
+  /// zsh marks a missing final newline by filling the line, wrapping, and
+  /// erasing what it wrapped onto: a wrapped row followed by an empty one.
+  @Test func aWrappedRowFollowedByAnEmptyOneKeepsItsLineBreak() throws {
+    let source = try terminal()
+    source.feed("first\r\n" + String(repeating: "x", count: 20) + " \r\u{1b}[K\r\nafter\r\n")
+    source.feed(String(repeating: "y", count: 20) + "\u{1b}[45m \r\u{1b}[K\u{1b}[0m\r\nlast")
+    for _ in 0..<2 { source.feed("\r\n" + String(repeating: "z", count: 20) + " \r\u{1b}[K\r\nend") }
+    let copy = try handedOff(source)
+    #expect(picture(copy) == picture(source))
+    for offset in [2, 5] { #expect(picture(copy, scrolledBack: offset) == picture(source, scrolledBack: offset)) }
+    #expect(copy.screen()?.rows == source.screen()?.rows)
+    #expect(TerminalHandoffBridge.capture(core: copy.core) == TerminalHandoffBridge.capture(core: source.core))
+  }
+
   @Test func alternateScreenModesAndSavedCursorSurvive() throws {
     let source = try terminal()
     source.feed("shell prompt\r\n$ vim\u{1b}7")

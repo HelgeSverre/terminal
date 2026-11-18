@@ -10,7 +10,7 @@ import TerminalUI
 /// probes it with input, and writes `round-N.json`. With `rounds` above one
 /// it hands off again.
 @MainActor enum HandoffSmoke {
-  static let flag = "--handoff-smoke"
+  nonisolated static let flag = "--handoff-smoke"
   struct Scenario: Codable {
     struct Pane: Codable {
       var name: String
@@ -50,6 +50,8 @@ import TerminalUI
       var descendantsKept: Bool
       var lostDescendants: [Int32]
       var gridKept: Bool
+      var gridBefore: String
+      var gridRestored: String
       var rowsEqualAtRestore: Double
       var animated: Bool?
       var probed: Bool?
@@ -120,24 +122,42 @@ import TerminalUI
 
   private static func prepare(_ delegate: AppDelegate, _ scenario: Scenario) {
     guard let window = delegate.windows.first else { return }
-    // Always the largest pane, along its longer side, so the panes stay usable.
-    for _ in scenario.panes.indices.dropFirst() {
-      window.window?.layoutIfNeeded()
-      guard let largest = window.panes.max(by: { $0.bounds.width * $0.bounds.height < $1.bounds.width * $1.bounds.height })
-      else { break }
-      window.selectActivePane(largest)
-      if largest.bounds.width > largest.bounds.height * 1.6 { window.splitVertical(nil) } else { window.splitHorizontal(nil) }
-    }
-    // Shells first reach their prompts; then each gets its command.
-    after(2.5) {
-      var names: [String: String] = [:]
-      for (pane, entry) in zip(window.panes, scenario.panes) {
-        names[pane.automationID] = entry.name
-        if !entry.command.isEmpty { pane.session.input(entry.command + "\r") }
+    guard let first = window.panes.first else { return }
+    // A cell is about twice as tall as wide; the window is about 1.7 to 1.
+    split(window, sizes: [(first, 1.7, 1.0)], remaining: scenario.panes.count - 1) {
+      // Shells first reach their prompts; then each gets its command.
+      after(2.5) {
+        var names: [String: String] = [:]
+        for (pane, entry) in zip(window.panes, scenario.panes) {
+          names[pane.automationID] = entry.name
+          if !entry.command.isEmpty { pane.session.input(entry.command + "\r") }
+        }
+        save(names, "names.json")
+        after(scenario.settle) { handOff(delegate, scenario, names: names, round: 1) }
       }
-      save(names, "names.json")
-      after(scenario.settle) { handOff(delegate, scenario, names: names, round: 1) }
     }
+  }
+  /// Splits the largest pane along its longer side until there are enough.
+  /// The shares are kept here: a view's bounds lag its split by a layout pass.
+  private static func split(
+    _ window: TerminalWindow, sizes: [(pane: TerminalCanvasView, width: Double, height: Double)], remaining: Int,
+    then done: @escaping @MainActor () -> Void
+  ) {
+    guard remaining > 0, let index = sizes.indices.max(by: {
+      sizes[$0].width * sizes[$0].height < sizes[$1].width * sizes[$1].height
+    }) else { return done() }
+    var sizes = sizes
+    let target = sizes[index]
+    let known = Set(window.panes.map(ObjectIdentifier.init))
+    window.selectActivePane(target.pane)
+    window.window?.makeFirstResponder(target.pane)
+    let sideBySide = target.width > target.height
+    if sideBySide { window.splitVertical(nil) } else { window.splitHorizontal(nil) }
+    guard let added = window.panes.first(where: { !known.contains(ObjectIdentifier($0)) }) else { return done() }
+    let half = (width: sideBySide ? target.width / 2 : target.width, height: sideBySide ? target.height : target.height / 2)
+    sizes[index] = (target.pane, half.width, half.height)
+    sizes.append((added, half.width, half.height))
+    after(0.2) { split(window, sizes: sizes, remaining: remaining - 1, then: done) }
   }
 
   private static func handOff(_ delegate: AppDelegate, _ scenario: Scenario, names: [String: String], round: Int) {
@@ -176,6 +196,7 @@ import TerminalUI
             sameProcess: old.pid > 0 && now?.pid == old.pid && kill(old.pid, 0) == 0,
             descendantsKept: lost.isEmpty, lostDescendants: lost,
             gridKept: now?.columns == old.columns && now?.rows == old.rows,
+            gridBefore: "\(old.columns)x\(old.rows)", gridRestored: "\(now?.columns ?? 0)x\(now?.rows ?? 0)",
             rowsEqualAtRestore: oldRows.isEmpty ? 0 : Double(equal) / Double(max(oldRows.count, newRows.count)),
             animated: entry?.animated == true ? now?.screen != later?.screen : nil,
             probed: entry?.expect.map { later?.screen.contains($0) == true },

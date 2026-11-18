@@ -73,9 +73,18 @@ struct TerminalHandoffContent {
   /// history as a program's output once did.
   mutating func paint(history: TerminalHistory, screen: [TerminalRow]) {
     let total = history.count + screen.count
+    var continues = false
     for index in 0..<total {
       let row = index < history.count ? history[index] : screen[index - history.count]
-      paint(row, wraps: row.softWrapped && index + 1 < total)
+      // A row that continues the one above is reached by wrapping onto it.
+      // Text does that by being printed; a row that starts empty needs a
+      // character put there and taken away again.
+      if continues, row.count > 0, row.cell(0).kind == 0 {
+        set(row.cell(0).style)
+        append(" \u{8}\u{1b}[X")
+      }
+      continues = row.softWrapped && index + 1 < total
+      paint(row, wraps: continues)
       if !row.softWrapped, index + 1 < total {
         // A line feed fills the row it scrolls in with the pen's background.
         set(TerminalStyle())

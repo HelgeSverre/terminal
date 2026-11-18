@@ -512,6 +512,9 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     split.adjustSubviews()
     let extent = (split.isVertical ? split.bounds.width : split.bounds.height) - split.dividerThickness
     split.setPosition(max(0, extent) * PaneLayout.boundedRatio(ratio), ofDividerAt: 0)
+    // The children take their new sizes now: a nested split measures its
+    // own ratio against them.
+    split.layoutSubtreeIfNeeded()
     applyRatios(first, to: split.arrangedSubviews[0]); applyRatios(second, to: split.arrangedSubviews[1])
   }
 
