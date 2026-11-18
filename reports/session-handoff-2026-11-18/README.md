@@ -34,9 +34,32 @@ Checked per pane and round, all true:
 - the output loop's visible lines are consecutive and well-formed before,
   just after and 2.5 s after each handoff.
 
+## Update installed by Sparkle
+
+Source `ff65cda`, `just test` passed there; development bundle executable
+SHA-256 `5a5e2b784568282a85400bcbaea019c1fd96bb9ed33ab3f28d8088b56e90d619`.
+`just update-rehearsal` made an "installed" copy numbered 0.0.1 (1) and
+offered 0.6.2 (22) on a loopback feed signed with a key made for the run.
+Sparkle 2.10.1 in the installed copy reported: checking, found 0.6.2 (22),
+downloading, extracting, ready to install, installing. The feed served
+`appcast.xml` and `update.zip` once each.
+
+| Run | Panes | Result |
+| --- | --- | --- |
+| Default scenario: zsh after `seq 1 500`, vim, a perl loop printing every 50 ms | 3 | Passed |
+| The eight programs above, with claude, codex and opencode started in `~/code`, plus one more tab | 9 | Passed |
+
+In both, the bundle on disk and the copy that adopted the sessions were
+build 22, and every pane kept its process, descendants and grid, kept
+animating where expected and received typed input.
+
+The copies were ad hoc signed and the update was accepted without Sparkle's
+windows. `--manual`, which shows them, was not run.
+
 ## Not covered
 
-- A real Sparkle update. Run B does what an update does to the bundle, by hand.
+- A released copy updating from the published feed: Developer ID signature
+  validation, notarization and the real update key.
 - A separate window: the extra window joined the first window's tab group.
 - An installed, Developer ID signed copy; macOS 14; Intel.
 - Programs showing images, and panes scrolled back, at the moment of handoff.
