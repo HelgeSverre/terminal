@@ -110,6 +110,19 @@ package enum SessionDiagnostics {
   nonisolated(unsafe) package static var collectsStreamStatistics = false
 }
 
+/// A running child and its terminal, given up by one session so that another
+/// process can adopt them: the app is replaced while its programs keep
+/// running. The descriptor is the PTY's controlling end and is the receiver's
+/// to close; while any copy stays open the child is not hung up.
+package struct SessionHandoff: Sendable {
+  package let descriptor: Int32
+  package let processIdentifier: Int32
+  package let terminal: TerminalHandoff
+  package init(descriptor: Int32, processIdentifier: Int32, terminal: TerminalHandoff) {
+    self.descriptor = descriptor; self.processIdentifier = processIdentifier; self.terminal = terminal
+  }
+}
+
 /// How a session's child ended, for deciding what becomes of its pane.
 public struct SessionEnd {
   public let exitedCleanly: Bool
@@ -374,11 +387,19 @@ public final class TerminalSession: @unchecked Sendable {
     case recoveryCheckpoint(Bool, @MainActor (String?, Int, Double?) -> Void)
     case recoveryRead(Int, @MainActor (String?) -> Void)
     case downloadDecision(UInt64, Bool, @MainActor (Data?) -> Void)
+    case handoff(@MainActor (SessionHandoff?) -> Void)
     case eof, idle
   }
   private let launchSpec: LaunchSpec?
   package var launchDirectory: String? { launchSpec?.cwd }
   private var recoverySeed: String?
+  /// A child another process started, waiting for this session's first grid.
+  private var adoption: SessionHandoff?
+  /// The child is not this process's own: it cannot be waited for, only
+  /// watched, and its exit status is unknown.
+  private var adopted = false
+  /// A copy of the PTY kept for the process that takes this session over.
+  private var handoffDescriptor: Int32 = -1
   private var initialRecoveryConfiguration: TerminalSessionConfiguration?
   private var recoveryTiming = RecoveryCheckpointTiming()
   private var recoveryCapturing = false
@@ -517,8 +538,16 @@ public final class TerminalSession: @unchecked Sendable {
   public convenience init(transport: TerminalTransport, startsAtFirstGrid: Bool = false) {
     self.init(launch: nil, transport: transport, startsAtFirstGrid: startsAtFirstGrid)
   }
-  private init(launch: LaunchSpec?, transport: TerminalTransport?, startsAtFirstGrid: Bool, recoverySeed: String? = nil) {
+  /// Continues a child that a session in another process gave up with
+  /// `detachForHandoff`. `launch` describes how it was started; nothing is
+  /// started again.
+  package convenience init(adopting handoff: SessionHandoff, launch: LaunchSpec) {
+    self.init(launch: launch, transport: nil, startsAtFirstGrid: true, adoption: handoff)
+  }
+  private init(launch: LaunchSpec?, transport: TerminalTransport?, startsAtFirstGrid: Bool, recoverySeed: String? = nil,
+               adoption: SessionHandoff? = nil) {
     launchSpec = launch
+    self.adoption = adoption
     self.recoverySeed = recoverySeed
     self.transport = transport
     awaitsGrid = startsAtFirstGrid
@@ -566,13 +595,15 @@ public final class TerminalSession: @unchecked Sendable {
   private static func reapAbandonedChild(_ pid: Int32, attempt: Int, counted: Bool) {
     var status: Int32 = 0
     let result = waitpid(pid, &status, WNOHANG)
-    if result == 0, attempt < 200 {
+    // A child adopted from another process has another parent: it is gone
+    // when it can no longer be signalled.
+    if result == 0 || (result < 0 && kill(pid, 0) == 0), attempt < 200 {
       abandonedQueue.asyncAfter(deadline: .now() + .milliseconds(50)) {
         reapAbandonedChild(pid, attempt: attempt + 1, counted: counted)
       }
       return
     }
-    if result == pid, counted { LiveChildren.ended() }
+    if result != 0, counted { LiveChildren.ended() }
     abandoned.remove(pid)
   }
   private static let abandonedQueue = DispatchQueue(label: "no.helgesverre.terminal.abandoned-children")
@@ -891,6 +922,10 @@ public final class TerminalSession: @unchecked Sendable {
     guard let spec = launchSpec else {
       return connect(columns: columns, rows: rows, cellWidth: cellWidth, cellHeight: cellHeight)
     }
+    if let handoff = adoption {
+      adoption = nil
+      return adopt(handoff, cellWidth: cellWidth, cellHeight: cellHeight)
+    }
     let adopted = EarlyChild.adopt(spec)
     let child = adopted ?? spec.spawn(columns: columns, rows: rows)
     guard child.error == 0 else {
@@ -954,6 +989,116 @@ public final class TerminalSession: @unchecked Sendable {
     publish()
     scheduleOwner()
   }
+  /// Takes over a child another process started. The terminal is restored at
+  /// the size it had there; the view's own size follows as an ordinary
+  /// resize, and only if it differs.
+  private func adopt(_ handoff: SessionHandoff, cellWidth: Int, cellHeight: Int) {
+    guard let core else { Darwin.close(handoff.descriptor); return }
+    let value = initialRecoveryConfiguration ?? configuration
+    initialRecoveryConfiguration = nil
+    helge_terminal_set_history_limit(core, UInt32(value.historyRows))
+    helge_terminal_set_grapheme_clustering(core, value.graphemeClustering)
+    let terminal = handoff.terminal
+    guard helge_terminal_resize_pixels(core, UInt32(terminal.columns), UInt32(terminal.rows),
+                                       UInt32(max(0, cellWidth)), UInt32(max(0, cellHeight))) else {
+      Darwin.close(handoff.descriptor)
+      return fail(.engineUnavailable, "Unable to prepare adopted terminal grid")
+    }
+    if !TerminalHandoffBridge.restore(core: core, terminal, now: Self.now) {
+      report("Adopted terminal state was only partly readable")
+    }
+    columns = terminal.columns; rowCount = terminal.rows
+    cellWidthPx = cellWidth; cellHeightPx = cellHeight
+    master = handoff.descriptor
+    pid = handoff.processIdentifier
+    adopted = true
+    _ = fcntl(master, F_SETFD, FD_CLOEXEC)
+    _ = fcntl(master, F_SETFL, fcntl(master, F_GETFL) | O_NONBLOCK)
+    let started = pid
+    DispatchQueue.main.async { [weak self] in self?.processIdentifier = started }
+    LiveChildren.started()
+    attach()
+    let p = DispatchSource.makeProcessSource(identifier: pid, eventMask: .exit, queue: queue)
+    p.setEventHandler { [weak self] in self?.reap() }
+    process = p
+    p.resume()
+    reap()
+    publish()
+    scheduleOwner()
+  }
+  /// Gives up the running child for another process to adopt, once
+  /// everything already read is on screen. The session shows what it has and
+  /// does nothing more; closing it afterwards leaves the child alone. Nil
+  /// when there is no child to give: not started, already ended, or a
+  /// transport.
+  package func detachForHandoff(_ completion: @escaping @MainActor (SessionHandoff?) -> Void) {
+    readBroker.submit { [self] in
+      guard !closed, core != nil, connection == nil, pid > 0, !reaped, !readEnded, master >= 0,
+        handoffDescriptor < 0 else { DispatchQueue.main.async { completion(nil) }; return }
+      let copy = fcntl(master, F_DUPFD_CLOEXEC, 10)
+      guard copy >= 0 else { DispatchQueue.main.async { completion(nil) }; return }
+      handoffDescriptor = copy
+      // Nothing more is read. What was read is delivered ahead of the event
+      // queued below, so the capture follows the last byte this session took.
+      readEndpoint?.close()
+      readBroker.submit { [self] in enqueue(.handoff(completion)) }
+    }
+  }
+  private func completeHandoff(_ completion: @escaping @MainActor (SessionHandoff?) -> Void) {
+    guard let core, handoffDescriptor >= 0 else { DispatchQueue.main.async { completion(nil) }; return }
+    let descriptor = handoffDescriptor
+    // A sequence cut in two by the last read is finished from the PTY itself:
+    // the next owner starts with a parser that has seen nothing.
+    let deadline = DispatchTime.now().uptimeNanoseconds + 250_000_000
+    var buffer = [UInt8](repeating: 0, count: 4096)
+    while DispatchTime.now().uptimeNanoseconds < deadline {
+      if helge_terminal_has_work(core) {
+        _ = helge_terminal_feed(core, nil, 0, Self.now)
+        drainReplies()
+        continue
+      }
+      if TerminalHandoffBridge.isAtBoundary(core: core) { break }
+      var waiting = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
+      guard poll(&waiting, 1, 10) > 0 else { continue }
+      let count = Darwin.read(descriptor, &buffer, buffer.count)
+      guard count > 0 else { if count < 0, errno == EAGAIN || errno == EINTR { continue }; break }
+      var offset = 0
+      while offset < count {
+        let used = buffer.withUnsafeBufferPointer {
+          helge_terminal_feed(core, $0.baseAddress! + offset, count - offset, Self.now)
+        }
+        drainReplies()
+        if used == 0 && !helge_terminal_has_work(core) { break }
+        offset += used
+      }
+    }
+    // Answers the terminal owes the program, and input typed but not yet
+    // written, go out now or not at all.
+    let writeDeadline = DispatchTime.now().uptimeNanoseconds + 200_000_000
+    sending: for var transaction in writes {
+      while transaction.remaining > 0 {
+        let count = transaction.data.withUnsafeBytes {
+          Darwin.write(descriptor, $0.baseAddress! + transaction.offset, transaction.remaining)
+        }
+        if count > 0 { transaction.offset += count; continue }
+        guard count < 0, errno == EAGAIN || errno == EINTR,
+          DispatchTime.now().uptimeNanoseconds < writeDeadline else { break sending }
+        var waiting = pollfd(fd: descriptor, events: Int16(POLLOUT), revents: 0)
+        _ = poll(&waiting, 1, 20)
+      }
+    }
+    let handoff = SessionHandoff(descriptor: descriptor, processIdentifier: pid,
+                                 terminal: TerminalHandoffBridge.capture(core: core))
+    // The child is no longer this session's to end or to wait for.
+    reaped = true
+    LiveChildren.ended()
+    process?.cancel()
+    process = nil
+    endWrite()
+    master = -1
+    report("Session handed off")
+    DispatchQueue.main.async { completion(handoff) }
+  }
   /// Starts the transport on a terminal of the given size.
   private func connect(columns: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
     guard let transport else { return }
@@ -1006,12 +1151,13 @@ public final class TerminalSession: @unchecked Sendable {
     guard !reaped, pid > 0 else { return }
     var status: Int32 = 0
     let result = waitpid(pid, &status, WNOHANG)
-    if result == pid {
+    // An adopted child has another parent: it can only be seen to be gone.
+    if result == pid || (adopted && result < 0 && kill(pid, 0) != 0) {
       reaped = true
       LiveChildren.ended()
       process?.cancel()
       process = nil
-      exitStatus = status
+      exitStatus = result == pid ? status : 0
       report("Process exited (status \(status)); draining output")
       if parserEnded { finish() }
     }
@@ -1323,6 +1469,9 @@ public final class TerminalSession: @unchecked Sendable {
         advanceRecovery(TerminalRecoveryBridge.capture(core: core, maximumBytes: maximumBytes)) { text, _, _ in completion(text) }
       } else { DispatchQueue.main.async { completion(nil) } }
       publishNeeded = false
+    case .handoff(let completion):
+      completeHandoff(completion)
+      publishNeeded = false
     case .eof:
       parserEnded = true
       helge_terminal_finish(core)
@@ -1430,7 +1579,8 @@ public final class TerminalSession: @unchecked Sendable {
     }
   }
   private func flush() {
-    guard !closed, !writeEnded else { return }
+    // During a handoff the bytes wait for the copy the next owner gets.
+    guard !closed, !writeEnded, handoffDescriptor < 0 else { return }
     var turn = 0
     while !writes.isEmpty && turn < 65_536 {
       if writes[0].remaining == 0 {
@@ -1608,7 +1758,7 @@ public final class TerminalSession: @unchecked Sendable {
   public func configure(_ value: TerminalSessionConfiguration) {
     readBroker.submit { [self] in
       guard !closed else { return }
-      if awaitingGrid && recoverySeed != nil { initialRecoveryConfiguration = value }
+      if awaitingGrid && (recoverySeed != nil || adoption != nil) { initialRecoveryConfiguration = value }
       enqueue(.configure(value))
     }
   }
@@ -1996,6 +2146,7 @@ public final class TerminalSession: @unchecked Sendable {
         case .recoveryCheckpoint(_, let completion): DispatchQueue.main.async { completion(nil, 0, nil) }
         case .recoveryRead(_, let completion): DispatchQueue.main.async { completion(nil) }
         case .downloadDecision(_, _, let completion): DispatchQueue.main.async { completion(nil) }
+        case .handoff(let completion): DispatchQueue.main.async { completion(nil) }
         case .selection(_, let completion, let cost, _, let retainsCopyResult):
           finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
                           result: .failure(.cancelled))
