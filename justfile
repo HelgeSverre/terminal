@@ -55,6 +55,11 @@ clean:
 @update-preview: _dev
     target/native/dev update-preview
 
+# Install a local update through Sparkle while programs run; nothing is published.
+[group('run')]
+@update-rehearsal *args: _dev
+    target/native/dev update-rehearsal "$@"
+
 # Run the dev build under LLDB.
 [group('run')]
 @debug: build

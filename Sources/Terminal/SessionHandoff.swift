@@ -39,6 +39,9 @@ enum SessionHandoffLocation {
   /// take an installed app's panes.
   static func directory(arguments: [String], bundle: URL, home: URL,
                         enabled: Bool = UserDefaults.standard.bool(forKey: preference)) -> URL? {
+    #if TERMINAL_DIAGNOSTICS
+    if let rehearsal = UpdateRehearsal.current { return rehearsal.handoffDirectory }
+    #endif
     let args = Array(arguments.dropFirst().prefix { $0 != "--execute" })
     if let index = args.firstIndex(of: "--handoff-directory") {
       guard args.indices.contains(index + 1), !args[index + 1].isEmpty, !args[index + 1].hasPrefix("--") else { return nil }
@@ -72,7 +75,7 @@ enum SessionHandoffCoordinator {
     defer { try? FileManager.default.removeItem(at: directory) }
     #if TERMINAL_DIAGNOSTICS
     // A smoke run keeps what it claimed, to compare with what it shows.
-    if CommandLine.arguments.contains(HandoffSmoke.flag) {
+    if CommandLine.arguments.contains(HandoffSmoke.flag) || UpdateRehearsal.current != nil {
       let kept = directory.deletingLastPathComponent().appendingPathComponent("claimed-\(Int(Date().timeIntervalSince1970))")
       try? FileManager.default.copyItem(at: directory, to: kept)
     }

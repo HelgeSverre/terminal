@@ -1,8 +1,8 @@
 # Session handoff: replacing the app under running programs
 
 Status: experimental, off unless enabled. Verified locally with real programs
-on 2026-11-18; the Sparkle update path is wired but has not been exercised
-against a real update. Evidence is in
+on 2026-11-18, including an update installed by Sparkle from a local feed
+(`just update-rehearsal`, below). Evidence is in
 [reports/session-handoff-2026-11-18](../reports/session-handoff-2026-11-18/README.md).
 
 A terminal's programs normally end with it: quitting closes each PTY and the
@@ -91,10 +91,13 @@ settles on is, and only if it differs from the saved one.
 
 ## Limits and open questions
 
-- **Sparkle is untested end to end.** `Updates` postpones the relaunch until
-  the handoff has finished (`shouldPostponeRelaunchForUpdate`). That an
-  installed update then adopts the sessions is expected from the bundle-swap
-  test, not observed.
+- **Sparkle is rehearsed, not released.** `Updates` postpones the relaunch
+  until the handoff has finished (`shouldPostponeRelaunchForUpdate`). The
+  rehearsal below shows Sparkle then installing and relaunching with the
+  sessions adopted. It uses an ad hoc signed development build, a loopback
+  feed and a key made for the run, and it accepts the update without
+  Sparkle's windows. A Developer ID signed, notarized copy updating from the
+  published feed has not been observed.
 - **A failed claim loses the sessions.** If the new app cannot read the
   manifest or reach the keeper, it starts normally and the keeper times out.
 - **A failure after detaching leaves frozen panes.** The keeper is started
@@ -103,8 +106,9 @@ settles on is, and only if it differs from the saved one.
 - **One app instance per handoff directory** is assumed.
 - **Layout below a pane's minimum size is not restored exactly**, which
   resizes those panes once.
-- The smoke runner is an in-app diagnostic started by hand, not yet a
-  `dev` subcommand or a `just` recipe, and it is not part of `just test`.
+- The handoff smoke below is an in-app diagnostic started by hand. Neither
+  it nor the update rehearsal is part of `just test`: both open windows and
+  run for up to a minute.
 
 ## Code
 
@@ -116,11 +120,48 @@ settles on is, and only if it differs from the saved one.
 | Keeper | `Sources/Terminal/SessionKeeper.swift` |
 | Manifest, handing off and claiming | `Sources/Terminal/SessionHandoff.swift` |
 | Smoke harness (diagnostic builds) | `Sources/Terminal/HandoffSmoke.swift` |
+| Update rehearsal | `tools/Dev/UpdateRehearsal.swift`, `Sources/Terminal/UpdateRehearsal.swift` |
 
 Tests: `TerminalHandoffTests` (round trips, including a second-generation
 capture being identical), `SessionHandoffTests` (a child surviving two
 handoffs with its screen and input), `SessionKeeperTests` (the keeper
 process, the claim rules and where handoff is allowed).
+
+## Rehearsing an update
+
+```shell
+just update-rehearsal                      # a shell, vim and a program that keeps printing
+just update-rehearsal --scenario FILE      # your own programs, in the smoke's scenario format
+just update-rehearsal --manual             # Sparkle's own windows: you click Install
+just update-rehearsal --keep-open          # leave the updated copy open to look at
+```
+
+Nothing is published and the installed app is not involved. The command:
+
+1. builds the development bundle and makes two copies of it under the bundle
+   identifier `no.helgesverre.terminal.update-rehearsal`, in
+   `~/Library/Caches/no.helgesverre.terminal.update-rehearsal/RUN`: an
+   "installed" copy numbered 0.0.1 (1) and the current version as its update;
+2. makes an update key for the run, puts its public half in both copies,
+   archives the update and signs the archive with the private half;
+3. writes the appcast with the production generator and serves it and the
+   archive on a loopback port;
+4. starts the installed copy. It opens one pane per scenario entry, runs the
+   commands, then asks Sparkle for the update. Sparkle downloads, verifies,
+   waits for the handoff, replaces the bundle and relaunches;
+5. waits for the relaunched copy's report and fails unless the bundle on disk
+   and the copy that adopted the sessions are both the new build and every
+   pane passed the smoke's checks.
+
+The copies read their instructions from an `TerminalUpdateRehearsal` entry in
+their Info.plist, because Sparkle relaunches an app without arguments. Only
+diagnostic builds read it. Runs older than an hour are deleted by the next
+run.
+
+A scenario may set `columns` and `rows` for the window, `extraTabs` and
+`extraWindows`. A copy under this identifier has default preferences, so its
+shells start in the home folder: begin a command with `cd` where that
+matters.
 
 ## Running the smoke
 

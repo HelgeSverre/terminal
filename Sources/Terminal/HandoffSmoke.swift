@@ -28,9 +28,16 @@ import TerminalUI
     /// Leave after handing off and let the caller start the next app, as an
     /// update that replaces the bundle does.
     var externalRelaunch: Bool?
+    /// Ask Sparkle for an update where a round would hand off. Sparkle then
+    /// hands off, replaces the app and starts the new one.
+    var update: Bool?
     /// Windows and tabs opened besides the first window, each with a shell.
     var extraWindows: Int?
     var extraTabs: Int?
+    /// The first window's size in cells before it is split; a copy started
+    /// without arguments otherwise has the default window.
+    var columns: Int?
+    var rows: Int?
     var panes: [Pane]
   }
   struct Record: Codable {
@@ -71,7 +78,9 @@ import TerminalUI
 
   private static var directory: URL? {
     let arguments = CommandLine.arguments
-    guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else { return nil }
+    guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else {
+      return UpdateRehearsal.current?.smokeDirectory
+    }
     return URL(fileURLWithPath: arguments[index + 1], isDirectory: true)
   }
   private static func load<T: Decodable>(_ type: T.Type, _ name: String) -> T? {
@@ -126,6 +135,14 @@ import TerminalUI
   private static func prepare(_ delegate: AppDelegate, _ scenario: Scenario) {
     guard let window = delegate.windows.first else { return }
     guard let first = window.panes.first else { return }
+    if let columns = scenario.columns, let rows = scenario.rows {
+      window.window?.setContentSize(first.contentSize(columns: columns, rows: rows))
+      // No larger than the screen: a restored window is fitted to it, which
+      // would otherwise resize every pane.
+      if let frame = window.window?.frame {
+        window.window?.setFrame(WindowLayout.clampedFrame(frame, to: NSScreen.screens.map(\.visibleFrame)), display: true)
+      }
+    }
     // A cell is about twice as tall as wide; the window is about 1.7 to 1.
     split(window, sizes: [(first, 1.7, 1.0)], remaining: scenario.panes.count - 1) {
       // Shells first reach their prompts; then each gets its command.
@@ -173,6 +190,10 @@ import TerminalUI
 
   private static func handOff(_ delegate: AppDelegate, _ scenario: Scenario, names: [String: String], round: Int) {
     save(record(delegate, names: names, round: round), "before.json")
+    if scenario.update == true {
+      save(["succeeded": -1, "milliseconds": -1, "round": Double(round)], "handoff.json")
+      return Updates.shared.rehearse()
+    }
     let started = DispatchTime.now().uptimeNanoseconds
     delegate.handOffSessions(relaunch: scenario.externalRelaunch != true) { succeeded in
       let milliseconds = Double(DispatchTime.now().uptimeNanoseconds - started) / 1e6

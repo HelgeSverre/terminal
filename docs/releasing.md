@@ -64,6 +64,15 @@ and published releases are untouched. Close the window when finished.
 The helper’s build products are in `target/update-preview`. Each launch keeps
 its bundle in the user’s Caches directory so it survives checkout cleanup.
 
+## Rehearse an update
+
+`just update-rehearsal` installs the current build as an update through
+Sparkle, on this Mac, with nothing published: a private "installed" copy, a
+loopback feed and a key made for the run. It checks that programs in the
+copy's panes survive the update. See
+[session handoff](session-handoff.md#rehearsing-an-update). It does not
+exercise Developer ID signing, notarization or the published feed.
+
 ## Credentials
 
 Recovery copies live in Helge's **Personal** 1Password vault:

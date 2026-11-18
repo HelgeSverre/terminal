@@ -217,8 +217,9 @@ They retain historical scope and are not new validation claims.
   power-loss, hard-reset and real-agent resume remain unqualified.
 - [Session handoff](session-handoff.md) is experimental and off by default:
   the app can be relaunched or replaced by another build while the programs
-  in its panes keep running. It passed local runs with real programs; the
-  Sparkle update path is wired but not exercised.
+  in its panes keep running. It passed local runs with real programs,
+  including an update installed by Sparkle from a local feed
+  (`just update-rehearsal`); a released copy has not been observed updating.
 
 - The 0.2.3 candidate fixes nested pane allocation on split and window resize.
   The headless macOS suite passes at `12330f0` (run `42630258871`).
