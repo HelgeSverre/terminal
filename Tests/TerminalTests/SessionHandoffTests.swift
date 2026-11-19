@@ -53,6 +53,52 @@ import Testing
     #expect(await TestEnvironment.wait(seconds: 4) { kill(pid, 0) != 0 }, "closing the last owner ends the child")
   }
 
+  @Test func aProcessIsToldFromALaterOneWithItsNumber() throws {
+    let own = try #require(ProcessIdentity.start(of: getpid()))
+    #expect(ProcessIdentity.holds(getpid(), startedAt: own))
+    #expect(!ProcessIdentity.holds(getpid(), startedAt: own + 1))
+    let ended = Process()
+    ended.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+    try ended.run()
+    ended.waitUntilExit()
+    #expect(ProcessIdentity.start(of: ended.processIdentifier) == nil)
+  }
+
+  /// The adopted child ended and its number went to a process that has
+  /// nothing to do with the terminal: closing the pane must leave that one be.
+  @Test func closingAnAdoptedSessionSparesAProcessThatTookItsChildsNumber() async throws {
+    let first = TerminalSession(launch: TestEnvironment.shell("printf READY; while read line; do :; done"))
+    var latest: TerminalSnapshot?
+    first.onSnapshot = { latest = $0 }
+    #expect(await TestEnvironment.wait { text(latest).contains("READY") })
+    let handoff = try #require(await detach(first))
+    first.close()
+    defer { kill(handoff.processIdentifier, SIGKILL) }
+
+    let starter = Process(), output = Pipe()
+    starter.executableURL = URL(fileURLWithPath: "/bin/sh")
+    starter.arguments = ["-c", "sleep 60 >/dev/null 2>&1 & echo $!"]
+    starter.standardOutput = output
+    try starter.run()
+    let printed = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    starter.waitUntilExit()
+    let stranger = try #require(Int32(printed.trimmingCharacters(in: .whitespacesAndNewlines)))
+    defer { kill(stranger, SIGKILL) }
+    #expect(kill(stranger, 0) == 0)
+
+    let stale = SessionHandoff(descriptor: handoff.descriptor, processIdentifier: stranger,
+                               processStart: handoff.processStart, terminal: handoff.terminal)
+    let session = TerminalSession(adopting: stale, launch: TestEnvironment.shell("true"))
+    var seen: TerminalSnapshot?
+    session.onSnapshot = { seen = $0 }
+    session.resize(cols: 80, rows: 24)
+    #expect(await TestEnvironment.wait { text(seen).contains("READY") })
+    session.close()
+    // A child still there two seconds after its hangup is killed.
+    try await Task.sleep(for: .milliseconds(2600))
+    #expect(kill(stranger, 0) == 0)
+  }
+
   @Test func aSessionWithoutARunningChildHasNothingToHandOff() async throws {
     let ended = TerminalSession(launch: TestEnvironment.shell("exit 0"))
     var finished = false

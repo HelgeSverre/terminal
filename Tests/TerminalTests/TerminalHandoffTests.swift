@@ -61,6 +61,22 @@ import TerminalInterop
     #expect(TerminalHandoffBridge.capture(core: copy.core) == TerminalHandoffBridge.capture(core: source.core))
   }
 
+  /// One mode at a time, so that a mode carried under another's name, or
+  /// not at all, cannot hide behind the rest.
+  @Test func eachModeSurvivesByItself() throws {
+    let modes = [1, 5, 6, 7, 45, 66, 69, 1000, 1004, 1006, 2004, 2027, 2031].map { "?\($0)" } + ["4", "20"]
+    for mode in modes {
+      let question = "\u{1b}[\(mode)$p"
+      let usual = ask(try terminal(), question)
+      let source = try terminal()
+      source.feed("\u{1b}[\(mode)h")
+      if ask(source, question) == usual { source.feed("\u{1b}[\(mode)l") }
+      let changed = ask(source, question)
+      #expect(changed != usual, "mode \(mode) cannot be changed, so this proves nothing about it")
+      #expect(ask(try handedOff(source), question) == changed, "mode \(mode)")
+    }
+  }
+
   @Test func alternateScreenModesAndSavedCursorSurvive() throws {
     let source = try terminal()
     source.feed("shell prompt\r\n$ vim\u{1b}7")

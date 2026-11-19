@@ -2971,6 +2971,25 @@ private extension TerminalEmulator {
     guard case .ground = parser else { return false }
     return utf8.isIdle && repeatRemaining == 0 && syncDeadline == nil
   }
+  /// The switches a handoff carries, under their names in its `modes`. A
+  /// name stays with its switch for good: another build reads it.
+  private static let handoffSwitches: [(name: String, value: ReferenceWritableKeyPath<TerminalEmulator, Bool>)] = [
+    ("origin", \.originMode), ("leftRightMargins", \.leftRightMargins), ("autoWrap", \.autoWrap),
+    ("reverseWrap", \.reverseWrap), ("reverseWrapUnlimited", \.reverseWrapUnlimited),
+    ("cursesTabWrap", \.cursesTabWrap), ("isoEraseProtection", \.isoEraseProtection),
+    ("insert", \.insertMode), ("newline", \.newlineMode),
+    ("applicationCursor", \.applicationCursor), ("applicationKeypad", \.applicationKeypad),
+    ("bracketedPaste", \.bracketedPaste), ("focusReporting", \.focusReporting),
+    ("reverseVideo", \.reverseVideo), ("colorSchemeReports", \.colorSchemeReports),
+    ("graphemeClustering", \.graphemeClustering),
+    ("sixelDisplay", \.sixelDisplayMode), ("sixelCursorRight", \.sixelCursorRight),
+  ]
+  /// The same for settings with a number, and the numbers each may have.
+  private static let handoffNumbers: [(name: String, value: ReferenceWritableKeyPath<TerminalEmulator, Int>, allowed: Set<Int>)] = [
+    ("mouse", \.mouseMode, [0, 9, 1000, 1002, 1003]),
+    ("mouseEncoding", \.mouseEncoding, [0, 1005, 1006, 1015, 1016]),
+    ("modifyOtherKeys", \.modifyOtherKeys, [0, 1, 2]),
+  ]
   private func handoffScreen(_ screen: TerminalScreen) -> TerminalHandoffState.Screen {
     let saved = screen.savedRendition
     return TerminalHandoffState.Screen(
@@ -3018,18 +3037,8 @@ private extension TerminalEmulator {
     state.alternate = handoffScreen(alternate)
     state.pen = .init(attributes.style); state.penLink = attributes.link; state.penProtected = attributes.protected
     state.charsetSpecial = charsetSpecial; state.charsetSlot = charsetSlot
-    state.modes = [
-      "origin": originMode ? 1 : 0, "leftRightMargins": leftRightMargins ? 1 : 0, "autoWrap": autoWrap ? 1 : 0,
-      "reverseWrap": reverseWrap ? 1 : 0, "reverseWrapUnlimited": reverseWrapUnlimited ? 1 : 0,
-      "cursesTabWrap": cursesTabWrap ? 1 : 0, "isoEraseProtection": isoEraseProtection ? 1 : 0,
-      "insert": insertMode ? 1 : 0, "newline": newlineMode ? 1 : 0,
-      "applicationCursor": applicationCursor ? 1 : 0, "applicationKeypad": applicationKeypad ? 1 : 0,
-      "bracketedPaste": bracketedPaste ? 1 : 0, "focusReporting": focusReporting ? 1 : 0,
-      "reverseVideo": reverseVideo ? 1 : 0, "mouse": mouseMode, "mouseEncoding": mouseEncoding,
-      "modifyOtherKeys": modifyOtherKeys, "colorSchemeReports": colorSchemeReports ? 1 : 0,
-      "graphemeClustering": graphemeClustering ? 1 : 0,
-      "sixelDisplay": sixelDisplayMode ? 1 : 0, "sixelCursorRight": sixelCursorRight ? 1 : 0,
-    ]
+    for entry in Self.handoffSwitches { state.modes[entry.name] = self[keyPath: entry.value] ? 1 : 0 }
+    for entry in Self.handoffNumbers { state.modes[entry.name] = self[keyPath: entry.value] }
     state.savedPrivateModes = Dictionary(uniqueKeysWithValues: savedPrivateModes.map { (String($0.key), $0.value) })
     state.tabs = tabs; state.tabsCleared = tabsCleared
     state.title = title; state.iconTitle = iconTitle; state.directory = currentDirectory
@@ -3064,23 +3073,12 @@ private extension TerminalEmulator {
     attributes = TerminalDocument.PrintAttributes(style: state.pen.style, link: state.penLink, protected: state.penProtected)
     if state.charsetSpecial.count == 2 { charsetSpecial = state.charsetSpecial }
     charsetSlot = state.charsetSlot == 1 ? 1 : 0
-    func flag(_ key: String, _ current: Bool) -> Bool { state.modes[key].map { $0 != 0 } ?? current }
-    originMode = flag("origin", originMode); leftRightMargins = flag("leftRightMargins", leftRightMargins)
-    autoWrap = flag("autoWrap", autoWrap); reverseWrap = flag("reverseWrap", reverseWrap)
-    reverseWrapUnlimited = flag("reverseWrapUnlimited", reverseWrapUnlimited)
-    cursesTabWrap = flag("cursesTabWrap", cursesTabWrap)
-    isoEraseProtection = flag("isoEraseProtection", isoEraseProtection)
-    insertMode = flag("insert", insertMode); newlineMode = flag("newline", newlineMode)
-    applicationCursor = flag("applicationCursor", applicationCursor)
-    applicationKeypad = flag("applicationKeypad", applicationKeypad)
-    bracketedPaste = flag("bracketedPaste", bracketedPaste); focusReporting = flag("focusReporting", focusReporting)
-    reverseVideo = flag("reverseVideo", reverseVideo)
-    if let value = state.modes["mouse"], [0, 9, 1000, 1002, 1003].contains(value) { mouseMode = value }
-    if let value = state.modes["mouseEncoding"], [0, 1005, 1006, 1015, 1016].contains(value) { mouseEncoding = value }
-    if let value = state.modes["modifyOtherKeys"], (0...2).contains(value) { modifyOtherKeys = value }
-    colorSchemeReports = flag("colorSchemeReports", colorSchemeReports)
-    graphemeClustering = flag("graphemeClustering", graphemeClustering)
-    sixelDisplayMode = flag("sixelDisplay", sixelDisplayMode); sixelCursorRight = flag("sixelCursorRight", sixelCursorRight)
+    for entry in Self.handoffSwitches {
+      if let value = state.modes[entry.name] { self[keyPath: entry.value] = value != 0 }
+    }
+    for entry in Self.handoffNumbers {
+      if let value = state.modes[entry.name], entry.allowed.contains(value) { self[keyPath: entry.value] = value }
+    }
     savedPrivateModes = Dictionary(uniqueKeysWithValues: state.savedPrivateModes.compactMap { key, value in
       Int(key).map { ($0, value) }
     })

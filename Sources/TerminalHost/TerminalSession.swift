@@ -117,10 +117,32 @@ package enum SessionDiagnostics {
 package struct SessionHandoff: Sendable {
   package let descriptor: Int32
   package let processIdentifier: Int32
+  /// When the child started (`ProcessIdentity.start`). The receiver is not
+  /// its parent, so the number alone may name another process by then.
+  package let processStart: UInt64
   package let terminal: TerminalHandoff
-  package init(descriptor: Int32, processIdentifier: Int32, terminal: TerminalHandoff) {
-    self.descriptor = descriptor; self.processIdentifier = processIdentifier; self.terminal = terminal
+  package init(descriptor: Int32, processIdentifier: Int32, processStart: UInt64, terminal: TerminalHandoff) {
+    self.descriptor = descriptor; self.processIdentifier = processIdentifier
+    self.processStart = processStart; self.terminal = terminal
   }
+}
+
+/// Tells a process from a later one that was given the same number. A parent
+/// needs none of this: its child keeps its number until it is waited for.
+package enum ProcessIdentity {
+  /// When the process started, in microseconds since 1970; nil when there
+  /// is no such process or it cannot be asked.
+  package static func start(of pid: Int32) -> UInt64? {
+    guard pid > 0 else { return nil }
+    var name = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+    var info = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.stride
+    guard sysctl(&name, UInt32(name.count), &info, &size, nil, 0) == 0, size > 0 else { return nil }
+    let started = info.kp_proc.p_un.__p_starttime
+    return UInt64(started.tv_sec) * 1_000_000 + UInt64(started.tv_usec)
+  }
+  /// Whether `pid` is still the process that started at `start`.
+  package static func holds(_ pid: Int32, startedAt start: UInt64) -> Bool { self.start(of: pid) == start }
 }
 
 /// How a session's child ended, for deciding what becomes of its pane.
@@ -397,14 +419,18 @@ public final class TerminalSession: @unchecked Sendable {
   private var recoverySeed: String?
   /// A child another process started, waiting for this session's first grid.
   private var adoption: SessionHandoff?
-  /// The child is not this process's own: it cannot be waited for, only
-  /// watched, and its exit status is unknown.
-  private var adopted = false
+  /// When an adopted child started. Such a child is not this process's own:
+  /// it cannot be waited for, only watched, its exit status is unknown, and
+  /// once it has ended its number may be another process's.
+  private var adoptedStart: UInt64?
   /// An adopted child's window is still being rebuilt: its pane passes
   /// through sizes it will not keep. They are not sent to the child, which
-  /// would redraw for each; the size the pane settles on is, if it differs.
+  /// would redraw for each; the size the pane has at `finishAdoption` is,
+  /// if it differs.
   private var adoptionSettling = false
-  private static let adoptionSettleMilliseconds = 500
+  private var adoptionFinished = false
+  /// A host that never calls `finishAdoption` is taken to have settled.
+  private static let adoptionSettleSeconds = 2
   /// A copy of the PTY kept for the process that takes this session over.
   private var handoffDescriptor: Int32 = -1
   private var initialRecoveryConfiguration: TerminalSessionConfiguration?
@@ -581,32 +607,40 @@ public final class TerminalSession: @unchecked Sendable {
     statusReader?.cancel()
     process?.cancel()
     if let core { helge_terminal_destroy(core) }
-    if pid > 0, !reaped { Self.endAbandonedChild(pid) }
+    if pid > 0, !reaped { Self.endAbandonedChild(pid, adoptedStart: adoptedStart) }
   }
   /// Hangs up a child whose session is gone, kills it after two seconds if
   /// it is still there, and reaps it. An unused early child was never added
   /// to LiveChildren; only an adopted session contributes to that count.
-  fileprivate static func endAbandonedChild(_ pid: Int32, counted: Bool = true) {
+  fileprivate static func endAbandonedChild(_ pid: Int32, counted: Bool = true, adoptedStart: UInt64? = nil) {
+    // An adopted child that has ended left its number free for another
+    // process, which must not be signalled in its place.
+    func present() -> Bool { adoptedStart.map { ProcessIdentity.holds(pid, startedAt: $0) } ?? true }
+    guard present() else {
+      if counted { LiveChildren.ended() }
+      return
+    }
     kill(pid, SIGHUP)
     abandonedQueue.async {
       abandoned.insert(pid)
-      reapAbandonedChild(pid, attempt: 0, counted: counted)
+      reapAbandonedChild(pid, attempt: 0, counted: counted, adoptedStart: adoptedStart)
     }
     abandonedQueue.asyncAfter(deadline: .now() + .seconds(2)) {
-      if abandoned.contains(pid) { kill(pid, SIGKILL) }
+      if abandoned.contains(pid), present() { kill(pid, SIGKILL) }
     }
   }
   /// On `abandonedQueue`. Asks again every 50 ms until the child can be
   /// reaped: an exit notification can arrive before `waitpid` will answer,
   /// so this polls instead of waiting for one.
-  private static func reapAbandonedChild(_ pid: Int32, attempt: Int, counted: Bool) {
+  private static func reapAbandonedChild(_ pid: Int32, attempt: Int, counted: Bool, adoptedStart: UInt64?) {
     var status: Int32 = 0
     let result = waitpid(pid, &status, WNOHANG)
-    // A child adopted from another process has another parent: it is gone
-    // when it can no longer be signalled.
-    if result == 0 || (result < 0 && kill(pid, 0) == 0), attempt < 200 {
+    // A child adopted from another process has another parent and cannot be
+    // waited for: it is there while its number is still its own.
+    let running = adoptedStart.map { ProcessIdentity.holds(pid, startedAt: $0) } ?? (result == 0)
+    if running, attempt < 200 {
       abandonedQueue.asyncAfter(deadline: .now() + .milliseconds(50)) {
-        reapAbandonedChild(pid, attempt: attempt + 1, counted: counted)
+        reapAbandonedChild(pid, attempt: attempt + 1, counted: counted, adoptedStart: adoptedStart)
       }
       return
     }
@@ -1018,7 +1052,7 @@ public final class TerminalSession: @unchecked Sendable {
     cellWidthPx = cellWidth; cellHeightPx = cellHeight
     master = handoff.descriptor
     pid = handoff.processIdentifier
-    adopted = true
+    adoptedStart = handoff.processStart
     _ = fcntl(master, F_SETFD, FD_CLOEXEC)
     _ = fcntl(master, F_SETFL, fcntl(master, F_GETFL) | O_NONBLOCK)
     let started = pid
@@ -1030,21 +1064,32 @@ public final class TerminalSession: @unchecked Sendable {
     process = p
     p.resume()
     reap()
-    adoptionSettling = true
-    queue.asyncAfter(deadline: .now() + .milliseconds(Self.adoptionSettleMilliseconds)) { [weak self] in
-      self?.readBroker.submit {
-        guard let self, !self.closed else { return }
-        self.adoptionSettling = false
-        guard self.queuedResizeCount == 0, let wanted = self.wantedGrid,
-          wanted.cols != self.columns || wanted.rows != self.rowCount
-            || wanted.cellWidth != self.cellWidthPx || wanted.cellHeight != self.cellHeightPx
-        else { return }
-        self.queuedResizeCount += 1
-        self.enqueue(.resize(wanted.cols, wanted.rows, wanted.cellWidth, wanted.cellHeight, false))
-      }
+    if !adoptionFinished {
+      adoptionSettling = true
+      queue.asyncAfter(deadline: .now() + .seconds(Self.adoptionSettleSeconds)) { [weak self] in self?.finishAdoption() }
     }
     publish()
     scheduleOwner()
+  }
+  /// Says that an adopted session's pane now has the size it keeps: the
+  /// windows are rebuilt. Until then the child is told of no size.
+  package func finishAdoption() {
+    readBroker.submit { [self] in
+      adoptionFinished = true
+      guard adoptionSettling else { return }
+      adoptionSettling = false
+      resizeToWanted()
+    }
+  }
+  /// On the broker. Queues a resize to the size the view last asked for,
+  /// unless one is queued already or the terminal has that size.
+  private func resizeToWanted() {
+    guard !closed, queuedResizeCount == 0, let wanted = wantedGrid,
+      wanted.cols != columns || wanted.rows != rowCount
+        || wanted.cellWidth != cellWidthPx || wanted.cellHeight != cellHeightPx
+    else { return }
+    queuedResizeCount += 1
+    enqueue(.resize(wanted.cols, wanted.rows, wanted.cellWidth, wanted.cellHeight, false))
   }
   /// A copy of the PTY's controlling end, for a process that keeps the child
   /// from being hung up while this one is replaced. Nil when there is no
@@ -1121,6 +1166,7 @@ public final class TerminalSession: @unchecked Sendable {
       }
     }
     let handoff = SessionHandoff(descriptor: descriptor, processIdentifier: pid,
+                                 processStart: ProcessIdentity.start(of: pid) ?? 0,
                                  terminal: TerminalHandoffBridge.capture(core: core))
     // The child is no longer this session's to end or to wait for.
     reaped = true
@@ -1184,8 +1230,9 @@ public final class TerminalSession: @unchecked Sendable {
     guard !reaped, pid > 0 else { return }
     var status: Int32 = 0
     let result = waitpid(pid, &status, WNOHANG)
-    // An adopted child has another parent: it can only be seen to be gone.
-    if result == pid || (adopted && result < 0 && kill(pid, 0) != 0) {
+    // An adopted child has another parent: it can only be seen to be gone,
+    // which it is once its number is no longer its own.
+    if result == pid || (result < 0 && adoptedStart.map { !ProcessIdentity.holds(pid, startedAt: $0) } == true) {
       reaped = true
       LiveChildren.ended()
       process?.cancel()
@@ -1803,15 +1850,8 @@ public final class TerminalSession: @unchecked Sendable {
     let delay = resizeRetryDelay
     resizeRetryDelay = min(250, delay * 2)
     queue.asyncAfter(deadline: .now() + .milliseconds(delay)) { [weak self] in
-      self?.readBroker.submit {
-        // A newer request, if one is queued, already carries the wanted size.
-        guard let self, !self.closed, self.queuedResizeCount == 0, let wanted = self.wantedGrid,
-          wanted.cols != self.columns || wanted.rows != self.rowCount
-            || wanted.cellWidth != self.cellWidthPx || wanted.cellHeight != self.cellHeightPx
-        else { return }
-        self.queuedResizeCount += 1
-        self.enqueue(.resize(wanted.cols, wanted.rows, wanted.cellWidth, wanted.cellHeight, false))
-      }
+      // A newer request, if one is queued, already carries the wanted size.
+      self?.readBroker.submit { self?.resizeToWanted() }
     }
   }
   package func resize(cols: Int, rows: Int, cellWidth: Int = 8, cellHeight: Int = 16) {

@@ -12,6 +12,8 @@ struct HandoffManifest: Codable {
     /// Position among the keeper's descriptors.
     var index: Int
     var pid: Int32
+    /// When that process started: a number alone can come to name another.
+    var started: UInt64
     var columns: Int
     var rows: Int
     var executable: String
@@ -63,6 +65,15 @@ enum SessionHandoffCoordinator {
     let layout: SessionLayout
     var adoptions: [PaneID: Adoption]
   }
+  enum Outcome {
+    /// The keeper holds every running program and the manifest is written.
+    case handedOff
+    /// Nothing was given up; every session works as before.
+    case unchanged
+    /// The sessions were given up but nothing can take them: their programs
+    /// are hung up, as when their windows close.
+    case lost
+  }
   /// How long a keeper waits for the next app before it lets the programs go.
   static let keeperSeconds = 900
   private static let manifestName = "manifest.json"
@@ -89,13 +100,14 @@ enum SessionHandoffCoordinator {
     let known = Set(manifest.layout.windows.flatMap { $0.root.panes })
     for pane in manifest.panes where descriptors.indices.contains(pane.index) && unused.contains(pane.index) {
       // A program that ended meanwhile leaves a pane for a new shell.
-      guard known.contains(pane.id), adoptions[pane.id] == nil, kill(pane.pid, 0) == 0,
+      guard known.contains(pane.id), adoptions[pane.id] == nil, pane.started > 0,
+        ProcessIdentity.holds(pane.pid, startedAt: pane.started),
         let content = read(directory.appendingPathComponent(pane.id.string + ".content")),
         let state = read(directory.appendingPathComponent(pane.id.string + ".state")) else { continue }
       unused.remove(pane.index)
       adoptions[pane.id] = Adoption(
         handoff: SessionHandoff(descriptor: descriptors[pane.index], processIdentifier: pane.pid,
-          terminal: TerminalHandoff(columns: pane.columns, rows: pane.rows, content: content, state: state)),
+          processStart: pane.started, terminal: TerminalHandoff(columns: pane.columns, rows: pane.rows, content: content, state: state)),
         launch: LaunchSpec(executable: pane.executable, arguments: pane.arguments, cwd: pane.cwd,
           launcher: LaunchSpec.bundledLauncher, environment: pane.environment))
     }
@@ -104,22 +116,21 @@ enum SessionHandoffCoordinator {
   }
 
   /// Leaves every running program with a keeper and a manifest in
-  /// `directory`. On success the windows show what they had and their
-  /// programs belong to the keeper; the app should end. On failure before
-  /// the keeper holds the PTYs nothing has changed.
-  @MainActor static func handOff(windows: [TerminalWindow], directory: URL, completion: @escaping @MainActor (Bool) -> Void) {
+  /// `directory`. Once handed off, the windows show what they had and their
+  /// programs belong to the keeper; the app should end.
+  @MainActor static func handOff(windows: [TerminalWindow], directory: URL, completion: @escaping @MainActor (Outcome) -> Void) {
     let saved = windows.compactMap { $0.layout() }
     let key = (NSApp.keyWindow?.windowController as? TerminalWindow).flatMap { UUID(uuidString: $0.automationID) }
     let layout = SessionLayout(appBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
                                windows: saved, keyWindow: key)
     let panes = windows.flatMap(\.panes)
     guard layout.isValid, !panes.isEmpty, let executable = Bundle.main.executablePath,
-      let socket = socketPath() else { return completion(false) }
+      let socket = socketPath() else { return completion(.unchanged) }
     do {
       try? FileManager.default.removeItem(at: directory)
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                               attributes: [.posixPermissions: 0o700])
-    } catch { return completion(false) }
+    } catch { return completion(.unchanged) }
 
     // First a copy of every PTY for the keeper. Until it holds them, every
     // session is untouched and a failure costs nothing.
@@ -131,16 +142,17 @@ enum SessionHandoffCoordinator {
         pending -= 1
         guard pending == 0 else { return }
         defer { copies.forEach { Darwin.close($0.descriptor) } }
-        guard !copies.isEmpty, SessionKeeper.start(executable: executable, socketPath: socket,
-          seconds: keeperSeconds, descriptors: copies.map(\.descriptor)) != nil else { return completion(false) }
-        detach(copies.map(\.pane), layout: layout, socket: socket, directory: directory, completion: completion)
+        guard !copies.isEmpty, let keeper = SessionKeeper.start(executable: executable, socketPath: socket,
+          seconds: keeperSeconds, descriptors: copies.map(\.descriptor)) else { return completion(.unchanged) }
+        detach(copies.map(\.pane), keeper: keeper, layout: layout, socket: socket, directory: directory,
+               completion: completion)
       }
     }
   }
 
   @MainActor private static func detach(
-    _ panes: [TerminalCanvasView], layout: SessionLayout, socket: String, directory: URL,
-    completion: @escaping @MainActor (Bool) -> Void
+    _ panes: [TerminalCanvasView], keeper: pid_t, layout: SessionLayout, socket: String, directory: URL,
+    completion: @escaping @MainActor (Outcome) -> Void
   ) {
     var records: [HandoffManifest.Pane] = []
     var pending = panes.count
@@ -154,7 +166,7 @@ enum SessionHandoffCoordinator {
             write(handoff.terminal.content, to: directory.appendingPathComponent(id.string + ".content")),
             write(handoff.terminal.state, to: directory.appendingPathComponent(id.string + ".state")) {
             records.append(HandoffManifest.Pane(
-              id: id, index: index, pid: handoff.processIdentifier,
+              id: id, index: index, pid: handoff.processIdentifier, started: handoff.processStart,
               columns: handoff.terminal.columns, rows: handoff.terminal.rows,
               executable: launch.executable, arguments: launch.arguments, cwd: launch.cwd,
               environment: launch.environment))
@@ -165,14 +177,22 @@ enum SessionHandoffCoordinator {
         let manifest = HandoffManifest(
           appBuild: layout.appBuild, socket: socket, descriptorCount: panes.count, layout: layout, panes: records)
         guard !records.isEmpty, let data = try? JSONEncoder().encode(manifest),
-          write(data, to: directory.appendingPathComponent(manifestName)) else { return completion(false) }
-        completion(true)
+          write(data, to: directory.appendingPathComponent(manifestName)) else {
+          // Nothing will ask the keeper for what it holds. Ending it now
+          // hangs the programs up at once, not when its wait runs out.
+          kill(keeper, SIGTERM)
+          unlink(socket)
+          try? FileManager.default.removeItem(at: directory)
+          return completion(.lost)
+        }
+        completion(.handedOff)
       }
     }
   }
 
-  /// A socket path short enough for `sockaddr_un`, in a directory only this
-  /// user can enter.
+  /// A socket path short enough for `sockaddr_un`: in this user's own
+  /// temporary directory, or in `/tmp` when that path is too long. The
+  /// keeper makes the socket for its owner only and checks who connects.
   private static func socketPath() -> String? {
     let name = "helge-terminal-\(UUID().uuidString.prefix(8)).sock"
     let temporary = (NSTemporaryDirectory() as NSString).appendingPathComponent(name)

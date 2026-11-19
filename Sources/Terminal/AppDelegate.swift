@@ -148,6 +148,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       // A program whose pane was not rebuilt has no terminal any more.
       for adoption in adoptions.values { Darwin.close(adoption.handoff.descriptor) }
       adoptions.removeAll()
+      // Rebuilding passes each pane through sizes it does not keep. Once the
+      // windows are laid out, the programs may be told the size that stayed.
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        windows.forEach { $0.window?.layoutIfNeeded() }
+        windows.flatMap(\.panes).forEach { $0.session.finishAdoption() }
+      }
     } else if let layout = recovery?.restored { restoreWindows(layout) }
     if !pendingFileLaunches.isEmpty {
       let launches = pendingFileLaunches
@@ -220,15 +227,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// `relaunch`, the app at this bundle's path starts once this one is gone
   /// and takes them over; without, whatever starts next does, as after an
   /// update that replaced the bundle. An updater that ends the app itself
-  /// passes `terminates: false`.
+  /// passes `terminates: false`. `completion` hears whether the programs
+  /// were handed off.
   @MainActor func handOffSessions(relaunch: Bool, terminates: Bool = true, completion: (@MainActor (Bool) -> Void)? = nil) {
     guard let handoffDirectory, !handingOff, !terminationRequested else { completion?(false); return }
     handingOff = true
-    SessionHandoffCoordinator.handOff(windows: windows, directory: handoffDirectory) { [weak self] succeeded in
+    SessionHandoffCoordinator.handOff(windows: windows, directory: handoffDirectory) { [weak self] outcome in
       guard let self else { return }
       handingOff = false
-      completion?(succeeded)
-      guard succeeded else { NSSound.beep(); return }
+      completion?(outcome == .handedOff)
+      // With the sessions lost the windows show programs that are gone, so
+      // the app still ends or relaunches as it was asked to.
+      if outcome != .handedOff { NSSound.beep() }
+      guard outcome != .unchanged else { return }
       if relaunch {
         let waiter = Process()
         waiter.executableURL = URL(fileURLWithPath: "/bin/sh")
