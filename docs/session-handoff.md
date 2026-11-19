@@ -47,7 +47,11 @@ cannot take over the installed app's panes.
    removed: a handoff is claimed once.
 6. **Adopt.** The windows are rebuilt from the layout. Each pane with a
    running program gets a session that restores the saved terminal and reads
-   and writes the received PTY. Nothing is started again.
+   and writes the received PTY. Nothing is started again. A program is
+   adopted only if its process ID still belongs to the process that was
+   handed off, checked by the start time the manifest records; the same
+   check precedes every signal an adopted session sends, because a process
+   ID can pass to an unrelated process once the program has ended.
 
 The keeper never reads a PTY. A program that writes while the app is away
 blocks once the kernel's buffer is full, as behind a slow terminal, and
@@ -75,8 +79,10 @@ build can read what an older one wrote:
 Because the restored terminal answers every query as the old one did and the
 PTY's size is unchanged, a program sees no resize, redraws nothing and cannot
 tell that the app changed. While the new windows are being laid out, a pane's
-intermediate sizes are not sent to an adopted program; only the size it
-settles on is, and only if it differs from the saved one.
+intermediate sizes are not sent to an adopted program. When the windows are
+laid out the app says so, and only the size the pane then has is sent, if it
+differs from the saved one. A session whose host never says so stops waiting
+after 2 seconds.
 
 ## What is not carried
 
@@ -105,9 +111,10 @@ settles on is, and only if it differs from the saved one.
   further runs passed.
 - **A failed claim loses the sessions.** If the new app cannot read the
   manifest or reach the keeper, it starts normally and the keeper times out.
-- **A failure after detaching leaves frozen panes.** The keeper is started
+- **A failure after detaching loses the sessions.** The keeper is started
   before any session is touched, so this needs a write failure in the handoff
-  directory.
+  directory. The keeper is then ended, which hangs the programs up at once,
+  and the app quits or relaunches as it was asked to.
 - **One app instance per handoff directory** is assumed.
 - **Layout below a pane's minimum size is not restored exactly**, which
   resizes those panes once.
