@@ -120,14 +120,18 @@ enum AppBundle {
     try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
     let warnings = ["-Wall", "-Wextra", "-Werror", "-arch", architecture, "-mmacosx-version-min=" + minimumSystem]
     let interop = Repository.path("Sources/TerminalInterop")
-    let spawn = directory + "/Spawn.o"
-    try Console.quietly(["xcrun", "clang"] + warnings + ["-I", interop + "/include", "-c", interop + "/Spawn.c", "-o", spawn])
+    // Every C file of the interop target, as the package builds it.
+    var objects: [String] = []
+    for source in try FileManager.default.contentsOfDirectory(atPath: interop).filter({ $0.hasSuffix(".c") }).sorted() {
+      let object = directory + "/" + (source as NSString).deletingPathExtension + ".o"
+      try Console.quietly(["xcrun", "clang"] + warnings + ["-I", interop + "/include", "-c", interop + "/" + source, "-o", object])
+      objects.append(object)
+    }
     try Console.quietly(["xcrun", "clang"] + warnings
       + [Repository.path("Sources/TerminalLauncher/Launcher.c"), "-o", directory + "/TerminalLauncher"])
     let compile = ["xcrun", "swiftc", "-swift-version", "5", "-O", "-whole-module-optimization",
                    "-enforce-exclusivity=unchecked", "-target", "\(architecture)-apple-macosx\(minimumSystem)",
                    "-package-name", "terminal", "-I", interop + "/include", "-I", directory]
-    var objects = [spawn]
     for module in libraryModules {
       let object = directory + "/" + module + ".o"
       try Console.quietly(compile + ["-parse-as-library", "-module-name", module, "-emit-module",
