@@ -174,7 +174,10 @@ Nothing is published and the installed app is not involved. The command:
    waits for the handoff, replaces the bundle and relaunches;
 5. waits for the relaunched copy's report and fails unless the bundle on disk
    and the copy that adopted the sessions are both the new build and every
-   pane passed the smoke's checks.
+   pane passed the smoke's checks;
+6. ends the copies and removes their settings. A run that passed removes its
+   files too; a failed run keeps them for an hour, and `--keep-open` leaves
+   everything in place.
 
 The copies read their instructions from an `TerminalUpdateRehearsal` entry in
 their Info.plist, because Sparkle relaunches an app without arguments. Only

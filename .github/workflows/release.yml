@@ -98,7 +98,7 @@ jobs:
       - name: Build release app and distribution tool
         run: |
           target/native/dev bundle release
-          xcrun swiftc -parse-as-library tools/Distribution.swift -o target/native/distribute
+          xcrun swiftc -parse-as-library tools/Distribution.swift tools/Dev/SigningOrder.swift -o target/native/distribute
 
       - name: Import release credentials
         env:

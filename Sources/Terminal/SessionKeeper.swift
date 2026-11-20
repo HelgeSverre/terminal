@@ -12,6 +12,10 @@ import TerminalInterop
 /// binary to ship. It runs before AppKit is touched and has no window.
 enum SessionKeeper {
   static let flag = "--session-keeper"
+  /// What a claimer sends to ask for the descriptors, and what it sends
+  /// when it has them. A connection that asks for nothing, as the one that
+  /// only finds out whether the keeper listens, is given nothing.
+  private static let request: UInt8 = 0x63, acknowledgement: UInt8 = 0x6b
   /// The first inherited descriptor; the rest follow it.
   private static let firstDescriptor: Int32 = 3
   /// `sockaddr_un.sun_path` holds 104 bytes with its terminator.
@@ -29,10 +33,13 @@ enum SessionKeeper {
     // The app that started the keeper is leaving; nothing of its ending may
     // end the keeper too.
     signal(SIGHUP, SIG_IGN); signal(SIGPIPE, SIG_IGN); signal(SIGINT, SIG_IGN)
+    // Told to end, it leaves by the same way out, which removes its socket.
+    signal(SIGTERM) { _ in keeperToldToEnd = 1 }
     guard let listener = listen(socketPath) else { return 1 }
     defer { unlink(socketPath) }
     let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(seconds) * 1_000_000_000
     while true {
+      guard keeperToldToEnd == 0 else { return 3 }
       let now = DispatchTime.now().uptimeNanoseconds
       // Unclaimed: closing the descriptors, by exiting, hangs the programs up
       // as closing their windows would have.
@@ -44,12 +51,17 @@ enum SessionKeeper {
       defer { close(client) }
       var user: uid_t = 0, group: gid_t = 0
       guard getpeereid(client, &user, &group) == 0, user == getuid() else { continue }
-      guard descriptors.allSatisfy({ helge_descriptor_send(client, $0) }) else { continue }
+      guard byte(from: client, milliseconds: 5_000) == request,
+        descriptors.allSatisfy({ helge_descriptor_send(client, $0) }) else { continue }
       // The descriptors are let go only when the receiver says it has them.
-      var acknowledged: UInt8 = 0
-      var reply = pollfd(fd: client, events: Int16(POLLIN), revents: 0)
-      if poll(&reply, 1, 10_000) > 0, read(client, &acknowledged, 1) == 1, acknowledged == 0x6b { return 0 }
+      if byte(from: client, milliseconds: 10_000) == acknowledgement { return 0 }
     }
+  }
+  private static func byte(from client: Int32, milliseconds: Int32) -> UInt8? {
+    var value: UInt8 = 0
+    var waiting = pollfd(fd: client, events: Int16(POLLIN), revents: 0)
+    guard poll(&waiting, 1, milliseconds) > 0, read(client, &value, 1) == 1 else { return nil }
+    return value
   }
 
   private static func address(_ path: String) -> sockaddr_un? {
@@ -140,6 +152,8 @@ enum SessionKeeper {
     defer { close(client) }
     var timeout = timeval(tv_sec: 5, tv_usec: 0)
     setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    var asked = request
+    guard write(client, &asked, 1) == 1 else { return nil }
     var descriptors: [Int32] = []
     for _ in 0..<count {
       let descriptor = helge_descriptor_receive(client)
@@ -147,8 +161,11 @@ enum SessionKeeper {
       _ = fcntl(descriptor, F_SETFD, FD_CLOEXEC)
       descriptors.append(descriptor)
     }
-    var acknowledgement: UInt8 = 0x6b
-    guard write(client, &acknowledgement, 1) == 1 else { descriptors.forEach { close($0) }; return nil }
+    var received = acknowledgement
+    guard write(client, &received, 1) == 1 else { descriptors.forEach { close($0) }; return nil }
     return descriptors
   }
 }
+
+/// Set by the keeper's SIGTERM handler, which may do nothing else.
+nonisolated(unsafe) private var keeperToldToEnd: sig_atomic_t = 0

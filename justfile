@@ -162,7 +162,7 @@ _verify-bundle:
     "$TERMINAL_TEST_PRODUCTS/TUIStressDriver" --self-test
     xcrun clang -Wall -Wextra -Werror -O2 Benchmarks/TerminalBench/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
     target/native/terminal-bench-clock-test
-    xcrun swiftc -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/DistributionTests.swift -o target/native/distribution-tests
+    xcrun swiftc -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/Dev/SigningOrder.swift tools/DistributionTests.swift -o target/native/distribution-tests
     target/native/distribution-tests
     mkdir -p target/native/automation-dictionary
     xcrun sdp -fs -o target/native/automation-dictionary Resources/Terminal/Terminal.sdef
@@ -350,7 +350,7 @@ release-status:
 [private]
 @_distribution operation:
     mkdir -p target/native
-    xcrun swiftc -parse-as-library tools/Distribution.swift -o target/native/distribute
+    xcrun swiftc -parse-as-library tools/Distribution.swift tools/Dev/SigningOrder.swift -o target/native/distribute
     target/native/distribute "$1"
 
 [private]

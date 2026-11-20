@@ -181,7 +181,6 @@ enum SessionHandoffCoordinator {
           // Nothing will ask the keeper for what it holds. Ending it now
           // hangs the programs up at once, not when its wait runs out.
           kill(keeper, SIGTERM)
-          unlink(socket)
           try? FileManager.default.removeItem(at: directory)
           return completion(.lost)
         }

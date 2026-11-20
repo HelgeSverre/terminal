@@ -44,6 +44,23 @@ import Testing
     #expect(SessionKeeper.claim(socketPath: path, count: 2) == nil)
   }
 
+  @Test func aKeeperToldToEndLetsGoAndRemovesItsSocket() throws {
+    try #require(FileManager.default.isExecutableFile(atPath: Self.app))
+    let ends = try pipeEnds()
+    defer { close(ends.read) }
+    let path = socketPath()
+    let keeper = try #require(SessionKeeper.start(executable: Self.app, socketPath: path, seconds: 30,
+                                                  descriptors: [ends.write]))
+    close(ends.write)
+    #expect(FileManager.default.fileExists(atPath: path))
+    #expect(!readable(ends.read, within: 200), "finding out that the keeper listens takes nothing from it")
+    kill(keeper, SIGTERM)
+    var status: Int32 = 0
+    #expect(waitpid(keeper, &status, 0) == keeper)
+    #expect(readable(ends.read, within: 1000), "the pipe ends with the keeper")
+    #expect(!FileManager.default.fileExists(atPath: path))
+  }
+
   @Test func anUnclaimedKeeperLetsItsDescriptorsGo() throws {
     try #require(FileManager.default.isExecutableFile(atPath: Self.app))
     let ends = try pipeEnds()
