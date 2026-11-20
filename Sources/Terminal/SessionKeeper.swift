@@ -34,6 +34,10 @@ enum SessionKeeper {
     // end the keeper too.
     signal(SIGHUP, SIG_IGN); signal(SIGPIPE, SIG_IGN); signal(SIGINT, SIG_IGN)
     // Told to end, it leaves by the same way out, which removes its socket.
+    // The app may have started it with that signal held back.
+    var none = sigset_t()
+    sigemptyset(&none)
+    sigprocmask(SIG_SETMASK, &none, nil)
     signal(SIGTERM) { _ in keeperToldToEnd = 1 }
     guard let listener = listen(socketPath) else { return 1 }
     defer { unlink(socketPath) }

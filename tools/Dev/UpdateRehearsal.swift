@@ -100,14 +100,15 @@ enum UpdateRehearsal {
       // The copies' own settings and Sparkle's stored responses.
       _ = try? runCommand(["/usr/bin/defaults", "delete", identifier])
       let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-      for name in ["HTTPStorages/\(identifier)", "HTTPStorages/\(identifier).binarycookies"] {
+      for name in ["Preferences/\(identifier).plist", "HTTPStorages/\(identifier)", "HTTPStorages/\(identifier).binarycookies"] {
         try? FileManager.default.removeItem(at: library.appendingPathComponent(name))
       }
-      if passed {
-        try? FileManager.default.removeItem(at: scratch)
-        // The directory of all runs goes with its last one.
-        rmdir(scratch.deletingLastPathComponent().path)
-      }
+      if passed { try? FileManager.default.removeItem(at: scratch) }
+      // The runs share their directory with the copies' own cache, which
+      // goes when no run is left in it.
+      let runs = scratch.deletingLastPathComponent()
+      let left = (try? FileManager.default.contentsOfDirectory(atPath: runs.path)) ?? []
+      if !left.contains(where: { UUID(uuidString: $0) != nil }) { try? FileManager.default.removeItem(at: runs) }
     }
   }
 
