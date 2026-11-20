@@ -114,6 +114,8 @@ struct TerminalPreferences {
   /// Whether runs of punctuation are joined when the font has ligatures.
   var ligatures = false
   var desktop = DesktopConfiguration.standard
+  /// Whether command status drives a mounted SidePulse Pro. See docs/sidepulse.md.
+  var sidePulseEnabled = false
   enum ValidationError: LocalizedError {
     case font, history, directory, wordCharacters
     var errorDescription: String? {
@@ -186,7 +188,8 @@ struct TerminalPreferences {
                      defaultPaneColor: PaneChromeColor,
                      fontFamily: String?? = nil, ligatures: Bool? = nil,
                      graphemeClustering: Bool? = nil,
-                     desktop: DesktopConfiguration? = nil) throws -> Self {
+                     desktop: DesktopConfiguration? = nil,
+                     sidePulseEnabled: Bool? = nil) throws -> Self {
     guard let font = Double(fontSize), font.isFinite, (8...40).contains(font) else { throw ValidationError.font }
     guard let rows = Int(historyRows), (0...50_000).contains(rows) else { throw ValidationError.history }
     guard let directory = Self.directory(startingDirectory) else { throw ValidationError.directory }
@@ -203,6 +206,7 @@ struct TerminalPreferences {
     value.ligatures = ligatures ?? UserDefaults.standard.bool(forKey: "ligatures")
     value.desktop = desktop ?? loadDesktop(from: .standard)
     try value.desktop.validate()
+    value.sidePulseEnabled = sidePulseEnabled ?? UserDefaults.standard.bool(forKey: "sidePulseEnabled")
     return value
   }
   // Transient launch options never modify saved preferences, nor inspect child argv.
@@ -278,6 +282,7 @@ struct TerminalPreferences {
     loaded.fontFamily = (defaults.object(forKey: "fontFamily") as? String).flatMap { $0.isEmpty ? nil : $0 }
     loaded.ligatures = (defaults.object(forKey: "ligatures") as? Bool) == true
     loaded.desktop = loadDesktop(from: defaults)
+    loaded.sidePulseEnabled = defaults.bool(forKey: "sidePulseEnabled")
     return loaded
   }
   func save() { save(to: .standard) }
@@ -298,6 +303,7 @@ struct TerminalPreferences {
     d.set(defaultPaneColor.hex, forKey: "defaultPaneColor")
     if let fontFamily { d.set(fontFamily, forKey: "fontFamily") } else { d.removeObject(forKey: "fontFamily") }
     d.set(ligatures, forKey: "ligatures")
+    d.set(sidePulseEnabled, forKey: "sidePulseEnabled")
     // Stored data this build cannot read stays until a configuration replaces it.
     let unreadable = d.data(forKey: "desktopConfiguration").map { (try? DesktopConfiguration.decode($0)) == nil } ?? false
     if !(unreadable && desktop == .standard), let data = try? desktop.encoded() {

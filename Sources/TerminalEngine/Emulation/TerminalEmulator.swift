@@ -178,6 +178,11 @@ private final class TerminalEmulator {
   /// BEL characters since the host last asked.
   @exclusivity(unchecked) private var bells: UInt32 = 0
   func takeBells() -> UInt32 { defer { bells = 0 }; return bells }
+  /// Whether the shell reported a command started (OSC 133 C) and not yet ended.
+  @exclusivity(unchecked) private(set) var commandRunning = false
+  /// The latest command or bell signal since the host last asked.
+  @exclusivity(unchecked) private var activity: TerminalActivity?
+  func takeActivity() -> TerminalActivity? { defer { activity = nil }; return activity }
   @exclusivity(unchecked) private var geometryEpoch: UInt64 = 1
   // TerminalDocument deliberately restarts row IDs after a hard reset. Keep a
   // monotonic identity generation so a pending search cannot mistake a fresh
@@ -544,7 +549,7 @@ private final class TerminalEmulator {
             continue
           }
           parser = .escape
-        case 0x00...0x07: finishDecodedText(); if byte == 0x07 { bells &+= 1 }
+        case 0x00...0x07: finishDecodedText(); if byte == 0x07 { bells &+= 1; activity = .attention }
         case 0x08: finishDecodedText(); backspace()
         case 0x09: finishDecodedText(); tab()
         case 0x0a, 0x0b, 0x0c: finishDecodedText(); lineFeed()
@@ -966,6 +971,8 @@ private final class TerminalEmulator {
   }
   private func reset() {
     commandHistory = TerminalCommandHistory()
+    commandRunning = false
+    activity = .idle
     selectionDocumentGeneration = UUID(); selection.reset(); pendingSelectionRevision = nil
     graphics.clear()
     document = TerminalDocument(columns: columns, rows: rowCount)
@@ -1828,6 +1835,18 @@ private final class TerminalEmulator {
         default: break
         }
         screen = current
+        if marker == "C" {
+          commandRunning = true
+          activity = .working
+        } else if marker == "D", commandRunning {
+          commandRunning = false
+          let fields = value.split(separator: ";", omittingEmptySubsequences: false)
+          if fields.count > 1, let status = UInt8(fields[1]) {
+            activity = status == 0 ? .succeeded : .failed
+          } else {
+            activity = .idle
+          }
+        }
       }
       else if command == "1337" {
         if value.hasPrefix("MultipartFile=") {
@@ -3090,6 +3109,8 @@ private extension TerminalEmulator {
     return true
   }
 }
+package func swiftTerminalCommandRunning(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.commandRunning ?? false }
+package func swiftTerminalTakeActivity(_ pointer: OpaquePointer?) -> TerminalActivity? { core(pointer)?.takeActivity() }
 package func swiftTerminalCommands(_ pointer: OpaquePointer?) -> [TerminalCommandRecord] { core(pointer)?.commands() ?? [] }
 package func swiftTerminalNavigateCommand(_ pointer: OpaquePointer?, older: Bool) { core(pointer)?.navigateCommand(older: older) }
 // Internal Swift adapter: same owner-confined handle, no C callback or borrowed

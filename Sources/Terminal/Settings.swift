@@ -2,7 +2,7 @@ import AppKit
 import TerminalUI
 
 // A separate native utility window keeps the terminal usable while editing settings.
-final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
+final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate, NSWindowDelegate {
   private let fontSize = FontSizeInput()
   private let fontFamily = SettingsPopUpButton(frame: .zero, pullsDown: false)
   private let ligatures = SettingsCheckbox(
@@ -27,6 +27,10 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
   private let inactivePaneDim = SettingsSegmentedControl(
     labels: PaneInactiveDim.allCases.map(\.label), trackingMode: .selectOne, target: nil, action: nil)
   private let defaultPaneColor = PaneColorPaletteView(padding: 0)
+  private let sidePulse = SettingsCheckbox(checkboxWithTitle: "Enable SidePulse Pro", target: nil, action: nil)
+  private let sidePulseStatus = NSTextField(wrappingLabelWithString: "Disabled")
+  private let sidePulseTest = SettingsActionButton(title: "Test lights", target: nil, action: nil)
+  private var sidePulseTimer: Timer?
   private let error = NSTextField(wrappingLabelWithString: "")
   private let apply = SettingsActionButton(title: "Apply", primary: true, target: nil, action: nil)
   private let cancel = SettingsActionButton(title: "Cancel", target: nil, action: nil)
@@ -43,6 +47,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     window.setAccessibilityIdentifier("no.helgesverre.terminal.settings")
     window.isReleasedWhenClosed = false
     window.tabbingMode = .disallowed
+    window.delegate = self
     TerminalTheme.apply(to: window)
     window.backgroundColor = TerminalTheme.color(TerminalTheme.Settings.surface)
     for popup in [leftOption, rightOption] { popup.addItems(withTitles: ["Follow Option setting", "Native characters", "Send Escape"]) }
@@ -200,6 +205,8 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     case popup(String, String?, NSPopUpButton, Presentation)
     case palette(String, String?, PaneColorPaletteView, Presentation)
     case action(String, Selector)
+    case status(String, NSTextField, Presentation)
+    case button(String, NSButton, Presentation, Selector)
     case note(String)
   }
   private var navigation: [SettingsNavigationButton] = []
@@ -258,6 +265,15 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       .popup("Cursor", nil, cursorStyle, Presentation(id: "cursor-style", accessibilityLabel: "Cursor style", width: 210)),
       .check("Visual bell", visualBell, Presentation(id: "visual-bell", accessibilityLabel: "Visual bell")),
       .note("Profiles, Shortcuts & Theme in General lets you edit or import the terminal's colors and ANSI palette."),
+    ]),
+    Section(id: "sidepulse", icon: "light.strip.2", title: "SidePulse Pro", subtitle: "Hardware light-strip integration.", fields: [
+      .check("Enable SidePulse Pro", sidePulse,
+        Presentation(id: "sidepulse-enabled", accessibilityLabel: "Enable SidePulse Pro")),
+      .status("Status", sidePulseStatus,
+        Presentation(id: "sidepulse-status", accessibilityLabel: "SidePulse Pro status")),
+      .note("Cyan: running · Green: success · Red: failure · Amber: bell. Apply to enable. Use one controller app at a time."),
+      .button("Test lights", sidePulseTest,
+        Presentation(id: "sidepulse-test", accessibilityLabel: "Test lights"), #selector(testSidePulse(_:))),
     ]),
   ]
   private func configure(_ field: NSTextField, presentation: Presentation) {
@@ -339,6 +355,17 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       input.target = self
       input.action = #selector(popupChanged(_:))
       renderedKeyViews.append(input)
+    case let .status(name, input, presentation):
+      title = name; control = input
+      presentation.apply(to: input)
+      input.font = .systemFont(ofSize: 14)
+      input.textColor = TerminalTheme.color(TerminalTheme.Settings.text)
+    case let .button(name, button, presentation, selector):
+      title = name; control = button
+      presentation.apply(to: button)
+      button.target = self
+      button.action = selector
+      renderedKeyViews.append(button)
     case let .note(text):
       title = ""
       control = label(text, size: 12, color: TerminalTheme.Settings.muted)
@@ -426,10 +453,31 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     defaultPaneColor.selected = prefs.defaultPaneColor
     startingDirectory.stringValue = prefs.startingDirectoryText
     wordCharacters.stringValue = prefs.selectionWordProfile.punctuation
+    sidePulse.state = prefs.sidePulseEnabled ? .on : .off
+    sidePulseTest.isEnabled = prefs.sidePulseEnabled
+    refreshSidePulseStatus()
     validate()
+  }
+  private func refreshSidePulseStatus() {
+    SidePulse.shared.status { [weak self] value in self?.sidePulseStatus.stringValue = value }
+  }
+  @objc private func testSidePulse(_ sender: Any?) {
+    SidePulse.shared.test()
+    refreshSidePulseStatus()
+  }
+  deinit { sidePulseTimer?.invalidate() }
+  func windowWillClose(_ notification: Notification) {
+    sidePulseTimer?.invalidate()
+    sidePulseTimer = nil
   }
   func present() {
     if window?.isVisible != true { reload() }
+    if sidePulseTimer == nil {
+      sidePulseTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        guard let self, self.window?.isVisible == true else { return }
+        self.refreshSidePulseStatus()
+      }
+    }
     showWindow(nil)
     window?.makeKeyAndOrderFront(nil)
   }
@@ -451,7 +499,8 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
       showPaneTitles: showPaneTitles.state == .on,
       inactivePaneDim: dim, defaultPaneColor: defaultPaneColor.selected ?? .standard,
       fontFamily: .some(fontFamily.selectedItem?.representedObject as? String),
-      ligatures: ligatures.state == .on, graphemeClustering: joinEmoji.state == .on, desktop: desktop)
+      ligatures: ligatures.state == .on, graphemeClustering: joinEmoji.state == .on, desktop: desktop,
+      sidePulseEnabled: sidePulse.state == .on)
   }
   @objc private func editDesktop(_ sender: Any?) {
     guard let draft = try? value() else { validate(); return }
