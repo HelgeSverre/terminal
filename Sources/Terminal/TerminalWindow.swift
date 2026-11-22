@@ -66,7 +66,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     TerminalTheme.apply(to: window)
     window.setAccessibilityIdentifier("no.helgesverre.terminal.window." + automationID)
     window.minSize = NSSize(width: 320, height: 180)
-    window.tabbingMode = .preferred
+    window.tabbingMode = .automatic
     window.tabbingIdentifier = "HelgeTerminal"
     window.delegate = self
     container.wantsLayer = true
