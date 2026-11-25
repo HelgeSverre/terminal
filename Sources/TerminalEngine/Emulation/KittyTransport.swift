@@ -17,7 +17,7 @@ enum KittyTransport {
     private var callback: (() -> Void)?
     init(fields: [Character: String], payload: Data, limit: Int,
          timeout: DispatchTimeInterval = .seconds(2),
-         operation: @escaping () throws -> Data) {
+         operation: @escaping @Sendable () throws -> Data) {
       guard Self.slots.wait(timeout: .now()) == .success else { result = .failure(.noSpace); return }
       DispatchQueue.global(qos: .utility).async { [self] in
         defer { Self.slots.signal() }

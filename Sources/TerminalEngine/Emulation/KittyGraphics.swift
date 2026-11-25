@@ -169,8 +169,8 @@ final class KittyGraphicsStore {
   private var pending: Upload?
   var asynchronousTransport = false
   private var external: (upload: Upload, context: KittyGraphicsContext, read: KittyTransport.Read)?
-  private let transportReader: ([Character: String], Data, Int) throws -> Data
-  init(transportReader: @escaping ([Character: String], Data, Int) throws -> Data = { try KittyTransport.read($0, payload: $1, limit: $2) }) {
+  private let transportReader: @Sendable ([Character: String], Data, Int) throws -> Data
+  init(transportReader: @escaping @Sendable ([Character: String], Data, Int) throws -> Data = { try KittyTransport.read($0, payload: $1, limit: $2) }) {
     self.transportReader = transportReader
   }
   var transportPending: Bool { external != nil }

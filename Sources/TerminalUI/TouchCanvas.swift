@@ -11,7 +11,7 @@ import UIKit
 public final class TerminalCanvasView: UIView, UITextInput {
   public let session: TerminalSession
   private let rendering: TerminalRendering?
-  private var surface: TerminalRendering.SurfaceLease?
+  nonisolated(unsafe) private var surface: TerminalRendering.SurfaceLease?
   private var configuration: TerminalViewConfiguration
   var snapshot: TerminalSnapshot?
   var cellWidth = 1, cellHeight = 1
@@ -25,7 +25,7 @@ public final class TerminalCanvasView: UIView, UITextInput {
   var findController: TouchFindController?
   var clipboardRevision: UInt64 = 0
   private var scrollRemainder: CGFloat = 0
-  private let blinkWake = BlinkWake()
+  nonisolated(unsafe) private let blinkWake = BlinkWake()
   private var accessibilityDirty = true
   private var cachedAccessibilityElements: [UIAccessibilityElement]?
   /// Called with the title the program set.

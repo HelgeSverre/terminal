@@ -382,7 +382,8 @@ import TerminalInterop
     var finishedActionCopyText: String?
     var finishedActionLinkRequested = false
     var finishedActionLinkAccepted = false
-    var finishedActionSelectionBeforeLink: TerminalSelectionSnapshot?
+    @MainActor final class SelectionBox { var value: TerminalSelectionSnapshot? }
+    let finishedActionSelectionBeforeLink = SelectionBox()
     var finishedActionSelectionPreserved = false
     finishedActions.onStatus = { status in
       if status.hasPrefix("Process exited") { finishedActionReaped = true }
@@ -394,7 +395,7 @@ import TerminalInterop
         finishedActionSelectionPublished = true
       }
       if finishedActionLinkAccepted,
-         snapshot.selection == finishedActionSelectionBeforeLink {
+         snapshot.selection == finishedActionSelectionBeforeLink.value {
         finishedActionSelectionPreserved = true
       }
     }
@@ -431,7 +432,7 @@ import TerminalInterop
     }
     _ = await TestEnvironment.wait(seconds: 3) { finishedActionCopyText != nil }
     if let activation = finishedActionActivation, finishedActionCopyText == "FINISHED_SELECT" {
-      finishedActionSelectionBeforeLink = finishedActionSnapshot?.selection
+      finishedActionSelectionBeforeLink.value = finishedActionSnapshot?.selection
       finishedActionLinkRequested = finishedActions.activateLink(activation) { result in
         if case .success(let target) = result {
           finishedActionLinkAccepted = target.absoluteString == "https://example.test/finished"
@@ -703,20 +704,22 @@ import TerminalInterop
       """#
     let committedResize = own(TerminalSession(launch: rubySpec(committedResizeScript, [committedResizeReceipt.path])))
     var committedResizeRequested = false
-    var committedResizeDelivered = false
-    var committedResizeProbe = false
-    var committedResizeOwnerProbes = 0
-    var committedResizeGeometries = Set<String>()
-    var scheduleCommittedResizeProbe: (() -> Void)!
-    scheduleCommittedResizeProbe = {
-      committedResize.queue.async {
-        DispatchQueue.main.async {
-          guard !committedResizeDelivered else { return }
-          committedResizeOwnerProbes += 1
-          if committedResizeOwnerProbes < 2 { scheduleCommittedResizeProbe() }
+    @MainActor final class CommittedResizeProbe {
+      var delivered = false
+      var ownerProbes = 0
+      func schedule(on session: TerminalSession) {
+        session.queue.async {
+          DispatchQueue.main.async {
+            guard !self.delivered else { return }
+            self.ownerProbes += 1
+            if self.ownerProbes < 2 { self.schedule(on: session) }
+          }
         }
       }
     }
+    let committedResizeState = CommittedResizeProbe()
+    var committedResizeProbe = false
+    var committedResizeGeometries = Set<String>()
     committedResize.onSnapshot = { snapshot in
       let text = snapshot.rows.flatMap { $0.cells }.map { $0.text }.joined()
       if !committedResizeRequested && text.contains("RESIZE_COMMIT_READY") {
@@ -725,18 +728,18 @@ import TerminalInterop
         #expect(committedResize.input("c"), "committed-resize input was not admitted")
         committedResize.semanticProbe { _ in committedResizeProbe = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(10)) {
-          scheduleCommittedResizeProbe()
+          committedResizeState.schedule(on: committedResize)
         }
       }
       if committedResizeRequested { committedResizeGeometries.insert("\(snapshot.cols)x\(snapshot.rows.count)") }
       if text.contains("RESIZE_COMMIT_INPUT=99 SIZE=24 20") {
-        committedResizeDelivered = snapshot.cols == 20 && snapshot.rows.count == 24
+        committedResizeState.delivered = snapshot.cols == 20 && snapshot.rows.count == 24
       }
     }
-    _ = await TestEnvironment.wait(seconds: 30) { committedResizeDelivered && committedResizeProbe }
+    _ = await TestEnvironment.wait(seconds: 30) { committedResizeState.delivered && committedResizeProbe }
     let committedResizeSignals = ((try? String(contentsOf: committedResizeReceipt, encoding: .utf8)) ?? "")
       .split(whereSeparator: \.isNewline).map(String.init)
-    #expect(committedResizeRequested && committedResizeDelivered && committedResizeProbe && committedResizeOwnerProbes >= 2 && committedResizeGeometries.isSubset(of: Set(["80x24", "20x24"])) && committedResizeSignals == ["24 20"], "committed resize: requested=\(committedResizeRequested), delivered=\(committedResizeDelivered), semantic_probe=\(committedResizeProbe), owner_probes=\(committedResizeOwnerProbes), geometries=\(committedResizeGeometries), winch=\(committedResizeSignals)")
+    #expect(committedResizeRequested && committedResizeState.delivered && committedResizeProbe && committedResizeState.ownerProbes >= 2 && committedResizeGeometries.isSubset(of: Set(["80x24", "20x24"])) && committedResizeSignals == ["24 20"], "committed resize: requested=\(committedResizeRequested), delivered=\(committedResizeState.delivered), semantic_probe=\(committedResizeProbe), owner_probes=\(committedResizeState.ownerProbes), geometries=\(committedResizeGeometries), winch=\(committedResizeSignals)")
     committedResize.close()
     await expectOwnedReaped()
   }

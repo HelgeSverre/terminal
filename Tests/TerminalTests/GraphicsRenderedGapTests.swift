@@ -13,7 +13,7 @@ import TerminalInterop
 @Suite(.serialized) @MainActor struct GraphicsRenderedGapTests {
   private typealias Oracle = TerminalGraphicsOracleTests
   private let esc = "\u{1b}"
-  private final class Captured {
+  private final class Captured: @unchecked Sendable {
     private let lock = NSLock()
     private var value: [UInt8]?
     var pixels: [UInt8]? { lock.lock(); defer { lock.unlock() }; return value }

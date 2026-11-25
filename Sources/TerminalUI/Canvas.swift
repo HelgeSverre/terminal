@@ -195,9 +195,11 @@ public final class TerminalCanvasView: NSView, @preconcurrency NSTextInputClient
     blinkWake.cancel()
     visibilityObservers.forEach { NotificationCenter.default.removeObserver($0) }
     if let linkModifierMonitor { NSEvent.removeMonitor(linkModifierMonitor) }
-    detachRenderingSurface()
     let session = session
-    MainActor.assumeIsolated { session.detachView() }
+    MainActor.assumeIsolated {
+      detachRenderingSurface()
+      session.detachView()
+    }
   }
   private func display(_ value: TerminalSnapshot) {
     let previousSelectionRevision = snapshot?.selection.revision
@@ -507,7 +509,7 @@ public final class TerminalCanvasView: NSView, @preconcurrency NSTextInputClient
       for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didMiniaturizeNotification,
         NSWindow.didDeminiaturizeNotification] {
         visibilityObservers.append(NotificationCenter.default.addObserver(forName: name, object: window,
-          queue: .main) { [weak self] _ in self?.redraw() })
+          queue: .main) { [weak self] _ in MainActor.assumeIsolated { self?.redraw() } })
       }
     }
     window?.acceptsMouseMovedEvents = true

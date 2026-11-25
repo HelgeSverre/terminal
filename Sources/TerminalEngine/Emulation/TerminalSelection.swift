@@ -65,7 +65,7 @@ final class TerminalSelection {
   }
   private let proofSlots = ProofSlots()
   private let copyBufferCredit = DispatchSemaphore(value: 1)
-  private final class State {
+  private final class State: @unchecked Sendable {
     var proofSlot: ProofSlot?
     let generation: UInt64
     let screen: TerminalSelectionScreen
@@ -94,7 +94,7 @@ final class TerminalSelection {
       proofSlot = nil
     }
   }
-  private final class Pending {
+  private final class Pending: @unchecked Sendable {
     enum Work { case capture, copy }
     let work: Work
     let state: State
@@ -473,7 +473,7 @@ final class TerminalSelection {
 // bounded string. The owner captures that string in small turns; linguistic
 // work runs off-owner and returns only two cell boundaries. No document or
 // row storage crosses this worker seam.
-private final class TerminalWordCapture {
+private final class TerminalWordCapture: @unchecked Sendable {
   struct Boundary { let row: Int; let column: Int }
   private struct Cell { let offset: Int; let length: Int; let row: Int; let column: Int; let width: Int }
   private enum Phase { case backward, forward, cells, waiting }
@@ -558,7 +558,7 @@ private final class TerminalWordCapture {
   }
   static func drainJobsForTesting() -> Bool { WordJob.drainForTesting() }
   static func withJobsPausedForTesting(_ body: () -> Void) { WordJob.withPausedForTesting(body) }
-  private final class WordJob {
+  private final class WordJob: @unchecked Sendable {
     static func drainForTesting() -> Bool {
       let finished = DispatchSemaphore(value: 0)
       queue.async { finished.signal() }

@@ -622,16 +622,27 @@ package final class AccessibleTerminalLink: NSAccessibilityElement {
     setAccessibilityLabel(occurrence.label)
     setAccessibilityURL(occurrence.target)
   }
-  package override func accessibilityParent() -> Any? { owner }
-  package override func accessibilityFrame() -> NSRect {
-    guard let owner else { return .zero }
-    let frame = ranges.reduce(into: NSRect.null) { $0 = $0.union(owner.accessibilityFrame(for: $1)) }
-    return frame.isNull ? .zero : frame
+  private nonisolated func onMain<T>(_ body: @MainActor (AccessibleTerminalLink) -> T) -> T {
+    nonisolated(unsafe) let this = self
+    nonisolated(unsafe) var result: T!
+    MainActor.assumeIsolated { result = body(this) }
+    return result
   }
-  package override func isAccessibilityEnabled() -> Bool { owner?.window != nil }
-  package override func accessibilityPerformPress() -> Bool {
-    guard let owner, owner.window != nil, !ranges.isEmpty, let activation = occurrence.activation else { return false }
-    return activate(activation)
+  package nonisolated override func accessibilityParent() -> Any? { onMain { $0.owner } }
+  package nonisolated override func accessibilityFrame() -> NSRect {
+    onMain {
+      guard let owner = $0.owner else { return .zero }
+      let frame = $0.ranges.reduce(into: NSRect.null) { $0 = $0.union(owner.accessibilityFrame(for: $1)) }
+      return frame.isNull ? .zero : frame
+    }
+  }
+  package nonisolated override func isAccessibilityEnabled() -> Bool { onMain { $0.owner?.window != nil } }
+  package nonisolated override func accessibilityPerformPress() -> Bool {
+    onMain {
+      guard let owner = $0.owner, owner.window != nil, !$0.ranges.isEmpty,
+        let activation = $0.occurrence.activation else { return false }
+      return $0.activate(activation)
+    }
   }
 }
 #endif

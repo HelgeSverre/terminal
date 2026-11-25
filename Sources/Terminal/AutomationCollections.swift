@@ -13,10 +13,14 @@ import TerminalUI
     let windows = controller.window?.tabbedWindows ?? controller.window.map { [$0] } ?? []
     return windows.compactMap { ($0.windowController as? TerminalWindow).map { TerminalScriptTab($0, parent: self) } }
   }
-  override var objectSpecifier: NSScriptObjectSpecifier? {
-    guard let description = NSApp.classDescription as? NSScriptClassDescription else { return nil }
-    return NSUniqueIDSpecifier(containerClassDescription: description,
-      containerSpecifier: nil, key: "terminalWindows", uniqueID: identifier)
+  nonisolated override var objectSpecifier: NSScriptObjectSpecifier? {
+    nonisolated(unsafe) var result: NSScriptObjectSpecifier?
+    MainActor.assumeIsolated {
+      guard let description = NSApp.classDescription as? NSScriptClassDescription else { return }
+      result = NSUniqueIDSpecifier(containerClassDescription: description,
+        containerSpecifier: nil, key: "terminalWindows", uniqueID: identifier)
+    }
+    return result
   }
 }
 
@@ -28,10 +32,14 @@ import TerminalUI
   @objc var identifier: String { controller.automationID }
   @objc var name: String { controller.window?.title ?? "Terminal" }
   @objc var terminalPanes: [TerminalScriptPane] { controller.panes.map { TerminalScriptPane($0, parent: self) } }
-  override var objectSpecifier: NSScriptObjectSpecifier? {
-    guard let description = parent.classDescription as? NSScriptClassDescription else { return nil }
-    return NSUniqueIDSpecifier(containerClassDescription: description,
-      containerSpecifier: parent.objectSpecifier, key: "terminalTabs", uniqueID: identifier)
+  nonisolated override var objectSpecifier: NSScriptObjectSpecifier? {
+    nonisolated(unsafe) var result: NSScriptObjectSpecifier?
+    MainActor.assumeIsolated {
+      guard let description = parent.classDescription as? NSScriptClassDescription else { return }
+      result = NSUniqueIDSpecifier(containerClassDescription: description,
+        containerSpecifier: parent.objectSpecifier, key: "terminalTabs", uniqueID: identifier)
+    }
+    return result
   }
 }
 
@@ -43,10 +51,14 @@ import TerminalUI
   @objc var identifier: String { pane.map { "no.helgesverre.terminal.pane." + $0.automationID } ?? "" }
   @objc var workingDirectory: String { pane?.session.deliveredDirectory ?? "" }
   @objc var selectedText: String { pane?.accessibilitySelectedText() ?? "" }
-  override var objectSpecifier: NSScriptObjectSpecifier? {
-    guard let description = parent.classDescription as? NSScriptClassDescription else { return nil }
-    return NSUniqueIDSpecifier(containerClassDescription: description,
-      containerSpecifier: parent.objectSpecifier, key: "terminalPanes", uniqueID: identifier)
+  nonisolated override var objectSpecifier: NSScriptObjectSpecifier? {
+    nonisolated(unsafe) var result: NSScriptObjectSpecifier?
+    MainActor.assumeIsolated {
+      guard let description = parent.classDescription as? NSScriptClassDescription else { return }
+      result = NSUniqueIDSpecifier(containerClassDescription: description,
+        containerSpecifier: parent.objectSpecifier, key: "terminalPanes", uniqueID: identifier)
+    }
+    return result
   }
 }
 

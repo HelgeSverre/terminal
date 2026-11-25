@@ -85,8 +85,8 @@ public final class TerminalConnection: @unchecked Sendable {
         descriptorClosed = true
       }
     }
-    outbound.async {
-      transport.start(self, columns: columns, rows: rows)
+    outbound.async { [self] in
+      self.transport?.start(self, columns: columns, rows: rows)
       source.resume()
     }
   }

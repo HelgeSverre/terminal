@@ -2,6 +2,7 @@ import AppKit
 import TerminalHost
 import TerminalUI
 
+@MainActor
 private func terminalMinimumSize(_ view: NSView) -> NSSize {
   if let pane = view as? TerminalPanePresentationView { return pane.minimumSize }
   guard let split = view as? NSSplitView, split.arrangedSubviews.count == 2 else {

@@ -69,12 +69,12 @@ import TerminalInterop
     var fired = 0
     wake.schedule(10, now: 9.99) { fired += 1 }
     wake.schedule(10, now: 9.995) { fired += 100 }
-    await TestEnvironment.wait { fired != 0 }
+    _ = await TestEnvironment.wait { fired != 0 }
     #expect(fired == 1, "asking again for the scheduled deadline keeps the first timer")
     wake.schedule(20, now: 19.99) { fired += 1 }
     wake.cancel()
     wake.schedule(30, now: 29.999) { fired += 10 }
-    await TestEnvironment.wait { fired >= 11 }
+    _ = await TestEnvironment.wait { fired >= 11 }
     #expect(fired == 11, "a cancelled wake never fires")
   }
 

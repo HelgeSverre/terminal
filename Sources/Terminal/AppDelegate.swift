@@ -28,9 +28,11 @@ private final class TerminationReply: @unchecked Sendable {
   private var sent = false
   var isSent: Bool { sent }
   func send() {
-    guard !sent else { return }
-    sent = true
-    NSApp.reply(toApplicationShouldTerminate: true)
+    MainActor.assumeIsolated {
+      guard !sent else { return }
+      sent = true
+      NSApp.reply(toApplicationShouldTerminate: true)
+    }
   }
 }
 @MainActor
@@ -176,10 +178,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     if recovery != nil {
       recoveryObservers.append(NotificationCenter.default.addObserver(
         forName: NSSplitView.didResizeSubviewsNotification, object: nil, queue: .main
-      ) { [weak self] _ in self?.recoveryChanged() })
+      ) { [weak self] _ in MainActor.assumeIsolated { self?.recoveryChanged() } })
       recoveryObservers.append(NSWorkspace.shared.notificationCenter.addObserver(
         forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
-      ) { [weak self] _ in self?.checkpointBeforeSleep() })
+      ) { [weak self] _ in MainActor.assumeIsolated { self?.checkpointBeforeSleep() } })
       recoveryChanged()
     }
   }

@@ -184,7 +184,7 @@ final class TerminalSettingsWindow: NSWindowController, NSTextFieldDelegate {
     let accessibilityLabel: String
     var hint: String? = nil
     var width: CGFloat? = nil
-    func apply(to view: NSView) {
+    @MainActor func apply(to view: NSView) {
       view.setAccessibilityIdentifier("no.helgesverre.terminal.settings.\(id)")
       view.setAccessibilityLabel(accessibilityLabel)
       view.toolTip = hint

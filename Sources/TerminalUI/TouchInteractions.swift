@@ -107,7 +107,7 @@ extension TerminalCanvasView {
   }
 }
 
-extension TerminalCanvasView: UIEditMenuInteractionDelegate {
+extension TerminalCanvasView: @MainActor UIEditMenuInteractionDelegate {
   public func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration,
                                   suggestedActions: [UIMenuElement]) -> UIMenu? {
     var actions: [UIMenuElement] = [

@@ -2,7 +2,7 @@ import Foundation
 
 /// A bounded, immutable view of primary rows. Recovery never observes the
 /// alternate screen or runs stored bytes through the escape parser.
-package final class TerminalRecoveryCapture {
+package final class TerminalRecoveryCapture: @unchecked Sendable {
   private let history: TerminalHistory
   private let primary: [TerminalRow]
   private let first: Int

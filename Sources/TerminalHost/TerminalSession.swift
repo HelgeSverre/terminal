@@ -385,7 +385,7 @@ public final class TerminalSession: @unchecked Sendable {
   static func endAbandonedChild(_ pid: Int32, counted: Bool = true, adoptedStart: UInt64? = nil) {
     // An adopted child that has ended left its number free for another
     // process, which must not be signalled in its place.
-    func present() -> Bool { adoptedStart.map { ProcessIdentity.holds(pid, startedAt: $0) } ?? true }
+    let present: @Sendable () -> Bool = { adoptedStart.map { ProcessIdentity.holds(pid, startedAt: $0) } ?? true }
     guard present() else {
       if counted { LiveChildren.ended() }
       return

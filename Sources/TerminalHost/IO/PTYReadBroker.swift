@@ -15,7 +15,7 @@ final class PTYReadBroker: @unchecked Sendable {
   // Credit for two slabs: the reader fills one while the owner parses the
   // other. With credit for one, the reader waits for the parser.
   static let readQuantum = 2 * slabSize
-  private final class Batch {
+  private final class Batch: @unchecked Sendable {
     var data = Data()
     var sealed = false
   }
@@ -25,7 +25,7 @@ final class PTYReadBroker: @unchecked Sendable {
   private let readLock = NSLock()
   private let owner: DispatchQueue
   private let deliver: (Data) -> Void
-  private let ended: (Int32) -> Void
+  private let ended: @Sendable (Int32) -> Void
   private let byteLimit: Int
   private let nodeLimit: Int
   private let slabSize: Int
@@ -48,7 +48,7 @@ final class PTYReadBroker: @unchecked Sendable {
 
   init(owner: DispatchQueue, byteLimit: Int = PTYReadBroker.readQuantum,
        nodeLimit: Int = 256, slabSize: Int = PTYReadBroker.slabSize, diagnostics: Bool = false,
-       deliver: @escaping (Data) -> Void, ended: @escaping (Int32) -> Void) {
+       deliver: @escaping (Data) -> Void, ended: @escaping @Sendable (Int32) -> Void) {
     precondition(byteLimit > 0 && nodeLimit > 0 && slabSize > 0)
     self.owner = owner; self.byteLimit = byteLimit; self.nodeLimit = nodeLimit
     self.slabSize = slabSize; slab = .allocate(byteCount: slabSize, alignment: 16)

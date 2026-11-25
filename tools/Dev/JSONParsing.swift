@@ -99,7 +99,7 @@ private struct JSONParser {
       position += 1
       switch byte {
       case UInt8(ascii: "\""):
-        guard let text = String(validatingUTF8: units.map { CChar(bitPattern: $0) } + [0]) else {
+        guard let text = String(bytes: units.prefix { $0 != 0 }, encoding: .utf8) else {
           throw failure("a string is not UTF-8")
         }
         return text

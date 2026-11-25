@@ -103,7 +103,7 @@ final class SessionStateStore: @unchecked Sendable {
 
   deinit { Darwin.close(descriptor) }
 
-  func save(_ layout: SessionLayout, restoring: Bool = false, completion: (() -> Void)? = nil) {
+  func save(_ layout: SessionLayout, restoring: Bool = false, completion: (@MainActor @Sendable () -> Void)? = nil) {
     queue.async { [self] in
       guard !isStopping else { return }
       do {

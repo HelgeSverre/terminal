@@ -54,11 +54,11 @@ final class TerminalTabNavigation: NSObject {
     }
   }
 
-  @objc private func numberedTab(_ sender: NSMenuItem) { select(.numbered(sender.tag)) }
-  @objc private func previousTab(_ sender: Any?) { select(.previous) }
-  @objc private func nextTab(_ sender: Any?) { select(.next) }
+  @MainActor @objc private func numberedTab(_ sender: NSMenuItem) { select(.numbered(sender.tag)) }
+  @MainActor @objc private func previousTab(_ sender: Any?) { select(.previous) }
+  @MainActor @objc private func nextTab(_ sender: Any?) { select(.next) }
 
-  private func select(_ selection: Selection) {
+  @MainActor private func select(_ selection: Selection) {
     guard let window = intendedWindow() else { return }
     let tabs = window.tabbedWindows ?? [window]
     guard let current = tabs.firstIndex(where: { $0 === window }),

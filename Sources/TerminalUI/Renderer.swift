@@ -4,8 +4,8 @@ import AppKit
 import UIKit
 #endif
 import CoreText
-import Metal
-import QuartzCore
+@preconcurrency import Metal
+@preconcurrency import QuartzCore
 import simd
 import TerminalEngine
 
@@ -114,7 +114,7 @@ public final class TerminalRendering: @unchecked Sendable {
   // CAMetalDisplayLink supplies a drawable in its update callback, avoiding a
   // blocking nextDrawable call. This object lives on the main run loop; it
   // never encodes Metal work itself.
-  private final class SurfaceDisplayLink: NSObject, CAMetalDisplayLinkDelegate {
+  private final class SurfaceDisplayLink: NSObject, CAMetalDisplayLinkDelegate, @unchecked Sendable {
     private weak var rendering: TerminalRendering?
     private let lease: SurfaceLease
     private var link: CAMetalDisplayLink?
@@ -143,7 +143,7 @@ public final class TerminalRendering: @unchecked Sendable {
       return created
     }
     func requestFrame() {
-      let resume = { [weak self] in
+      let resume: @Sendable () -> Void = { [weak self] in
         guard let self, !self.invalidated else { return }
         if !self.suppliedFirstDrawable {
           self.suppliedFirstDrawable = true
@@ -159,7 +159,7 @@ public final class TerminalRendering: @unchecked Sendable {
       else { DispatchQueue.main.async(execute: resume) }
     }
     func invalidate() {
-      let stop = { [self] in
+      let stop: @Sendable () -> Void = { [self] in
         guard !invalidated else { return }
         self.invalidated = true
         self.link?.isPaused = true
@@ -687,7 +687,7 @@ public final class TerminalRendering: @unchecked Sendable {
   private var prewarmed: Set<PrewarmKey> = []
   private func draw(
     _ request: RenderRequest, texture: MTLTexture, drawable: CAMetalDrawable?, surface: SurfaceLease,
-    generation: UInt64, completion: ((Bool) -> Void)? = nil
+    generation: UInt64, completion: (@Sendable (Bool) -> Void)? = nil
   ) -> DrawOutcome {
     guard request.width > 0, request.height > 0 else { return .failed }
     glyphResidency.beginFrame(surface: surface.id)
@@ -1215,7 +1215,7 @@ public final class TerminalRendering: @unchecked Sendable {
   #if GLYPH_RESIDENCY_TESTING
   /// Runs the production frame assembly/shaders into a readable attachment.
   /// Tests own the renderer instance; no window, display link, or app focus.
-  func renderPixelsForTesting(_ request: RenderRequest, completion: @escaping ([UInt8]?) -> Void) {
+  func renderPixelsForTesting(_ request: RenderRequest, completion: @escaping @Sendable ([UInt8]?) -> Void) {
     executor.async { [self] in
       guard request.width > 0, request.height > 0 else { completion(nil); return }
       let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm_srgb,

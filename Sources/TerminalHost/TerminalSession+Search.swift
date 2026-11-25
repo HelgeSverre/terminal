@@ -36,9 +36,9 @@ extension TerminalSession {
   // This module owns worker scheduling, latest-query replacement, bounded work,
   // retries, lifetime and source validation. Canvas only submits a query and
   // receives an outcome; it never reconstructs history positions or epochs.
-  final class HistorySearch {
+  final class HistorySearch: @unchecked Sendable {
     private static let worker = DispatchQueue(label: "no.helgesverre.terminal.search", qos: .utility)
-    private final class Job {
+    private final class Job: @unchecked Sendable {
       let handle: OpaquePointer
       let generation: UInt64
       init(_ handle: OpaquePointer, generation: UInt64) {
