@@ -211,8 +211,9 @@ final class TerminalEmulator {
   @exclusivity(unchecked) private var decodedScalarStart = 0
   /// Pending decoded scalars are printed once this many have gathered.
   private static let decodedFlushCount = 1024
-  // A shorter ASCII run that follows undrained decoded text joins that text,
-  // so mixed-script output reaches the document as one transaction.
+  // A shorter ASCII run that follows undrained decoded text or immediately
+  // precedes UTF-8 joins the decoded buffer, so mixed-script output reaches
+  // the document as one transaction.
   private static let minimumDirectASCIIRun = 16
   // CSI input itself is capped at 16 KiB, so this reusable numeric scratch is
   // bounded by the parser's existing sequence limit.
@@ -315,14 +316,15 @@ final class TerminalEmulator {
   /// then stops before a longer one.
   private func decodeUTF8Run(_ bytes: UnsafePointer<UInt8>, offset: Int, limit: Int, joiningASCII: Bool) -> Int {
     @inline(__always) func continuation(_ byte: UInt8) -> Bool { byte & 0xc0 == 0x80 }
-    /// The scalar encoded at `index` and its length, or nil where the run ends.
-    @inline(__always) func scalar(at index: Int) -> (value: UInt32, length: Int)? {
-      let lead = bytes[index]
+    /// The scalar encoded at `index` (with already-loaded `lead`) and its length, or nil where the run ends.
+    @inline(__always) func scalar(at index: Int, lead: UInt8) -> (value: UInt32, length: Int)? {
       if lead < 0xc2 {
         return nil
       } else if lead < 0xe0 {
-        guard index + 1 < limit, continuation(bytes[index + 1]) else { return nil }
-        return (UInt32(lead & 0x1f) << 6 | UInt32(bytes[index + 1] & 0x3f), 2)
+        guard index + 1 < limit else { return nil }
+        let second = bytes[index + 1]
+        guard continuation(second) else { return nil }
+        return (UInt32(lead & 0x1f) << 6 | UInt32(second & 0x3f), 2)
       } else if lead < 0xf0 {
         guard index + 2 < limit else { return nil }
         let second = bytes[index + 1], third = bytes[index + 2]
@@ -357,15 +359,19 @@ final class TerminalEmulator {
           ? min(buffer.count, start + Self.decodedFlushCount - pending) : buffer.count
         while end < stop {
           guard index < limit else { ended = true; break }
-          if joiningASCII, bytes[index] &- 0x20 < 0x5f {
+          let lead = bytes[index]
+          if lead < 0x80 {
+            guard joiningASCII, lead &- 0x20 < 0x5f else { ended = true; break }
             if asciiRemaining == 0 {
-              // Like `printASCIIRun`: only a short run joins, and only text
-              // that is still pending.
+              // Like `printASCIIRun`: only a short run joins, and only when
+              // text is still pending or UTF-8 follows immediately.
+              let asciiLimit = min(limit, index + Self.minimumDirectASCIIRun)
               var runEnd = index + 1
-              while runEnd < limit, runEnd - index < Self.minimumDirectASCIIRun, bytes[runEnd] &- 0x20 < 0x5f {
+              while runEnd < asciiLimit, bytes[runEnd] &- 0x20 < 0x5f {
                 runEnd += 1
               }
-              guard runEnd - index < Self.minimumDirectASCIIRun, end > decodedScalarStart else {
+              guard runEnd - index < Self.minimumDirectASCIIRun,
+                    end > decodedScalarStart || (runEnd < limit && bytes[runEnd] >= 0xc2) else {
                 ended = true
                 break
               }
@@ -381,7 +387,7 @@ final class TerminalEmulator {
             asciiRemaining -= taken
             continue
           }
-          guard let next = scalar(at: index) else { ended = true; break }
+          guard let next = scalar(at: index, lead: lead) else { ended = true; break }
           // The guards above admit exactly the well-formed encodings of a scalar.
           buffer[end] = Unicode.Scalar(next.value).unsafelyUnwrapped
           end += 1
@@ -411,7 +417,8 @@ final class TerminalEmulator {
     }
     while end < limit, bytes[end] &- 0x20 < 0x5f { end += 1 }
     let count = end - offset
-    if count < Self.minimumDirectASCIIRun, decodedScalarStart < decodedScalarCount {
+    if count < Self.minimumDirectASCIIRun,
+       decodedScalarStart < decodedScalarCount || (end < limit && bytes[end] >= 0xc2) {
       for index in offset..<end { appendDecoded(Unicode.Scalar(bytes[index])) }
       return count
     }

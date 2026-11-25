@@ -94,6 +94,8 @@ struct TerminalDocument {
     var clusters = ClusterCache()
     // Scratch for the multi-scalar clusters of the run being admitted.
     var runClusters: [PrintedCluster] = []
+    // Scratch for the precomputed cell widths (1 or 2) of scalars in the run being admitted.
+    var runWidths: [UInt8] = []
     /// Whether text is laid out by code point width (mode 2027 reset).
     var legacy = false
 
@@ -535,6 +537,7 @@ struct TerminalDocument {
         // Where the cluster most recently admitted to this run begins.
         var lead = -1
         if !state.runClusters.isEmpty { state.runClusters.removeAll(keepingCapacity: true) }
+        if !state.runWidths.isEmpty { state.runWidths.removeAll(keepingCapacity: true) }
         state.clusters.beginRun()
         // A wrap on the primary screen can append history. Its scalar is
         // admitted alone, so the caller enforces history limits before
@@ -554,6 +557,7 @@ struct TerminalDocument {
               // the segmenter as it is.
               width = scalarClass.width
               guard width == 1 || width == 2, cells + width <= capacity else { break }
+              state.runWidths.append(UInt8(width))
               lead = end
               cells += width
               lastWidth = width
@@ -582,6 +586,7 @@ struct TerminalDocument {
               guard state.clusters.onlyWidens(in: slot), cells - lastWidth + clusterWidth <= capacity else { break }
               state.runClusters.append(PrintedCluster(start: lead - consumed, count: clusterEnd - lead,
                                                       slot: slot, wide: clusterWidth == 2))
+              for _ in end..<clusterEnd { state.runWidths.append(0) }
               cells += clusterWidth - lastWidth
               lastWidth = clusterWidth
               segmenter = next
@@ -594,6 +599,7 @@ struct TerminalDocument {
             guard width == 1 || width == 2, cells + width <= capacity else { break }
             segmenter = next
           }
+          state.runWidths.append(UInt8(width))
           lead = end
           cells += width
           lastWidth = width
@@ -610,6 +616,7 @@ struct TerminalDocument {
           let row = screen.cursorRow, count = end - consumed
           screen.rows[row].replaceClusters(
             at: column, scalars: UnsafeBufferPointer(rebasing: scalars[consumed..<end]),
+            widths: state.runWidths,
             clusters: state.runClusters, texts: state.clusters, cellCount: cells,
             style: attributes.style, link: attributes.link, linkID: attributes.linkID, protected: attributes.protected,
             isoProtected: attributes.isoProtected)

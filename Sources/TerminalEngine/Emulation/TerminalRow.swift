@@ -263,42 +263,9 @@ private final class TerminalRowStorage {
     slots[index] = slot
   }
   /// Prepares `range` for a bulk overwrite: every cell gets `link`, or loses its payload.
-  func replacePayloads(in range: Range<Int>, link: String?, linkID: String? = nil) {
+  @inline(__always) func replacePayloads(in range: Range<Int>, link: String?, linkID: String? = nil) {
+    if payloads.isEmpty && link == nil { return }
     payloads.replace(in: range, link: link, linkID: linkID)
-  }
-  /// Writes each scalar as a fresh one- or two-cell cluster starting at
-  /// `column`, and returns the column after the last.
-  func writeSingletons(_ scalars: UnsafeBufferPointer<Unicode.Scalar>, at column: Int, style: UInt16,
-                       flags: UInt8, protected: Bool, linked: Bool) -> Int {
-    slots.withUnsafeMutableBufferPointer { slots in
-      var index = column
-      for scalar in scalars {
-        let width = TerminalText.scalarClass(of: scalar).width
-        slots[index] = TerminalRowSlot(scalar: scalar.value, style: style, hasScalar: true,
-                                       kind: width == 2 ? 2 : 1, flags: flags, protected: protected,
-                                       hasPayload: linked)
-        if width == 2 {
-          slots[index + 1] = TerminalRowSlot(style: style, kind: 3, flags: flags, protected: protected,
-                                            hasPayload: linked)
-        }
-        index += width
-      }
-      return index
-    }
-  }
-  /// Writes a fresh multi-scalar cluster at `column` and returns the column
-  /// after it.
-  func writeCluster(text: String, link: String?, linkID: String? = nil, wide: Bool, at column: Int, style: UInt16,
-                    flags: UInt8, protected: Bool) -> Int {
-    payloads[column] = TerminalRowPayload(text: text, link: link, linkID: linkID)
-    return slots.withUnsafeMutableBufferPointer { slots in
-      slots[column] = TerminalRowSlot(style: style, kind: wide ? 2 : 1, flags: flags, protected: protected,
-                                      hasPayload: true)
-      guard wide else { return column + 1 }
-      slots[column + 1] = TerminalRowSlot(style: style, kind: 3, flags: flags, protected: protected,
-                                          hasPayload: link != nil)
-      return column + 2
-    }
   }
   /// Index for `style`, appended when this row has not used it yet. Recently
   /// added styles are searched first: consecutive writes usually share one.
@@ -763,11 +730,14 @@ struct TerminalRow: Equatable {
   /// A print is about to own `range`: erase the half of a wide pair that it
   /// would leave behind just outside either edge. Cells inside the range are
   /// the caller's to write.
+  @inline(__always)
   private mutating func clearPairHalves(outside range: Range<Int>, eraseStyle: TerminalStyle) {
     let lower = range.lowerBound, upper = range.upperBound
-    let clearsLeft = lower > 0 && storage.slots[lower].kind == 3 && storage.slots[lower - 1].kind == 2
-    let clearsRight = upper < storage.slots.count && storage.slots[upper - 1].kind == 2
-      && storage.slots[upper].kind == 3
+    let (clearsLeft, clearsRight) = storage.slots.withUnsafeBufferPointer { slots in
+      let left = lower > 0 && slots[lower].kind == 3 && slots[lower - 1].kind == 2
+      let right = upper < slots.count && slots[upper - 1].kind == 2 && slots[upper].kind == 3
+      return (left, right)
+    }
     if clearsLeft { erase(at: lower - 1, style: eraseStyle) }
     if clearsRight { erase(at: upper, style: eraseStyle) }
   }
@@ -789,9 +759,11 @@ struct TerminalRow: Equatable {
   }
 
   /// Writes a run of fresh clusters that the caller has admitted and that fits
-  /// this row. Each scalar is a one- or two-cell cluster of its own, except
-  /// where `clusters` (in buffer order) names a longer one held in `texts`.
+  /// this row. Each scalar is a one- or two-cell cluster of its own (with its
+  /// precomputed width in `widths`), except where `clusters` (in buffer order)
+  /// names a longer one held in `texts`.
   mutating func replaceClusters(at column: Int, scalars: UnsafeBufferPointer<Unicode.Scalar>,
+                                widths: [UInt8],
                                 clusters: [TerminalDocument.PrintedCluster],
                                 texts: borrowing TerminalDocument.ClusterCache, cellCount: Int,
                                 style: TerminalStyle, link: String?, linkID: String? = nil, protected: Bool, isoProtected: Bool = false) {
@@ -805,16 +777,62 @@ struct TerminalRow: Equatable {
     let styleIndex = storage.intern(style)
     let flags: UInt8 = (protected ? 2 : 0) | (isoProtected ? 8 : 0)
     let linked = link != nil
-    var index = column, position = 0
-    for cluster in clusters {
-      index = storage.writeSingletons(UnsafeBufferPointer(rebasing: scalars[position..<cluster.start]), at: index,
-                                      style: styleIndex, flags: flags, protected: protected, linked: linked)
-      index = storage.writeCluster(text: texts.text(in: cluster.slot), link: link, linkID: linkID, wide: cluster.wide, at: index,
-                                   style: styleIndex, flags: flags, protected: protected)
-      position = cluster.start + cluster.count
+    let storage = self.storage
+    widths.withUnsafeBufferPointer { widths in
+      storage.slots.withUnsafeMutableBufferPointer { slots in
+        var narrowSlot = TerminalRowSlot(scalar: 0, style: styleIndex, hasScalar: true, kind: 1,
+                                         flags: flags, protected: protected, hasPayload: linked)
+        var wideSlot = TerminalRowSlot(scalar: 0, style: styleIndex, hasScalar: true, kind: 2,
+                                       flags: flags, protected: protected, hasPayload: linked)
+        let continuationSlot = TerminalRowSlot(style: styleIndex, kind: 3, flags: flags, protected: protected,
+                                               hasPayload: linked)
+        let narrowClusterSlot = TerminalRowSlot(style: styleIndex, kind: 1, flags: flags, protected: protected,
+                                                hasPayload: true)
+        let wideClusterSlot = TerminalRowSlot(style: styleIndex, kind: 2, flags: flags, protected: protected,
+                                              hasPayload: true)
+        var index = column, position = 0
+        for cluster in clusters {
+          let clusterStart = cluster.start
+          while position < clusterStart {
+            if widths[position] == 2 {
+              wideSlot.scalar = scalars[position].value
+              slots[index] = wideSlot
+              slots[index + 1] = continuationSlot
+              index += 2
+            } else {
+              narrowSlot.scalar = scalars[position].value
+              slots[index] = narrowSlot
+              index += 1
+            }
+            position += 1
+          }
+          storage.payloads[index] = TerminalRowPayload(text: texts.text(in: cluster.slot), link: link, linkID: linkID)
+          if cluster.wide {
+            slots[index] = wideClusterSlot
+            slots[index + 1] = continuationSlot
+            index += 2
+          } else {
+            slots[index] = narrowClusterSlot
+            index += 1
+          }
+          position = clusterStart + cluster.count
+        }
+        let scalarCount = scalars.count
+        while position < scalarCount {
+          if widths[position] == 2 {
+            wideSlot.scalar = scalars[position].value
+            slots[index] = wideSlot
+            slots[index + 1] = continuationSlot
+            index += 2
+          } else {
+            narrowSlot.scalar = scalars[position].value
+            slots[index] = narrowSlot
+            index += 1
+          }
+          position += 1
+        }
+      }
     }
-    _ = storage.writeSingletons(UnsafeBufferPointer(rebasing: scalars[position...]), at: index,
-                                style: styleIndex, flags: flags, protected: protected, linked: linked)
   }
 
   // Preserve the published history-byte contract across this physical storage
