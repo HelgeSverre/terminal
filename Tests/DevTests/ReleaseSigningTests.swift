@@ -226,7 +226,7 @@ import Testing
 // `notarytool`, and every path is inside a temporary directory.
 
 /// Records each command and fails or observes the ones a test selects.
-final class FakeRunner {
+final class FakeRunner: @unchecked Sendable {
   var commands: [[String]] = []
   var failOn: (([String]) -> Bool)?
   var onRun: (([String]) throws -> Void)?

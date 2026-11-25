@@ -229,9 +229,9 @@ struct TerminalPreferences {
     return loaded
   }
   private static let cacheLock = NSLock()
-  private static var cache: Self?
-  private static var cacheGeneration: UInt64 = 0
-  private static let cacheInvalidation = NotificationCenter.default.addObserver(
+  nonisolated(unsafe) private static var cache: Self?
+  nonisolated(unsafe) private static var cacheGeneration: UInt64 = 0
+  nonisolated(unsafe) private static let cacheInvalidation = NotificationCenter.default.addObserver(
     forName: UserDefaults.didChangeNotification, object: nil, queue: nil
   ) { _ in
     cacheLock.lock()

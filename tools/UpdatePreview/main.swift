@@ -23,17 +23,19 @@ final class Preview: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         }
       }
       listener.stateUpdateHandler = { [self] state in
-        if case .ready = state, let port = listener.port {
-          feedURL = "http://127.0.0.1:\(port.rawValue)/appcast.xml"
-          let controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
-          self.controller = controller
-          do {
-            try controller.updater.start()
-            controller.updater.automaticallyChecksForUpdates = false
-            controller.checkForUpdates(nil)
-            NSApp.activate(ignoringOtherApps: true)
-          } catch { fail(error) }
-        } else if case .failed(let error) = state { fail(error) }
+        MainActor.assumeIsolated {
+          if case .ready = state, let port = listener.port {
+            feedURL = "http://127.0.0.1:\(port.rawValue)/appcast.xml"
+            let controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
+            self.controller = controller
+            do {
+              try controller.updater.start()
+              controller.updater.automaticallyChecksForUpdates = false
+              controller.checkForUpdates(nil)
+              NSApp.activate(ignoringOtherApps: true)
+            } catch { fail(error) }
+          } else if case .failed(let error) = state { fail(error) }
+        }
       }
       listener.start(queue: .main)
     } catch { fail(error) }

@@ -24,7 +24,7 @@ package enum TerminalResizeProgress {
 
 // Reservations include packed slot/dictionary capacities, retained input,
 // conservative payload ownership and builder containers. They are not RSS.
-final class ReflowReservationLedger {
+final class ReflowReservationLedger: @unchecked Sendable {
   static let shared = ReflowReservationLedger()
   static let operationLimit: UInt64 = 96 * 1024 * 1024
   private let lock = NSLock()
@@ -76,14 +76,14 @@ final class DocumentReflowTransaction {
   private static let retirement = DispatchQueue(label: "terminal.reflow.retirement", qos: .utility)
   private var state: State?
   private var earlyStatus: Step?
-  private final class RetirementFence {
+  private final class RetirementFence: @unchecked Sendable {
     private let lock = NSLock()
     private var finished = false
     var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return finished }
     func finish() { lock.lock(); finished = true; lock.unlock() }
   }
   private var retirementFence: RetirementFence?
-  private final class RetiredHistory {
+  private final class RetiredHistory: @unchecked Sendable {
     var rows: [TerminalRow] = []
     var history: TerminalHistory?
     var lease: ReflowReservationLedger.Lease?
@@ -269,7 +269,7 @@ final class DocumentReflowTransaction {
     }
   }
 
-  private final class State {
+  private final class State: @unchecked Sendable {
     var source: TerminalDocument
     let geometry: TerminalResizeGeometry
     let anchor: UInt64?

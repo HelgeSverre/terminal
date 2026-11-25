@@ -5,8 +5,8 @@ import TerminalInterop
 // Test-build counters distinguish the direct value path from both C oracles.
 // No counter or per-cell instrumentation is compiled into the application.
 enum SnapshotABIDiagnostics {
-  static var borrowedStringAllocations = 0
-  static var jsonPublications = 0
+  nonisolated(unsafe) static var borrowedStringAllocations = 0
+  nonisolated(unsafe) static var jsonPublications = 0
 }
 #endif
 

@@ -4,7 +4,7 @@ import QuartzCore
 import TerminalEngine
 import TerminalHost
 
-public final class TerminalCanvasView: NSView, NSTextInputClient {
+public final class TerminalCanvasView: NSView, @preconcurrency NSTextInputClient {
   package let automationID: String
   public let session: TerminalSession
   private let rendering: TerminalRendering?
@@ -16,7 +16,7 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   private var accessibleHistory: AccessibleHistory?
   private var hoveredLink: VisibleLinkProjection.Occurrence?
   private var linkTargetPreview: LinkTargetPreview?
-  private var linkModifierMonitor: Any?
+  nonisolated(unsafe) private var linkModifierMonitor: Any?
   private var localLinkPress = false
   private var selectionNotice: NSTextField?
   private var lastAccessibleSelection: [NSRange] = []
@@ -48,11 +48,11 @@ public final class TerminalCanvasView: NSView, NSTextInputClient {
   private var cellHeight = 19
   private var scrollAccumulator = ScrollAccumulator()
   private var viewportPresentation = ViewportPresentation()
-  private let blinkWake = BlinkWake()
+  nonisolated(unsafe) private let blinkWake = BlinkWake()
   /// When the cursor last moved; its blink phase restarts there.
   private var cursorBlinkEpoch: TimeInterval = 0
   private var blinkingText: (revision: UInt64, value: Bool)?
-  private var visibilityObservers: [NSObjectProtocol] = []
+  nonisolated(unsafe) private var visibilityObservers: [NSObjectProtocol] = []
   var presentationOffsetPixels: CGFloat {
     guard viewportPresentation.pending == nil, snapshot?.presentationOverscan != nil else { return 0 }
     return viewportPresentation.fraction * CGFloat(cellHeight)

@@ -1195,12 +1195,13 @@ public final class TerminalRendering: @unchecked Sendable {
     RendererMetrics.recordResidency(glyphResidency.diagnostics())
     residencySubmitted = true
     command.addCompletedHandler { [weak self, retiredFallbackIDs, surface, frameQuads] command in
-      self?.executor.async {
-        if let frameQuads { self?.returnQuadBuffer(frameQuads) }
+      guard let self else { return }
+      self.executor.async {
+        if let frameQuads { self.returnQuadBuffer(frameQuads) }
         RendererMetrics.completeGlyphFrame(revision: completedRevision)
-        retiredFallbackIDs.forEach { self?.glyphResidency.releaseLegacyTexture($0) }
-        self?.glyphResidency.completedSubmission()
-        self?.completed(
+        retiredFallbackIDs.forEach { self.glyphResidency.releaseLegacyTexture($0) }
+        self.glyphResidency.completedSubmission()
+        self.completed(
           surface: surface, generation: generation, revision: completedRevision, command: command)
         completion?(command.error == nil)
       }
@@ -1244,31 +1245,31 @@ public final class TerminalRendering: @unchecked Sendable {
 
 package final class RendererMetrics: @unchecked Sendable {
   private static let lock = NSLock()
-  private static var count: UInt64 = 0
-  private static var mismatchedDrawables: UInt64 = 0
-  private static var mismatchedPresents: UInt64 = 0
-  private static var droppedStaleFrames: UInt64 = 0
-  private static var visibleGlyphDrops: UInt64 = 0
-  private static var exactGlyphFallbacks: UInt64 = 0
-  private static var substituteGlyphFallbacks: UInt64 = 0
-  private static var inFlightGlyphs: UInt64 = 0
-  private static var oversizedGlyphFallbacks: UInt64 = 0
-  private static var peakGlyphFallbackBytes: UInt64 = 0
-  private static var peakGlyphFallbackCount: UInt64 = 0
-  private static var droppedQuadBuffers: UInt64 = 0
-  private static var peakAtlasPages: UInt64 = 0
+  nonisolated(unsafe) private static var count: UInt64 = 0
+  nonisolated(unsafe) private static var mismatchedDrawables: UInt64 = 0
+  nonisolated(unsafe) private static var mismatchedPresents: UInt64 = 0
+  nonisolated(unsafe) private static var droppedStaleFrames: UInt64 = 0
+  nonisolated(unsafe) private static var visibleGlyphDrops: UInt64 = 0
+  nonisolated(unsafe) private static var exactGlyphFallbacks: UInt64 = 0
+  nonisolated(unsafe) private static var substituteGlyphFallbacks: UInt64 = 0
+  nonisolated(unsafe) private static var inFlightGlyphs: UInt64 = 0
+  nonisolated(unsafe) private static var oversizedGlyphFallbacks: UInt64 = 0
+  nonisolated(unsafe) private static var peakGlyphFallbackBytes: UInt64 = 0
+  nonisolated(unsafe) private static var peakGlyphFallbackCount: UInt64 = 0
+  nonisolated(unsafe) private static var droppedQuadBuffers: UInt64 = 0
+  nonisolated(unsafe) private static var peakAtlasPages: UInt64 = 0
   // A submission is recorded before command.commit().  Native diagnostics that
   // install a marked overlay need the complementary completion sequence to
   // distinguish that overlay's render from the preceding PTY snapshot.
-  private static var completedCount: UInt64 = 0
-  private static var preparation: [Double] = []
-  private static var gpu: [Double] = []
-  private static var errors = 0
-  private static var residency: [String: Any] = [:]
-  private static var currentGlyphRevision: UInt64 = 0
-  private static var currentGlyphSubstitutes: UInt64 = 0
-  private static var completedGlyphRevision: UInt64 = 0
-  private static var completedGlyphSubstitutes: UInt64 = 0
+  nonisolated(unsafe) private static var completedCount: UInt64 = 0
+  nonisolated(unsafe) private static var preparation: [Double] = []
+  nonisolated(unsafe) private static var gpu: [Double] = []
+  nonisolated(unsafe) private static var errors = 0
+  nonisolated(unsafe) private static var residency: [String: Any] = [:]
+  nonisolated(unsafe) private static var currentGlyphRevision: UInt64 = 0
+  nonisolated(unsafe) private static var currentGlyphSubstitutes: UInt64 = 0
+  nonisolated(unsafe) private static var completedGlyphRevision: UInt64 = 0
+  nonisolated(unsafe) private static var completedGlyphSubstitutes: UInt64 = 0
   static func beginGlyphFrame(revision: UInt64) {
     lock.lock()
     currentGlyphRevision = revision
@@ -1325,7 +1326,7 @@ package final class RendererMetrics: @unchecked Sendable {
   // `--first-frame-file PATH` asks for the time of the process's first
   // presented frame, for startup measurement: one line, "frame <ns>", on the
   // CLOCK_UPTIME_RAW clock.
-  private static var firstFrameFile: String? = RenderingDiagnostics.firstFrameFile
+  nonisolated(unsafe) private static var firstFrameFile: String? = RenderingDiagnostics.firstFrameFile
   static func recordPresentation(
     requestWidth: Int, requestHeight: Int, drawableWidth: Int, drawableHeight: Int
   ) {

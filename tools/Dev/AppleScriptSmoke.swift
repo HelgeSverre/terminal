@@ -125,7 +125,7 @@ enum AppleScriptSmoke {
   /// command still printing after `timeout` seconds is ended, politely and
   /// then by force, and reaped.
   static func capture(_ command: [String], timeout: Double = commandTimeout) throws -> (output: String, status: CommandStatus) {
-    final class Collected { var data = Data() }
+    final class Collected: @unchecked Sendable { var data = Data() }
     let process = Process(), pipe = Pipe(), collected = Collected(), finished = DispatchSemaphore(value: 0)
     process.executableURL = URL(fileURLWithPath: command[0])
     process.arguments = Array(command.dropFirst())

@@ -34,11 +34,11 @@ enum ReleaseSigning {
   }
 
   /// How `security` and `notarytool` are run. Tests substitute a recorder.
-  struct Runner {
+  struct Runner: Sendable {
     /// Runs a command and fails unless it succeeds.
-    let run: ([String]) throws -> Void
+    let run: @Sendable ([String]) throws -> Void
     /// Runs a command and returns its standard output.
-    let output: ([String]) throws -> String
+    let output: @Sendable ([String]) throws -> String
 
     static let system = Runner(
       run: { _ = try checked($0) },

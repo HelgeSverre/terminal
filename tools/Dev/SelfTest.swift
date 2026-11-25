@@ -8,9 +8,9 @@ import Foundation
 /// commands do. The tool's tests are the Swift Testing suites in
 /// `Tests/DevTests`.
 enum SelfTest {
-  struct Case {
+  struct Case: Sendable {
     let name: String
-    let run: () throws -> Void
+    let run: @Sendable () throws -> Void
   }
 }
 

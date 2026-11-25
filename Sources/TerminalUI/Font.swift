@@ -9,7 +9,7 @@ import CoreText
 // resolve from bundled descriptors, independently of fonts installed on the Mac.
 package enum TerminalFont {
   package static let family = "Obel Mono"
-  private static let resources: [String: CTFontDescriptor] = {
+  nonisolated(unsafe) private static let resources: [String: CTFontDescriptor] = {
     guard let root = TerminalResources.bundle.resourceURL?.appendingPathComponent("Fonts") else { return [:] }
     var result: [String: CTFontDescriptor] = [:]
     for name in ["Regular", "Bold", "Italic", "BoldItalic", "Symbols"] {

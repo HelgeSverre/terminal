@@ -1623,7 +1623,7 @@ extension TerminalEmulator {
   }
   /// The switches a handoff carries, under their names in its `modes`. A
   /// name stays with its switch for good: another build reads it.
-  private static let handoffSwitches: [(name: String, value: ReferenceWritableKeyPath<TerminalEmulator, Bool>)] = [
+  nonisolated(unsafe) private static let handoffSwitches: [(name: String, value: ReferenceWritableKeyPath<TerminalEmulator, Bool>)] = [
     ("origin", \.originMode), ("leftRightMargins", \.leftRightMargins), ("autoWrap", \.autoWrap),
     ("reverseWrap", \.reverseWrap), ("reverseWrapUnlimited", \.reverseWrapUnlimited),
     ("cursesTabWrap", \.cursesTabWrap), ("isoEraseProtection", \.isoEraseProtection),
@@ -1635,7 +1635,7 @@ extension TerminalEmulator {
     ("sixelDisplay", \.sixelDisplayMode), ("sixelCursorRight", \.sixelCursorRight),
   ]
   /// The same for settings with a number, and the numbers each may have.
-  private static let handoffNumbers: [(name: String, value: ReferenceWritableKeyPath<TerminalEmulator, Int>, allowed: Set<Int>)] = [
+  nonisolated(unsafe) private static let handoffNumbers: [(name: String, value: ReferenceWritableKeyPath<TerminalEmulator, Int>, allowed: Set<Int>)] = [
     ("mouse", \.mouseMode, [0, 9, 1000, 1002, 1003]),
     ("mouseEncoding", \.mouseEncoding, [0, 1005, 1006, 1015, 1016]),
     ("modifyOtherKeys", \.modifyOtherKeys, [0, 1, 2]),

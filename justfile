@@ -161,7 +161,7 @@ _verify-bundle:
     "$TERMINAL_TEST_PRODUCTS/TUIStressDriver" --self-test
     xcrun clang -Wall -Wextra -Werror -O2 Benchmarks/TerminalBench/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
     target/native/terminal-bench-clock-test
-    xcrun swiftc -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/Dev/SigningOrder.swift tools/DistributionTests.swift -o target/native/distribution-tests
+    xcrun swiftc -swift-version 6 -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/Dev/SigningOrder.swift tools/DistributionTests.swift -o target/native/distribution-tests
     target/native/distribution-tests
     mkdir -p target/native/automation-dictionary
     xcrun sdp -fs -o target/native/automation-dictionary Resources/Terminal/Terminal.sdef
@@ -340,7 +340,7 @@ release-status:
 [private]
 @_dev:
     mkdir -p target/native
-    if [[ ! -x target/native/dev || -n "$(find tools/Dev -newer target/native/dev -print -quit)" ]]; then xcrun swiftc -O "$PWD"/tools/Dev/*.swift -o target/native/dev; fi
+    if [[ ! -x target/native/dev || -n "$(find tools/Dev -newer target/native/dev -print -quit)" ]]; then xcrun swiftc -swift-version 6 -O "$PWD"/tools/Dev/*.swift -o target/native/dev; fi
 
 [private]
 @_native-smoke mode: _dev
@@ -349,7 +349,7 @@ release-status:
 [private]
 @_distribution operation:
     mkdir -p target/native
-    xcrun swiftc -parse-as-library tools/Distribution.swift tools/Dev/SigningOrder.swift -o target/native/distribute
+    xcrun swiftc -swift-version 6 -parse-as-library tools/Distribution.swift tools/Dev/SigningOrder.swift -o target/native/distribute
     target/native/distribute "$1"
 
 [private]
@@ -363,7 +363,7 @@ _glyph-rendering-tests:
       just _glyph-residency-tests
       exit 0
     fi
-    xcrun swiftc -parse-as-library Tests/Programs/MetalUploadProbe.swift -framework Metal -o target/native/metal-upload-probe
+    xcrun swiftc -swift-version 6 -parse-as-library Tests/Programs/MetalUploadProbe.swift -framework Metal -o target/native/metal-upload-probe
     set +e
     target/native/metal-upload-probe 2>&1 | tee reports/gpu-policy/metal-upload-probe.log
     pipeline_status=("${PIPESTATUS[@]}")
@@ -392,7 +392,7 @@ _glyph-rendering-tests:
 [group('test')]
 metal-upload-probe:
     mkdir -p target/native
-    xcrun swiftc -parse-as-library Tests/Programs/MetalUploadProbe.swift -framework Metal -o target/native/metal-upload-probe
+    xcrun swiftc -swift-version 6 -parse-as-library Tests/Programs/MetalUploadProbe.swift -framework Metal -o target/native/metal-upload-probe
     target/native/metal-upload-probe
 
 [private]
@@ -415,7 +415,7 @@ esctest-update: _esctest-build
     mkdir -p target/native reports Tests/Conformance
     if [[ ! -d target/esctest2/.git ]]; then git clone -q https://github.com/ThomasDickey/esctest2.git target/esctest2; fi
     git -C target/esctest2 checkout -q {{esctest_commit}} 2>/dev/null || (git -C target/esctest2 fetch -q && git -C target/esctest2 checkout -q {{esctest_commit}})
-    xcrun swiftc -swift-version 5 -O {{emulator_sources}} Tests/Programs/EscTest.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/esctest
+    xcrun swiftc -swift-version 6 -O {{emulator_sources}} Tests/Programs/EscTest.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/esctest
 
 # Run the terminal view on the iOS simulator: Examples/iOSCheck.
 [group('test')]
@@ -441,9 +441,9 @@ fuzz-replay seed: _fuzz-build
 [private]
 @_fuzz-build:
     mkdir -p target/native
-    xcrun swiftc -swift-version 5 -O -g -sanitize=address -enforce-exclusivity=checked -D FUZZ_PROGRAM {{emulator_sources}} Tests/TerminalTests/TerminalFuzzer.swift Tests/Programs/Fuzz.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/fuzz
+    xcrun swiftc -swift-version 6 -O -g -sanitize=address -enforce-exclusivity=checked -D FUZZ_PROGRAM {{emulator_sources}} Tests/TerminalTests/TerminalFuzzer.swift Tests/Programs/Fuzz.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/fuzz
 
 [private]
 @_terminfo-probe:
     mkdir -p target/native
-    xcrun swiftc -swift-version 5 -O {{emulator_sources}} Tests/Programs/TerminfoProbe.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminfo-probe
+    xcrun swiftc -swift-version 6 -O {{emulator_sources}} Tests/Programs/TerminfoProbe.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminfo-probe

@@ -8,7 +8,7 @@ import Foundation
 /// be left to `JSONSerialization`. Integers keep their digits, and the output
 /// has the layout of Ruby's `JSON.generate` and `JSON.pretty_generate`, which
 /// wrote these files before.
-indirect enum JSONValue {
+indirect enum JSONValue: Sendable {
   case null
   case bool(Bool)
   case integer(String)

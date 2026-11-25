@@ -37,7 +37,7 @@ enum TestPipeline {
   /// A lane is serial, including tests that mutate their process globals.
   /// Every started lane is joined before an error escapes; failed lanes do not
   /// run their remaining phases. No build command belongs inside these lanes.
-  static func run(lanes: [[Phase]], phase: @escaping (Phase) throws -> Void) throws {
+  static func run(lanes: [[Phase]], phase: @escaping @Sendable (Phase) throws -> Void) throws {
     guard (1...2).contains(lanes.count) else { throw Failure("test gate supports one or two lanes") }
     final class Failures: @unchecked Sendable {
       let lock = NSLock()
@@ -74,20 +74,27 @@ enum TestPipeline {
     setenv("TERMINAL_TEST_PRODUCTS", products, 1)
     setenv("TERMINAL_TEST_HOOKS", "1", 1)
     try FileManager.default.createDirectory(atPath: Repository.path("reports/test-timing"), withIntermediateDirectories: true)
-    var timings: [[String: Any]] = []
-    let reportLock = NSLock(), gateStarted = Clock.now
-    func phase(_ entry: Phase) throws {
+    final class Reporter: @unchecked Sendable {
+      private let lock = NSLock()
+      private let gateStarted = Clock.now
+      private var timings: [[String: Any]] = []
+      func record(_ entry: Phase, started: UInt64, result: CommandResult) throws {
+        let seconds = Double(Clock.now - started) / 1_000_000_000
+        lock.lock(); defer { lock.unlock() }
+        FileHandle.standardOutput.write(result.data)
+        timings.append(["phase": entry.name, "seconds": seconds, "status": result.status,
+                        "started_seconds": Double(started - gateStarted) / 1_000_000_000])
+        try writeJSON(["phases": timings, "wall_seconds": Double(Clock.now - gateStarted) / 1_000_000_000],
+                      to: Repository.path("reports/test-timing/phases.json"))
+        guard result.succeeded else { throw Failure("test phase \(entry.name) failed (\(result.status))") }
+        Console.done(String(format: "%@  %.2f s", entry.name, seconds))
+      }
+    }
+    let reporter = Reporter()
+    let phase: @Sendable (Phase) throws -> Void = { entry in
       let started = Clock.now
       let result = try runCommand(entry.arguments, adding: entry.environment, directory: Repository.root)
-      let seconds = Double(Clock.now - started) / 1_000_000_000
-      reportLock.lock(); defer { reportLock.unlock() }
-      FileHandle.standardOutput.write(result.data)
-      timings.append(["phase": entry.name, "seconds": seconds, "status": result.status,
-                      "started_seconds": Double(started - gateStarted) / 1_000_000_000])
-      try writeJSON(["phases": timings, "wall_seconds": Double(Clock.now - gateStarted) / 1_000_000_000],
-                    to: Repository.path("reports/test-timing/phases.json"))
-      guard result.succeeded else { throw Failure("test phase \(entry.name) failed (\(result.status))") }
-      Console.done(String(format: "%@  %.2f s", entry.name, seconds))
+      try reporter.record(entry, started: started, result: result)
     }
     let dev = products + "/dev"
     let shards = ProcessInfo.processInfo.environment["TERMINAL_TEST_SHARDS"] ?? "1"

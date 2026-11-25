@@ -62,9 +62,11 @@ import Sparkle
   /// The update goes ahead whether or not that worked.
   nonisolated func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
                            untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
-    MainActor.assumeIsolated {
+    struct Handler: @unchecked Sendable { let run: () -> Void }
+    let install = Handler(run: installHandler)
+    return MainActor.assumeIsolated {
       guard let delegate = NSApp.delegate as? AppDelegate, delegate.handoffDirectory != nil else { return false }
-      delegate.handOffSessions(relaunch: false, terminates: false) { _ in installHandler() }
+      delegate.handOffSessions(relaunch: false, terminates: false) { _ in install.run() }
       return true
     }
   }

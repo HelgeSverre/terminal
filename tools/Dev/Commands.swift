@@ -49,7 +49,7 @@ enum ErrorStream {
 /// never wait for a prompt.
 func runCommand(_ command: [String], adding environment: [String: String?] = [:], directory: String? = nil,
                 input: String? = nil, errors: ErrorStream = .merged) throws -> CommandResult {
-  final class Collected { var data = Data() }
+  final class Collected: @unchecked Sendable { var data = Data() }
   let process = try prepare(command, adding: environment, directory: directory)
   let output = Pipe()
   var errorPipe: Pipe?

@@ -26,7 +26,7 @@ import Testing
 
   /// The sessions one test started, so it can close them and check that
   /// their children were reaped.
-  final class Owned {
+  @MainActor final class Owned {
     var sessions: [TerminalSession] = []
     func own(_ session: TerminalSession) -> TerminalSession {
       sessions.append(session)

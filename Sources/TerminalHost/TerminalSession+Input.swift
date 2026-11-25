@@ -137,7 +137,7 @@ extension TerminalSession {
     submitRaw(Data(text.utf8), event: Event.shortcut)
   }
 
-  private func submitRaw(_ bytes: Data, event: @escaping (Data, Int) -> Event) -> Bool {
+  private func submitRaw(_ bytes: Data, event: @escaping @Sendable (Data, Int) -> Event) -> Bool {
     let cost = bytes.count + 128
     let admission = reserve(cost)
     guard admission == .accepted else {

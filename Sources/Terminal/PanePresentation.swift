@@ -322,6 +322,7 @@ private final class PaneHeaderView: NSView {
   @objc private func closePane(_ sender: Any?) { onClose?() }
 }
 
+@MainActor
 private final class PaneColorPopover {
   private let popover = NSPopover()
   private let palette = PaneColorPaletteView()

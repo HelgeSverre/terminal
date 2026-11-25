@@ -43,12 +43,14 @@ final class AccessibleHistory: NSAccessibilityElement {
   override func accessibilityVisibleCharacterRange() -> NSRange { NSRange(location: 0, length: text.length) }
   override func accessibilitySelectedTextRange() -> NSRange { selected }
   override func setAccessibilitySelectedTextRange(_ range: NSRange) {
-    guard valid(range) else { return }
+    guard Self.valid(range, length: text.length) else { return }
     selected = range
     NSAccessibility.post(element: self, notification: .selectedTextChanged)
   }
   override func accessibilitySelectedText() -> String? { text.substring(with: selected) }
-  override func accessibilityString(for range: NSRange) -> String? { valid(range) ? text.substring(with: range) : nil }
+  override func accessibilityString(for range: NSRange) -> String? {
+    Self.valid(range, length: text.length) ? text.substring(with: range) : nil
+  }
   override func accessibilityRange(forLine line: Int) -> NSRange {
     lines.indices.contains(line) ? lines[line] : NSRange(location: NSNotFound, length: 0)
   }
@@ -83,9 +85,9 @@ final class AccessibleHistory: NSAccessibilityElement {
       || selector == NSSelectorFromString("setAccessibilitySelectedText:") { return false }
     return super.isAccessibilitySelectorAllowed(selector)
   }
-  private func valid(_ range: NSRange) -> Bool {
+  nonisolated private static func valid(_ range: NSRange, length: Int) -> Bool {
     range.location != NSNotFound && range.location >= 0 && range.length >= 0
-      && range.location <= text.length && range.length <= text.length - range.location
+      && range.location <= length && range.length <= length - range.location
   }
 }
 #endif

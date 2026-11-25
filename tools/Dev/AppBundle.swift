@@ -129,7 +129,7 @@ enum AppBundle {
     }
     try Console.quietly(["xcrun", "clang"] + warnings
       + [Repository.path("Sources/TerminalLauncher/Launcher.c"), "-o", directory + "/TerminalLauncher"])
-    let compile = ["xcrun", "swiftc", "-swift-version", "5", "-O", "-whole-module-optimization",
+    let compile = ["xcrun", "swiftc", "-swift-version", "6", "-O", "-whole-module-optimization",
                    "-enforce-exclusivity=unchecked", "-target", "\(architecture)-apple-macosx\(minimumSystem)",
                    "-package-name", "terminal", "-I", interop + "/include", "-I", directory]
     for module in libraryModules {

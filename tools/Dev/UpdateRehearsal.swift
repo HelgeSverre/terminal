@@ -16,16 +16,18 @@ enum UpdateRehearsal {
     summary: "Install a local update through Sparkle while programs run; nothing is published.", run: run)
 
   private static let identifier = "no.helgesverre.terminal.update-rehearsal"
-  private static let defaultScenario: [String: Any] = [
-    "settle": 6,
-    "panes": [
-      ["name": "shell", "command": "seq 1 500; echo before-update", "probe": "echo UPDATED_$((6*7))\r", "expect": "UPDATED_42"],
-      ["name": "vim", "command": "vim -u NONE", "probe": "ihello_update\u{1b}", "expect": "hello_update"],
-      // One process that keeps writing: a shell loop would start a new `sleep` each turn.
-      ["name": "output", "command": #"perl -e '$|=1; while(1){print "line ",$i++,"\n"; select(undef,undef,undef,0.05)}'"#,
-       "animated": true],
-    ],
-  ]
+  private static var defaultScenario: [String: Any] {
+    [
+      "settle": 6,
+      "panes": [
+        ["name": "shell", "command": "seq 1 500; echo before-update", "probe": "echo UPDATED_$((6*7))\r", "expect": "UPDATED_42"],
+        ["name": "vim", "command": "vim -u NONE", "probe": "ihello_update\u{1b}", "expect": "hello_update"],
+        // One process that keeps writing: a shell loop would start a new `sleep` each turn.
+        ["name": "output", "command": #"perl -e '$|=1; while(1){print "line ",$i++,"\n"; select(undef,undef,undef,0.05)}'"#,
+         "animated": true],
+      ],
+    ]
+  }
 
   private struct Options {
     var manual = false, keepOpen = false, signed = false, windows = false, published = false
@@ -343,7 +345,7 @@ enum UpdateRehearsal {
   /// Serves the files of one directory to this Mac only, and remembers
   /// what was asked for.
   private final class FeedServer {
-    private final class Log {
+    private final class Log: @unchecked Sendable {
       private let lock = NSLock()
       private var entries: [String] = []
       func add(_ entry: String) { lock.lock(); entries.append(entry); lock.unlock() }

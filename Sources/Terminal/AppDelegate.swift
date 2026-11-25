@@ -33,6 +33,7 @@ private final class TerminationReply: @unchecked Sendable {
     NSApp.reply(toApplicationShouldTerminate: true)
   }
 }
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private lazy var tabNavigation = TerminalTabNavigation { [weak self] in
     (NSApp.keyWindow?.windowController as? TerminalWindow)?.window
@@ -309,7 +310,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       appBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
       windows: saved, keyWindow: key))
     guard layout.isValid else { return }
-    let paneIDs = windows.flatMap(\.panes).map(\.automationID)
+    let paneIDs = windows.flatMap { $0.panes }.map { $0.automationID }
     let restoring = recovery.restored != nil && !(recoveryCoordinator?.allPanesReady(paneIDs) ?? false)
     recovery.save(layout, restoring: restoring)
     resumePending = (layout, restoring, recoveryCoordinator?.layoutRevision ?? 0)
@@ -322,7 +323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     resumeSampling = true
     let group = DispatchGroup()
     var requests: [ResumeSampler.Pane] = []
-    for pane in windows.flatMap(\.panes) {
+    for pane in windows.flatMap({ $0.panes }) {
       guard let raw = UUID(uuidString: pane.automationID) else { continue }
       let id = PaneID(raw)
       group.enter()
@@ -529,7 +530,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   }
   func applyPreferences(_ preferences: TerminalPreferences) {
     preferences.save()
-    windows.lazy.flatMap(\.panes).forEach { $0.apply(preferences.view) }
+    windows.lazy.flatMap { $0.panes }.forEach { $0.apply(preferences.view) }
     windows.forEach { $0.applyPanePresentationPreferences(preferences) }
     menu()
     preferencesWindow?.reload()

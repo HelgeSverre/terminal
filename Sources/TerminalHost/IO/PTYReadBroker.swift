@@ -56,7 +56,7 @@ final class PTYReadBroker: @unchecked Sendable {
     self.diagnostics = diagnostics
   }
   deinit { slab.deallocate() }
-  func submit(_ operation: @escaping () -> Void) {
+  func submit(_ operation: @escaping @Sendable () -> Void) {
     lock.lock()
     tail?.sealed = true; tail = nil
     owner.async(execute: operation)

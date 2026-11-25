@@ -142,7 +142,7 @@ enum TUIStress {
     #else
     let target = "arm64-apple-macosx14.0"
     #endif
-    let command = compiler + ["-parse-as-library", "-O", "-target", target, source, "-o", binary]
+    let command = compiler + ["-swift-version", "6", "-parse-as-library", "-O", "-target", target, source, "-o", binary]
     guard try runInherited(command) else { throw Failure("\(name) compilation failed") }
     guard try sha256(ofFile: source) == sourceHash else { throw Failure("\(name) source changed while compiling") }
     try writeJSON(["source_sha256": sourceHash, "binary_sha256": try sha256(ofFile: binary)], to: stamp)

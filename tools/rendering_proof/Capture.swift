@@ -14,8 +14,8 @@ struct Component {
 }
 
 enum MarkerOracle {
-  static var cellWidth = 16
-  static var cellHeight = 38
+  nonisolated(unsafe) static var cellWidth = 16
+  nonisolated(unsafe) static var cellHeight = 38
   static func color(_ b:UInt8,_ g:UInt8,_ r:UInt8) -> Int? {
     if r>190 && g<70 && b>190 { return 0 }
     if r<70 && g>190 && b<70 { return 1 }

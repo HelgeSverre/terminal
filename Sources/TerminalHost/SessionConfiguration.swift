@@ -2,7 +2,7 @@ import Foundation
 import TerminalEngine
 
 /// What a host may change about a running session.
-public struct TerminalSessionConfiguration {
+public struct TerminalSessionConfiguration: Sendable {
   public let historyRows: Int
   public let followTailOnInput: Bool
   /// The colors the terminal starts with. The view draws its cursor and

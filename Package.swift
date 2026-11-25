@@ -25,13 +25,13 @@ let libraries: [Target] = [
   // width. No window system, no process handling.
   .target(
     name: "TerminalEngine", dependencies: ["TerminalInterop"], path: "Sources/TerminalEngine",
-    swiftSettings: [.swiftLanguageMode(.v5)] + testHooks),
+    swiftSettings: testHooks),
   // A terminal with a child process on a PTY: reading, writing, resizing
   // and the order of everything that touches the emulator.
   .target(
     name: "TerminalHost", dependencies: ["TerminalEngine", "TerminalInterop"], path: "Sources/TerminalHost",
     resources: [.copy("Resources/ShellIntegration")],
-    swiftSettings: [.swiftLanguageMode(.v5)] + testHooks),
+    swiftSettings: testHooks),
   // The AppKit view of a session: Metal drawing, keyboard and mouse input,
   // selection, find and accessibility.
   .target(
@@ -39,7 +39,7 @@ let libraries: [Target] = [
     // The fonts and the shader source. The app bundle carries its own
     // copies, with the shader compiled.
     resources: [.copy("Resources/Fonts"), .copy("Resources/Terminal.metal")],
-    swiftSettings: [.swiftLanguageMode(.v5)] + testHooks),
+    swiftSettings: testHooks),
   // The helper every PTY child is started through.
   .executableTarget(name: "TerminalLauncher", path: "Sources/TerminalLauncher"),
 ]
@@ -49,26 +49,24 @@ let application: [Target] = [
     name: "TerminalApp",
     dependencies: ["TerminalUI", "TerminalHost", "TerminalEngine", "TerminalInterop", .product(name: "Sparkle", package: "Sparkle")],
     path: "Sources/Terminal",
-    swiftSettings: [.swiftLanguageMode(.v5), .define("TERMINAL_DIAGNOSTICS", .when(configuration: .debug))]
+    swiftSettings: [.define("TERMINAL_DIAGNOSTICS", .when(configuration: .debug))]
       + testHooks + (testHooks.isEmpty ? [] : [.define("TERMINAL_DIAGNOSTICS")]),
     // Where the bundle keeps the frameworks it carries.
     linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]),
   // The developer tool, built here for its tests; `just` builds the one it runs.
   .executableTarget(
-    name: "dev", path: "tools/Dev", exclude: ["KeyEcho.c", "Stamp.c"],
-    swiftSettings: [.swiftLanguageMode(.v5)]),
+    name: "dev", path: "tools/Dev", exclude: ["KeyEcho.c", "Stamp.c"]),
   .executableTarget(
     name: "UpdatePreview", dependencies: [.product(name: "Sparkle", package: "Sparkle")],
-    path: "tools/UpdatePreview", swiftSettings: [.swiftLanguageMode(.v5)],
+    path: "tools/UpdatePreview",
     linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]),
   .testTarget(
-    name: "DevTests", dependencies: ["dev"], path: "Tests/DevTests",
-    swiftSettings: [.swiftLanguageMode(.v5)]),
+    name: "DevTests", dependencies: ["dev"], path: "Tests/DevTests"),
   .testTarget(
     name: "TerminalTests",
     dependencies: ["TerminalApp", "TerminalUI", "TerminalHost", "TerminalEngine", "TerminalInterop", "TerminalLauncher"],
     path: "Tests/TerminalTests", exclude: ["differential-fixtures.json"],
-    swiftSettings: [.swiftLanguageMode(.v5)] + testHooks),
+    swiftSettings: testHooks),
 ]
 
 // Existing integration probes share the package's emulator instead of compiling
@@ -77,15 +75,15 @@ let testPrograms = ["MetalUploadProbe.swift", "TerminfoProbe.swift", "pty.c", "F
 let testTools: [Target] = [
   .executableTarget(name: "TerminfoProbe", dependencies: ["TerminalEngine", "TerminalInterop"],
     path: "Tests/Programs", exclude: testPrograms.filter { $0 != "TerminfoProbe.swift" },
-    sources: ["TerminfoProbe.swift"], swiftSettings: [.swiftLanguageMode(.v5)]),
+    sources: ["TerminfoProbe.swift"]),
   .executableTarget(name: "PTYTests", dependencies: ["TerminalEngine", "TerminalInterop"],
     path: "Tests/Programs", exclude: testPrograms.filter { $0 != "pty.c" }, sources: ["pty.c"]),
   .executableTarget(name: "TUIStressDriver", path: "tools/tui_stress", exclude: ["README.md"],
-    sources: ["Driver.swift"], swiftSettings: [.swiftLanguageMode(.v5)]),
+    sources: ["Driver.swift"]),
   .executableTarget(name: "RenderingCapture", path: "tools/rendering_proof", exclude: ["Driver.swift", "README.md"],
-    sources: ["Capture.swift"], swiftSettings: [.swiftLanguageMode(.v5)]),
+    sources: ["Capture.swift"]),
   .executableTarget(name: "RenderingDriver", path: "tools/rendering_proof", exclude: ["Capture.swift", "README.md"],
-    sources: ["Driver.swift"], swiftSettings: [.swiftLanguageMode(.v5)]),
+    sources: ["Driver.swift"]),
 ]
 
 let package = Package(

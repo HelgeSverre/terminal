@@ -499,8 +499,9 @@ public final class TerminalSession: @unchecked Sendable {
     awaitingGrid = true
     // A pane that is never laid out still gets its shell.
     queue.asyncAfter(deadline: .now() + .seconds(1)) { [weak self] in
-      self?.readBroker.submit {
-        guard let self, self.awaitingGrid, !self.closed else { return }
+      guard let self else { return }
+      self.readBroker.submit { [self] in
+        guard self.awaitingGrid, !self.closed else { return }
         self.awaitingGrid = false
         self.launch(columns: 80, rows: 24, cellWidth: 0, cellHeight: 0)
       }
@@ -1324,7 +1325,8 @@ public final class TerminalSession: @unchecked Sendable {
     resizeRetryDelay = min(250, delay * 2)
     queue.asyncAfter(deadline: .now() + .milliseconds(delay)) { [weak self] in
       // A newer request, if one is queued, already carries the wanted size.
-      self?.readBroker.submit { self?.resizeToWanted() }
+      guard let self else { return }
+      self.readBroker.submit { [self] in self.resizeToWanted() }
     }
   }
   package func resize(cols: Int, rows: Int, cellWidth: Int = 8, cellHeight: Int = 16) {

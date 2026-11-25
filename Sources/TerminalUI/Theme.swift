@@ -34,6 +34,7 @@ package enum TerminalTheme {
     return SIMD4(channel(rgb >> 16), channel(rgb >> 8), channel(rgb), alpha)
   }
   #if os(macOS)
+  @MainActor
   package static func apply(to window: NSWindow) {
     window.appearance = NSAppearance(named: .darkAqua)
     window.backgroundColor = color(surface)

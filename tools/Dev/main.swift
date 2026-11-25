@@ -9,11 +9,11 @@ import Foundation
 // options, the window list), ProcessTree.swift, Commands.swift, Files.swift,
 // Interruption.swift and the JSON files.
 
-struct Command {
+struct Command: Sendable {
   let name: String
   let usage: String
   let summary: String
-  let run: ([String]) throws -> Void
+  let run: @Sendable ([String]) throws -> Void
 }
 
 let commands = [

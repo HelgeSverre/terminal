@@ -14,7 +14,7 @@ public final class ClipboardAccess {
   package typealias DecisionHandler = (
     ClipboardWriteRequest, NSWindow?, @escaping (ClipboardAccessDecision) -> Void
   ) -> (() -> Void)?
-  private final class Pending {
+  private final class Pending: @unchecked Sendable {
     package let request: ClipboardWriteRequest
     package weak var window: NSWindow?
     package var cancelled = false
@@ -93,18 +93,23 @@ public final class ClipboardAccess {
     // `Session.selection` rejects synchronously before it schedules any main
     // completion. Do not supersede an already allowed OSC 52 write unless the
     // explicit copy was actually admitted to the owner queue.
-    var permit: UInt64?
-    var observedChangeCount: Int?
-    let admitted = session.selection(.copy(expectedSelectionRevision: selectionRevision)) { [weak self] result in
-      guard let self, let permit, let observedChangeCount,
-        self.latestWritePermit == permit,
+    final class CopyState: @unchecked Sendable {
+      weak var owner: ClipboardAccess?
+      var permit: UInt64?
+      var observedChangeCount: Int?
+      init(_ owner: ClipboardAccess) { self.owner = owner }
+    }
+    let state = CopyState(self)
+    let admitted = session.selection(.copy(expectedSelectionRevision: selectionRevision)) { result in
+      guard let owner = state.owner, let permit = state.permit, let observedChangeCount = state.observedChangeCount,
+        owner.latestWritePermit == permit,
         case .success(let copiedText) = result, let copiedText
       else { return }
-      self.write(Data(copiedText.utf8), permit: permit, expectedChangeCount: observedChangeCount)
+      owner.write(Data(copiedText.utf8), permit: permit, expectedChangeCount: observedChangeCount)
     }
     guard admitted else { return }
-    permit = issueWritePermit()
-    observedChangeCount = pasteboard.changeCount
+    state.permit = issueWritePermit()
+    state.observedChangeCount = pasteboard.changeCount
   }
 
   package func cancel(sessionID: UUID) {
@@ -144,8 +149,13 @@ public final class ClipboardAccess {
           pending.writePermit = self.issueWritePermit()
           pending.pasteboardChangeCount = self.pasteboard.changeCount
         }
-        pending.request.resolve(allowed) { [weak self, weak pending] accepted in
-          guard let self, let pending, self.active === pending else { return }
+        final class OwnerBox: @unchecked Sendable {
+          weak var owner: ClipboardAccess?
+          init(_ owner: ClipboardAccess) { self.owner = owner }
+        }
+        let ownerBox = OwnerBox(self)
+        pending.request.resolve(allowed) { [weak pending] accepted in
+          guard let self = ownerBox.owner, let pending, self.active === pending else { return }
           if accepted, !pending.cancelled, pending.request.isLive,
             let permit = pending.writePermit, let changeCount = pending.pasteboardChangeCount
           {

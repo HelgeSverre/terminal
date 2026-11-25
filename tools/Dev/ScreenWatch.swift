@@ -1,6 +1,6 @@
 import CoreMedia
 import Foundation
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 
 /// Watches one display and reports when a window becomes visible on it and
 /// when a block of marker colour first appears inside that window.
@@ -47,17 +47,20 @@ final class ScreenWatch: NSObject, SCStreamOutput, SCStreamDelegate {
 
   /// The displays that can be watched.
   static func displays() throws -> [SCDisplay] {
+    final class Result: @unchecked Sendable {
+      var found: [SCDisplay] = []
+      var problem: Error?
+    }
     let done = DispatchSemaphore(value: 0)
-    var found: [SCDisplay] = []
-    var problem: Error?
+    let result = Result()
     SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, error in
-      found = content?.displays ?? []
-      problem = error
+      result.found = content?.displays ?? []
+      result.problem = error
       done.signal()
     }
     done.wait()
-    if let problem { throw Failure("cannot list displays (Screen Recording permission?): \(problem.localizedDescription)") }
-    return found
+    if let problem = result.problem { throw Failure("cannot list displays (Screen Recording permission?): \(problem.localizedDescription)") }
+    return result.found
   }
 
   init(display: SCDisplay) { self.display = display }
@@ -75,11 +78,12 @@ final class ScreenWatch: NSObject, SCStreamOutput, SCStreamDelegate {
     let stream = SCStream(filter: SCContentFilter(display: display, excludingWindows: []),
                           configuration: configuration, delegate: self)
     try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
+    final class StartError: @unchecked Sendable { var value: Error? }
     let done = DispatchSemaphore(value: 0)
-    var problem: Error?
-    stream.startCapture { error in problem = error; done.signal() }
+    let problem = StartError()
+    stream.startCapture { error in problem.value = error; done.signal() }
     done.wait()
-    if let problem { throw Failure("cannot capture the screen: \(problem.localizedDescription)") }
+    if let error = problem.value { throw Failure("cannot capture the screen: \(error.localizedDescription)") }
     self.stream = stream
     // Wait for the reference frame, so that it shows the screen before the launch.
     let deadline = Clock.now + 2_000_000_000

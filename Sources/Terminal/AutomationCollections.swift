@@ -3,6 +3,7 @@ import TerminalUI
 
 /// Read-only, freshly resolved wrappers keep Cocoa scripting collections from
 /// retaining closed panes and expose the same identifiers as command targeting.
+@MainActor
 @objc(TerminalScriptWindow) final class TerminalScriptWindow: NSObject {
   let controller: TerminalWindow
   init(_ controller: TerminalWindow) { self.controller = controller }
@@ -19,6 +20,7 @@ import TerminalUI
   }
 }
 
+@MainActor
 @objc(TerminalScriptTab) final class TerminalScriptTab: NSObject {
   let controller: TerminalWindow
   let parent: TerminalScriptWindow
@@ -33,14 +35,13 @@ import TerminalUI
   }
 }
 
+@MainActor
 @objc(TerminalScriptPane) final class TerminalScriptPane: NSObject {
   weak var pane: TerminalCanvasView?
   let parent: TerminalScriptTab
   init(_ pane: TerminalCanvasView, parent: TerminalScriptTab) { self.pane = pane; self.parent = parent }
   @objc var identifier: String { pane.map { "no.helgesverre.terminal.pane." + $0.automationID } ?? "" }
-  @objc var workingDirectory: String {
-    MainActor.assumeIsolated { pane?.session.deliveredDirectory ?? "" }
-  }
+  @objc var workingDirectory: String { pane?.session.deliveredDirectory ?? "" }
   @objc var selectedText: String { pane?.accessibilitySelectedText() ?? "" }
   override var objectSpecifier: NSScriptObjectSpecifier? {
     guard let description = parent.classDescription as? NSScriptClassDescription else { return nil }

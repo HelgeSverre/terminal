@@ -5,7 +5,7 @@ extension TerminalSession {
   typealias SelectionCompletion = @MainActor (Result<String?, TerminalSelectionFailure>) -> Void
   package typealias LinkCompletion = @MainActor (Result<URL, TerminalSelectionFailure>) -> Void
 
-  final class SelectionDelivery {
+  final class SelectionDelivery: @unchecked Sendable {
     let completion: SelectionCompletion
     let cost: Int
     let retainsCopyResult: Bool
@@ -31,7 +31,7 @@ extension TerminalSession {
     }
   }
 
-  final class LinkDelivery {
+  final class LinkDelivery: @unchecked Sendable {
     let completion: LinkCompletion
     let cost: Int
     private let lock = NSLock()
@@ -135,9 +135,13 @@ extension TerminalSession {
         admission.unlock()
       }
       readBroker.submit { [self, delivery] in
-        selectionDeliveries.removeAll { $0 === delivery }
+        removeSelectionDelivery(delivery)
       }
     }
+  }
+
+  private func removeSelectionDelivery(_ delivery: SelectionDelivery) {
+    selectionDeliveries.removeAll { $0 === delivery }
   }
 
   func finishLink(cost: Int, completion: @escaping LinkCompletion,
@@ -153,9 +157,13 @@ extension TerminalSession {
       delivery.completion(delivery.takeForDelivery())
       release(delivery.cost)
       readBroker.submit { [self, delivery] in
-        linkDeliveries.removeAll { $0 === delivery }
+        removeLinkDelivery(delivery)
       }
     }
+  }
+
+  private func removeLinkDelivery(_ delivery: LinkDelivery) {
+    linkDeliveries.removeAll { $0 === delivery }
   }
 
   func clearSelectionForAcceptedInput(_ core: OpaquePointer) {

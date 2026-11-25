@@ -206,7 +206,7 @@ enum TUIStressProvider {
 
   /// The listening server. It ends after its lifetime, when one request more
   /// than its limit arrives, or when it is signalled, so that it cannot outlive a run by long.
-  final class Server {
+  final class Server: @unchecked Sendable {
     private let portFile: String
     private let slowMilliseconds: Int
     private let maxRequests: Int

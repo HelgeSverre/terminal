@@ -4,6 +4,7 @@ import TerminalUI
 /// The deliberately small AppleScript boundary. It resolves a stable pane
 /// identifier to the existing UI/session owner and never treats screen output
 /// as editable text.
+@MainActor
 private enum TerminalAutomation {
   static let panePrefix = "no.helgesverre.terminal.pane."
   static let defaultScreenLimit = 32_768
@@ -19,7 +20,7 @@ private enum TerminalAutomation {
     if let id {
       guard !id.isEmpty else { return nil }
       let normalized = id.hasPrefix(panePrefix) ? String(id.dropFirst(panePrefix.count)) : id
-      return delegate.windows.lazy.flatMap(\.panes).first { $0.automationID == normalized }
+      return delegate.windows.lazy.flatMap { $0.panes }.first { $0.automationID == normalized }
     }
     return delegate.intendedPane()
   }
@@ -36,6 +37,16 @@ private enum TerminalAutomation {
 }
 
 class TerminalScriptCommand: NSScriptCommand {
+  override func performDefaultImplementation() -> Any? {
+    struct Box: @unchecked Sendable { let value: Any? }
+    nonisolated(unsafe) let command = self
+    return MainActor.assumeIsolated { Box(value: command.run()) }.value
+  }
+
+  @MainActor
+  func run() -> Any? { nil }
+
+  @MainActor
   @discardableResult
   func fail(_ message: String, number: Int = -1728) -> Any? {
     scriptErrorNumber = number
@@ -43,6 +54,7 @@ class TerminalScriptCommand: NSScriptCommand {
     return nil
   }
 
+  @MainActor
   func pane() -> TerminalCanvasView? {
     let target = evaluatedArguments?["PaneID"] as? String
     guard let pane = TerminalAutomation.pane(id: target) else {
@@ -54,6 +66,7 @@ class TerminalScriptCommand: NSScriptCommand {
     }
     return pane
   }
+  @MainActor
   func screenLimit() -> Int? {
     guard let value = evaluatedArguments?["MaxCharacters"] else {
       return TerminalAutomation.defaultScreenLimit
@@ -73,7 +86,8 @@ class TerminalScriptCommand: NSScriptCommand {
 
 @objc(TerminalSendTextCommand)
 final class TerminalSendTextCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let text = directParameter as? String, !text.isEmpty else {
       return fail("send text requires nonempty text.", number: -1700)
     }
@@ -87,7 +101,8 @@ final class TerminalSendTextCommand: TerminalScriptCommand {
 
 @objc(TerminalReadScreenCommand)
 final class TerminalReadScreenCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let pane = pane(), let limit = screenLimit() else { return nil }
     let screen = pane.accessibilityValue() as? String ?? ""
     return String(screen.suffix(limit))
@@ -96,7 +111,8 @@ final class TerminalReadScreenCommand: TerminalScriptCommand {
 
 @objc(TerminalClearScreenCommand)
 final class TerminalClearScreenCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let pane = pane() else { return nil }
     pane.clearScreen(nil)
     return TerminalAutomation.paneID(pane)
@@ -105,7 +121,8 @@ final class TerminalClearScreenCommand: TerminalScriptCommand {
 
 @objc(TerminalFocusPaneCommand)
 final class TerminalFocusPaneCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let pane = pane() else { return nil }
     TerminalAutomation.focus(pane)
     return TerminalAutomation.paneID(pane)
@@ -114,7 +131,8 @@ final class TerminalFocusPaneCommand: TerminalScriptCommand {
 
 @objc(TerminalApplyPaneColorCommand)
 final class TerminalApplyPaneColorCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let text = directParameter as? String else {
       return fail("apply pane color requires a color.", number: -1700)
     }
@@ -134,7 +152,8 @@ final class TerminalApplyPaneColorCommand: TerminalScriptCommand {
 
 @objc(TerminalReadPaneColorCommand)
 final class TerminalReadPaneColorCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let pane = pane() else { return nil }
     guard let presentation = TerminalPanePresentationView.enclosing(pane) else {
       return fail("The requested terminal pane is closed or does not exist.")
@@ -143,6 +162,7 @@ final class TerminalReadPaneColorCommand: TerminalScriptCommand {
   }
 }
 
+@MainActor
 private func split(_ command: TerminalScriptCommand, vertical: Bool) -> Any? {
   guard let pane = command.pane(), let window = pane.window?.windowController as? TerminalWindow else {
     return nil
@@ -155,17 +175,20 @@ private func split(_ command: TerminalScriptCommand, vertical: Bool) -> Any? {
 
 @objc(TerminalSplitRightCommand)
 final class TerminalSplitRightCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? { split(self, vertical: true) }
+  @MainActor
+  override func run() -> Any? { split(self, vertical: true) }
 }
 
 @objc(TerminalSplitBelowCommand)
 final class TerminalSplitBelowCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? { split(self, vertical: false) }
+  @MainActor
+  override func run() -> Any? { split(self, vertical: false) }
 }
 
 @objc(TerminalClosePaneCommand)
 final class TerminalClosePaneCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let pane = pane(), let window = pane.window?.windowController as? TerminalWindow else { return nil }
     TerminalAutomation.focus(pane)
     window.closePane(nil)
@@ -175,7 +198,8 @@ final class TerminalClosePaneCommand: TerminalScriptCommand {
 
 @objc(TerminalNewWindowCommand)
 final class TerminalNewWindowCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let delegate = TerminalAutomation.delegate else { return fail("Terminal is not ready.") }
     delegate.newWindow(nil)
     guard let pane = delegate.windows.last?.panes.first else { return fail("Could not create a terminal window.") }
@@ -185,7 +209,8 @@ final class TerminalNewWindowCommand: TerminalScriptCommand {
 
 @objc(TerminalNewTabCommand)
 final class TerminalNewTabCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let delegate = TerminalAutomation.delegate else { return fail("Terminal is not ready.") }
     delegate.newTab(nil)
     guard let pane = delegate.windows.last?.panes.first else { return fail("Could not create a terminal tab.") }
@@ -195,15 +220,17 @@ final class TerminalNewTabCommand: TerminalScriptCommand {
 
 @objc(TerminalListPanesCommand)
 final class TerminalListPanesCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let delegate = TerminalAutomation.delegate else { return fail("Terminal is not ready.") }
-    return delegate.windows.flatMap(\.panes).map(TerminalAutomation.paneID)
+    return delegate.windows.flatMap { $0.panes }.map(TerminalAutomation.paneID)
   }
 }
 
 @objc(TerminalShowSettingsCommand)
 final class TerminalShowSettingsCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let delegate = TerminalAutomation.delegate else { return fail("Terminal is not ready.") }
     delegate.settings(nil)
     return true
@@ -212,7 +239,8 @@ final class TerminalShowSettingsCommand: TerminalScriptCommand {
 
 @objc(TerminalConfigurePreferencesCommand)
 final class TerminalConfigurePreferencesCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let delegate = TerminalAutomation.delegate else { return fail("Terminal is not ready.") }
     let current = TerminalPreferences.load()
     let arguments = evaluatedArguments ?? [:]
@@ -280,7 +308,8 @@ final class TerminalConfigurePreferencesCommand: TerminalScriptCommand {
 
 @objc(TerminalReadPreferencesCommand)
 final class TerminalReadPreferencesCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard TerminalAutomation.delegate != nil else { return fail("Terminal is not ready.") }
     let value = TerminalPreferences.load()
     let fields: [String: Any] = ["fontSize": Double(value.fontSize), "fontFamily": value.fontFamily ?? "",
@@ -300,7 +329,8 @@ final class TerminalReadPreferencesCommand: TerminalScriptCommand {
 
 @objc(TerminalReadDirectoryCommand)
 final class TerminalReadDirectoryCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let pane = pane() else { return nil }
     return MainActor.assumeIsolated { pane.session.deliveredDirectory ?? "" }
   }
@@ -308,7 +338,8 @@ final class TerminalReadDirectoryCommand: TerminalScriptCommand {
 
 @objc(TerminalReadHistoryCommand)
 final class TerminalReadHistoryCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let pane = pane(), let limit = screenLimit() else { return nil }
     suspendExecution()
     pane.session.recoveryHistory(maximumBytes: limit) { [self] text in
@@ -325,7 +356,8 @@ final class TerminalReadHistoryCommand: TerminalScriptCommand {
 
 @objc(TerminalSelectTextCommand)
 final class TerminalSelectTextCommand: TerminalScriptCommand {
-  override func performDefaultImplementation() -> Any? {
+  @MainActor
+  override func run() -> Any? {
     guard let pane = pane() else { return nil }
     func coordinate(_ key: String) -> Int? {
       guard let value = evaluatedArguments?[key] as? NSNumber,
