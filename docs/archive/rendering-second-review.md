@@ -14,11 +14,11 @@ ScreenCaptureKit captured only the separately named probe window, with audio and
 
 The control visibly stretched text and turned 60×60 squares into rectangles, including 148×60 and 22×60. The existing fix prevented aspect distortion in these runs but misplaced retained content vertically; one inspected frame moved the top marker from y=196 to y=616, leaving a blank region. The candidate retained 60×60 squares and the original top marker in every complete captured frame. Capture metadata reported content scale 1 throughout; the capture did not create these aspect changes.
 
-![Scaling control above; AppKit placement candidate below](../reports/renderer-placement-comparison.png)
+![Scaling control above; AppKit placement candidate below](../../reports/renderer-placement-comparison.png)
 
 The screenshot comparison uses the same final divider location, with synthetic content only. It juxtaposes control frame 27 and candidate frame 60, cropped to the first 400 image rows and reduced uniformly by half. These are representative frames from separate runs, not a claim of identical timing.
 
-The primary evidence manifest is [renderer-placement-evidence.json](../reports/renderer-placement-evidence.json). Full window-only videos, per-frame marker measurements, geometry traces, PNGs, and hashes are retained outside the repository at `/Users/helge/.codex/artifacts/terminal-rendering-review/`. The diagnostic source is commit `c9cf06e`; all three primary runs used executable SHA-256 `2863e151216e28c258a68925412d9cfe1596e9b3d2e9a99878ca3894d75b6f82`. Their owned PIDs were 63952, 64422, and 65078. All probe apps and PTY children exited; installed user app PID 29327 remained untouched.
+The primary evidence manifest is [renderer-placement-evidence.json](../../reports/renderer-placement-evidence.json). Full window-only videos, per-frame marker measurements, geometry traces, PNGs, and hashes are retained outside the repository at `/Users/helge/.codex/artifacts/terminal-rendering-review/`. The diagnostic source is commit `c9cf06e`; all three primary runs used executable SHA-256 `2863e151216e28c258a68925412d9cfe1596e9b3d2e9a99878ca3894d75b6f82`. Their owned PIDs were 63952, 64422, and 65078. All probe apps and PTY children exited; installed user app PID 29327 remained untouched.
 
 This is evidence for the controlled split/window sequence at the requested 60 Hz capture cadence, not proof about every physical display scanout or every user workflow. Continuous mouse tracking, mixed-DPI monitor movement, and arbitrary shell redraws remain outside this experiment. A transaction-based renderer rewrite was not needed for the passing candidate and was not implemented.
 

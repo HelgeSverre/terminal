@@ -2,7 +2,7 @@
 
 Current source decisions below were reconciled against integration commit
 `8f9f235` on 2026-11-17. Historical measurements retain their original revisions;
-see the [gap inventory](gap-inventory.md) and [implementation plan](gap-implementation-plan.md)
+see the [gap inventory](archive/gap-inventory.md) and [implementation plan](archive/gap-implementation-plan.md)
 for current acceptance work.
 
 ## macOS 14 minimum and Metal
@@ -30,7 +30,7 @@ Rust throughput, with 80% as a stretch goal. The final standard-workload pair
 reached 86.9–92.2%; the separate full-SQL stress case reached 67.9% and remains
 an optimization gap. Swift makes the executable smaller and removes the Rust
 toolchain from active development, while the measured full-app build is slightly
-slower. See [the cutover record](swift-cutover.md) for exact measurements and limits.
+slower. See [the cutover record](archive/swift-cutover.md) for exact measurements and limits.
 
 The package separates `TerminalEngine`, `TerminalHost`, `TerminalUI` and the
 app target. The engine owns emulator/document state; the host owns session/PTY

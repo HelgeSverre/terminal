@@ -181,7 +181,7 @@ user's own shell prompt.
 and each intermediate byte, to the emulator and compares the screen, cursor,
 modes and replies with a terminal that never received the sequence. It builds
 like the differential fuzzer in
-[`../direct-text-path-2026-11-10/tools`](../direct-text-path-2026-11-10/tools).
+`../direct-text-path-2026-11-10/tools`.
 
 | Source | Marked or intermediate variants the emulator acted on |
 | --- | ---: |

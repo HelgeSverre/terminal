@@ -59,8 +59,8 @@ is covered, while protocol breadth and long-term validation differ.
 | Platforms | Apple Silicon, macOS 15+ | macOS and Linux |
 
 Our implementation evidence is in [the source map](../../docs/architecture.md),
-[automation guide](../../docs/automation.md), [graphics implementation](../../Sources/Terminal/Emulation/KittyGraphics.swift)
-and [replacement validation](../../docs/swift-port-parity.md). Source-level
+[automation guide](../../docs/automation.md), [graphics implementation](../../Sources/TerminalEngine/Emulation/KittyGraphics.swift)
+and [replacement validation](../../docs/archive/swift-port-parity.md). Source-level
 coverage does not establish complete IME, VoiceOver, GPU recovery or multi-display
 conformance. The current status document retains those limits.
 

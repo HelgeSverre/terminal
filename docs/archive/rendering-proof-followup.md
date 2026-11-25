@@ -15,7 +15,7 @@ The first candidate attempt is retained as **incomplete**: ScreenCaptureKit repo
 
 The control also retained stream-stop errors, but only after the recorded native phases and final-generation gate. Its divider input ended at host time 280808.443496 and window input at 280811.077553; sample 749 captured the final gate at presentation timestamp 280811.111675. The two error records follow sample 811, whose timestamp is 280812.498124. The control therefore supports the reported phases and final gate, but not uninterrupted capture through the intended recording duration. The errors have no individual timestamp; these numbers establish persisted-record order, not an exact error-onset time. Both error messages remain in the manifest and raw log.
 
-![Scaling control above; current placement below](../reports/renderer-proof-comparison.png)
+![Scaling control above; current placement below](../../reports/renderer-proof-comparison.png)
 
 The comparison shows control sample 64 and candidate sample 153 at the same pane geometry. The control's intended 60×40 marker became 105×40 in the left panes and 30×40 in the right pane. Each image is cropped to the top 300 pixels and uniformly reduced by half; text and marker distortion are present in the original capture.
 
@@ -43,7 +43,7 @@ Sample 331 retained the old 900-point capture width while the app had laid out a
 
 Sample 388 lacks the titlebar and upper content, including native references. Its capture metadata still describes 900×608 points, while the app had laid out 1100×788 points about 14 ms earlier. The lower pane's reference/content coordinates are exactly 360 pixels above those in the following normal frame, matching twice the 180-point height difference. The next captured frame, approximately 18.47 ms later, has the new metadata and normal content.
 
-![Inconclusive sample 388, including absent native chrome](../reports/renderer-proof-inconclusive.png)
+![Inconclusive sample 388, including absent native chrome](../../reports/renderer-proof-inconclusive.png)
 
 This supports a capture-geometry lag explanation affecting the entire window, rather than isolated terminal content disappearing. It remains inconclusive about the physical display because no simultaneous display-wide capture was taken. These frames must not be described as visually correct.
 
@@ -53,6 +53,6 @@ The isolated diagnostic source is commit `53bb3b9`, based on `b4f95b0`. It is a 
 
 ScreenCaptureKit filtered only the owned probe window, with audio and microphone disabled. Other agents ran headless builds/tests during some captures; this was not a quiet performance benchmark. The native fixture, generated mouse sequence, capture configuration, color thresholds and layout were otherwise shared across variants.
 
-[The compact manifest](../reports/renderer-proof-evidence.json) includes run analyses, source/base IDs, executable and helper hashes, final-generation gates, per-pane classifications, native-phase checks and capture errors. Its per-run hashes cover the final `analysis.json` files and, for both primary runs, the `frames-reviewed.jsonl` records used for the displayed classifications. Full videos, PNGs, original/reviewed frame records, app presentation traces and the executed app/helper binaries are retained at `/Users/helge/.codex/artifacts/terminal-rendering-proof-v2/`.
+[The compact manifest](../../reports/renderer-proof-evidence.json) includes run analyses, source/base IDs, executable and helper hashes, final-generation gates, per-pane classifications, native-phase checks and capture errors. Its per-run hashes cover the final `analysis.json` files and, for both primary runs, the `frames-reviewed.jsonl` records used for the displayed classifications. Full videos, PNGs, original/reviewed frame records, app presentation traces and the executed app/helper binaries are retained at `/Users/helge/.codex/artifacts/terminal-rendering-proof-v2/`.
 
 Astra independently reviewed the native-reference coordinate mapping, pane assignment, barcode validation, final progress gate, ROI correction and inconclusive-frame geometry. This follow-up supports keeping the native placement correction without a speculative transaction-presentation rewrite. [Apple: NSView layer content placement](https://developer.apple.com/documentation/appkit/nsview/layercontentsplacement-swift.property)

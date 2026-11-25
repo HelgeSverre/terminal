@@ -3,10 +3,10 @@
 Current source coverage was reconciled on 2026-11-17. This updates the earlier
 audit starting at `3ad91fe`; its dated validation record below remains
 historical. Tests named in the current tables are regressions under
-`Tests/TerminalTests`; [gap implementation status](gap-implementation-status.md)
+`Tests/TerminalTests`; [gap implementation status](archive/gap-implementation-status.md)
 records the revisions the full gate passed at. Kitty graphics, SIXEL and iTerm2 images do not
-claim complete conformance. See the [gap inventory](gap-inventory.md),
-[implementation plan](gap-implementation-plan.md) and [qualification matrix](qualification.md).
+claim complete conformance. See the [gap inventory](archive/gap-inventory.md),
+[implementation plan](archive/gap-implementation-plan.md) and [qualification matrix](qualification.md).
 
 ## Graphics
 

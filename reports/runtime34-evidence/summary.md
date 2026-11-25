@@ -35,7 +35,7 @@ and the earlier 65 acceptance evidence remains separate in
 [swift-app-acceptance-65cb446-evidence](../swift-app-acceptance-65cb446-evidence/summary.md).
 The test-only `5cfe701` follow-up is not part of this runtime measurement.
 Subsequent CI and promotion are recorded separately in the
-[cutover record](../../docs/swift-cutover.md); the raw runtime evidence remains
+[cutover record](../../docs/archive/swift-cutover.md); the raw runtime evidence remains
 unchanged.
 
 The paired 8.16 GB primary-history SQL stress result is separate:

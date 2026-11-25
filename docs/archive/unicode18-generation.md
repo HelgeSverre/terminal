@@ -5,7 +5,7 @@ The canonical generator inputs are committed under `tools/unicode`:
 `GraphemeBreakTest-18.0.0.txt` corpus. Generators and the corpus runner validate
 their frozen SHA-256 checksums. `tools/unicode/unicode18-inputs.json` records
 the original upstream-source hashes and the neutral inputs' hashes and sizes.
-See [the Unicode data guide](../tools/unicode/README.md) for provenance,
+See [the Unicode data guide](../../tools/unicode/README.md) for provenance,
 licenses and regeneration commands. No Rust workspace or Cargo cache is needed.
 
 Run the verifier with:

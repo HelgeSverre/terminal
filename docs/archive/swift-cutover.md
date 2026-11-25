@@ -26,7 +26,7 @@ throughput in a visible app; they do not measure physical display latency.
 
 All four pass the user's 70% acceptance and 80% stretch thresholds. Raw paired
 results, binary identities and owned-process exit checks are retained in
-[runtime-34 evidence](../reports/runtime34-evidence/summary.md).
+[runtime-34 evidence](../../reports/runtime34-evidence/summary.md).
 
 The real SQL dump is a separate primary-screen/history stress workload:
 
@@ -39,7 +39,7 @@ The real SQL dump is a separate primary-screen/history stress workload:
 
 Both drain all accepted bytes, reap their child and leave no owned processes.
 Swift reaches 67.94% of Rust here, below 70%; this remains an optimization gap.
-See the [paired SQL evidence](../reports/sql-full-34bd618-evidence/summary.md).
+See the [paired SQL evidence](../../reports/sql-full-34bd618-evidence/summary.md).
 No SQL contents are stored in the report.
 
 The earlier frozen Swift `65cb446` also completed the entire dump while moving
@@ -62,7 +62,7 @@ comparison nor a statistical compilation benchmark.
 | Executable | 3.57 MiB | 1.92 MiB |
 | Bundle regular-file bytes | 8.61 MiB | 6.96 MiB |
 
-See the [build comparison](../reports/build-comparison-0587616/summary.md) for
+See the [build comparison](../../reports/build-comparison-0587616/summary.md) for
 commands, byte counts, logs and provenance. These size results belong to that
 build pair, rather than the subsequently signed runtime-34 artifact.
 
@@ -79,7 +79,7 @@ both quit paths and a 960×600 Kitty demo with macOS output muted.
 The signed 0.2.0/build 5 app and PKG were accepted by Apple's notary service,
 stapled and independently validated with codesign, stapler, pkgutil and
 Gatekeeper. Both signed-app shutdown fixtures exit naturally and reap their
-HUP-resistant children. [Distribution evidence](../reports/distribution-0.2.0.json)
+HUP-resistant children. [Distribution evidence](../../reports/distribution-0.2.0.json)
 contains source identities, artifact hashes, notary receipts and command output.
 
 After the user closed their old sessions, the matching notarized app was installed
@@ -97,4 +97,4 @@ A clean app instance was opened with inherited color overrides removed. Existing
 user sessions were preserved. Normal launches continue to honor intentional
 `NO_COLOR` settings; visual test fixtures sanitize their inherited color policy.
 
-The broader terminal specification is still in progress; see [remaining v1 work](status.md).
+The broader terminal specification is still in progress; see [remaining v1 work](../status.md).

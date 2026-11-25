@@ -80,7 +80,7 @@ Bundle identity: `no.helgesverre.terminal.gap-validation`, version 0.6.2 (22).
 Raw logs, receipts and copied bundles remain ignored under
 `reports/gap-implementation/`. No installed terminal was changed. Hardware,
 external-client and release qualification is tracked in
-[implementation status](../../docs/gap-implementation-status.md).
+[implementation status](../../docs/archive/gap-implementation-status.md).
 
 ## Standalone sanitizer build follow-up
 

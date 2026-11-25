@@ -46,7 +46,7 @@ At `b945624`, conformance passed its regression gate with 447 passing cases,
 81 reported failures and 39 known xterm deviations. The known-good list now
 protects those 447 cases. Two reported failures are upstream known-bug
 decorators rejecting correct ISO-protection behavior as unexpected passes;
-the other dispositions are explicit in [conformance](conformance.md).
+the other dispositions are explicit in [conformance](../conformance.md).
 
 The frozen `306a592` app restored known text after an owned-process crash,
 exposed it through accessibility history in a fresh shell, and removed its
@@ -70,7 +70,7 @@ its 7m14s overall workflow latency exceeded the target and its sanitizer-build
 failure required this follow-up. Hosted run 44163946100 at `cbb5fb6` then
 passed every gate: 116 s of native tests, 197 s for the headless job and
 283 s of complete feedback.
-See the [dated evidence](../reports/gap-implementation-2026-11-17/README.md)
+See the [dated evidence](../../reports/gap-implementation-2026-11-17/README.md)
 for commands, artifact identities and the distinction between tested revisions.
 
 ## Review after integration
@@ -80,7 +80,7 @@ defects in desktop configuration loading, split directories, recovery
 scheduling and resume records, the Bash prompt hook, command navigation after
 reflow, search, frame retry and fractional scrolling; split `main.swift`; and
 added regex counted repetition and shorthand classes, DECID, DECNKM and the
-DECDSR and DECRQSS answers listed in [conformance](conformance.md).
+DECDSR and DECRQSS answers listed in [conformance](../conformance.md).
 
 At source `71b2d9f` the full `just test` gate passed: 672 developer and
 application tests in 108 suites, the GPU suites, and the tooling, terminfo,
@@ -122,5 +122,5 @@ Remaining qualification is explicit:
   remain external evidence; a local patch or a single run does not establish them.
 
 The supported regex subset and resource bounds are documented in
-[search](search.md); unsupported constructs fail explicitly rather than using
+[search](../search.md); unsupported constructs fail explicitly rather than using
 an unbounded backtracking engine.

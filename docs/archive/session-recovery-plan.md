@@ -1,7 +1,7 @@
 # Session recovery plan
 
 Status: phases 0 to 3 were implemented on 2026-11-17, with click-to-resume
-only; [usage](usage.md) describes the behavior. Phase 4's real-agent checks and
+only; [usage](../usage.md) describes the behavior. Phase 4's real-agent checks and
 power-loss testing remain. The text below is the plan as revised 2026-11-11:
 its code references are to `main` at `3c96cb7` and are historical, and
 statements that something is not implemented describe that date.

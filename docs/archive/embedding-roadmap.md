@@ -1,7 +1,7 @@
 # Embedding audit: 2026-11-14 baseline
 
 This is a historical source audit at the commits below. It is not the current
-support matrix. The [embedding guide](embedding.md) now defines the consumer
+support matrix. The [embedding guide](../embedding.md) now defines the consumer
 manifest boundary, API compatibility policy and concurrency qualification
 requirements. UIKit input/selection/find/link/accessibility and packaged shell
 resources have since been expanded; device/VoiceOver and full library Swift 6
@@ -10,11 +10,11 @@ qualification still require runtime/compiler evidence.
 An audit of the package's public interface on 2026-11-14, set against the two
 libraries an app would otherwise choose: SwiftTerm and libghostty. It lists
 what is wrong with the interface today, what is missing, and an order to
-build it in. [Embedding](embedding.md) describes the interface as it is.
+build it in. [Embedding](../embedding.md) describes the interface as it is.
 
 Everything here was read from source; nothing in the other two projects was
 built or run for it. The throughput comparison with SwiftTerm is separate and
-measured: [swiftterm-throughput-2026-11-14](../reports/swiftterm-throughput-2026-11-14/README.md).
+measured: [swiftterm-throughput-2026-11-14](../../reports/swiftterm-throughput-2026-11-14/README.md).
 
 | Project | Commit read | Date |
 | --- | --- | --- |

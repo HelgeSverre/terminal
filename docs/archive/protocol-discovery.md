@@ -56,7 +56,7 @@ controls plus bidi overrides, isolates and directional marks, which otherwise
 can visually disguise a host/path. ZWJ and WORD JOINER remain valid. Titles
 remain cell-ordered text; this is not a general bidi rendering implementation.
 
-The [isolated Snacks fixture](../Tests/Fixtures/Snacks/README.md) contains the
+The [isolated Snacks fixture](../../Tests/Fixtures/Snacks/README.md) contains the
 Helge-specific upstream patch and default-image startup configuration.
 Upstream recognition is a separate
 dependency. It passed direct runtime validation on the frozen `306a592` app;

@@ -173,7 +173,7 @@ and final snapshot serialization/free. They exclude the GUI, renderer, PTY,
 retained history and search; they do not establish complete behavioral parity.
 Rust was not rebuilt, and recorded build wall times are provenance rather than
 a matched full-app compilation benchmark. These are historical experiment
-results; the application has since switched to Swift. See the [cutover record](swift-cutover.md).
+results; the application has since switched to Swift. See the [cutover record](archive/swift-cutover.md).
 
 Earlier evidence is retained in the [range-local printing probe](../reports/swift-printing-315f055/summary.md),
 [ownership comparison](../reports/emulator-comparison-6c601d1-a49a5af/summary.md)
@@ -243,7 +243,7 @@ measures Swift at 16.61/20.12/10.32/12.12 MiB/s. It improves ANSI throughput
 by only one to two percent. Its four Swift/Rust ratios remain below 90%, so it
 did not meet the replacement target used for that report. Later measurements
 and the current criterion are recorded in the
-[performance research findings](swift-performance-research/synthesis.md).
+[performance research findings](archive/swift-performance-research/synthesis.md).
 
 `just benchmark-startup` and `just benchmark-shutdown` compare launch and quit
 times with Ghostty, Kitty, iTerm2 and Apple Terminal, launching a disposable

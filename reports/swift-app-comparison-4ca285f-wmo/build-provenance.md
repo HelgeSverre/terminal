@@ -6,7 +6,7 @@ artifact used for the follow-up app smoke/timing work; it is not a benchmark.
 ## Inputs
 
 - Repository HEAD: `4ca285f0c4dcf9de200c75b91e83cc5649db2f22`
-- Source graph: [`tools/swift-sources.json`](../../tools/swift-sources.json)
+- Source graph: `tools/swift-sources.json` (historical, removed after SwiftPM migration)
 - App source list: `xcrun swift tools/SwiftIncrementalBuild.swift --print app`
   (34 Swift files, in the order recorded in `input.sha256`)
 - Aggregate SHA-256 of those 34 files plus `native/Bridge.h`,

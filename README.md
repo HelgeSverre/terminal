@@ -149,11 +149,14 @@ just test
 
 The headless gate builds optimized test products once in `target/swiftpm/testing`,
 then assembles its test-enabled app bundle and reuses the same emulator in the
-terminfo and PTY probes. Phase timings and per-test XML reports are written to
-`reports/test-timing`. The test cache preserves timestamps only for tracked files
-whose contents match the build receipt; edited files still rebuild normally.
-CI runs protocol conformance and the two-minute sanitizer fuzzer in separate
-jobs alongside the headless gate. All three jobs must pass.
+terminfo and PTY probes. The headless job also verifies the app bundle, checks
+Swift 6 consumer embedding (`just embedding-check`), and builds an ad-hoc signed
+WMO release bundle (`just release-build`). Phase timings and per-test XML
+reports are written to `reports/test-timing`. The test cache preserves
+timestamps only for tracked files whose contents match the build receipt; edited
+files still rebuild normally. CI runs protocol conformance (`just esctest`) and
+the two-minute sanitizer fuzzer (`just fuzz 120`) in separate jobs alongside the
+headless gate. All three jobs must pass.
 
 GUI diagnostics open disposable windows and clean up their child processes.
 The real-workload stress commands need Accessibility, Screen Recording, and
@@ -173,18 +176,18 @@ The bundle identifier is `no.helgesverre.terminal`.
 | [Automation](docs/automation.md) | Accessibility and AppleScript commands |
 | [Architecture](docs/architecture.md) | Runtime ownership, presentation, and resize flow |
 | [Embedding](docs/embedding.md) | Using the terminal view in another app through the Swift package |
-| [Specification](docs/spec.md) · [status](docs/status.md) | Requirements, completed work, and open gaps |
+| [Specification](docs/spec.md) · [status](docs/status.md) | Requirements, current capabilities, and open validation gates |
 | [Benchmarks](docs/benchmarking.md) | Ghostty/Kitty comparisons, SQL output, resize stress, and measurement limits |
-| [Swift cutover](docs/swift-cutover.md) | Paired Rust/Swift measurements and the archived Rust snapshot |
 | [Terminal compatibility](docs/terminfo.md) | Bundled capabilities and parser coverage |
 | [Protocol coverage](docs/protocol-coverage.md) · [conformance](docs/conformance.md) | Image, input and query protocols, their tests and limits; esctest and fuzzing |
 | [Desktop controls](docs/desktop-controls.md) | Profiles, shortcuts, themes, cursor, Option keys and pane commands |
 | [Search](docs/search.md) | Find options, the bounded regex dialect and headless search |
 | [Session handoff](docs/session-handoff.md) | Experimental: relaunch or update the app while its programs keep running |
-| [Gap status](docs/gap-implementation-status.md) · [qualification](docs/qualification.md) | What the 2026-11-17 gap work implemented and what still needs external checks |
+| [Qualification](docs/qualification.md) | CI, distribution, platform, and SSH validation boundaries |
 | [Input and accessibility validation](docs/native-input-accessibility-validation.md) | Manual checks for input methods and VoiceOver |
 | [Clipboard protocol](docs/osc52-clipboard.md) | OSC 52 behavior and policy |
 | [Fonts](Sources/TerminalUI/Resources/Fonts/README.md) | Font sources and licenses |
+| [Archive](docs/archive/README.md) | Historical Rust-to-Swift cutover ledgers, gap audits, and one-off research |
 
 ## License
 

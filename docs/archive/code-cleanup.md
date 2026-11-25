@@ -1,8 +1,8 @@
 # Swift layout and cleanup
 
 This records the 2026-11-09 cleanup. The current graphics/protocol audit and
-its correctness/module review are in [protocol coverage](protocol-coverage.md).
-Raw historical report paths resolve through the [report archive](../reports/README.md).
+its correctness/module review are in [protocol coverage](../protocol-coverage.md).
+Raw historical report paths resolve through the [report archive](../../reports/README.md).
 
 ## Scope and baseline
 

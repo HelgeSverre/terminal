@@ -128,5 +128,5 @@ wire-format coverage in the normal gate.
 At implementation commit `247f364`, `just test`, the isolated Launch Services
 smoke, and the installed-Codex probe all passed. The full gate includes 357
 main unit tests, rendering checks, and the PTY corpus. Saved
-[receipts and executable hashes](../reports/2026-11-16-toolbox-registration/verification.json)
+[receipts and executable hashes](../../reports/2026-11-16-toolbox-registration/verification.json)
 identify the tested artifacts. The installed terminal was left unchanged.

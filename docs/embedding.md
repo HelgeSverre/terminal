@@ -492,9 +492,9 @@ build alone must never be reported as that qualification.
   strict-concurrency qualification are separate gates, as described above.
 - **Stable release adoption.** No 1.0 tag is implied by this implementation.
 
-[The embedding roadmap](embedding-roadmap.md) lists the defects in this
+[The embedding roadmap](archive/embedding-roadmap.md) lists the defects in this
 interface, what SwiftTerm and libghostty offer instead, and the order of work.
-[SwiftTerm compared](swiftterm-comparison.md) covers that library in detail,
+[SwiftTerm compared](archive/swiftterm-comparison.md) covers that library in detail,
 and a [throughput comparison](../reports/swiftterm-throughput-2026-11-14/README.md)
 measures both as embedded libraries.
 

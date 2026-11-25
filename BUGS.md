@@ -1,20 +1,12 @@
 # Known bugs
 
-Current source disposition was checked on 2026-11-17.
-[Gap implementation status](docs/gap-implementation-status.md) records the
-revisions the gates ran at; hardware gates remain separate. The
-[gap inventory](docs/gap-inventory.md) and [implementation plan](docs/gap-implementation-plan.md)
-track the broader backlog and validation dependencies.
-
-## Discovery queries from the 0.3.0 probe
-
-The 2026-11-11 probe at `22b9f69` found no replies for XTVERSION (`CSI > q`),
-XTGETTCAP, DECRQSS, XTWINOPS 14t/16t/18t/21t, OSC 12 query and `CSI ? 996 n`.
-Source now implements those replies; they are no longer missing-feature entries.
-`TerminalProtocolDiscoveryTests` adds discovery, color and title regressions.
-Identity is host supplied and truthful. Query support does not authorize child
-window movement/resizing or imply complete xterm conformance. See
-[protocol coverage](docs/protocol-coverage.md).
+Current source status is tracked in [docs/status.md](docs/status.md); hardware
+and external qualification gates are tracked in
+[docs/qualification.md](docs/qualification.md). Historical gap audits and
+plans live in [docs/archive/](docs/archive/README.md)
+([gap inventory](docs/archive/gap-inventory.md),
+[gap implementation status](docs/archive/gap-implementation-status.md),
+[implementation plan](docs/archive/gap-implementation-plan.md)).
 
 ## Shell line editing after emoji sequences
 

@@ -2,8 +2,8 @@
 
 Historical comparison of the revisions listed below. Terminal has since added
 public embedding libraries, SIXEL, iTerm2 inline images and broader Kitty
-graphics support. For current behavior see [embedding](embedding.md) and
-[protocol coverage](protocol-coverage.md); the comparison below is preserved as
+graphics support. For current behavior see [embedding](../embedding.md) and
+[protocol coverage](../protocol-coverage.md); the comparison below is preserved as
 evidence of its original snapshot.
 
 SwiftTerm is a terminal library with two sample apps. Terminal is an app with

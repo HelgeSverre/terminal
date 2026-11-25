@@ -131,7 +131,7 @@ For Codex, replace `claude-code` with `codex`. A hook can name only a shipped
 rule and a validated session ID. It cannot supply a command. The terminal
 offers the record only when that rule also matched the pane's foreground
 program at its last sample. Agent-specific hook inheritance and real-agent
-resume behavior are tracked separately in the [recovery plan](session-recovery-plan.md).
+resume behavior are tracked separately in the [recovery plan](archive/session-recovery-plan.md).
 
 ## Text and settings
 

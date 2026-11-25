@@ -127,8 +127,7 @@ run loop, and a suite that touches process-wide state is `.serialized`.
 
 New developer tooling is written in Swift, as a subcommand of the compiled
 tool in `tools/Dev/`, and called from a `justfile` recipe. No new Ruby,
-Python or shell runners. The existing Ruby runners are being ported one at a
-time.
+Python or shell runners.
 
 ## When you finish
 

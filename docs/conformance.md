@@ -20,19 +20,20 @@ fails when one of them stops passing, and names cases that newly pass;
 | Measured | Value (cases) |
 | --- | --- |
 | Run | 567 |
-| Pass | 460 |
-| Reported failures | 66 |
+| Pass | 461 |
+| Reported failures | 65 |
 | Marked by esctest as known xterm deviations | 41 |
 
-Measured on 2026-11-18 at source `c9b2eca`, esctest2 `2798f12`, with
+Measured at source `35d681d` (2026-11-25), esctest2 `2798f12`, with
 `--expected-terminal=xterm --xterm-checksum=334 --xterm-reverse-wrap=383`.
-These are now the harness defaults; the modern reverse-wrap profile matches
+These are the harness defaults; the modern reverse-wrap profile matches
 the implemented mode 45/1045 behavior.
-The known-good gate now protects all 460 passes. The run at `b945624` on
-2026-11-17 passed 447. Thirteen cases followed at `556aa51`: the DECDSR
-reports for absent hardware, DECID, DECNKM and the DECSASD/DECSSDT status
-strings. Thirteen more followed at `25d3add`: DECRQM answers permanently
-reset (status 4) for twelve ECMA-48 modes and DECHCCM, for 473 passes.
+The known-good gate now protects all 461 passes: adding `DECRQSS` support for
+`DECSNLS`/`DECSLPP` at `35d681d` brought the count from 460 to 461. Earlier
+checkpoints passed 447 at `b945624`, 460 at `556aa51` (DECDSR absent-hardware
+reports, DECID, DECNKM, and DECSASD/DECSSDT status strings), and 473 at
+`25d3add` (DECRQM permanently-reset replies for twelve ECMA-48 modes and
+DECHCCM).
 
 At `c9b2eca` the title reports `CSI 20 t` and `CSI 21 t` were removed on
 purpose: a title is set by output, so reporting it lets output place text in
@@ -41,15 +42,15 @@ two label reports, eight title-stack cases, two title-mode cases and
 `RIS_ResetTitleMode`. The title stack itself still works and is covered by
 `TerminalProtocolDiscoveryTests`.
 
-The 66 reported failures include two correct ISO-protection results that
+The 65 reported failures include two correct ISO-protection results that
 upstream's known-bug decorators reject as unexpected passes. The remainder
 are unsupported color spellings (21), DECRQM modes that are not recognized
 (9), title reports that are intentionally not answered (11), window changes
 that are intentionally prohibited (9), xterm identity
 expectations for DA and DA2 (4), status strings outside the bounded subset
-(4), and conformance-level and 80/132-column switching (3 each). See the exact
-[protocol dispositions](protocol-discovery.md) and
-[VT dispositions](gap-vt-conformance.md). A run writes each case to
+(3), and conformance-level and 80/132-column switching (3 each). See the exact
+[protocol dispositions](archive/protocol-discovery.md) and
+[VT dispositions](archive/gap-vt-conformance.md). A run writes each case to
 `reports/esctest.json`, which is not kept in the repository.
 The earlier 2026-11-15 baseline was 320 passes, 206 failures and 41 known
 xterm deviations with the legacy reverse-wrap profile.
