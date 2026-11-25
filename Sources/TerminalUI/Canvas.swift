@@ -346,14 +346,12 @@ public final class TerminalCanvasView: NSView, @preconcurrency NSTextInputClient
     let local = convert(
       window.convertFromScreen(NSRect(origin: point, size: .zero)).origin, from: nil)
     guard bounds.contains(local) else { return NSRange(location: NSNotFound, length: 0) }
-    let row = presentationGeometry.row(at: local.y * scale)
+    let geometry = presentationGeometry
+    let row = geometry.row(at: local.y * scale)
     guard row >= 0, row < (presentationSnapshot?.rows.count ?? 0) else {
       return NSRange(location: NSNotFound, length: 0)
     }
-    let col = max(
-      0,
-      min(
-        accessible.columns - 1, Int((local.x * scale - CGFloat(insetPixels)) / CGFloat(cellWidth))))
+    let col = max(0, min(accessible.columns - 1, geometry.column(at: local.x * scale)))
     let index = row * accessible.columns + col
     let offset = accessible.textRange(gridStart: index, gridEnd: index).location
     return accessible.range(for: offset)
@@ -444,14 +442,13 @@ public final class TerminalCanvasView: NSView, @preconcurrency NSTextInputClient
   private func linkOccurrence(locationInWindow: NSPoint) -> VisibleLinkProjection.Occurrence? {
     guard let snapshot, snapshot.cols > 0, !snapshot.rows.isEmpty else { return nil }
     let point = convert(locationInWindow, from: nil)
-    let x = point.x * scale - CGFloat(insetPixels)
-    let y = point.y * scale - CGFloat(insetPixels) - presentationOffsetPixels
-    let viewportY = point.y * scale - CGFloat(insetPixels)
-    guard x >= 0, y >= 0, viewportY >= 0,
-      viewportY < CGFloat(snapshot.rows.count * cellHeight) else { return nil }
-    let column = Int(x / CGFloat(cellWidth))
-    let row = Int(y / CGFloat(cellHeight))
-    guard column < snapshot.cols, row < (presentationSnapshot?.rows.count ?? snapshot.rows.count) else { return nil }
+    let geometry = presentationGeometry
+    let viewportY = point.y * scale - geometry.inset
+    guard viewportY >= 0, viewportY < CGFloat(snapshot.rows.count) * geometry.cellHeight else { return nil }
+    let column = geometry.column(at: point.x * scale)
+    let row = geometry.row(at: point.y * scale)
+    guard column >= 0, column < snapshot.cols,
+      row >= 0, row < (presentationSnapshot?.rows.count ?? snapshot.rows.count) else { return nil }
     return accessible?.occurrence(atGrid: row * snapshot.cols + column)
   }
   /// The only UI boundary that opens links. Session first validates the
@@ -891,17 +888,17 @@ public final class TerminalCanvasView: NSView, @preconcurrency NSTextInputClient
   private func cellIndex(_ event: NSEvent) -> Int {
     guard let value = snapshot else { return 0 }
     let p = convert(event.locationInWindow, from: nil)
-    let row = max(0, min(value.rows.count - 1, presentationGeometry.row(at: p.y * scale)))
-    let col = max(
-      0, min(value.cols - 1, Int((p.x * scale - CGFloat(insetPixels)) / CGFloat(cellWidth))))
+    let geometry = presentationGeometry
+    let row = max(0, min(value.rows.count - 1, geometry.row(at: p.y * scale)))
+    let col = max(0, min(value.cols - 1, geometry.column(at: p.x * scale)))
     return row * value.cols + col
   }
   private func selectionHit(_ event: NSEvent) -> TerminalSelectionHit? {
     guard let value = presentationSnapshot, value.cols > 0, !value.rows.isEmpty else { return nil }
     let point = convert(event.locationInWindow, from: nil)
-    let row = max(0, min(value.rows.count - 1, presentationGeometry.row(at: point.y * scale)))
-    let boundary = max(0, min(value.cols,
-      Int((point.x * scale - CGFloat(insetPixels)) / CGFloat(cellWidth))))
+    let geometry = presentationGeometry
+    let row = max(0, min(value.rows.count - 1, geometry.row(at: point.y * scale)))
+    let boundary = max(0, min(value.cols, geometry.column(at: point.x * scale)))
     return value.selectionHit(row: row, boundary: boundary)
   }
   public override func mouseDown(with event: NSEvent) {
@@ -1011,7 +1008,8 @@ public final class TerminalCanvasView: NSView, @preconcurrency NSTextInputClient
       + (event.modifierFlags.contains(.control) ? 16 : 0)
     let point = convert(event.locationInWindow, from: nil)
     let pixels = NativeMouseCoordinates.position(point, scale: scale, inset: insetPixels,
-      width: value.cols * cellWidth, height: value.rows.count * cellHeight)
+      width: value.cols * cellWidth, height: value.rows.count * cellHeight,
+      yOffset: presentationOffsetPixels)
     let encoding = value.modes.mouse_encoding ?? (value.modes.sgr_mouse ? 1006 : 0)
     session.rawInput(TerminalMouseEncoder.encode(button: button, release: release, modifiers: modifier,
       column: x, row: y, pixelX: pixels.x, pixelY: pixels.y, encoding: encoding, x10: value.modes.mouse == 9))

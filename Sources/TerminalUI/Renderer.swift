@@ -217,6 +217,17 @@ public final class TerminalRendering: @unchecked Sendable {
   private var boldFont: CTFont
   private var italicFont: CTFont
   private var boldItalicFont: CTFont
+  private var fontIdentity: String
+  private var boldFontIdentity: String
+  private var italicFontIdentity: String
+  private var boldItalicFontIdentity: String
+  private struct PaletteCacheKey: Equatable {
+    let palette: [[Int]]
+    let defaultFg: [Int]
+    let defaultBg: [Int]
+    let reverseVideo: Bool
+  }
+  private var cachedPalette: (key: PaletteCacheKey, value: CellPalette)?
   private var submissions: UInt64 = 0
   // Quad storage for frames, on the render queue. Creating a Metal buffer
   // costs far more than filling one: with a buffer per quad list per frame,
@@ -293,6 +304,10 @@ public final class TerminalRendering: @unchecked Sendable {
     boldFont = font
     italicFont = font
     boldItalicFont = font
+    fontIdentity = CTFontCopyPostScriptName(font) as String
+    boldFontIdentity = fontIdentity
+    italicFontIdentity = fontIdentity
+    boldItalicFontIdentity = fontIdentity
     guard appendAtlasPage() != nil else { throw RendererError.noMemory }
     resetAtlas()
     glyphResidency.setOnReady { [weak self] in self?.redisplayAfterGlyphReady() }
@@ -712,6 +727,10 @@ public final class TerminalRendering: @unchecked Sendable {
       boldFont = TerminalFont.core(size: fontSize, bold: true, family: fontFamily)
       italicFont = TerminalFont.core(size: fontSize, italic: true, family: fontFamily)
       boldItalicFont = TerminalFont.core(size: fontSize, bold: true, italic: true, family: fontFamily)
+      fontIdentity = CTFontCopyPostScriptName(font) as String
+      boldFontIdentity = CTFontCopyPostScriptName(boldFont) as String
+      italicFontIdentity = CTFontCopyPostScriptName(italicFont) as String
+      boldItalicFontIdentity = CTFontCopyPostScriptName(boldItalicFont) as String
       // Glyph keys include metrics and font identity, so a pane changing font
       // no longer invalidates resident glyphs used by other panes.
     }
@@ -724,7 +743,18 @@ public final class TerminalRendering: @unchecked Sendable {
       ? [:] : Dictionary(grouping: snap.search, by: { $0.row })
     let otherSearchRows: [Int: [SearchHighlight]] = snap.search_matches.isEmpty
       ? [:] : Dictionary(grouping: snap.search_matches, by: { $0.row })
-    let palette = CellPalette(snapshot: snap)
+    let paletteKey = PaletteCacheKey(
+      palette: snap.palette, defaultFg: snap.default_fg, defaultBg: snap.default_bg,
+      reverseVideo: snap.modes.reverse_video)
+    let palette: CellPalette
+    if let cached = cachedPalette, cached.key == paletteKey {
+      palette = cached.value
+    } else {
+      let built = CellPalette(snapshot: snap)
+      cachedPalette = (paletteKey, built)
+      palette = built
+    }
+    let pointSize = Int(request.fontSize.rounded())
     let chrome = TerminalChromeColors(request.colors)
     let baseBackground = palette.background
     let accentLinear = TerminalTheme.linear(chrome.accent)
@@ -780,7 +810,8 @@ public final class TerminalRendering: @unchecked Sendable {
       scratchDecorations.removeAll(keepingCapacity: true)
       clearGlyphQuads(&scratchTextGlyphQuads)
       scratchTextDirectGlyphQuads.removeAll(keepingCapacity: true)
-      frameAtlasPages = [0]
+      frameAtlasPages.removeAll(keepingCapacity: true)
+      frameAtlasPages.insert(0)
       directGlyphBytes = 0
       directGlyphCount = 0
       directGlyphExhausted = false
@@ -858,8 +889,9 @@ public final class TerminalRendering: @unchecked Sendable {
               }
             } else { ligatureCell: do {
               if c < ligatureEnd { break ligatureCell }
-              let cellFont = cell.style.bold ? (cell.style.italic ? boldItalicFont : boldFont)
-                : (cell.style.italic ? italicFont : font)
+              let cellFontIdentity = cell.style.bold
+                ? (cell.style.italic ? boldItalicFontIdentity : boldFontIdentity)
+                : (cell.style.italic ? italicFontIdentity : fontIdentity)
               if request.ligatures, cells == 1, TerminalFont.joinsLigatures(cell.text) {
                 // A run of ligature characters in one style is shaped as one
                 // glyph over its cells, so the font can join `->` or `!=`.
@@ -874,8 +906,8 @@ public final class TerminalRendering: @unchecked Sendable {
                   let joined = GlyphKey(
                     text: run, cells: end - c, bold: cell.style.bold, italic: cell.style.italic,
                     width: request.cellWidth * (end - c), height: request.cellHeight,
-                    pointSize: Int(request.fontSize.rounded()),
-                    fontIdentity: CTFontCopyPostScriptName(cellFont) as String, ligatures: true)
+                    pointSize: pointSize,
+                    fontIdentity: cellFontIdentity, ligatures: true)
                   switch glyph(joined, cells: end - c, request: request) {
                   case .resident(let glyph):
                     appendGlyph(
@@ -898,8 +930,8 @@ public final class TerminalRendering: @unchecked Sendable {
               let key = GlyphKey(
                 text: displayText, cells: cells, bold: cell.style.bold, italic: cell.style.italic,
                 width: request.cellWidth * cells, height: request.cellHeight,
-                pointSize: Int(request.fontSize.rounded()),
-                fontIdentity: CTFontCopyPostScriptName(cellFont) as String)
+                pointSize: pointSize,
+                fontIdentity: cellFontIdentity)
               switch glyph(key, cells: cells, request: request) {
               case .resident(let glyph):
                 appendGlyph(
@@ -972,7 +1004,7 @@ public final class TerminalRendering: @unchecked Sendable {
         let y = request.inset + span.row * request.cellHeight
         let key = GlyphKey(text: span.text, cells: span.cells, bold: false, italic: false,
           width: request.cellWidth * span.cells, height: request.cellHeight,
-          pointSize: Int(request.fontSize.rounded()), fontIdentity: CTFontCopyPostScriptName(font) as String)
+          pointSize: pointSize, fontIdentity: fontIdentity)
         rect(x, y, request.cellWidth * span.cells, request.cellHeight,
           TerminalTheme.linear(span.selected ? chrome.accent : chrome.raised))
         switch glyph(key, cells: span.cells, request: request) {
@@ -1004,8 +1036,8 @@ public final class TerminalRendering: @unchecked Sendable {
       let key = GlyphKey(
         text: request.marked, cells: cells, bold: false, italic: false,
         width: request.cellWidth * cells, height: request.cellHeight,
-        pointSize: Int(request.fontSize.rounded()),
-        fontIdentity: CTFontCopyPostScriptName(font) as String)
+        pointSize: pointSize,
+        fontIdentity: fontIdentity)
       let lookup = glyph(key, cells: cells, request: request)
       switch lookup {
       case .resident, .inFlight:
@@ -1038,9 +1070,15 @@ public final class TerminalRendering: @unchecked Sendable {
       }
     }
     RendererMetrics.recordGlyphFallbackFrame(bytes: directGlyphBytes, count: directGlyphCount)
-    let imageKeys = Set(snap.images.map { $0.key })
-    imageTextures = imageTextures.filter {
-      $0.key.surface != surface.id || imageKeys.contains($0.key.image)
+    if !imageTextures.isEmpty {
+      if snap.images.isEmpty {
+        imageTextures = imageTextures.filter { $0.key.surface != surface.id }
+      } else {
+        let imageKeys = Set(snap.images.map { $0.key })
+        imageTextures = imageTextures.filter {
+          $0.key.surface != surface.id || imageKeys.contains($0.key.image)
+        }
+      }
     }
     for placement in snap.images where imageTextures[
       SurfaceImageKey(surface: surface.id, image: placement.key)
@@ -1129,6 +1167,21 @@ public final class TerminalRendering: @unchecked Sendable {
         type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: items.count)
       frameQuadOffset += length
     }
+    func drawQuad(_ item: Quad, texture: MTLTexture, state: MTLRenderPipelineState) {
+      let length = MemoryLayout<Quad>.stride
+      guard let frameQuads, frameQuadOffset + length <= frameQuads.length else {
+        RendererMetrics.recordQuadBufferDrop(1)
+        return
+      }
+      var adjusted = item
+      adjusted.rect.y += request.scrollOffsetPixels
+      (frameQuads.contents() + frameQuadOffset).storeBytes(of: adjusted, as: Quad.self)
+      encoder.setRenderPipelineState(state)
+      encoder.setVertexBuffer(frameQuads, offset: frameQuadOffset, index: 0)
+      encoder.setFragmentTexture(texture, index: 0)
+      encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 6, instanceCount: 1)
+      frameQuadOffset += length
+    }
     func drawImages(_ accepts: (Int) -> Bool) {
       let clipWidth = min(drawableWidth - request.inset, snap.cols * request.cellWidth)
       let clipHeight = min(drawableHeight - request.inset, (request.viewportRows ?? snap.rows.count) * request.cellHeight)
@@ -1154,7 +1207,7 @@ public final class TerminalRendering: @unchecked Sendable {
           uv: SIMD4(
             Float(p.source[0]) / Float(p.width), Float(p.source[1]) / Float(p.height),
             sourceW / Float(p.width), sourceH / Float(p.height)), color: SIMD4(1, 1, 1, 1))
-        drawQuads([quad], texture: texture, state: imagePipeline)
+        drawQuad(quad, texture: texture, state: imagePipeline)
       }
       // Keep the same viewport clip for text, backgrounds, and decorations.
     }
@@ -1166,7 +1219,7 @@ public final class TerminalRendering: @unchecked Sendable {
     for (page, quads) in scratchTextGlyphQuads.enumerated() {
       drawQuads(quads, texture: atlases[page], state: pipeline)
     }
-    for item in scratchTextDirectGlyphQuads { drawQuads([item.quad], texture: item.texture, state: pipeline) }
+    for item in scratchTextDirectGlyphQuads { drawQuad(item.quad, texture: item.texture, state: pipeline) }
     // Glyph descenders and antialias coverage can overlap decorations. Draw
     // the requested solid ink after every glyph representation so its color
     // and shape do not depend on font coverage or asynchronous residency.
@@ -1176,7 +1229,7 @@ public final class TerminalRendering: @unchecked Sendable {
     for (page, quads) in scratchOverlayGlyphQuads.enumerated() {
       drawQuads(quads, texture: atlases[page], state: pipeline)
     }
-    for item in scratchOverlayDirectGlyphQuads { drawQuads([item.quad], texture: item.texture, state: pipeline) }
+    for item in scratchOverlayDirectGlyphQuads { drawQuad(item.quad, texture: item.texture, state: pipeline) }
     encoder.endEncoding()
     RendererMetrics.recordPresentation(
       requestWidth: request.width, requestHeight: request.height,

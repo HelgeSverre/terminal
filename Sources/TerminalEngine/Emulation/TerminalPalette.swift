@@ -37,23 +37,43 @@ struct TerminalPalette {
   private var specialEnabled = Array(repeating: false, count: 6)
   /// What a reset returns to: the host's scheme.
   private var scheme = TerminalColorScheme.standard
+  private(set) var revision: UInt64 = 1
+  private(set) var snapshotPalette: [[Int]]
+  private(set) var snapshotDefaultForeground: [Int]
+  private(set) var snapshotDefaultBackground: [Int]
 
   init() {
-    entries = Self.entries(for: scheme)
-    defaultForeground = RGB(scheme.foreground)
-    defaultBackground = RGB(scheme.background)
+    let initialEntries = Self.entries(for: scheme)
+    let initialForeground = RGB(scheme.foreground)
+    let initialBackground = RGB(scheme.background)
+    entries = initialEntries
+    defaultForeground = initialForeground
+    defaultBackground = initialBackground
     cursor = RGB(scheme.cursor)
+    snapshotPalette = initialEntries.map(\.snapshotValue)
+    snapshotDefaultForeground = initialForeground.snapshotValue
+    snapshotDefaultBackground = initialBackground.snapshotValue
   }
 
   /// Makes `value` the colors to start from. A color the program has set
   /// for itself is kept; the others change now.
   mutating func setScheme(_ value: TerminalColorScheme) {
     let new = Self.entries(for: value)
-    for slot in 0..<16 where !overriddenEntries.contains(slot) { entries[slot] = new[slot] }
-    if !foregroundOverridden { defaultForeground = RGB(value.foreground) }
-    if !backgroundOverridden { defaultBackground = RGB(value.background) }
+    for slot in 0..<16 where !overriddenEntries.contains(slot) {
+      entries[slot] = new[slot]
+      snapshotPalette[slot] = new[slot].snapshotValue
+    }
+    if !foregroundOverridden {
+      defaultForeground = RGB(value.foreground)
+      snapshotDefaultForeground = defaultForeground.snapshotValue
+    }
+    if !backgroundOverridden {
+      defaultBackground = RGB(value.background)
+      snapshotDefaultBackground = defaultBackground.snapshotValue
+    }
     if !cursorOverridden { cursor = RGB(value.cursor) }
     scheme = value
+    revision &+= 1
   }
 
   var hostScheme: TerminalColorScheme { scheme }
@@ -92,9 +112,6 @@ struct TerminalPalette {
     return style
   }
 
-  var snapshotPalette: [[Int]] { entries.map(\.snapshotValue) }
-  var snapshotDefaultForeground: [Int] { defaultForeground.snapshotValue }
-  var snapshotDefaultBackground: [Int] { defaultBackground.snapshotValue }
   /// Kitty's indexed formats reserve the last eight slots for presentation
   /// colors rather than the end of the SGR grayscale ramp.
   var snapshotGraphicsPalette: [[Int]] {
@@ -119,6 +136,10 @@ struct TerminalPalette {
     foregroundOverridden = false; backgroundOverridden = false; cursorOverridden = false
     special = Array(repeating: nil, count: 5)
     specialEnabled = Array(repeating: false, count: 6)
+    snapshotPalette = entries.map(\.snapshotValue)
+    snapshotDefaultForeground = defaultForeground.snapshotValue
+    snapshotDefaultBackground = defaultBackground.snapshotValue
+    revision &+= 1
   }
 
   /// Applies the OSC color commands implemented by the compatibility core.
@@ -142,8 +163,14 @@ struct TerminalPalette {
           let color = slot < 256 ? entries[slot] : (special[slot - 256] ?? RGB(scheme.foreground))
           replies.append("\u{1b}]\(command);\(requestedSlot);\(color.oscValue)\u{1b}\\")
         } else if let color = Self.parseColor(requested) {
-          if slot < 256 { entries[slot] = color; overriddenEntries.insert(slot) }
-          else { special[slot - 256] = color }
+          if slot < 256 {
+            entries[slot] = color
+            overriddenEntries.insert(slot)
+            snapshotPalette[slot] = color.snapshotValue
+          } else {
+            special[slot - 256] = color
+          }
+          revision &+= 1
         }
         index += 2
       }
@@ -154,6 +181,7 @@ struct TerminalPalette {
       for index in stride(from: 0, to: max(0, fields.count - 1), by: 2) {
         if let slot = Self.paletteIndex(fields[index], maximum: 5), let enabled = Int(fields[index + 1]) {
           specialEnabled[slot] = enabled != 0
+          revision &+= 1
         }
       }
       return []
@@ -168,21 +196,50 @@ struct TerminalPalette {
           let color = slot == 10 ? defaultForeground : (slot == 11 ? defaultBackground : cursor)
           replies.append("\u{1b}]\(slot);\(color.oscValue)\u{1b}\\")
         } else if let color = Self.parseColor(requested) {
-          if slot == 10 { defaultForeground = color; foregroundOverridden = true }
-          else if slot == 11 { defaultBackground = color; backgroundOverridden = true }
-          else { cursor = color; cursorOverridden = true }
+          if slot == 10 {
+            defaultForeground = color
+            foregroundOverridden = true
+            snapshotDefaultForeground = color.snapshotValue
+          } else if slot == 11 {
+            defaultBackground = color
+            backgroundOverridden = true
+            snapshotDefaultBackground = color.snapshotValue
+          } else {
+            cursor = color
+            cursorOverridden = true
+          }
+          revision &+= 1
         }
       }
       return replies
 
-    case "110": defaultForeground = RGB(scheme.foreground); foregroundOverridden = false; return []
-    case "111": defaultBackground = RGB(scheme.background); backgroundOverridden = false; return []
-    case "112": cursor = RGB(scheme.cursor); cursorOverridden = false; return []
+    case "110":
+      defaultForeground = RGB(scheme.foreground)
+      foregroundOverridden = false
+      snapshotDefaultForeground = defaultForeground.snapshotValue
+      revision &+= 1
+      return []
+    case "111":
+      defaultBackground = RGB(scheme.background)
+      backgroundOverridden = false
+      snapshotDefaultBackground = defaultBackground.snapshotValue
+      revision &+= 1
+      return []
+    case "112":
+      cursor = RGB(scheme.cursor)
+      cursorOverridden = false
+      revision &+= 1
+      return []
     case "105":
-      if value.isEmpty { special = Array(repeating: nil, count: 5) }
-      else {
+      if value.isEmpty {
+        special = Array(repeating: nil, count: 5)
+        revision &+= 1
+      } else {
         for field in value.split(separator: ";") {
-          if let slot = Self.paletteIndex(field, maximum: 4) { special[slot] = nil }
+          if let slot = Self.paletteIndex(field, maximum: 4) {
+            special[slot] = nil
+            revision &+= 1
+          }
         }
       }
       return []
@@ -192,9 +249,16 @@ struct TerminalPalette {
       if value.isEmpty {
         entries = defaults
         overriddenEntries.removeAll(keepingCapacity: true)
+        snapshotPalette = entries.map(\.snapshotValue)
+        revision &+= 1
       } else {
         for field in value.split(separator: ";") {
-          if let slot = Self.paletteIndex(field) { entries[slot] = defaults[slot]; overriddenEntries.remove(slot) }
+          if let slot = Self.paletteIndex(field) {
+            entries[slot] = defaults[slot]
+            overriddenEntries.remove(slot)
+            snapshotPalette[slot] = defaults[slot].snapshotValue
+            revision &+= 1
+          }
         }
       }
       return []

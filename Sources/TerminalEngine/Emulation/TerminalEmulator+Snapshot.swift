@@ -168,8 +168,6 @@ extension TerminalEmulator {
           foreground.count == 3, background.count == 3 else {
       return (nil, "Invalid snapshot dimensions or palette")
     }
-    var rows: [RowSnapshot] = []
-    rows.reserveCapacity(selected.rows.count)
     // At most one adjacent row is projected for smooth viewport presentation.
     // Keep it separate from rows and the advertised geometry.
     var presentationRows = selected.rows
@@ -181,25 +179,46 @@ extension TerminalEmulator {
         presentationRows.append(primary.rows[next - history.count])
       }
     }
+    var rows: [RowSnapshot] = []
+    rows.reserveCapacity(presentationRows.count)
+    let cacheLimit = max(256, rowCount * 2)
+    if rowSnapshotCache.paletteRevision != palette.revision
+        || rowSnapshotCache.columns != columns
+        || rowSnapshotCache.documentGeneration != selectionDocumentGeneration {
+      rowSnapshotCache.rows.removeAll(keepingCapacity: true)
+      rowSnapshotCache.paletteRevision = palette.revision
+      rowSnapshotCache.columns = columns
+      rowSnapshotCache.documentGeneration = selectionDocumentGeneration
+    }
     for row in presentationRows {
       guard row.count == columns else { return (nil, "Invalid snapshot dimensions or palette") }
-      var cells: [CellSnapshot] = []
-      cells.reserveCapacity(columns)
-      for cell in row.cells {
-        guard let kind = CellKind(rawValue: cell.kind) else { return (nil, "Invalid cell kind") }
-        let resolved = palette.presentationStyle(cell.style)
-        let flags = resolved.flags
-        let style = CellStyle(
-          foreground: TerminalColor(packed: resolved.foreground),
-          background: TerminalColor(packed: resolved.background),
-          underline_color: TerminalColor(packed: resolved.underline),
-          underline: Int(resolved.underlineKind), bold: flags & 1 != 0, faint: flags & 2 != 0,
-          italic: flags & 4 != 0, inverse: flags & 8 != 0, conceal: flags & 16 != 0,
-          strike: flags & 32 != 0, overline: flags & 64 != 0, blink: flags & 128 != 0)
-        cells.append(CellSnapshot(text: cell.text, kind: kind, style: style,
-                                  link: cell.link, linkID: cell.linkID, flags: Int(cell.flags)))
+      if row.id != 0 {
+        let key = RowSnapshotCacheKey(id: row.id, revision: row.revision)
+        if let cached = rowSnapshotCache.rows[key] {
+          if cached.soft_wrapped == row.softWrapped {
+            rows.append(cached)
+          } else {
+            let updated = RowSnapshot(cells: cached.cells, soft_wrapped: row.softWrapped,
+                                      id: row.id, revision: row.revision)
+            rowSnapshotCache.rows[key] = updated
+            rows.append(updated)
+          }
+          continue
+        }
+        guard let cells = row.snapshotCells(palette: palette) else { return (nil, "Invalid cell kind") }
+        let snapshotRow = RowSnapshot(cells: cells, soft_wrapped: row.softWrapped, id: row.id, revision: row.revision)
+        rowSnapshotCache.rows[key] = snapshotRow
+        rows.append(snapshotRow)
+      } else {
+        guard let cells = row.snapshotCells(palette: palette) else { return (nil, "Invalid cell kind") }
+        rows.append(RowSnapshot(cells: cells, soft_wrapped: row.softWrapped, id: row.id, revision: row.revision))
       }
-      rows.append(RowSnapshot(cells: cells, soft_wrapped: row.softWrapped, id: row.id, revision: row.revision))
+    }
+    if rowSnapshotCache.rows.count > cacheLimit {
+      rowSnapshotCache.rows.removeAll(keepingCapacity: true)
+      for row in rows where row.id != 0 {
+        rowSnapshotCache.rows[RowSnapshotCacheKey(id: row.id, revision: row.revision)] = row
+      }
     }
     let highlights = visibleSearchHighlights(in: selected.rows, offset: selected.offset)
     func image(_ value: KittyImagePlacement) -> ImagePlacementSnapshot {

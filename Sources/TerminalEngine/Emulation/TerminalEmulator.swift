@@ -400,6 +400,15 @@ final class TerminalEmulator {
   /// ASCII character set.
   private func printASCIIRun(_ bytes: UnsafePointer<UInt8>, offset: Int, limit: Int) -> Int {
     var end = offset + 1
+    let raw = UnsafeRawPointer(bytes)
+    let highMask: UInt64 = 0x8080_8080_8080_8080
+    let lowOffset: UInt64 = 0x2020_2020_2020_2020
+    let delOffset: UInt64 = 0x0101_0101_0101_0101
+    while limit - end >= 8 {
+      let word = raw.loadUnaligned(fromByteOffset: end, as: UInt64.self)
+      if ((word | (word &- lowOffset) | (word &+ delOffset)) & highMask) != 0 { break }
+      end += 8
+    }
     while end < limit, bytes[end] &- 0x20 < 0x5f { end += 1 }
     let count = end - offset
     if count < Self.minimumDirectASCIIRun, decodedScalarStart < decodedScalarCount {
@@ -1231,6 +1240,17 @@ final class TerminalEmulator {
   // Rebuild if reflow/prototype changes or eviction removes an extremum/tail.
   // At most 256 entries; no cached rows, cells or per-history-row metadata.
   var virtualOriginCache: VirtualOriginCache?
+  struct RowSnapshotCacheKey: Hashable {
+    let id: UInt64
+    let revision: UInt64
+  }
+  struct RowSnapshotCache {
+    var paletteRevision: UInt64 = 0
+    var columns: Int = 0
+    var documentGeneration = UUID()
+    var rows: [RowSnapshotCacheKey: RowSnapshot] = [:]
+  }
+  @exclusivity(unchecked) var rowSnapshotCache = RowSnapshotCache()
   /// Mode 2027. Set: a grapheme cluster, such as an emoji with a skin tone,
   /// takes the cells of one character. Reset: each code point with a width
   /// takes its own cells, which is what a program that sums `wcwidth` expects.

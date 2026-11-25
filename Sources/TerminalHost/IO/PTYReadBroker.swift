@@ -18,6 +18,7 @@ final class PTYReadBroker: @unchecked Sendable {
   private final class Batch: @unchecked Sendable {
     var data = Data()
     var sealed = false
+    var reserved = false
   }
   private let lock = NSLock()
   // Held for a whole read, and by stopReading, so that close waits for the
@@ -85,8 +86,16 @@ final class PTYReadBroker: @unchecked Sendable {
       let batch: Batch
       if let existing = tail, !existing.sealed && existing.data.count < slabSize {
         batch = existing
+        if !batch.reserved {
+          batch.data.reserveCapacity(slabSize)
+          batch.reserved = true
+        }
       } else {
         batch = Batch(); tail = batch; nodes += 1
+        if count >= 4096 {
+          batch.data.reserveCapacity(slabSize)
+          batch.reserved = true
+        }
         owner.async { [self, batch] in
           lock.lock()
           batch.sealed = true

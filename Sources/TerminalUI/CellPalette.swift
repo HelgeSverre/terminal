@@ -12,14 +12,20 @@ struct CellPalette {
       explicitUnderline ?? foreground
     }
   }
-  private let palette: [[Int]]
+  private let linearPalette: [SIMD4<Float>]
   private let defaultForeground: SIMD4<Float>
   private let defaultBackground: SIMD4<Float>
   private let reverseVideo: Bool
   private static let linearByte: [Float] = (0...255).map { linear(Float($0) / 255) }
 
   init(snapshot: TerminalSnapshot) {
-    palette = snapshot.palette
+    linearPalette = snapshot.palette.map { rgb in
+      guard rgb.count == 3 else { return SIMD4(0, 0, 0, 0) }
+      return SIMD4(
+        Self.linearByte[min(255, max(0, rgb[0]))],
+        Self.linearByte[min(255, max(0, rgb[1]))],
+        Self.linearByte[min(255, max(0, rgb[2]))], 1)
+    }
     defaultForeground = Self.linear(snapshot.default_fg)
     defaultBackground = Self.linear(snapshot.default_bg)
     reverseVideo = snapshot.modes.reverse_video
@@ -45,8 +51,9 @@ struct CellPalette {
         Self.linearByte[Int(packed & 0xff)], 1)
     case 1:
       let index = Int(packed & 0xff)
-      if palette.indices.contains(index), palette[index].count == 3 {
-        return Self.linear(palette[index])
+      if index < linearPalette.count {
+        let entry = linearPalette[index]
+        if entry.w != 0 { return entry }
       }
       return fallback
     default:
