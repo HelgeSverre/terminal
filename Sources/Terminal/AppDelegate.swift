@@ -571,15 +571,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // AppKit's terminate-later loop runs in modalPanel mode, so a default-mode
     // dispatch callback can remain blocked by the very termination it resolves.
     let modes: [RunLoop.Mode] = [.modalPanel, .default]
+    Self.waitForTerminationCleanups(cleanups: cleanups, reply: reply, modes: modes)
+    let limit = Timer(timeInterval: 3, repeats: false) { _ in reply.send() }
+    modes.forEach { RunLoop.main.add(limit, forMode: $0) }
+    return .terminateLater
+  }
+  private nonisolated static func waitForTerminationCleanups(
+    cleanups: DispatchGroup, reply: TerminationReply, modes: [RunLoop.Mode]
+  ) {
     cleanups.enter()
     LiveChildren.whenNoneRemain { cleanups.leave() }
     cleanups.notify(queue: .global(qos: .userInteractive)) {
       RunLoop.main.perform(inModes: modes) { reply.send() }
       CFRunLoopWakeUp(CFRunLoopGetMain())
     }
-    let limit = Timer(timeInterval: 3, repeats: false) { _ in reply.send() }
-    modes.forEach { RunLoop.main.add(limit, forMode: $0) }
-    return .terminateLater
   }
   private func menu() {
     let menus = MainMenu.build(delegate: self, tabNavigation: tabNavigation,

@@ -166,7 +166,7 @@ enum DownloadFilename {
     if failed { presentation = .failed } else { showNext() }
   }
 
-  private static func write(_ data: Data, to destination: URL, completion: @escaping @MainActor (Error?) -> Void) {
+  private nonisolated static func write(_ data: Data, to destination: URL, completion: @escaping @MainActor (Error?) -> Void) {
     DispatchQueue.global(qos: .userInitiated).async {
       let failure: Error?
       do { try data.write(to: destination, options: .atomic); failure = nil }
