@@ -1,9 +1,30 @@
 import Foundation
 
 // Owned presentation values; no grid pointers or session ownership cross this seam.
+package enum CellKind: UInt8, Equatable, Decodable {
+  case empty = 0
+  case lead1 = 1
+  case lead2 = 2
+  case continuation = 3
+  case wrapSpacer = 4
+
+  package init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    switch try container.decode(String.self) {
+    case "Empty": self = .empty
+    case "Lead1": self = .lead1
+    case "Lead2": self = .lead2
+    case "Continuation": self = .continuation
+    case "WrapSpacer": self = .wrapSpacer
+    case let other:
+      throw DecodingError.dataCorruptedError(
+        in: container, debugDescription: "Invalid CellKind: \(other)")
+    }
+  }
+}
 package struct CellSnapshot: Decodable, Equatable {
   package let text: String
-  package let kind: String
+  package let kind: CellKind
   package let style: CellStyle
   package let link: String?
   /// OSC 8's logical anchor identity; the URI remains `link`.
@@ -11,25 +32,43 @@ package struct CellSnapshot: Decodable, Equatable {
   package let flags: Int
 }
 package struct TerminalColor: Decodable, Equatable {
-  package let index: Int?
-  package let rgb: [Int]?
+  /// Top byte: 0 = default, 1 = indexed in low byte, 2 = RGB in low 24 bits.
+  package let packed: UInt32
+  package var isDefault: Bool { packed >> 24 == 0 }
+  package var index: Int? { packed >> 24 == 1 ? Int(packed & 0xff) : nil }
+  package var rgb: [Int]? {
+    packed >> 24 == 2
+      ? [Int((packed >> 16) & 0xff), Int((packed >> 8) & 0xff), Int(packed & 0xff)] : nil
+  }
+  package var rgbComponents: (UInt8, UInt8, UInt8)? {
+    packed >> 24 == 2
+      ? (UInt8((packed >> 16) & 0xff), UInt8((packed >> 8) & 0xff), UInt8(packed & 0xff)) : nil
+  }
   package init(packed: UInt32) {
-    index = packed >> 24 == 1 ? Int(packed & 255) : nil
-    rgb =
-      packed >> 24 == 2
-      ? [Int((packed >> 16) & 255), Int((packed >> 8) & 255), Int(packed & 255)] : nil
+    switch packed >> 24 {
+    case 1: self.packed = (1 << 24) | (packed & 0xff)
+    case 2: self.packed = packed
+    default: self.packed = 0
+    }
   }
   package init(from decoder: Decoder) throws {
     if let single = try? decoder.singleValueContainer(), let s = try? single.decode(String.self),
       s == "Default"
     {
-      index = nil
-      rgb = nil
+      packed = 0
       return
     }
     let c = try decoder.container(keyedBy: CodingKeys.self)
-    index = try c.decodeIfPresent(Int.self, forKey: .Indexed)
-    rgb = try c.decodeIfPresent([Int].self, forKey: .Rgb)
+    if let rgb = try c.decodeIfPresent([Int].self, forKey: .Rgb), rgb.count == 3 {
+      let r = UInt32(min(255, max(0, rgb[0])))
+      let g = UInt32(min(255, max(0, rgb[1])))
+      let b = UInt32(min(255, max(0, rgb[2])))
+      packed = (2 << 24) | (r << 16) | (g << 8) | b
+    } else if let idx = try c.decodeIfPresent(Int.self, forKey: .Indexed), (0...255).contains(idx) {
+      packed = (1 << 24) | UInt32(idx)
+    } else {
+      packed = 0
+    }
   }
   package enum CodingKeys: String, CodingKey { case Indexed, Rgb }
 }

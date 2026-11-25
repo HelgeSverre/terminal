@@ -24,7 +24,7 @@ import Testing
     underline_color: TerminalColor(packed: 0), underline: 0, bold: false, faint: false,
     italic: false, inverse: false, conceal: false, strike: false, overline: false, blink: false)
 
-  private static func cell(_ text: String, _ kind: String = "Lead1", link: String? = nil) -> CellSnapshot {
+  private static func cell(_ text: String, _ kind: CellKind = .lead1, link: String? = nil) -> CellSnapshot {
     CellSnapshot(text: text, kind: kind, style: plainStyle, link: link, flags: 0)
   }
 
@@ -32,7 +32,7 @@ import Testing
     _ cells: [CellSnapshot], columns: Int, soft: Bool = false, id: UInt64 = 0, revision: UInt64 = 0
   ) -> RowSnapshot {
     RowSnapshot(
-      cells: cells + Array(repeating: cell("", "Empty"), count: max(0, columns - cells.count)),
+      cells: cells + Array(repeating: cell("", .empty), count: max(0, columns - cells.count)),
       soft_wrapped: soft, id: id, revision: revision)
   }
 
@@ -85,7 +85,7 @@ import Testing
 
   @Test static func unicodeAndHardBreakBoundaries() {
     let columns = 10
-    let emoji = [cell("👩🏽‍💻", "Lead2"), cell("", "Continuation")]
+    let emoji = [cell("👩🏽‍💻", .lead2), cell("", .continuation)]
     let value = snapshot([
       row(emoji + cells("https://"), columns: columns),
       row(cells("example.te"), columns: columns),
@@ -191,10 +191,10 @@ import Testing
     // only the projection, not fixture construction.
     let columns = 256
     let rowCount = 4_096
-    let blanks = Array(repeating: cell("", "Empty"), count: columns)
+    let blanks = Array(repeating: cell("", .empty), count: columns)
     var rows = Array(repeating: RowSnapshot(cells: blanks, soft_wrapped: true), count: rowCount)
     let finalURL = cells("http://bottom.test")
-      + Array(repeating: cell("", "Empty"), count: columns - "http://bottom.test".count)
+      + Array(repeating: cell("", .empty), count: columns - "http://bottom.test".count)
     rows[rowCount - 1] = RowSnapshot(cells: finalURL, soft_wrapped: false)
     let value = snapshot(rows, columns: columns)
     let started = ProcessInfo.processInfo.systemUptime
@@ -337,7 +337,7 @@ import Testing
       segments: [.init(row: 0, start: 1, end: 2)])
     let wideAndCombining = projectedSnapshot([
       row([
-        cell("a"), cell("界", "Lead2"), cell("", "Continuation"), cell("e\u{301}"),
+        cell("a"), cell("界", .lead2), cell("", .continuation), cell("e\u{301}"),
       ], columns: 4, id: 11, revision: 4),
     ], columns: 4, selection: wide)
     let projection = AccessibilityProjection(snapshot: wideAndCombining)
@@ -355,7 +355,7 @@ import Testing
       segments: [.init(row: 0, start: 3, end: 4)])
     let combiningSnapshot = projectedSnapshot([
       row([
-        cell("a"), cell("界", "Lead2"), cell("", "Continuation"), cell("e\u{301}"),
+        cell("a"), cell("界", .lead2), cell("", .continuation), cell("e\u{301}"),
       ], columns: 4, id: 11, revision: 4),
     ], columns: 4, selection: combining)
     let combiningProjection = AccessibilityProjection(snapshot: combiningSnapshot)

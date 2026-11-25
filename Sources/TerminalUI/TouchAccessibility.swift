@@ -17,7 +17,7 @@ extension TerminalCanvasView {
     for row in 0..<rowLimit {
       guard remaining > 0 else { break }
       var text = ""
-      for cell in snapshot.rows[row].cells where cell.kind != "Continuation" && cell.kind != "WrapSpacer" {
+      for cell in snapshot.rows[row].cells where cell.kind != .continuation && cell.kind != .wrapSpacer {
         let value = cell.text.isEmpty ? " " : cell.text
         let count = value.utf16.count
         guard count <= remaining else { break }

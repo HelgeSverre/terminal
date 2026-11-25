@@ -58,16 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private let startupFiles = StartupTerminalFileFilter(arguments: CommandLine.arguments,
     currentDirectory: FileManager.default.currentDirectoryPath)
   let recovery: SessionStateStore?
-  private var recoveryLayoutWork: DispatchWorkItem?
-  private var recoveryCheckpointWork: DispatchWorkItem?
-  private var recoveryPending: [String: (pane: TerminalCanvasView, due: Date)] = [:]
-  private var recoveryCaptureInFlight = false
-  private var recoverySleepFlush = false
-  private var recoveryReadyPanes: Set<String> = []
+  private lazy var recoveryCoordinator: RecoveryCoordinator? = makeRecoveryCoordinator()
   private var recoveryObservers: [NSObjectProtocol] = []
   private var initialPaneID: PaneID?
-  private var recoveryLayoutRevision: UInt64 = 0
-  private var recoveryLayoutPendingSince: DispatchTime?
   private var resumeRecords: [PaneID: ResumeRecord] = [:]
   private lazy var restoredResumeRecords: [PaneID: ResumeRecord] = Dictionary(
     (recovery?.restored?.windows.flatMap(\.panes) ?? []).compactMap { pane in pane.resume.map { (pane.id, $0) } },
@@ -255,18 +248,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     MainActor.assumeIsolated { handOffSessions(relaunch: true) }
   }
 
+  private func makeRecoveryCoordinator() -> RecoveryCoordinator? {
+    guard let recovery else { return nil }
+    return RecoveryCoordinator(
+      isPaneAlive: { [weak self] id in self?.livePane(for: id) != nil },
+      saveLayout: { [weak self] in self?.saveRecoveryLayout() },
+      captureCheckpoint: { [weak self] id, force, completion in
+        guard let pane = self?.livePane(for: id) else {
+          completion(nil, 0, nil)
+          return
+        }
+        pane.session.recoveryCheckpoint(force: force) { text, rows, delay in
+          completion(text, rows, delay)
+        }
+      },
+      saveScrollback: { id, text, rows in
+        guard let uuid = UUID(uuidString: id) else { return }
+        recovery.saveScrollback(text, rows: rows, pane: PaneID(uuid))
+      },
+      cleanExit: { completion in
+        recovery.cleanExit(completion: completion)
+      }
+    )
+  }
+  private func livePane(for id: String) -> TerminalCanvasView? {
+    for controller in windows {
+      if let pane = controller.panes.first(where: { $0.automationID == id }) { return pane }
+    }
+    return nil
+  }
   func recoveryChanged() {
-    guard recovery != nil, !terminationRequested else { return }
-    recoveryLayoutRevision &+= 1
-    recoveryLayoutWork?.cancel()
-    let work = DispatchWorkItem { [weak self] in self?.saveRecoveryLayout() }
-    recoveryLayoutWork = work
-    // One second after the last change, and never more than five after the
-    // first: steady changes must not postpone the save indefinitely.
-    let now = DispatchTime.now()
-    let first = recoveryLayoutPendingSince ?? now
-    recoveryLayoutPendingSince = first
-    DispatchQueue.main.asyncAfter(deadline: min(now + 1, first + 5), execute: work)
+    guard !terminationRequested else { return }
+    recoveryCoordinator?.layoutChanged()
   }
   /// The layout as it is saved: each pane with the resume record sampling last
   /// found for it, or with the restored offer it still shows.
@@ -288,8 +301,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     return layout
   }
   private func saveRecoveryLayout() {
-    recoveryLayoutWork = nil
-    recoveryLayoutPendingSince = nil
     guard let recovery, !terminationRequested else { return }
     let saved = windows.compactMap { $0.layout() }
     guard !saved.isEmpty else { return }
@@ -298,9 +309,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       appBuild: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "",
       windows: saved, keyWindow: key))
     guard layout.isValid else { return }
-    let restoring = recovery.restored != nil && !windows.flatMap(\.panes).allSatisfy { recoveryReadyPanes.contains($0.automationID) }
+    let paneIDs = windows.flatMap(\.panes).map(\.automationID)
+    let restoring = recovery.restored != nil && !(recoveryCoordinator?.allPanesReady(paneIDs) ?? false)
     recovery.save(layout, restoring: restoring)
-    resumePending = (layout, restoring, recoveryLayoutRevision)
+    resumePending = (layout, restoring, recoveryCoordinator?.layoutRevision ?? 0)
     sampleNextResume()
   }
   private func sampleNextResume() {
@@ -331,58 +343,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Kept for every later save; a layout change during sampling brings one.
         let changed = records != resumeRecords
         resumeRecords = records
-        if changed, !terminationRequested, pending.revision == recoveryLayoutRevision {
+        if changed, !terminationRequested, pending.revision == recoveryCoordinator?.layoutRevision {
           recovery.save(withResumeRecords(pending.layout), restoring: pending.restoring)
         }
         sampleNextResume()
       }
     }
   }
-  func recoveryPaneReady(_ id: String) { recoveryReadyPanes.insert(id); recoveryChanged() }
+  func recoveryPaneReady(_ id: String) {
+    guard !terminationRequested else { return }
+    recoveryCoordinator?.paneReady(id)
+  }
   func recoveryOutput(_ pane: TerminalCanvasView) {
-    guard recovery != nil, !terminationRequested else { return }
-    recoveryPending[pane.automationID] = (pane, Date().addingTimeInterval(2))
-    scheduleRecoveryCheckpoint()
-  }
-  private func scheduleRecoveryCheckpoint() {
-    recoveryCheckpointWork?.cancel()
-    recoveryCheckpointWork = nil
-    if recoveryPending.isEmpty && !recoveryCaptureInFlight { recoverySleepFlush = false }
-    guard !terminationRequested, !recoveryCaptureInFlight,
-      let next = recoveryPending.values.map(\.due).min() else { return }
-    let work = DispatchWorkItem { [weak self] in self?.captureNextRecoveryPane() }
-    recoveryCheckpointWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + max(0, next.timeIntervalSinceNow), execute: work)
-  }
-  private func captureNextRecoveryPane(force: Bool = false) {
-    recoveryCheckpointWork = nil
-    guard !terminationRequested, !recoveryCaptureInFlight,
-      let entry = recoveryPending.min(by: { $0.value.due < $1.value.due }) else { return }
-    let pane = entry.value.pane
-    recoveryPending[entry.key] = nil
-    guard windows.contains(where: { $0.panes.contains(where: { $0 === pane }) }) else {
-      scheduleRecoveryCheckpoint(); return
-    }
-    recoveryCaptureInFlight = true
-    pane.session.recoveryCheckpoint(force: force || recoverySleepFlush) { [weak self, weak pane] text, rows, delay in
-      guard let self else { return }
-      recoveryCaptureInFlight = false
-      if let pane, !terminationRequested,
-        windows.contains(where: { $0.panes.contains(where: { $0 === pane }) }) {
-        if let text, let uuid = UUID(uuidString: pane.automationID) {
-          recovery?.saveScrollback(text, rows: rows, pane: PaneID(uuid))
-          recoveryChanged()
-        } else if let delay { recoveryPending[pane.automationID] = (pane, Date().addingTimeInterval(delay)) }
-      }
-      scheduleRecoveryCheckpoint()
-    }
+    guard !terminationRequested else { return }
+    recoveryCoordinator?.output(paneID: pane.automationID)
   }
   private func checkpointBeforeSleep() {
-    recoveryLayoutWork?.cancel()
-    saveRecoveryLayout()
-    recoverySleepFlush = true
-    for entry in recoveryPending { recoveryPending[entry.key]?.due = .distantPast }
-    captureNextRecoveryPane(force: true)
+    guard !terminationRequested else { return }
+    recoveryCoordinator?.flush()
   }
   #if TERMINAL_DIAGNOSTICS
   @MainActor private func openDiagnosticWindow() -> Bool {
@@ -572,14 +550,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // already given would never end.
     guard !terminationRequested else { return terminationReply?.isSent == true ? .terminateNow : .terminateLater }
     terminationRequested = true
-    recoveryLayoutWork?.cancel()
-    recoveryCheckpointWork?.cancel()
-    recoveryPending.removeAll()
     resumePending = nil
     let cleanups = DispatchGroup()
-    if let recovery {
+    if let coordinator = recoveryCoordinator {
       cleanups.enter()
-      recovery.cleanExit { cleanups.leave() }
+      coordinator.cancelForNormalQuit { cleanups.leave() }
     }
     windows.forEach { $0.close() }
     // Closing hangs every child up. The app leaves as soon as the last one

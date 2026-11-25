@@ -156,7 +156,10 @@ private final class TerminalEmulator {
   @exclusivity(unchecked) private var clock: UInt64 = 0
   @exclusivity(unchecked) private var parser = VTParserState.ground
   @exclusivity(unchecked) private var utf8 = TerminalText.UTF8Decoder()
-  @exclusivity(unchecked) private var sequence = ""
+  @exclusivity(unchecked) private var sequenceBytes: [UInt8] = []
+  private static let osc52Prefix: [UInt8] = Array("52;c;".utf8)
+  private static let oscFilePrefix: [UInt8] = Array("1337;File=".utf8)
+  private static let oscFilePartPrefix: [UInt8] = Array("1337;FilePart=".utf8)
   // Style, link and protection of the next printed cell. They live in one
   // value so a print transaction borrows them instead of assembling a copy.
   @exclusivity(unchecked) private var attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
@@ -641,32 +644,49 @@ private final class TerminalEmulator {
           parser = .ground; csiBytes.removeAll(keepingCapacity: true); csiUTF8Count = 0
         }
       case .osc:
-        if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
+        if byte == 0x18 || byte == 0x1a {
+          sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
+          parser = .ground
+        }
         else if byte == 0x07 { finishString(); parser = .ground }
         // String Terminator is the two-byte ESC \\ sequence. Keep parser
         // ownership in the string state until the following byte decides it;
         // switching to generic Escape would lose APC/OSC context.
-        else if byte == 0x1b, sequence.utf8.count < 65_536 { sequence.append("\u{1b}") }
-        else if byte == 0x1b { parser = .discardString(escaped: true, osc: true); sequence = "" }
-        else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
-        else if sequence.utf8.count < 65_536 {
-          sequence.unicodeScalars.append(UnicodeScalar(byte))
-          if sequence == "52;c;" {
-            parser = .osc52(OSC52Decoder(acceptingWrites: pendingClipboardRequests.count < 4), escaped: false)
-            sequence = ""
-          } else if sequence == "1337;File=" {
-            // An iTerm2 inline image: megabytes of base64, read as it comes.
-            parser = .inlineImage(InlineImageDecoder(), escaped: false)
-            sequence = ""
-            multipartImage = nil
-          } else if sequence == "1337;FilePart=" {
-            if let decoder = multipartImage {
-              decoder.beginPart(); parser = .inlineImage(decoder, escaped: false)
-            } else { parser = .discardString(escaped: false, osc: true) }
-            sequence = ""
+        else if byte == 0x1b, sequenceBytes.count < 65_536 { sequenceBytes.append(0x1b) }
+        else if byte == 0x1b {
+          parser = .discardString(escaped: true, osc: true)
+          sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
+        }
+        else if sequenceBytes.last == 0x1b && byte == 0x5c { sequenceBytes.removeLast(); finishString(); parser = .ground }
+        else if sequenceBytes.count < 65_536 {
+          sequenceBytes.append(byte)
+          switch sequenceBytes.count {
+          case 5:
+            if sequenceBytes == Self.osc52Prefix {
+              parser = .osc52(OSC52Decoder(acceptingWrites: pendingClipboardRequests.count < 4), escaped: false)
+              sequenceBytes.removeAll(keepingCapacity: true)
+            }
+          case 10:
+            if sequenceBytes == Self.oscFilePrefix {
+              // An iTerm2 inline image: megabytes of base64, read as it comes.
+              parser = .inlineImage(InlineImageDecoder(), escaped: false)
+              sequenceBytes.removeAll(keepingCapacity: true)
+              multipartImage = nil
+            }
+          case 14:
+            if sequenceBytes == Self.oscFilePartPrefix {
+              if let decoder = multipartImage {
+                decoder.beginPart(); parser = .inlineImage(decoder, escaped: false)
+              } else { parser = .discardString(escaped: false, osc: true) }
+              sequenceBytes.removeAll(keepingCapacity: true)
+            }
+          default: break
           }
         }
-        else { parser = .discardString(escaped: false, osc: true); sequence = "" }
+        else {
+          parser = .discardString(escaped: false, osc: true)
+          sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
+        }
       case .osc52(let decoder, let escaped):
         if byte == 0x18 || byte == 0x1a { parser = .ground }
         else if byte == 0x07 || (escaped && byte == 0x5c) {
@@ -700,28 +720,29 @@ private final class TerminalEmulator {
         else { decoder.push(byte) }
       case .dcsHeader:
         // A short header selects Sixel or one of our bounded DCS queries.
-        if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
-        else if byte == 0x71, sequence == "$" || sequence == "+" {
-          sequence.append("q"); parser = .dcsQuery(escaped: false)
+        if byte == 0x18 || byte == 0x1a { sequenceBytes.removeAll(keepingCapacity: true); parser = .ground }
+        else if byte == 0x71, sequenceBytes.count == 1 && (sequenceBytes[0] == 0x24 || sequenceBytes[0] == 0x2b) {
+          sequenceBytes.append(0x71); parser = .dcsQuery(escaped: false)
         }
-        else if byte == 0x71, sequence.utf8.allSatisfy({ (0x30...0x3b).contains($0) }) {
-          let header = sequence.split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 }
-          sequence = ""
+        else if byte == 0x71, sequenceBytes.allSatisfy({ (0x30...0x3b).contains($0) }) {
+          let header = String(decoding: sequenceBytes, as: UTF8.self)
+            .split(separator: ";", omittingEmptySubsequences: false).map { Int($0) ?? 0 }
+          sequenceBytes.removeAll(keepingCapacity: true)
           parser = .sixel(SixelDecoder(header: header, palette: sixelPalette, background: palette.snapshotDefaultBackground), escaped: false)
         }
-        else if sequence.utf8.count < 64, (0x20...0x3f).contains(byte) {
-          sequence.unicodeScalars.append(UnicodeScalar(byte))
+        else if sequenceBytes.count < 64, (0x20...0x3f).contains(byte) {
+          sequenceBytes.append(byte)
         }
-        else { sequence = ""; parser = .discardString(escaped: byte == 0x1b, osc: false) }
+        else { sequenceBytes.removeAll(keepingCapacity: true); parser = .discardString(escaped: byte == 0x1b, osc: false) }
       case .dcsQuery(let escaped):
-        if byte == 0x18 || byte == 0x1a { sequence = ""; parser = .ground }
+        if byte == 0x18 || byte == 0x1a { sequenceBytes.removeAll(keepingCapacity: true); parser = .ground }
         else if escaped && byte == 0x5c {
           finishQuery(); parser = .ground
         } else if byte == 0x1b { parser = .dcsQuery(escaped: true) }
-        else if escaped { sequence = ""; parser = .escape; handleEscapedByte(byte) }
-        else if (0x20...0x7e).contains(byte), sequence.utf8.count < TerminalQueries.maximumPayloadBytes + 2 {
-          sequence.unicodeScalars.append(UnicodeScalar(byte))
-        } else { sequence = ""; parser = .discardString(escaped: false, osc: false) }
+        else if escaped { sequenceBytes.removeAll(keepingCapacity: true); parser = .escape; handleEscapedByte(byte) }
+        else if (0x20...0x7e).contains(byte), sequenceBytes.count < TerminalQueries.maximumPayloadBytes + 2 {
+          sequenceBytes.append(byte)
+        } else { sequenceBytes.removeAll(keepingCapacity: true); parser = .discardString(escaped: false, osc: false) }
       case .sixel(let decoder, let escaped):
         if byte == 0x18 || byte == 0x1a { parser = .ground }
         else if escaped && byte == 0x5c {
@@ -735,14 +756,20 @@ private final class TerminalEmulator {
         else if escaped { parser = .escape; handleEscapedByte(byte) }
         else { decoder.push(byte) }
       case .apc:
-        if byte == 0x18 || byte == 0x1a { graphics.abort(); sequence = ""; parser = .ground }
-        else if sequence.last == "\u{1b}" && byte == 0x5c { sequence.removeLast(); finishString(); parser = .ground }
-        else if byte == 0x1b { if sequence.last != "\u{1b}" { sequence.append("\u{1b}") } }
-        else if sequence.last == "\u{1b}" || sequence.utf8.count >= KittyGraphicsStore.maximumPacketBytes {
-          graphics.abort(); parser = .discardString(escaped: false, osc: false); sequence = ""
+        if byte == 0x18 || byte == 0x1a {
+          graphics.abort()
+          sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
+          parser = .ground
         }
-        else if sequence.isEmpty && byte != 0x47 { parser = .discardString(escaped: false, osc: false) }
-        else if byte >= 0x20 && byte != 0x7f { sequence.unicodeScalars.append(UnicodeScalar(byte)) }
+        else if sequenceBytes.last == 0x1b && byte == 0x5c { sequenceBytes.removeLast(); finishString(); parser = .ground }
+        else if byte == 0x1b { if sequenceBytes.last != 0x1b { sequenceBytes.append(0x1b) } }
+        else if sequenceBytes.last == 0x1b || sequenceBytes.count >= KittyGraphicsStore.maximumPacketBytes {
+          graphics.abort()
+          parser = .discardString(escaped: false, osc: false)
+          sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
+        }
+        else if sequenceBytes.isEmpty && byte != 0x47 { parser = .discardString(escaped: false, osc: false) }
+        else if byte >= 0x20 && byte != 0x7f { sequenceBytes.append(byte) }
       case .discardString(let escaped, let osc):
         if byte == 0x18 || byte == 0x1a { parser = .ground }
         else if osc && byte == 0x07 { parser = .ground }
@@ -799,9 +826,9 @@ private final class TerminalEmulator {
     parser = .ground
     switch byte {
     case 0x5b: csiBytes.removeAll(keepingCapacity: true); csiUTF8Count = 0; parser = .csi
-    case 0x5d: sequence = ""; parser = .osc
-    case 0x5f: sequence = ""; parser = .apc
-    case 0x50: sequence = ""; parser = .dcsHeader
+    case 0x5d: sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536); parser = .osc
+    case 0x5f: sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536); parser = .apc
+    case 0x50: sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536); parser = .dcsHeader
     // SOS and PM carry strings this terminal does not interpret. They are
     // consumed up to ST so their bodies never reach the screen.
     case 0x58, 0x5e: parser = .discardString(escaped: false, osc: false)
@@ -1783,7 +1810,8 @@ private final class TerminalEmulator {
   private var colorSchemeReply: String { "\u{1b}[?997;\(palette.schemeIsDark ? 1 : 2)n" }
   func setIdentity(_ value: TerminalIdentity) { identity = value }
   private func finishQuery() {
-    let payload = sequence; sequence = ""
+    let payload = String(decoding: sequenceBytes, as: UTF8.self)
+    sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
     if payload.hasPrefix("+q") {
       replies.append(contentsOf: TerminalQueries.termcap(String(payload.dropFirst(2)), applicationCursor: applicationCursor).utf8)
     } else if payload.hasPrefix("$q") {
@@ -1793,11 +1821,10 @@ private final class TerminalEmulator {
     }
   }
   private func finishString() {
-    let payload = sequence; sequence = ""
     if case .osc = parser {
       // OSC bytes are lossy UTF-8 decoded before command dispatch.
-      let bytes = payload.unicodeScalars.map { UInt8($0.value) }
-      let decoded = String(decoding: bytes, as: UTF8.self)
+      let decoded = String(decoding: sequenceBytes, as: UTF8.self)
+      sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
       let parts = decoded.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)
       let command = parts.first.map(String.init) ?? ""
       let value = parts.count > 1 ? String(parts[1]) : ""
@@ -1875,14 +1902,19 @@ private final class TerminalEmulator {
       }
       return
     }
-    guard case .apc = parser else { return }
+    guard case .apc = parser else {
+      sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
+      return
+    }
+    let payload = Data(sequenceBytes)
+    sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
     // Printing can move history rows, but the graphics protocol is the only
     // path that needs live anchor membership.  Pruning here keeps ordinary
     // scalar output O(1) while retaining the placement cap semantics.
     pruneGraphicsAnchors()
     if graphicsPaletteStale { refreshGraphicsPalette() }
     let s = screen
-    let outcome = graphics.consume(Data(payload.utf8), context: KittyGraphicsContext(
+    let outcome = graphics.consume(payload, context: KittyGraphicsContext(
       alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
       cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id),
       rowPositions: graphics.hasRelativePlacements ? graphicsRowPositions(offset: 0) : [:],
@@ -2479,7 +2511,6 @@ private final class TerminalEmulator {
           foreground.count == 3, background.count == 3 else {
       return (nil, "Invalid snapshot dimensions or palette")
     }
-    let kinds = ["Empty", "Lead1", "Lead2", "Continuation", "WrapSpacer"]
     var rows: [RowSnapshot] = []
     rows.reserveCapacity(selected.rows.count)
     // At most one adjacent row is projected for smooth viewport presentation.
@@ -2498,7 +2529,7 @@ private final class TerminalEmulator {
       var cells: [CellSnapshot] = []
       cells.reserveCapacity(columns)
       for cell in row.cells {
-        guard Int(cell.kind) < kinds.count else { return (nil, "Invalid cell kind") }
+        guard let kind = CellKind(rawValue: cell.kind) else { return (nil, "Invalid cell kind") }
         let resolved = palette.presentationStyle(cell.style)
         let flags = resolved.flags
         let style = CellStyle(
@@ -2508,16 +2539,12 @@ private final class TerminalEmulator {
           underline: Int(resolved.underlineKind), bold: flags & 1 != 0, faint: flags & 2 != 0,
           italic: flags & 4 != 0, inverse: flags & 8 != 0, conceal: flags & 16 != 0,
           strike: flags & 32 != 0, overline: flags & 64 != 0, blink: flags & 128 != 0)
-        cells.append(CellSnapshot(text: cell.text, kind: kinds[Int(cell.kind)], style: style,
+        cells.append(CellSnapshot(text: cell.text, kind: kind, style: style,
                                   link: cell.link, linkID: cell.linkID, flags: Int(cell.flags)))
       }
       rows.append(RowSnapshot(cells: cells, soft_wrapped: row.softWrapped, id: row.id, revision: row.revision))
     }
     let highlights = visibleSearchHighlights(in: selected.rows, offset: selected.offset)
-    func highlight(_ value: [String: Int]) -> SearchHighlight {
-      SearchHighlight(row: value["row"]!, start: value["start"]!, end: value["end"]!)
-    }
-    let search = highlights.current.map(highlight)
     func image(_ value: KittyImagePlacement) -> ImagePlacementSnapshot {
       ImagePlacementSnapshot(image: value.image, generation: value.generation, width: value.width, height: value.height,
         source: value.source, row: value.row, col: value.column, columns: value.columns,
@@ -2526,7 +2553,7 @@ private final class TerminalEmulator {
     }
     let images = visibleImages(offset: selected.offset).map(image)
     var snapshot = TerminalSnapshot(
-      at_prompt: cursor.atPrompt, input_ready: cursor.inputReady, search: search, images: images,
+      at_prompt: cursor.atPrompt, input_ready: cursor.inputReady, search: highlights.current, images: images,
       revision: revision, geometry_epoch: geometryEpoch, document_epoch: documentEpoch,
       history_epoch: historyEpoch, screen_epoch: screenEpoch, scroll_offset: selected.offset,
       following_tail: selected.followingTail, viewport_clamp_revision: viewportClampRevision,
@@ -2542,13 +2569,13 @@ private final class TerminalEmulator {
         documentGeneration: selectionDocumentGeneration, screen: selectionScreen, geometryEpoch: geometryEpoch,
         columns: columns, rows: selected.rows.map { .init(id: $0.id, revision: $0.revision, softWrapped: $0.softWrapped) }),
       selection: selection.snapshot(screen: selectionScreen, rows: selected.rows),
-      search_matches: highlights.others.map(highlight))
+      search_matches: highlights.others)
     if rows.count > selected.rows.count, let guardRow = rows.last {
       let expandedHighlights = visibleSearchHighlights(in: presentationRows, offset: selected.offset)
       snapshot.presentationOverscan = TerminalPresentationOverscan(row: guardRow,
         images: visibleImages(offset: selected.offset, height: rowCount + 1).map(image),
         selection: selection.snapshot(screen: selectionScreen, rows: presentationRows),
-        search: expandedHighlights.current.map(highlight), searchMatches: expandedHighlights.others.map(highlight))
+        search: expandedHighlights.current, searchMatches: expandedHighlights.others)
     }
     return (snapshot, nil)
   }
@@ -2825,7 +2852,7 @@ private final class TerminalEmulator {
   /// remaining visible matches. `offset` is the selection's scroll offset; it
   /// locates the rows in document space so each proof is checked exactly.
   private func visibleSearchHighlights(in rows: [TerminalRow], offset: Int)
-    -> (current: [[String: Int]], others: [[String: Int]]) {
+    -> (current: [SearchHighlight], others: [SearchHighlight]) {
     guard let hits = searchHits, let firstRow = rows.first else { return ([], []) }
     let source = searchSource()
     guard source.stamp == hits.stamp else { return ([], []) }
@@ -2844,8 +2871,8 @@ private final class TerminalEmulator {
       proofs[index] = live
       return live == proof
     }
-    var current: [[String: Int]] = []
-    var others: [[String: Int]] = []
+    var current: [SearchHighlight] = []
+    var others: [SearchHighlight] = []
     for (visible, row) in rows.enumerated() {
       guard let entries = hits.byRow[row.id] else { continue }
       for entry in entries {
@@ -2856,7 +2883,7 @@ private final class TerminalEmulator {
         guard first >= 0, match.spans.enumerated().allSatisfy({ proven(first + $0.offset, $0.element.span.proof) })
         else { continue }
         let span = match.spans[entry.span].span
-        let highlight = ["row": visible, "start": span.start, "end": span.end]
+        let highlight = SearchHighlight(row: visible, start: span.start, end: span.end)
         if entry.match == hits.current { current.append(highlight) } else { others.append(highlight) }
       }
     }
@@ -2933,9 +2960,11 @@ private final class TerminalEmulator {
   }
   private func snapshotMetadata(cursor: TerminalScreen, offset: Int,
                                 followingTail: Bool,
-                                search: (current: [[String: Int]], others: [[String: Int]])) -> [String: Any] {
+                                search: (current: [SearchHighlight], others: [SearchHighlight])) -> [String: Any] {
     let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement, "extent": image.extent as Any? ?? NSNull(), "stretch": image.stretch] as [String: Any] }
-    var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":search.current,"search_matches":search.others,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette.snapshotPalette,"default_fg":palette.snapshotDefaultForeground,"default_bg":palette.snapshotDefaultBackground]
+    let currentSearch = search.current.map { ["row": $0.row, "start": $0.start, "end": $0.end] }
+    let otherSearch = search.others.map { ["row": $0.row, "start": $0.start, "end": $0.end] }
+    var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":currentSearch,"search_matches":otherSearch,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette.snapshotPalette,"default_fg":palette.snapshotDefaultForeground,"default_bg":palette.snapshotDefaultBackground]
     metadata["cursor_color"] = palette.cursorRGB
     if var modes = metadata["modes"] as? [String: Any] {
       modes["mouse_encoding"] = mouseEncoding

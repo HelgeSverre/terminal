@@ -223,6 +223,15 @@ public final class TerminalRendering: @unchecked Sendable {
   // creation was over half of the time spent drawing during a flood.
   private var idleQuadBuffers: [MTLBuffer] = []
   private static let idleQuadBufferLimit = 8
+  // Persistent per-frame scratch arrays, owned by the serial render queue.
+  private var scratchBackgrounds: [Quad] = []
+  private var scratchDecorations: [Quad] = []
+  private var scratchTextQuads: [Quad] = []
+  private var scratchTextGlyphQuads: [[Quad]] = []
+  private var scratchTextDirectGlyphQuads: [(quad: Quad, texture: MTLTexture, heap: MTLHeap?, legacyID: UUID?)] = []
+  private var scratchOverlayQuads: [Quad] = []
+  private var scratchOverlayGlyphQuads: [[Quad]] = []
+  private var scratchOverlayDirectGlyphQuads: [(quad: Quad, texture: MTLTexture, heap: MTLHeap?, legacyID: UUID?)] = []
 
   private func takeQuadBuffer(bytes: Int) -> MTLBuffer? {
     guard bytes > 0 else { return nil }
@@ -685,6 +694,10 @@ public final class TerminalRendering: @unchecked Sendable {
     var residencySubmitted = false
     var frameLegacyIDs: Set<UUID> = []
     defer {
+      // Release direct-glyph texture/heap references immediately while keeping
+      // array capacities warm for the next frame.
+      scratchTextDirectGlyphQuads.removeAll(keepingCapacity: true)
+      scratchOverlayDirectGlyphQuads.removeAll(keepingCapacity: true)
       if !residencySubmitted {
         glyphResidency.abandonedPreparedFrame()
         frameLegacyIDs.forEach { glyphResidency.releaseLegacyTexture($0) }
@@ -704,46 +717,69 @@ public final class TerminalRendering: @unchecked Sendable {
     }
     let preparationStart = DispatchTime.now().uptimeNanoseconds
     RendererMetrics.beginGlyphFrame(revision: request.snapshot.revision)
-    var quads: [Quad] = []
-    var backgrounds: [Quad] = []
-    var decorations: [Quad] = []
-    var glyphQuads = Array(repeating: [Quad](), count: atlases.count)
-    var directGlyphQuads: [(quad: Quad, texture: MTLTexture, heap: MTLHeap?, legacyID: UUID?)] = []
     let snap = request.snapshot
     // The navigated match takes the accent; every other visible match takes
     // the quieter selection tone so the current stop stays findable.
-    let currentSearchRows = Dictionary(grouping: snap.search, by: { $0.row })
-    let otherSearchRows = Dictionary(grouping: snap.search_matches, by: { $0.row })
+    let currentSearchRows: [Int: [SearchHighlight]] = snap.search.isEmpty
+      ? [:] : Dictionary(grouping: snap.search, by: { $0.row })
+    let otherSearchRows: [Int: [SearchHighlight]] = snap.search_matches.isEmpty
+      ? [:] : Dictionary(grouping: snap.search_matches, by: { $0.row })
     let palette = CellPalette(snapshot: snap)
     let chrome = TerminalChromeColors(request.colors)
     let baseBackground = palette.background
+    let accentLinear = TerminalTheme.linear(chrome.accent)
+    let chromeBackgroundLinear = TerminalTheme.linear(chrome.background)
+    let selectionBackgroundLinear = TerminalTheme.linear(request.colors.selectionBackground)
+    let selectionForegroundLinear = TerminalTheme.linear(request.colors.selectionForeground)
     let whiteUV = SIMD4<Float>(0.5 / Float(atlasSize), 0.5 / Float(atlasSize), 0, 0)
+    var buildingOverlay = false
+    func clearGlyphQuads(_ pages: inout [[Quad]]) {
+      if pages.count < atlases.count {
+        pages.reserveCapacity(atlases.count)
+        while pages.count < atlases.count { pages.append([]) }
+      } else if pages.count > atlases.count {
+        pages.removeLast(pages.count - atlases.count)
+      }
+      for i in pages.indices {
+        pages[i].removeAll(keepingCapacity: true)
+      }
+    }
     func rect(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ color: SIMD4<Float>) {
-      quads.append(
-        Quad(rect: SIMD4(Float(x), Float(y), Float(w), Float(h)), uv: whiteUV, color: color))
+      let quad = Quad(rect: SIMD4(Float(x), Float(y), Float(w), Float(h)), uv: whiteUV, color: color)
+      if buildingOverlay { scratchOverlayQuads.append(quad) }
+      else { scratchTextQuads.append(quad) }
     }
     func decoration(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ color: SIMD4<Float>) {
-      decorations.append(
+      scratchDecorations.append(
         Quad(rect: SIMD4(Float(x), Float(y), Float(w), Float(h)), uv: whiteUV, color: color))
     }
     func appendGlyph(_ quad: Quad, _ glyph: Glyph) {
       var quad = quad
       quad.material = SIMD4(glyph.kind == .mask ? 0 : 1, 0, 0, 0)
       if let page = glyph.atlasPage {
-        while glyphQuads.count <= page { glyphQuads.append([]) }
-        glyphQuads[page].append(quad)
+        if buildingOverlay {
+          while scratchOverlayGlyphQuads.count <= page { scratchOverlayGlyphQuads.append([]) }
+          scratchOverlayGlyphQuads[page].append(quad)
+        } else {
+          while scratchTextGlyphQuads.count <= page { scratchTextGlyphQuads.append([]) }
+          scratchTextGlyphQuads[page].append(quad)
+        }
       } else if let texture = glyph.texture {
-        directGlyphQuads.append((quad, texture, glyph.heap, glyph.legacyID))
+        if buildingOverlay {
+          scratchOverlayDirectGlyphQuads.append((quad, texture, glyph.heap, glyph.legacyID))
+        } else {
+          scratchTextDirectGlyphQuads.append((quad, texture, glyph.heap, glyph.legacyID))
+        }
         if let id = glyph.legacyID { frameLegacyIDs.insert(id) }
       }
     }
     var needsReset = false
     for pass in 0..<2 {
-      quads.removeAll(keepingCapacity: true)
-      backgrounds.removeAll(keepingCapacity: true)
-      decorations.removeAll(keepingCapacity: true)
-      glyphQuads = Array(repeating: [], count: atlases.count)
-      directGlyphQuads.removeAll(keepingCapacity: true)
+      scratchTextQuads.removeAll(keepingCapacity: true)
+      scratchBackgrounds.removeAll(keepingCapacity: true)
+      scratchDecorations.removeAll(keepingCapacity: true)
+      clearGlyphQuads(&scratchTextGlyphQuads)
+      scratchTextDirectGlyphQuads.removeAll(keepingCapacity: true)
       frameAtlasPages = [0]
       directGlyphBytes = 0
       directGlyphCount = 0
@@ -753,8 +789,8 @@ public final class TerminalRendering: @unchecked Sendable {
       var linkSegment = 0
       var selectionSegment = 0
       for (r, row) in snap.rows.enumerated() {
-        let currentSearch = currentSearchRows[r]
-        let otherSearch = otherSearchRows[r]
+        let currentSearch = currentSearchRows.isEmpty ? nil : currentSearchRows[r]
+        let otherSearch = otherSearchRows.isEmpty ? nil : otherSearchRows[r]
         // The column after the ligature run being drawn; its later cells
         // draw no glyph of their own.
         var ligatureEnd = 0
@@ -765,11 +801,11 @@ public final class TerminalRendering: @unchecked Sendable {
           var fg = colors.foreground
           var bg = colors.background
           if let currentSearch, currentSearch.contains(where: { $0.start <= c && c < $0.end }) {
-            bg = TerminalTheme.linear(chrome.accent)
-            fg = TerminalTheme.linear(chrome.background)
+            bg = accentLinear
+            fg = chromeBackgroundLinear
           } else if let otherSearch, otherSearch.contains(where: { $0.start <= c && c < $0.end }) {
-            bg = TerminalTheme.linear(request.colors.selectionBackground)
-            fg = TerminalTheme.linear(request.colors.selectionForeground)
+            bg = selectionBackgroundLinear
+            fg = selectionForegroundLinear
           }
           while selectionSegment < snap.selection.segments.count {
             let segment = snap.selection.segments[selectionSegment]
@@ -781,28 +817,36 @@ public final class TerminalRendering: @unchecked Sendable {
             && snap.selection.segments[selectionSegment].row == r
             && snap.selection.segments[selectionSegment].start <= c
           if selected {
-            bg = TerminalTheme.linear(request.colors.selectionBackground)
-            fg = TerminalTheme.linear(request.colors.selectionForeground)
+            bg = selectionBackgroundLinear
+            fg = selectionForegroundLinear
           }
           if bg != baseBackground {
-            backgrounds.append(
+            scratchBackgrounds.append(
               Quad(
                 rect: SIMD4(
                   Float(x), Float(y), Float(request.cellWidth), Float(request.cellHeight)),
                 uv: whiteUV, color: bg))
           }
           // A Kitty image placeholder shows its image, never a glyph of its own.
-          let placeholder = cell.text.unicodeScalars.first?.value == KittyPlaceholder.character
-          if !cell.text.isEmpty && !cell.style.conceal && (!cell.style.blink || request.textVisible)
-            && cell.kind != "Continuation" && !placeholder {
-            let cells = cell.kind == "Lead2" ? 2 : 1
-            if cell.text == "▀" {
+          let scalars = cell.text.unicodeScalars
+          if let firstScalar = scalars.first, !cell.style.conceal && (!cell.style.blink || request.textVisible)
+            && cell.kind != .continuation && firstScalar.value != KittyPlaceholder.character {
+            let cells = cell.kind == .lead2 ? 2 : 1
+            let singleBlock: UInt32
+            if (firstScalar.value == 0x2580 || firstScalar.value == 0x2584 || firstScalar.value == 0x2588)
+              && scalars.index(after: scalars.startIndex) == scalars.endIndex
+            {
+              singleBlock = firstScalar.value
+            } else {
+              singleBlock = 0
+            }
+            if singleBlock == 0x2580 {
               rect(x, y, request.cellWidth, request.cellHeight / 2, fg)
-            } else if cell.text == "▄" {
+            } else if singleBlock == 0x2584 {
               rect(
                 x, y + request.cellHeight / 2, request.cellWidth,
                 request.cellHeight - request.cellHeight / 2, fg)
-            } else if cell.text == "█" {
+            } else if singleBlock == 0x2588 {
               rect(x, y, request.cellWidth, request.cellHeight, fg)
             } else if let shapes = GeometricGlyph.rectangles(
               text: cell.text, width: request.cellWidth * cells, height: request.cellHeight)
@@ -850,8 +894,7 @@ public final class TerminalRendering: @unchecked Sendable {
                 }
               }
               let displayText =
-                cell.text.unicodeScalars.first.map { CharacterSet.nonBaseCharacters.contains($0) }
-                  == true ? "◌" + cell.text : cell.text
+                CharacterSet.nonBaseCharacters.contains(firstScalar) ? "◌" + cell.text : cell.text
               let key = GlyphKey(
                 text: displayText, cells: cells, bold: cell.style.bold, italic: cell.style.italic,
                 width: request.cellWidth * cells, height: request.cellHeight,
@@ -906,12 +949,10 @@ public final class TerminalRendering: @unchecked Sendable {
       if !needsReset || pass == 1 { break }
       resetAtlas()
     }
-    let textQuads = quads
-    let textGlyphQuads = glyphQuads
-    let textDirectGlyphQuads = directGlyphQuads
-    quads.removeAll(keepingCapacity: true)
-    glyphQuads = Array(repeating: [], count: atlases.count)
-    directGlyphQuads.removeAll(keepingCapacity: true)
+    buildingOverlay = true
+    scratchOverlayQuads.removeAll(keepingCapacity: true)
+    clearGlyphQuads(&scratchOverlayGlyphQuads)
+    scratchOverlayDirectGlyphQuads.removeAll(keepingCapacity: true)
     if snap.cursor.visible && snap.following_tail && request.cursorVisible {
       let x = request.inset + snap.cursor.col * request.cellWidth
       let y = request.inset + snap.cursor.row * request.cellHeight
@@ -996,9 +1037,6 @@ public final class TerminalRendering: @unchecked Sendable {
         RendererMetrics.recordSubstituteGlyphFallback()
       }
     }
-    let overlayQuads = quads
-    let overlayGlyphQuads = glyphQuads
-    let overlayDirectGlyphQuads = directGlyphQuads
     RendererMetrics.recordGlyphFallbackFrame(bytes: directGlyphBytes, count: directGlyphCount)
     let imageKeys = Set(snap.images.map { $0.key })
     imageTextures = imageTextures.filter {
@@ -1059,10 +1097,10 @@ public final class TerminalRendering: @unchecked Sendable {
     // buffers and returned when the GPU has finished the frame. Each image is
     // drawn in exactly one of the three image passes.
     let frameQuadCount =
-      backgrounds.count + textQuads.count + textGlyphQuads.reduce(0) { $0 + $1.count }
-      + decorations.count
-      + textDirectGlyphQuads.count + overlayQuads.count + overlayGlyphQuads.reduce(0) { $0 + $1.count }
-      + overlayDirectGlyphQuads.count + snap.images.count
+      scratchBackgrounds.count + scratchTextQuads.count + scratchTextGlyphQuads.reduce(0) { $0 + $1.count }
+      + scratchDecorations.count
+      + scratchTextDirectGlyphQuads.count + scratchOverlayQuads.count + scratchOverlayGlyphQuads.reduce(0) { $0 + $1.count }
+      + scratchOverlayDirectGlyphQuads.count + snap.images.count
     let frameQuads = takeQuadBuffer(bytes: MemoryLayout<Quad>.stride * frameQuadCount)
     var frameQuadOffset = 0
     func drawQuads(_ items: [Quad], texture: MTLTexture, state: MTLRenderPipelineState) {
@@ -1072,12 +1110,18 @@ public final class TerminalRendering: @unchecked Sendable {
         RendererMetrics.recordQuadBufferDrop(items.count)
         return
       }
-      let translated = request.scrollOffsetPixels == 0 ? items : items.map { item in
-        var item = item
-        item.rect.y += request.scrollOffsetPixels
-        return item
+      let destination = frameQuads.contents() + frameQuadOffset
+      let scrollOffset = request.scrollOffsetPixels
+      if scrollOffset == 0 {
+        items.withUnsafeBytes { destination.copyMemory(from: $0.baseAddress!, byteCount: length) }
+      } else {
+        let typed = destination.bindMemory(to: Quad.self, capacity: items.count)
+        for i in items.indices {
+          var item = items[i]
+          item.rect.y += scrollOffset
+          typed[i] = item
+        }
       }
-      translated.withUnsafeBytes { (frameQuads.contents() + frameQuadOffset).copyMemory(from: $0.baseAddress!, byteCount: length) }
       encoder.setRenderPipelineState(state)
       encoder.setVertexBuffer(frameQuads, offset: frameQuadOffset, index: 0)
       encoder.setFragmentTexture(texture, index: 0)
@@ -1116,23 +1160,23 @@ public final class TerminalRendering: @unchecked Sendable {
     }
     encoder.setScissorRect(MTLScissorRect(x: request.inset, y: request.inset, width: clipWidth, height: clipHeight))
     drawImages { $0 < -1_073_741_824 }
-    drawQuads(backgrounds, texture: atlases[0], state: pipeline)
+    drawQuads(scratchBackgrounds, texture: atlases[0], state: pipeline)
     drawImages { $0 < 0 && $0 >= -1_073_741_824 }
-    drawQuads(textQuads, texture: atlases[0], state: pipeline)
-    for (page, quads) in textGlyphQuads.enumerated() {
+    drawQuads(scratchTextQuads, texture: atlases[0], state: pipeline)
+    for (page, quads) in scratchTextGlyphQuads.enumerated() {
       drawQuads(quads, texture: atlases[page], state: pipeline)
     }
-    for item in textDirectGlyphQuads { drawQuads([item.quad], texture: item.texture, state: pipeline) }
+    for item in scratchTextDirectGlyphQuads { drawQuads([item.quad], texture: item.texture, state: pipeline) }
     // Glyph descenders and antialias coverage can overlap decorations. Draw
     // the requested solid ink after every glyph representation so its color
     // and shape do not depend on font coverage or asynchronous residency.
-    drawQuads(decorations, texture: atlases[0], state: pipeline)
+    drawQuads(scratchDecorations, texture: atlases[0], state: pipeline)
     drawImages { $0 >= 0 }
-    drawQuads(overlayQuads, texture: atlases[0], state: pipeline)
-    for (page, quads) in overlayGlyphQuads.enumerated() {
+    drawQuads(scratchOverlayQuads, texture: atlases[0], state: pipeline)
+    for (page, quads) in scratchOverlayGlyphQuads.enumerated() {
       drawQuads(quads, texture: atlases[page], state: pipeline)
     }
-    for item in overlayDirectGlyphQuads { drawQuads([item.quad], texture: item.texture, state: pipeline) }
+    for item in scratchOverlayDirectGlyphQuads { drawQuads([item.quad], texture: item.texture, state: pipeline) }
     encoder.endEncoding()
     RendererMetrics.recordPresentation(
       requestWidth: request.width, requestHeight: request.height,

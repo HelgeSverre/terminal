@@ -20,7 +20,7 @@ import TerminalEngine
     var rows: [String] = []
     session.onSnapshot = { snapshot in
       rows = snapshot.rows.map { row in
-        var line = row.cells.map { $0.kind == "Continuation" ? "" : ($0.text.isEmpty ? " " : $0.text) }.joined()
+        var line = row.cells.map { $0.kind == .continuation ? "" : ($0.text.isEmpty ? " " : $0.text) }.joined()
         while line.hasSuffix(" ") { line.removeLast() }
         return line
       }

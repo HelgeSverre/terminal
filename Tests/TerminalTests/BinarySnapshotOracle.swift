@@ -106,7 +106,6 @@ enum BinarySnapshotOracle {
           capture.error = "Invalid snapshot dimensions or palette"
           return
         }
-        let kinds = ["Empty", "Lead1", "Lead2", "Continuation", "WrapSpacer"]
         guard header.row_identities == nil || header.row_identities?.count == rowCount else {
           capture.error = "Invalid snapshot row identities"
           return
@@ -118,7 +117,7 @@ enum BinarySnapshotOracle {
           output.reserveCapacity(header.cols)
           for column in 0..<header.cols {
             let cell = cells[row * header.cols + column]
-            guard Int(cell.kind) < kinds.count else {
+            guard let kind = CellKind(rawValue: cell.kind) else {
               capture.error = "Invalid cell kind"
               return
             }
@@ -137,7 +136,7 @@ enum BinarySnapshotOracle {
             }
             output.append(
               CellSnapshot(
-                text: text, kind: kinds[Int(cell.kind)], style: style, link: link,
+                text: text, kind: kind, style: style, link: link,
                 linkID: header.link_ids?[String(row * header.cols + column)],
                 flags: Int(cell.cell_flags)))
           }

@@ -188,9 +188,9 @@ package struct VisibleLinkProjection {
     }
     for (rowIndex, row) in snapshot.rows.enumerated() {
       for (column, cell) in row.cells.enumerated() {
-        guard cell.kind != "Continuation" && cell.kind != "WrapSpacer" else { continue }
-        let text = cell.kind == "Empty" ? " " : cell.text
-        let width = cell.kind == "Lead2" ? 2 : 1
+        guard cell.kind != .continuation && cell.kind != .wrapSpacer else { continue }
+        let text = cell.kind == .empty ? " " : cell.text
+        let width = cell.kind == .lead2 ? 2 : 1
         let start = rowIndex * snapshot.cols + column
         let part = CellPart(text: text, grid: start..<(start + width), explicit: cell.link,
           linkID: cell.linkID.flatMap { $0.isEmpty ? nil : $0 })

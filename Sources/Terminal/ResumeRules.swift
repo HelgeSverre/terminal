@@ -101,7 +101,6 @@ struct ResumeRules: Decodable {
 final class ResumeSampler: @unchecked Sendable {
   struct Pane { var id: PaneID; var pid: Int32; var hook: URL }
   private let queue = DispatchQueue(label: "terminal.recovery.foreground", qos: .utility)
-  private var liveProcess: Process?
   let rules: ResumeRules
   let home: URL
   private let commandForTesting: ((Int32) -> String?)?
@@ -113,7 +112,7 @@ final class ResumeSampler: @unchecked Sendable {
     queue.async { [self] in
       var records: [PaneID: ResumeRecord] = [:]
       for pane in panes {
-        guard let command = commandForTesting.map({ $0(pane.pid) }) ?? foregroundCommand(pane.pid),
+        guard let command = commandForTesting.map({ $0(pane.pid) }) ?? Self.foregroundCommand(pane.pid),
           let rule = rules.matching(command: command) else { continue }
         var session: String?
         if let data = try? ResumeRules.boundedFile(pane.hook, limit: 65_536),
@@ -134,46 +133,58 @@ final class ResumeSampler: @unchecked Sendable {
     }
   }
 
-  /// argv-only `ps` query. No environment is requested. The sole owned helper
-  /// has a 500 ms/64 KiB budget; a stuck helper blocks further sampling rather
-  /// than accumulating processes. Its command text never leaves this method's
-  /// caller or enters the saved state.
-  private func foregroundCommand(_ pid: Int32) -> String? {
-    guard pid > 0, liveProcess?.isRunning != true else { return nil }
-    let process = Process(), pipe = Pipe()
-    let terminated = DispatchSemaphore(value: 0)
-    process.terminationHandler = { _ in terminated.signal() }
-    process.executableURL = URL(fileURLWithPath: "/bin/ps")
-    process.arguments = ["-ww", "-p", String(pid), "-o", "command="]
-    process.standardOutput = pipe
-    process.standardError = FileHandle.nullDevice
-    do { try process.run() } catch { return nil }
-    liveProcess = process
-    try? pipe.fileHandleForWriting.close()
-    let fd = pipe.fileHandleForReading.fileDescriptor
-    defer { try? pipe.fileHandleForReading.close() }
-    let flags = fcntl(fd, F_GETFL)
-    guard flags >= 0, fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 else {
-      if process.isRunning { process.terminate() }; return nil
+  /// Reads argv directly from the kernel via `KERN_PROCARGS2` without spawning
+  /// a subprocess or reading environment variables. The command text never
+  /// leaves this sampler or enters saved state.
+  static func foregroundCommand(_ pid: Int32) -> String? {
+    guard pid > 0 else { return nil }
+    var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+    var size = 0
+    guard Darwin.sysctl(&mib, UInt32(mib.count), nil, &size, nil, 0) == 0,
+      size > MemoryLayout<Int32>.size, size <= 4 * 1024 * 1024 else { return nil }
+    var buffer = [UInt8](repeating: 0, count: size)
+    guard Darwin.sysctl(&mib, UInt32(mib.count), &buffer, &size, nil, 0) == 0,
+      size > MemoryLayout<Int32>.size else { return nil }
+    return buffer.withUnsafeBufferPointer { pointer in
+      parseProcArgs2(UnsafeBufferPointer(rebasing: pointer[..<size]))
     }
-    let deadline = DispatchTime.now().uptimeNanoseconds + 500_000_000
-    var output = Data(), bytes = [UInt8](repeating: 0, count: 4096)
-    while DispatchTime.now().uptimeNanoseconds < deadline {
-      let count = Darwin.read(fd, &bytes, bytes.count)
-      if count > 0 {
-        guard output.count <= 65_536 - count else { process.terminate(); return nil }
-        output.append(contentsOf: bytes.prefix(count))
-      } else if count == 0 {
-        guard !output.isEmpty else { return nil }
-        _ = terminated.wait(timeout: DispatchTime(uptimeNanoseconds: deadline))
-        return String(data: output, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-      } else if errno != EINTR && errno != EAGAIN { return nil }
-      else {
-        var descriptor = pollfd(fd: fd, events: Int16(POLLIN | POLLHUP), revents: 0)
-        _ = poll(&descriptor, 1, 20)
+  }
+
+  static func parseProcArgs2(_ buffer: UnsafeBufferPointer<UInt8>) -> String? {
+    let int32Size = MemoryLayout<Int32>.size
+    guard buffer.count > int32Size, let base = buffer.baseAddress else { return nil }
+    let argc = UnsafeRawPointer(base).loadUnaligned(as: Int32.self)
+    guard argc > 0 else { return nil }
+    var index = int32Size
+    // Skip NUL-terminated exec_path.
+    while index < buffer.count && buffer[index] != 0 { index += 1 }
+    guard index < buffer.count else { return nil }
+    // Skip one or more NUL padding bytes between exec_path and argv[0].
+    while index < buffer.count && buffer[index] == 0 { index += 1 }
+    guard index < buffer.count else { return nil }
+    // Read exactly argc NUL-terminated argv strings; never read envp.
+    let maximumBytes = 65_536
+    var arguments: [String] = []
+    arguments.reserveCapacity(min(Int(argc), 64))
+    var totalBytes = 0
+    for _ in 0..<argc {
+      guard index < buffer.count else { return nil }
+      let start = index
+      while index < buffer.count && buffer[index] != 0 { index += 1 }
+      guard index < buffer.count else { return nil }
+      let length = index - start
+      if length > 0 {
+        let separatorBytes = arguments.isEmpty ? 0 : 1
+        guard totalBytes + separatorBytes + length <= maximumBytes else { return nil }
+        guard let argument = String(bytes: buffer[start..<index], encoding: .utf8) else { return nil }
+        arguments.append(argument)
+        totalBytes += separatorBytes + length
       }
+      index += 1
     }
-    if process.isRunning { process.terminate() }
-    return nil
+    guard !arguments.isEmpty else { return nil }
+    let command = arguments.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !command.isEmpty, command.utf8.count <= maximumBytes else { return nil }
+    return command
   }
 }

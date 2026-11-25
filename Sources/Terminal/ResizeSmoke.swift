@@ -286,7 +286,7 @@ import TerminalUI
 
         for (index, expected) in markerCells.enumerated() {
           let cell = snapshot.rows[row].cells[col]
-          guard cell.kind == "Lead1", cell.text == expected else {
+          guard cell.kind == .lead1, cell.text == expected else {
             matched = false
             break
           }

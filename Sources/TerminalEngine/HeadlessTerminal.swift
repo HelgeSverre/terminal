@@ -218,11 +218,18 @@ public final class HeadlessTerminal {
     guard let snapshot = swiftTerminalSnapshot(core, scroll: scroll, now: Self.now).snapshot
     else { return nil }
     func rgb(_ color: TerminalColor, _ fallback: [Int]) -> UInt32 {
-      let parts = color.rgb.flatMap { $0.count == 3 ? $0 : nil }
-        ?? color.index.flatMap { snapshot.palette.indices.contains($0) ? snapshot.palette[$0] : nil }
-        ?? fallback
-      guard parts.count == 3 else { return 0 }
-      return parts.reduce(0) { $0 << 8 | UInt32(min(255, max(0, $1))) }
+      switch color.packed >> 24 {
+      case 2:
+        return color.packed & 0x00ff_ffff
+      case 1:
+        let index = Int(color.packed & 0xff)
+        let parts = snapshot.palette.indices.contains(index) ? snapshot.palette[index] : fallback
+        guard parts.count == 3 else { return 0 }
+        return parts.reduce(0) { $0 << 8 | UInt32(min(255, max(0, $1))) }
+      default:
+        guard fallback.count == 3 else { return 0 }
+        return fallback.reduce(0) { $0 << 8 | UInt32(min(255, max(0, $1))) }
+      }
     }
     let cells = snapshot.rows.map { row in
       row.cells.map { cell -> Cell in
@@ -235,7 +242,7 @@ public final class HeadlessTerminal {
           foreground = [16, 8, 0].reduce(0) { $0 | UInt32(Double((foreground >> $1) & 255) * 0.82) << $1 }
         }
         return Cell(
-          text: cell.kind == "Continuation" ? "" : cell.text, isContinuation: cell.kind == "Continuation",
+          text: cell.kind == .continuation ? "" : cell.text, isContinuation: cell.kind == .continuation,
           foreground: foreground, background: background, bold: cell.style.bold, italic: cell.style.italic,
           underlined: cell.style.underline != 0, struckThrough: cell.style.strike, concealed: cell.style.conceal,
           link: cell.link, linkID: cell.linkID)
@@ -243,7 +250,7 @@ public final class HeadlessTerminal {
     }
     let lines = snapshot.rows.map { row -> String in
       // The second cell of a wide character holds nothing of its own.
-      var line = row.cells.map { $0.kind == "Continuation" ? "" : ($0.text.isEmpty ? " " : $0.text) }.joined()
+      var line = row.cells.map { $0.kind == .continuation ? "" : ($0.text.isEmpty ? " " : $0.text) }.joined()
       while line.hasSuffix(" ") { line.removeLast() }
       return line
     }

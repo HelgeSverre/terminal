@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Testing
 @testable import TerminalApp
 
@@ -92,5 +93,42 @@ import Testing
     #expect(executions == 1)
     #expect(!strip.resumeIfOffered())
     #expect(executions == 1)
+  }
+  @Test func foregroundCommandReadsCurrentProcessViaSysctlAndRejectsInvalidPIDs() throws {
+    let command = try #require(ResumeSampler.foregroundCommand(getpid()))
+    #expect(!command.isEmpty)
+    if let argv0 = CommandLine.arguments.first, !argv0.isEmpty {
+      let executable = URL(fileURLWithPath: argv0).lastPathComponent
+      #expect(command.contains(executable))
+    }
+    #expect(ResumeSampler.foregroundCommand(0) == nil)
+    #expect(ResumeSampler.foregroundCommand(-1) == nil)
+  }
+  @Test func parseProcArgs2StopsAtArgcAndRejectsMalformedBuffers() {
+    var payload = Data()
+    var argc: Int32 = 3
+    withUnsafeBytes(of: &argc) { payload.append(contentsOf: $0) }
+    payload.append(contentsOf: "/usr/local/bin/agent".utf8)
+    payload.append(contentsOf: [0, 0, 0, 0]) // exec_path NUL + padding
+    payload.append(contentsOf: "/usr/local/bin/agent".utf8); payload.append(0)
+    payload.append(0) // empty argv[1] is skipped
+    payload.append(contentsOf: "--flag".utf8); payload.append(0)
+    payload.append(contentsOf: "SECRET_TOKEN=do-not-read".utf8); payload.append(0)
+
+    let parsed = Array(payload).withUnsafeBufferPointer { ResumeSampler.parseProcArgs2($0) }
+    #expect(parsed == "/usr/local/bin/agent --flag")
+
+    let empty = [UInt8]().withUnsafeBufferPointer { ResumeSampler.parseProcArgs2($0) }
+    #expect(empty == nil)
+
+    var zeroArgc = Data()
+    var zero: Int32 = 0
+    withUnsafeBytes(of: &zero) { zeroArgc.append(contentsOf: $0) }
+    zeroArgc.append(contentsOf: "/bin/sh\0\0/bin/sh\0".utf8)
+    #expect(Array(zeroArgc).withUnsafeBufferPointer { ResumeSampler.parseProcArgs2($0) } == nil)
+
+    // Truncated before all argc arguments are terminated.
+    let truncated = Array(payload.prefix(payload.count - 30))
+    #expect(truncated.withUnsafeBufferPointer { ResumeSampler.parseProcArgs2($0) } == nil)
   }
 }

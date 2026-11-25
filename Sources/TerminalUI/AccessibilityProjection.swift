@@ -69,20 +69,20 @@ package struct AccessibilityProjection {
     for (row, value) in snapshot.rows.enumerated() {
       let start = count
       var end =
-        value.cells.lastIndex { $0.kind != "Empty" && $0.kind != "WrapSpacer" }.map { $0 + 1 } ?? 0
+        value.cells.lastIndex { $0.kind != .empty && $0.kind != .wrapSpacer }.map { $0 + 1 } ?? 0
       if snapshot.following_tail && row == snapshot.cursor.row {
         end = max(end, min(value.cells.count, snapshot.cursor.col))
       }
       for column in 0..<end {
         let cell = value.cells[column]
-        if cell.kind == "Continuation" || cell.kind == "WrapSpacer" { continue }
-        let string = cell.kind == "Empty" ? " " : cell.text
+        if cell.kind == .continuation || cell.kind == .wrapSpacer { continue }
+        let string = cell.kind == .empty ? " " : cell.text
         let size = string.utf16.count
         if count + size > max(0, limit) {
           clipped = true
           break
         }
-        let width = cell.kind == "Lead2" ? 2 : 1
+        let width = cell.kind == .lead2 ? 2 : 1
         mapping.append(
           Span(
             range: NSRange(location: count, length: size), row: row, column: column,
