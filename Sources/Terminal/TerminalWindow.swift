@@ -127,6 +127,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   }
 
   private func recordSessionFinished(for pane: TerminalCanvasView) {
+    SidePulse.shared.remove(session: pane.session.activityID)
     guard panes.contains(where: { $0 === pane }) else { return }
     var state = paneTitles[ObjectIdentifier(pane)] ?? PaneTitle()
     state.finished = true
@@ -263,6 +264,11 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
       guard let pane, end.closesPane, let owner = pane.window?.windowController as? TerminalWindow,
         owner.panes.contains(where: { $0 === pane }) else { return }
       owner.close(pane)
+    }
+    pane.session.onActivity = { [weak pane] activity, running in
+      guard let pane, let owner = pane.window?.windowController as? TerminalWindow,
+        owner.panes.contains(where: { $0 === pane }) else { return }
+      SidePulse.shared.record(activity, session: pane.session.activityID, running: running)
     }
     pane.session.onBell = { [weak pane] in
       guard let pane, let owner = pane.window?.windowController as? TerminalWindow, owner.visualBellEnabled else { return }
@@ -431,6 +437,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
     }
     // A shell can end in a pane that is not the active one; focus then stays put.
     let wasActive = activePane === pane || activePane == nil
+    SidePulse.shared.remove(session: pane.session.activityID)
     pane.session.close()
     pane.detachRenderingSurface()
     detach(pane, presentation, from: split)
@@ -454,6 +461,7 @@ final class TerminalWindow: NSWindowController, NSWindowDelegate, NSMenuItemVali
   func windowWillClose(_ notification: Notification) {
     panes.forEach {
       panePresentation(for: $0)?.downloadOffer.dismiss()
+      SidePulse.shared.remove(session: $0.session.activityID)
       $0.session.close()
       $0.detachRenderingSurface()
     }

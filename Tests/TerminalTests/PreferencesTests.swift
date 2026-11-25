@@ -18,6 +18,21 @@ import Testing
       defaultPaneColor: .standard)
   }
 
+  /// SidePulse is off until enabled, and the choice persists both ways.
+  @Test static func sidePulseDefaultsOffAndPersists() {
+    let suite = "sidepulse-preferences-\(UUID())"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    #expect(!TerminalPreferences.load(from: defaults).sidePulseEnabled)
+    var prefs = TerminalPreferences.load(from: defaults)
+    prefs.sidePulseEnabled = true
+    prefs.save(to: defaults)
+    #expect(TerminalPreferences.load(from: defaults).sidePulseEnabled)
+    prefs.sidePulseEnabled = false
+    prefs.save(to: defaults)
+    #expect(!TerminalPreferences.load(from: defaults).sidePulseEnabled)
+  }
+
   /// Home, tilde, launch directories, word characters, OSC 7 reporting and
   /// rejection of invalid editor input.
   @Test static func directoriesAndValidation() throws {
