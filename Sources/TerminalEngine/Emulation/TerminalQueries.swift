@@ -60,7 +60,8 @@ enum TerminalQueries {
   }
 
   static func status(_ request: String, style: TerminalStyle, protected: Bool,
-                     top: Int, bottom: Int, left: Int, right: Int, cursorShape: UInt8) -> String {
+                     top: Int, bottom: Int, left: Int, right: Int, cursorShape: UInt8,
+                     rows: Int) -> String {
     let value: String?
     switch request {
     case "m": value = sgr(style) + "m"
@@ -71,6 +72,10 @@ enum TerminalQueries {
     // No status line: the active display is the main one, and its type is none.
     case "$}": value = "0$}"
     case "$~": value = "0$~"
+    // Current screen height in lines (DECSNLS / DECSLPP). Child-driven
+    // resizing remains disabled, so these report the live row count truthfully.
+    case "*|": value = "\(rows)*|"
+    case "t": value = "\(rows)t"
     default: value = nil
     }
     return "\u{1b}P\(value == nil ? 0 : 1)$r\(value ?? "")\u{1b}\\"

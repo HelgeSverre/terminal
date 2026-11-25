@@ -3,33 +3,6 @@ import TerminalEngine
 import TerminalInterop
 
 private final class ImageCapture { var data: Data? }
-/// How a search of the screen and its history ended.
-public enum HistorySearchOutcome: Equatable, Sendable {
-  /// `found`: the newest match is selected and scrolled into view.
-  /// `missing`: nothing matches. `changed`: output kept arriving while the
-  /// search ran; ask again. `cancelled`: a newer search or a close replaced
-  /// it. `invalidQuery`: empty, longer than 4096 UTF-8 bytes, or unsupported regex syntax.
-  /// `resourceLimit`: a row, cell, proof set or regex match exceeds a bound.
-  case found, missing, changed, cancelled, invalidQuery, resourceLimit
-  public var message: String {
-    switch self {
-    case .found: return "Match found"
-    case .missing: return "No match"
-    case .changed: return "Output changed during search; try again"
-    case .cancelled: return "Search cancelled"
-    case .invalidQuery: return "Invalid search expression (1–4096 UTF-8 bytes)"
-    case .resourceLimit: return "Search exceeds a memory or match-length limit"
-    }
-  }
-}
-
-/// One-based position counted from the newest match. `capped` reports that
-/// matches older than the retention bound are not included in `total`.
-public struct HistorySearchPosition: Equatable, Sendable {
-  public let index: Int
-  public let total: Int
-  public let capped: Bool
-}
 
 /// The children every session has started and not yet reaped, including those
 /// of panes that are already closed. Quitting waits for this to empty, so a
@@ -42,107 +15,6 @@ package enum LiveChildren {
   package static func whenNoneRemain(_ handler: @escaping @Sendable () -> Void) {
     group.notify(queue: .global(qos: .userInteractive), execute: handler)
   }
-}
-
-/// The first window's child, started at process launch so that its startup
-/// (a login shell reading its configuration, usually) overlaps the app's own.
-/// The first session adopts it when it asks for the same launch; any other
-/// first launch ends it.
-package enum EarlyChild {
-  private static let lock = NSLock()
-  nonisolated(unsafe) private static var pending: (spec: LaunchSpec, process: TerminalProcess)?
-  nonisolated(unsafe) private static var settleGrid: (@Sendable (Int, Int, Int, Int) -> Void)?
-
-  /// Spawns `spec` now. With no explicit grid, the PTY starts at `savedGrid`
-  /// when provided, so the child usually never sees it change.
-  package static func start(
-    _ spec: LaunchSpec,
-    grid: (columns: Int, rows: Int)?,
-    savedGrid: (rows: Int, columns: Int, pixelWidth: Int, pixelHeight: Int)? = nil,
-    onSettleGrid: (@Sendable (Int, Int, Int, Int) -> Void)? = nil
-  ) {
-    guard spec.isValid else { return }
-    var size = winsize(ws_row: UInt16(grid?.rows ?? 24), ws_col: UInt16(grid?.columns ?? 80),
-                       ws_xpixel: 0, ws_ypixel: 0)
-    if grid == nil, let saved = savedGrid,
-       [saved.rows, saved.columns, saved.pixelWidth, saved.pixelHeight].allSatisfy({ (1...Int(UInt16.max)).contains($0) }) {
-      size = winsize(ws_row: UInt16(saved.rows), ws_col: UInt16(saved.columns),
-                     ws_xpixel: UInt16(saved.pixelWidth), ws_ypixel: UInt16(saved.pixelHeight))
-    }
-    let process = spec.spawn(columns: Int(size.ws_col), rows: Int(size.ws_row))
-    guard process.error == 0 else { return }
-    // The pixel size too, before the child can have asked for it.
-    if size.ws_xpixel > 0 { _ = ioctl(process.master, TIOCSWINSZ, &size) }
-    lock.lock(); defer { lock.unlock() }
-    pending = (spec, process)
-    settleGrid = grid == nil ? onSettleGrid : nil
-  }
-  /// The early child, when it was started for `spec`. The first call settles
-  /// it either way.
-  static func adopt(_ spec: LaunchSpec) -> TerminalProcess? {
-    lock.lock()
-    let early = pending
-    pending = nil
-    lock.unlock()
-    guard let early else { return nil }
-    if early.spec == spec { return early.process }
-    // Closing the PTY hangs the unwanted child up.
-    close(early.process.master)
-    close(early.process.status)
-    TerminalSession.endAbandonedChild(early.process.pid, counted: false)
-    return nil
-  }
-  /// Records the first size a pane settles on, for the next launch.
-  static func noteGrid(_ size: winsize) {
-    lock.lock()
-    let callback = settleGrid
-    settleGrid = nil
-    lock.unlock()
-    callback?(Int(size.ws_row), Int(size.ws_col), Int(size.ws_xpixel), Int(size.ws_ypixel))
-  }
-}
-
-/// Measurement switches the app turns on from its command line. A session
-/// never reads the host's arguments itself.
-package enum SessionDiagnostics {
-  /// Whether sessions count their stream events. Set before the first
-  /// session is created.
-  nonisolated(unsafe) package static var collectsStreamStatistics = false
-}
-
-/// A running child and its terminal, given up by one session so that another
-/// process can adopt them: the app is replaced while its programs keep
-/// running. The descriptor is the PTY's controlling end and is the receiver's
-/// to close; while any copy stays open the child is not hung up.
-package struct SessionHandoff: Sendable {
-  package let descriptor: Int32
-  package let processIdentifier: Int32
-  /// When the child started (`ProcessIdentity.start`). The receiver is not
-  /// its parent, so the number alone may name another process by then.
-  package let processStart: UInt64
-  package let terminal: TerminalHandoff
-  package init(descriptor: Int32, processIdentifier: Int32, processStart: UInt64, terminal: TerminalHandoff) {
-    self.descriptor = descriptor; self.processIdentifier = processIdentifier
-    self.processStart = processStart; self.terminal = terminal
-  }
-}
-
-/// Tells a process from a later one that was given the same number. A parent
-/// needs none of this: its child keeps its number until it is waited for.
-package enum ProcessIdentity {
-  /// When the process started, in microseconds since 1970; nil when there
-  /// is no such process or it cannot be asked.
-  package static func start(of pid: Int32) -> UInt64? {
-    guard pid > 0 else { return nil }
-    var name = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-    var info = kinfo_proc()
-    var size = MemoryLayout<kinfo_proc>.stride
-    guard sysctl(&name, UInt32(name.count), &info, &size, nil, 0) == 0, size > 0 else { return nil }
-    let started = info.kp_proc.p_un.__p_starttime
-    return UInt64(started.tv_sec) * 1_000_000 + UInt64(started.tv_usec)
-  }
-  /// Whether `pid` is still the process that started at `start`.
-  package static func holds(_ pid: Int32, startedAt start: UInt64) -> Bool { self.start(of: pid) == start }
 }
 
 /// How a session's child ended, for deciding what becomes of its pane.
@@ -269,117 +141,15 @@ package final class ClipboardWriteRequest {
   }
 }
 
-/// Immutable physical-key facts that survive queueing until the SwiftCore
-/// adapter emits the negotiated terminal sequence.
-package struct TerminalKeyEvent {
-  private static let retainedOverhead = 128
-  private static let wireOverhead = 256
-  package let text: String
-  package let logical: String
-  package let shifted: String
-  package let baseLayout: String
-  package let legacyText: String
-  package let key: UInt32
-  package let modifiers: UInt32
-  package let event: UInt32
-  package init(text: String, logical: String, shifted: String, baseLayout: String, legacyText: String,
-               key: UInt32, modifiers: UInt32, event: UInt32) {
-    self.text = text
-    self.logical = logical
-    self.shifted = shifted
-    self.baseLayout = baseLayout
-    self.legacyText = legacyText
-    self.key = key
-    self.modifiers = modifiers
-    self.event = event
-  }
-  private var isModifierOnly: Bool { (400...412).contains(key) }
-  package var isKeyAction: Bool { event != 2 && !isModifierOnly }
-  package var retainedCost: Int? {
-    var total = Self.retainedOverhead
-    for value in [text, logical, shifted, baseLayout, legacyText] {
-      let bytes = value.utf8.count
-      guard bytes <= Int.max - total else { return nil }
-      total += bytes
-    }
-    return total
-  }
-  package var maximumWireBytes: Int? {
-    let (expandedText, overflow) = text.utf8.count.multipliedReportingOverflow(by: 4)
-    guard !overflow else { return nil }
-    let payload = max(expandedText, legacyText.utf8.count)
-    let (total, overheadOverflow) = payload.addingReportingOverflow(Self.wireOverhead)
-    return overheadOverflow ? nil : total
-  }
-  /// Numeric keypad legacy input is AppKit's committed text. Other keys use
-  /// their unmodified current-layout key as the negotiated primary value.
-  package var adapterText: String { (300...317).contains(key) ? text : logical }
-  package var shiftedScalar: UInt32 {
-    shifted.unicodeScalars.count == 1 ? shifted.unicodeScalars.first!.value : 0
-  }
-  package var baseLayoutScalar: UInt32 {
-    baseLayout.unicodeScalars.count == 1 ? baseLayout.unicodeScalars.first!.value : 0
-  }
-}
 // The PTY and emulator handle are confined to this queue. Main receives immutable decoded values.
 public final class TerminalSession: @unchecked Sendable {
-  typealias SelectionCompletion = @MainActor (Result<String?, TerminalSelectionFailure>) -> Void
-  package typealias LinkCompletion = @MainActor (Result<URL, TerminalSelectionFailure>) -> Void
-  private final class SelectionDelivery {
-    let completion: SelectionCompletion
-    let cost: Int
-    let retainsCopyResult: Bool
-    private let lock = NSLock()
-    private var result: Result<String?, TerminalSelectionFailure>
-    private var delivering = false
-    init(completion: @escaping SelectionCompletion, cost: Int, retainsCopyResult: Bool,
-         result: Result<String?, TerminalSelectionFailure>) {
-      self.completion = completion; self.cost = cost; self.retainsCopyResult = retainsCopyResult
-      self.result = result
-    }
-    func cancel() {
-      lock.lock()
-      if !delivering { result = .failure(.cancelled) }
-      lock.unlock()
-    }
-    func takeForDelivery() -> Result<String?, TerminalSelectionFailure> {
-      lock.lock()
-      delivering = true
-      let resolved = result
-      lock.unlock()
-      return resolved
-    }
-  }
-  private final class LinkDelivery {
-    let completion: LinkCompletion
-    let cost: Int
-    private let lock = NSLock()
-    private var result: Result<URL, TerminalSelectionFailure>
-    private var delivering = false
-    init(completion: @escaping LinkCompletion, cost: Int,
-         result: Result<URL, TerminalSelectionFailure>) {
-      self.completion = completion; self.cost = cost; self.result = result
-    }
-    func cancel() {
-      lock.lock()
-      if !delivering { result = .failure(.cancelled) }
-      lock.unlock()
-    }
-    func takeForDelivery() -> Result<URL, TerminalSelectionFailure> {
-      lock.lock()
-      delivering = true
-      let resolved = result
-      lock.unlock()
-      return resolved
-    }
-  }
   private struct StreamStatistics {
     var outputEvents = 0, pumpSchedules = 0, pumpTurns = 0, feedCalls = 0, queueHighWater = 0, publishCalls = 0
     var feedBytes: UInt64 = 0, feedNanoseconds: UInt64 = 0, snapshotNanoseconds: UInt64 = 0, pumpNanoseconds: UInt64 = 0
     mutating func observeEventQueue(_ count: Int) { queueHighWater = max(queueHighWater, count) }
   }
   let queue = DispatchQueue(label: "no.helgesverre.terminal.owner", qos: .userInteractive)
-  private enum Event {
+  enum Event {
     case output(Data, Int)
     case input(String, UInt32, UInt32, UInt32, Int)
     case keyInput(TerminalKeyEvent, Int)
@@ -434,8 +204,8 @@ public final class TerminalSession: @unchecked Sendable {
   /// A copy of the PTY kept for the process that takes this session over.
   private var handoffDescriptor: Int32 = -1
   private var initialRecoveryConfiguration: TerminalSessionConfiguration?
-  private var recoveryTiming = RecoveryCheckpointTiming()
-  private var recoveryCapturing = false
+  var recoveryTiming = RecoveryCheckpointTiming()
+  var recoveryCapturing = false
   package var onRecoveryActivity: (@MainActor () -> Void)?
   package var onRecoveryMetadata: (@MainActor () -> Void)?
   package var onRecoveryReady: (@MainActor () -> Void)?
@@ -447,10 +217,10 @@ public final class TerminalSession: @unchecked Sendable {
   private var awaitingGrid = false
   private var exitStatus: Int32 = 0
   private var startedNanoseconds = DispatchTime.now().uptimeNanoseconds
-  private var ingress = SessionEventQueue<Event>()
+  var ingress = SessionEventQueue<Event>()
   private var queuedOutput: Int { ingress.outputBytes }
   // The broker owns read admission and immutable transfer; terminal state stays on queue.
-  private var readBroker: PTYReadBroker!
+  var readBroker: PTYReadBroker!
   private var readEndpoint: PTYReadEndpoint?
   private var descriptorLifetime: PTYDescriptorLifetime?
   private var bytesParsed: UInt64 = 0
@@ -459,20 +229,20 @@ public final class TerminalSession: @unchecked Sendable {
   private var ownerScheduled = false
   private var graphicsTransportWaiting = false
   private var downloadRequests: [UInt64: TerminalDownloadRequest] = [:]
-  private var core: OpaquePointer?
+  var core: OpaquePointer?
   private var master: Int32 = -1
   private var pid: Int32 = -1
   private var reaped = false
   private var readEnded = false
-  private var writeEnded = false
-  private var closed = false
+  var writeEnded = false
+  var closed = false
   private var writeSuspended = false
   private var clipboardClosedNotified = false
   private var clipboardCloseDelivered = false
   private var writer: DispatchSourceWrite?
   private var statusReader: DispatchSourceRead?
   private var process: DispatchSourceProcess?
-  private var writes: [WriteTransaction] = []
+  var writes: [WriteTransaction] = []
   private var writeID: UInt64 = 0
   private var collectingPaste = false
   private var columns = 80
@@ -486,26 +256,26 @@ public final class TerminalSession: @unchecked Sendable {
   private var wantedGrid: (cols: Int, rows: Int, cellWidth: Int, cellHeight: Int)?
   private var resizeRetryDelay = TerminalSession.firstResizeRetryDelay
   private static let firstResizeRetryDelay = 16
-  private var selectionPending = false
-  private var linkPending = false
+  var selectionPending = false
+  var linkPending = false
   private var configuration = TerminalSessionConfiguration()
   private var imageCache: [ImageKey: ImagePixels] = [:]
   private var publishScheduled = false
   private var streamStatistics: StreamStatistics?
-  private let admission = NSLock()
-  private var admittedBytes = 0
+  let admission = NSLock()
+  var admittedBytes = 0
   // A copied String can be 16 MiB. One result may wait for the main actor;
   // further copy requests receive bounded backpressure instead of retaining
   // an unbounded set of immutable completion payloads.
-  private var outstandingSelectionCopyCompletions = 0
+  var outstandingSelectionCopyCompletions = 0
   private var outstandingHistoryPage = false
-  private var selectionDeliveries: [SelectionDelivery] = []
-  private var linkDeliveries: [LinkDelivery] = []
+  var selectionDeliveries: [SelectionDelivery] = []
+  var linkDeliveries: [LinkDelivery] = []
   // EOF closes the PTY writer but leaves the retained terminal screen
   // owner-validatable. Only explicit Session.close shuts that read-only
   // interaction surface and cancels already-computed Main callbacks.
   private var accepting = true
-  private var interactionClosed = false
+  var interactionClosed = false
   private let publication = NSLock()
   private var latest: TerminalSnapshot?
   private var deliveryScheduled = false
@@ -612,7 +382,7 @@ public final class TerminalSession: @unchecked Sendable {
   /// Hangs up a child whose session is gone, kills it after two seconds if
   /// it is still there, and reaps it. An unused early child was never added
   /// to LiveChildren; only an adopted session contributes to that count.
-  fileprivate static func endAbandonedChild(_ pid: Int32, counted: Bool = true, adoptedStart: UInt64? = nil) {
+  static func endAbandonedChild(_ pid: Int32, counted: Bool = true, adoptedStart: UInt64? = nil) {
     // An adopted child that has ended left its number free for another
     // process, which must not be signalled in its place.
     func present() -> Bool { adoptedStart.map { ProcessIdentity.holds(pid, startedAt: $0) } ?? true }
@@ -653,110 +423,7 @@ public final class TerminalSession: @unchecked Sendable {
   nonisolated(unsafe) private static var abandoned: Set<Int32> = []
   private static var now: UInt64 { DispatchTime.now().uptimeNanoseconds / 1_000_000 }
   private var writeBytes: Int { writes.reduce(0) { $0 + $1.remaining } }
-  public typealias SearchCompletion = @MainActor (HistorySearchOutcome, HistorySearchPosition?) -> Void
-  // This module owns worker scheduling, latest-query replacement, bounded work,
-  // retries, lifetime and source validation. Canvas only submits a query and
-  // receives an outcome; it never reconstructs history positions or epochs.
-  private final class HistorySearch {
-    private static let worker = DispatchQueue(label: "no.helgesverre.terminal.search", qos: .utility)
-    private final class Job {
-      let handle: OpaquePointer
-      let generation: UInt64
-      init(_ handle: OpaquePointer, generation: UInt64) {
-        self.handle = handle
-        self.generation = generation
-      }
-      deinit { helge_terminal_search_destroy(handle) }
-    }
-    private struct Request {
-      let query: String
-      let options: TerminalSearchOptions
-      let completion: SearchCompletion
-      var retries = 0
-    }
-    private weak var session: TerminalSession?
-    private var generation: UInt64 = 0
-    private var request: Request?
-    private var job: Job?
-    private var working = false
-    private var scheduled = false
-    init(session: TerminalSession) { self.session = session }
-    func start(_ query: String, options: TerminalSearchOptions, completion: @escaping SearchCompletion) {
-      cancel()
-      request = Request(query: query, options: options, completion: completion)
-      schedule()
-    }
-    func cancel() {
-      generation &+= 1
-      if let request { DispatchQueue.main.async { request.completion(.cancelled, nil) } }
-      request = nil
-      job = nil
-    }
-    private func schedule() {
-      guard !working, !scheduled, request != nil, let session, !session.closed else { return }
-      scheduled = true
-      session.enqueue(.searchAdvance)
-    }
-    func advance() {
-      scheduled = false
-      guard !working, let request, let session, !session.closed, let core = session.core else { return }
-      if job == nil {
-        guard !request.query.isEmpty, request.query.utf8.count <= 4096 else {
-          finish(.invalidQuery)
-          return
-        }
-        let bytes = Array(request.query.utf8)
-        let handle = bytes.withUnsafeBufferPointer {
-          helge_terminal_search_create_options(core, $0.baseAddress, $0.count, request.options.flags)
-        }
-        guard let handle else { finish(.invalidQuery); return }
-        job = Job(handle, generation: generation)
-      }
-      guard let job else { return }
-      let status = helge_terminal_search_fill(core, job.handle)
-      if status == 0 {
-        working = true
-        let owner = session.readBroker!
-        Self.worker.async { [weak self, job] in
-          _ = helge_terminal_search_step(job.handle)
-          owner.submit { [weak self, job] in
-            guard let self else { return }
-            working = false
-            if job.generation != generation { self.job = nil }
-            schedule()
-          }
-        }
-      } else if status == 2 {
-        let accepted = helge_terminal_search_accept(core, job.handle)
-        if accepted == 3 { retryOrFinish() }
-        else { finish(accepted == 5 ? .found : .missing) }
-      } else if status == 3 { retryOrFinish() }
-      else { finish(.resourceLimit) }
-    }
-    private func retryOrFinish() {
-      guard var current = request else { return }
-      guard current.retries < 2 else { finish(.changed); return }
-      current.retries += 1
-      request = current
-      job = nil
-      schedule()
-    }
-    private func finish(_ outcome: HistorySearchOutcome) {
-      guard let request else { return }
-      self.request = nil
-      job = nil
-      let position = outcome == .found ? session?.searchPosition() : nil
-      DispatchQueue.main.async { request.completion(outcome, position) }
-    }
-  }
-  private func searchPosition() -> HistorySearchPosition? {
-    var index: UInt32 = 0
-    var total: UInt32 = 0
-    var capped = false
-    guard let core, helge_terminal_search_position(core, &index, &total, &capped) else { return nil }
-    return HistorySearchPosition(index: Int(index), total: Int(total), capped: capped)
-  }
-  private func report(_ text: String) {
+  func report(_ text: String) {
     DispatchQueue.main.async { [weak self] in
       self?.onStatus?(text)
       self?.onViewStatus?(text)
@@ -770,51 +437,11 @@ public final class TerminalSession: @unchecked Sendable {
     report(text)
     DispatchQueue.main.async { [weak self] in self?.onLaunchFailure?(failure) }
   }
-  private enum Admission {
+  enum Admission {
     case accepted, busy, closed
     var message: String { self == .busy ? "Input busy" : "Input closed" }
   }
-  private static let selectionBaseCost = 256
-  private static let selectionPresentationCost = 128
-  private static let selectionProofRowCost = MemoryLayout<TerminalSelectionPresentation.Row>.stride
-  private static let linkBaseCost = 256
-  private static func selectionCost(_ action: TerminalSelectionAction) -> Int? {
-    func hitCost(_ hit: TerminalSelectionHit) -> Int? {
-      let (proofBytes, proofOverflow) = hit.presentation.rows.count.multipliedReportingOverflow(
-        by: selectionProofRowCost)
-      guard !proofOverflow else { return nil }
-      let (presentationBytes, presentationOverflow) = proofBytes.addingReportingOverflow(
-        selectionPresentationCost)
-      return presentationOverflow ? nil : presentationBytes
-    }
-    let hits: [TerminalSelectionHit]
-    switch action {
-    case .begin(let hit, _), .extend(let hit): hits = [hit]
-    case .range(let start, let end, _): hits = [start, end]
-    case .commit, .clear, .copy, .wordProfile: hits = []
-    }
-    var cost = selectionBaseCost
-    for hit in hits {
-      guard let costForHit = hitCost(hit) else { return nil }
-      let (next, overflow) = cost.addingReportingOverflow(costForHit)
-      guard !overflow else { return nil }
-      cost = next
-    }
-    return cost
-  }
-  private static func linkCost(content: TerminalPresentedContent, target: URL) -> Int? {
-    guard let proofBytes = content.retainedByteCount else { return nil }
-    let (withProof, proofOverflow) = linkBaseCost.addingReportingOverflow(proofBytes)
-    let (cost, urlOverflow) = withProof.addingReportingOverflow(target.absoluteString.utf8.count)
-    return proofOverflow || urlOverflow ? nil : cost
-  }
-  private static func selectionIsControl(_ action: TerminalSelectionAction) -> Bool {
-    if case .clear = action { return true }
-    if case .commit = action { return true }
-    if case .wordProfile = action { return true }
-    return false
-  }
-  private func reserve(_ cost: Int, control: Bool = false) -> Admission {
+  func reserve(_ cost: Int, control: Bool = false) -> Admission {
     admission.lock()
     defer { admission.unlock() }
     let limit = 2 * 1024 * 1024 - (control ? 0 : 65_536)
@@ -823,7 +450,7 @@ public final class TerminalSession: @unchecked Sendable {
     admittedBytes += cost
     return .accepted
   }
-  private func reserveInteraction(_ cost: Int, control: Bool = false) -> Admission {
+  func reserveInteraction(_ cost: Int, control: Bool = false) -> Admission {
     admission.lock()
     defer { admission.unlock() }
     let limit = 2 * 1024 * 1024 - (control ? 0 : 65_536)
@@ -832,18 +459,7 @@ public final class TerminalSession: @unchecked Sendable {
     admittedBytes += cost
     return .accepted
   }
-  private func reserveSelection(_ cost: Int, control: Bool, retainsCopyResult: Bool) -> Admission {
-    admission.lock()
-    defer { admission.unlock() }
-    let limit = 2 * 1024 * 1024 - (control ? 0 : 65_536)
-    guard !interactionClosed else { return .closed }
-    guard !retainsCopyResult || outstandingSelectionCopyCompletions == 0 else { return .busy }
-    guard cost <= limit, admittedBytes + cost <= limit else { return .busy }
-    admittedBytes += cost
-    if retainsCopyResult { outstandingSelectionCopyCompletions += 1 }
-    return .accepted
-  }
-  private func release(_ cost: Int) {
+  func release(_ cost: Int) {
     admission.lock()
     admittedBytes -= cost
     admission.unlock()
@@ -856,57 +472,6 @@ public final class TerminalSession: @unchecked Sendable {
     accepting = false
     interactionClosed = true
     admission.unlock()
-  }
-  private func finishSelection(cost: Int, completion: SelectionCompletion?, retainsCopyResult: Bool,
-                               result: Result<String?, TerminalSelectionFailure>) {
-    selectionPending = false
-    guard let completion else {
-      precondition(!retainsCopyResult)
-      release(cost)
-      return
-    }
-    let delivery = SelectionDelivery(completion: completion, cost: cost,
-                                     retainsCopyResult: retainsCopyResult, result: result)
-    selectionDeliveries.append(delivery)
-    DispatchQueue.main.async { [self, delivery] in
-      admission.lock()
-      let cancelled = interactionClosed
-      admission.unlock()
-      if cancelled { delivery.cancel() }
-      delivery.completion(delivery.takeForDelivery())
-      release(delivery.cost)
-      if delivery.retainsCopyResult {
-        admission.lock()
-        outstandingSelectionCopyCompletions -= 1
-        admission.unlock()
-      }
-      readBroker.submit { [self, delivery] in
-        selectionDeliveries.removeAll { $0 === delivery }
-      }
-    }
-  }
-  private func finishLink(cost: Int, completion: @escaping LinkCompletion,
-                          result: Result<URL, TerminalSelectionFailure>) {
-    linkPending = false
-    let delivery = LinkDelivery(completion: completion, cost: cost, result: result)
-    linkDeliveries.append(delivery)
-    DispatchQueue.main.async { [self, delivery] in
-      admission.lock()
-      let cancelled = interactionClosed
-      admission.unlock()
-      if cancelled { delivery.cancel() }
-      delivery.completion(delivery.takeForDelivery())
-      release(delivery.cost)
-      readBroker.submit { [self, delivery] in
-        linkDeliveries.removeAll { $0 === delivery }
-      }
-    }
-  }
-  private func clearSelectionForAcceptedInput(_ core: OpaquePointer) {
-    // Input has reached the core only after every earlier selection event has
-    // settled. Clear is an immediate owner-side action; it must never begin a
-    // second resumable operation without a matching FIFO event to advance it.
-    if case .completed = TerminalSelectionBridge.begin(core: core, action: .clear) {}
   }
   private func notifyClipboardClosed() {
     guard !clipboardClosedNotified else { return }
@@ -1242,7 +807,7 @@ public final class TerminalSession: @unchecked Sendable {
       if parserEnded { finish() }
     }
   }
-  private func enqueue(_ event: Event) {
+  func enqueue(_ event: Event) {
     if case .output = event { streamStatistics?.outputEvents += 1 }
     if case .output(let bytes, let offset) = event {
       precondition(offset == 0)
@@ -1251,7 +816,7 @@ public final class TerminalSession: @unchecked Sendable {
     streamStatistics?.observeEventQueue(ingress.count)
     scheduleOwner()
   }
-  private func scheduleOwner() {
+  func scheduleOwner() {
     guard !closed, !ownerScheduled, !graphicsTransportWaiting, !ingress.isEmpty else { return }
     ownerScheduled = true
     streamStatistics?.pumpSchedules += 1
@@ -1658,7 +1223,7 @@ public final class TerminalSession: @unchecked Sendable {
       deliverClipboardCloseIfPossible()
     }
   }
-  private func flush() {
+  func flush() {
     // During a handoff the bytes wait for the copy the next owner gets.
     guard !closed, !writeEnded, handoffDescriptor < 0 else { return }
     var turn = 0
@@ -1704,98 +1269,6 @@ public final class TerminalSession: @unchecked Sendable {
     }
     updateReadInterest()
     scheduleOwner()
-  }
-  @discardableResult package func input(
-    _ text: String = "", key: UInt32 = 0, modifiers: UInt32 = 0, event: UInt32 = 0
-  ) -> Bool {
-    if key == 1 && text.utf8.count > 1_048_576 {
-      report("Paste limit is 1 MiB")
-      return false
-    }
-    let cost = text.utf8.count + 128
-    let lifecycle = key == 2 || event == 2
-    let control = cost <= 256 && ((event == 2 && key >= 10) || key == 2)
-    let admission = reserve(cost, control: control)
-    guard admission == .accepted else {
-      if admission != .closed || !lifecycle { report(admission.message) }
-      return false
-    }
-    readBroker.submit { [self] in
-      guard !closed, !writeEnded else {
-        release(cost)
-        if !lifecycle { report("Input closed") }
-        return
-      }
-      enqueue(.input(text, key, modifiers, event, cost))
-    }
-    return true
-  }
-  @discardableResult package func input(_ input: TerminalKeyEvent) -> Bool {
-    guard let cost = input.retainedCost else {
-      report("Key input metadata is too large")
-      return false
-    }
-    guard let wireBytes = input.maximumWireBytes, wireBytes <= 3 * 1024 * 1024 else {
-      report("Key input exceeds write limit")
-      return false
-    }
-    let lifecycle = input.event == 2
-    let control = cost <= 256 && input.event == 2
-    let admission = reserve(cost, control: control)
-    guard admission == .accepted else {
-      if admission != .closed || !lifecycle { report(admission.message) }
-      return false
-    }
-    readBroker.submit { [self] in
-      guard !closed, !writeEnded else {
-        release(cost)
-        if !lifecycle { report("Input closed") }
-        return
-      }
-      enqueue(.keyInput(input, cost))
-    }
-    return true
-  }
-  /// Presses `key` with `modifiers`, encoded for the program's current
-  /// modes. Returns false for a key the terminal does not know (F13 and
-  /// up) or when input is closed or busy.
-  @discardableResult public func send(_ key: TerminalKey, modifiers: TerminalKeyModifiers = []) -> Bool {
-    guard let code = key.code else { return false }
-    let character = key.character
-    let shifted = modifiers.contains(.shift) ? character.uppercased() : ""
-    return input(TerminalKeyEvent(
-      text: modifiers.contains(.shift) ? character.uppercased() : character, logical: character,
-      shifted: shifted, baseLayout: character, legacyText: modifiers.contains(.shift) ? shifted : character,
-      key: code, modifiers: modifiers.rawValue, event: 0))
-  }
-  /// Types `text`, as the keyboard would.
-  @discardableResult public func send(text: String) -> Bool { input(text) }
-  /// Sends text as a paste: bracketed when the program asked for that, and
-  /// with line ends as a paste has them. At most 1 MiB; returns false when
-  /// the text was not accepted.
-  @discardableResult public func paste(_ text: String) -> Bool { input(text, key: 1) }
-  public func rawInput(_ bytes: Data) {
-    _ = submitRaw(bytes, event: Event.raw)
-  }
-  @discardableResult package func shortcut(_ text: String) -> Bool {
-    submitRaw(Data(text.utf8), event: Event.shortcut)
-  }
-  private func submitRaw(_ bytes: Data, event: @escaping (Data, Int) -> Event) -> Bool {
-    let cost = bytes.count + 128
-    let admission = reserve(cost)
-    guard admission == .accepted else {
-      report(admission.message)
-      return false
-    }
-    readBroker.submit { [self] in
-      guard !closed, !writeEnded else {
-        release(cost)
-        report("Input closed")
-        return
-      }
-      enqueue(event(bytes, cost))
-    }
-    return true
   }
   package func semanticProbe(_ completion: @escaping @MainActor (Double) -> Void) {
     let time = DispatchTime.now().uptimeNanoseconds
@@ -1901,96 +1374,6 @@ public final class TerminalSession: @unchecked Sendable {
       enqueue(.clearDisplay)
     }
   }
-  /// Submits an immutable, presentation-proven selection gesture. The host
-  /// never reads cells or derives copied text; success carries the core-built
-  /// copy (where `nil` means a non-copy selection action).
-  @discardableResult package func selection(
-    _ action: TerminalSelectionAction,
-    completion: (@MainActor (Result<String?, TerminalSelectionFailure>) -> Void)? = nil
-  ) -> Bool {
-    guard let cost = Self.selectionCost(action) else {
-      report("Selection request exceeds queue limit")
-      return false
-    }
-    let retainsCopyResult: Bool = {
-      if case .copy = action { return completion != nil }
-      return false
-    }()
-    let admission = reserveSelection(cost, control: Self.selectionIsControl(action),
-                                     retainsCopyResult: retainsCopyResult)
-    guard admission == .accepted else {
-      report(admission.message)
-      return false
-    }
-    readBroker.submit { [self] in
-      guard !closed else {
-        finishSelection(cost: cost, completion: completion, retainsCopyResult: retainsCopyResult,
-                        result: .failure(.cancelled))
-        return
-      }
-      enqueue(.selection(action, completion, cost, false, retainsCopyResult))
-    }
-    return true
-  }
-  /// Validates a recognized URL against the immutable rows that were actually
-  /// presented to the user. URL parsing and policy stay in the projection;
-  /// this boundary only proves that those rows still describe the same content
-  /// before returning the exact captured URL to Canvas.
-  @discardableResult package func activateLink(
-    _ activation: VisibleLinkProjection.Activation,
-    completion: @escaping LinkCompletion
-  ) -> Bool {
-    guard let cost = Self.linkCost(content: activation.content, target: activation.target) else {
-      report("Link activation exceeds queue limit")
-      return false
-    }
-    let admission = reserveInteraction(cost)
-    guard admission == .accepted else {
-      report(admission.message)
-      return false
-    }
-    readBroker.submit { [self] in
-      guard !closed else {
-        finishLink(cost: cost, completion: completion, result: .failure(.cancelled))
-        return
-      }
-      enqueue(.link(activation.content, activation.target, completion, cost, false))
-    }
-    return true
-  }
-  package func find(_ query: String, completion: @escaping @MainActor (HistorySearchOutcome) -> Void) {
-    search(query) { outcome, _ in completion(outcome) }
-  }
-  /// Searches the screen and its history with bounded scalar matching.
-  /// Replaces any search in flight. A hit selects the newest match,
-  /// marks the others and reports its position among all retained matches.
-  public func search(_ query: String, options: TerminalSearchOptions = .init(), completion: @escaping SearchCompletion) {
-    readBroker.submit { [self] in
-      guard !closed else {
-        DispatchQueue.main.async { completion(.cancelled, nil) }
-        return
-      }
-      enqueue(.find(query, options, completion))
-    }
-  }
-  /// Moves to the adjacent match of the accepted search, wrapping at the ends.
-  /// Nil means no accepted match is still valid; the caller searches again.
-  public func searchNavigate(older: Bool, completion: @escaping @MainActor (HistorySearchPosition?) -> Void) {
-    readBroker.submit { [self] in
-      guard !closed else {
-        DispatchQueue.main.async { completion(nil) }
-        return
-      }
-      enqueue(.searchNavigate(older, completion))
-    }
-  }
-  /// Cancels any search in flight and removes the match decorations.
-  public func searchClear() {
-    readBroker.submit { [self] in
-      guard !closed else { return }
-      enqueue(.searchClear)
-    }
-  }
   /// One bounded history page may wait for Main at a time. Reads are FIFO
   /// terminal operations, and never synchronize Main with the owner queue.
   @discardableResult package func accessibilityHistory(
@@ -2016,23 +1399,6 @@ public final class TerminalSession: @unchecked Sendable {
       let cancelled = interactionClosed
       admission.unlock()
       completion(cancelled ? nil : page)
-    }
-  }
-  // Urgent transport control: no semantic event or stalled write can trap it.
-  package func cancelPaste() {
-    readBroker.submit { [self] in
-      guard !closed else { return }
-      ingress.transformEvents { event in
-        if case .input(_, let key, _, _, let cost) = event, key == 1 {
-          release(cost)
-          return .idle
-        }
-        return event
-      }
-      for index in writes.indices { _ = writes[index].cancelPaste() }
-      report("Paste cancelled")
-      flush()
-      scheduleOwner()
     }
   }
   private func schedulePublish() {
@@ -2114,69 +1480,11 @@ public final class TerminalSession: @unchecked Sendable {
       }
     }
   }
-  /// Returns a checkpoint, or the delay until a dirty pane is eligible. Only
-  /// one capture is admitted per session; the app schedules panes serially.
-  package func recoveryCheckpoint(force: Bool = false,
-    completion: @escaping @MainActor (String?, Int, Double?) -> Void) {
-    readBroker.submit { [self] in
-      guard !closed else { DispatchQueue.main.async { completion(nil, 0, nil) }; return }
-      enqueue(.recoveryCheckpoint(force, completion))
-    }
-  }
-  /// Read-only primary history capture, independent of checkpoint dirtiness.
-  /// One bounded capture is admitted; the caller receives nil when busy/closed.
-  package func recoveryHistory(maximumBytes: Int,
-    completion: @escaping @MainActor (String?) -> Void) {
-    readBroker.submit { [self] in
-      guard !closed else { DispatchQueue.main.async { completion(nil) }; return }
-      enqueue(.recoveryRead(min(16 * 1024 * 1024, max(0, maximumBytes)), completion))
-    }
-  }
   /// A foreground group on this session's own PTY, never an arbitrary PID.
   package func foregroundProcessIdentifier(completion: @escaping @MainActor (Int32?) -> Void) {
     readBroker.submit { [self] in
       let foreground = !closed && master >= 0 ? tcgetpgrp(master) : -1
       DispatchQueue.main.async { completion(foreground > 0 ? foreground : nil) }
-    }
-  }
-  private func recoveryDidChange(at now: UInt64) {
-    if onRecoveryActivity != nil, recoveryTiming.output(at: now) {
-      DispatchQueue.main.async { [weak self] in self?.onRecoveryActivity?() }
-    }
-  }
-  private func beginRecoveryCheckpoint(force: Bool,
-    completion: @escaping @MainActor (String?, Int, Double?) -> Void) {
-    guard !closed, let core,
-      let delay = recoveryTiming.delay(at: DispatchTime.now().uptimeNanoseconds, force: force) else {
-      DispatchQueue.main.async { completion(nil, 0, nil) }; return
-    }
-    guard !recoveryCapturing else {
-      // A read-only automation capture must not consume the app's one dirty
-      // wakeup. Keep its checkpoint pending until the capture slot is free.
-      DispatchQueue.main.async { completion(nil, 0, 0.05) }; return
-    }
-    guard delay == 0 else { DispatchQueue.main.async { completion(nil, 0, delay) }; return }
-    recoveryCapturing = true
-    recoveryTiming.captured()
-    let capture = TerminalRecoveryBridge.capture(core: core)
-    advanceRecovery(capture, completion: completion)
-  }
-  private func advanceRecovery(_ capture: TerminalRecoveryCapture,
-    completion: @escaping @MainActor (String?, Int, Double?) -> Void) {
-    guard !closed else {
-      recoveryCapturing = false
-      DispatchQueue.main.async { completion(nil, 0, nil) }; return
-    }
-    if let text = capture.advance() {
-      recoveryCapturing = false
-      let rows = capture.capturedRows
-      DispatchQueue.main.async { completion(text, rows, nil) }
-    } else {
-      // Re-enter behind admitted input/output instead of holding the FIFO
-      // head while capturing up to the existing 16 MiB copy limit.
-      queue.async { [self] in
-        readBroker.submit { [self] in advanceRecovery(capture, completion: completion) }
-      }
     }
   }
   public func close() {

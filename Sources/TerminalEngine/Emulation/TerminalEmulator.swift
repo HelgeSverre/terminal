@@ -1,23 +1,6 @@
 import Foundation
 import TerminalInterop
 
-/// Host-only asynchronous transport. The C/headless API retains synchronous
-/// completion; live sessions suspend the ordered ingress lease while I/O runs.
-package enum TerminalGraphicsTransportBridge {
-  package static func enable(core pointer: OpaquePointer) { core(pointer)?.enableAsynchronousGraphics() }
-  package static func whenReady(core pointer: OpaquePointer, _ callback: @escaping () -> Void) -> Bool {
-    core(pointer)?.whenGraphicsReady(callback) ?? false
-  }
-}
-
-package enum TerminalDownloadBridge {
-  package static func pending(core pointer: OpaquePointer) -> [TerminalPendingDownload] { core(pointer)?.pendingDownloads ?? [] }
-  package static func resolve(core pointer: OpaquePointer, id: UInt64, take: Bool) -> TerminalDownload? {
-    core(pointer)?.resolveDownload(id, take: take)
-  }
-  package static func takeAll(core pointer: OpaquePointer) -> [TerminalDownload] { core(pointer)?.takeDownloads() ?? [] }
-}
-
 // Owns terminal emulation and the stable C compatibility boundary.  The public C-shaped surface is
 // deliberately thin: the state machine owns parsing, grid mutation, history,
 // snapshots, and input encoding so neither Session nor the renderer needs to
@@ -62,56 +45,18 @@ private func decSpecialGraphics(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
   }
 }
 
-private enum VTParserState { case ground, escape, charset(Int), escapeIntermediate(UInt8), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool), inlineImage(InlineImageDecoder, escaped: Bool), dcsHeader, dcsQuery(escaped: Bool), sixel(SixelDecoder, escaped: Bool) }
+enum VTParserState { case ground, escape, charset(Int), escapeIntermediate(UInt8), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool), inlineImage(InlineImageDecoder, escaped: Bool), dcsHeader, dcsQuery(escaped: Bool), sixel(SixelDecoder, escaped: Bool) }
 
-private final class TerminalSearchToken {
-  // The task contains only immutable page snapshots while it is with the
-  // worker. The core is consulted exclusively by fill/accept on its owner.
-  @exclusivity(unchecked) var task: TerminalSearchTask
-  init(_ task: TerminalSearchTask) { self.task = task }
-}
-
-#if SNAPSHOT_ABI_DIAGNOSTICS
-// Test-build counters distinguish the direct value path from both C oracles.
-// No counter or per-cell instrumentation is compiled into the application.
-enum SnapshotABIDiagnostics {
-  static var borrowedStringAllocations = 0
-  static var jsonPublications = 0
-}
-#endif
-
-// Owns byte storage for a synchronous ABI snapshot callback.  The callback
-// promise is deliberately narrow: clients copy before return, so storage can
-// be released immediately afterwards.
-private final class BorrowedSnapshotCells {
-  @exclusivity(unchecked) var text: [UnsafeMutablePointer<UInt8>] = []
-  @exclusivity(unchecked) var links: [UnsafeMutablePointer<UInt8>] = []
-  deinit { text.forEach { $0.deallocate() }; links.forEach { $0.deallocate() } }
-  func copy(_ string: String, into target: inout [UnsafeMutablePointer<UInt8>]) -> UnsafePointer<UInt8>? {
-    #if SNAPSHOT_ABI_DIAGNOSTICS
-    SnapshotABIDiagnostics.borrowedStringAllocations += 1
-    #endif
-    let bytes = Array(string.utf8)
-    // A non-nil zero-length link means OSC 8 explicitly supplied an empty
-    // URI; nil means no link. Preserve that distinction over the ABI.
-    let pointer = UnsafeMutablePointer<UInt8>.allocate(capacity: max(1, bytes.count))
-    for (offset, byte) in bytes.enumerated() { pointer.advanced(by: offset).initialize(to: byte) }
-    if bytes.isEmpty { pointer.initialize(to: 0) }
-    target.append(pointer)
-    return UnsafePointer(pointer)
-  }
-}
-
-private final class TerminalEmulator {
+final class TerminalEmulator {
   private enum DisplayClearAction: UInt32 {
     case ignoredAlternate = 0, cleared = 1, redrawPrompt = 2
   }
   @exclusivity(unchecked) private(set) var columns: Int
   @exclusivity(unchecked) private(set) var rowCount: Int
-  @exclusivity(unchecked) private var document: TerminalDocument
-  private let selection = TerminalSelection()
-  @exclusivity(unchecked) private var selectionDocumentGeneration = UUID()
-  @exclusivity(unchecked) private var selectionSnapshotID: UInt64 = 0
+  @exclusivity(unchecked) var document: TerminalDocument
+  let selection = TerminalSelection()
+  @exclusivity(unchecked) var selectionDocumentGeneration = UUID()
+  @exclusivity(unchecked) var selectionSnapshotID: UInt64 = 0
   @exclusivity(unchecked) private var pendingSelectionRevision: UInt64?
   private struct PendingPresentedContent {
     var revision: UInt64
@@ -126,104 +71,104 @@ private final class TerminalEmulator {
     var relievingPressure = false
   }
   @exclusivity(unchecked) private var pendingResize: PendingResize?
-  private var primary: TerminalScreen { get { document.primary } set { document.primary = newValue } }
-  private var alternate: TerminalScreen { get { document.alternate } set { document.alternate = newValue } }
-  @exclusivity(unchecked) private var usingAlternate = false
-  private var history: TerminalHistory { document.history }
+  var primary: TerminalScreen { get { document.primary } set { document.primary = newValue } }
+  var alternate: TerminalScreen { get { document.alternate } set { document.alternate = newValue } }
+  @exclusivity(unchecked) var usingAlternate = false
+  var history: TerminalHistory { document.history }
   @exclusivity(unchecked) private var historyLimit = 50_000
   @exclusivity(unchecked) private var historyByteLimit = 64 * 1024 * 1024
-  @exclusivity(unchecked) private var viewOffset = 0
+  @exclusivity(unchecked) var viewOffset = 0
   // Nil means follow-tail. A retained row identity keeps a viewport stable as
   // output appends history and is remapped during document reflow.
-  @exclusivity(unchecked) private var viewAnchor: UInt64?
-  @exclusivity(unchecked) private var viewportClampRevision: UInt64 = 1
+  @exclusivity(unchecked) var viewAnchor: UInt64?
+  @exclusivity(unchecked) var viewportClampRevision: UInt64 = 1
   @exclusivity(unchecked) private var viewportWasClamped = false
   // Modes describe protocol policy. Geometry itself belongs to each document
   // screen, because primary and alternate retain independent margins.
-  @exclusivity(unchecked) private var originMode = false
-  @exclusivity(unchecked) private var leftRightMargins = false
-  @exclusivity(unchecked) private var autoWrap = true
-  @exclusivity(unchecked) private var reverseWrap = false
-  @exclusivity(unchecked) private var reverseWrapUnlimited = false
-  @exclusivity(unchecked) private var cursesTabWrap = false
-  @exclusivity(unchecked) private var savedPrivateModes: [Int: Bool] = [:]
+  @exclusivity(unchecked) var originMode = false
+  @exclusivity(unchecked) var leftRightMargins = false
+  @exclusivity(unchecked) var autoWrap = true
+  @exclusivity(unchecked) var reverseWrap = false
+  @exclusivity(unchecked) var reverseWrapUnlimited = false
+  @exclusivity(unchecked) var cursesTabWrap = false
+  @exclusivity(unchecked) var savedPrivateModes: [Int: Bool] = [:]
   // SPA activates ISO erasure protection until terminal reset. EPA stops
   // protecting new cells but does not disable protection of existing cells.
-  @exclusivity(unchecked) private var isoEraseProtection = false
-  @exclusivity(unchecked) private var insertMode = false
-  @exclusivity(unchecked) private var newlineMode = false
-  @exclusivity(unchecked) private var syncDeadline: UInt64?
-  @exclusivity(unchecked) private var clock: UInt64 = 0
-  @exclusivity(unchecked) private var parser = VTParserState.ground
+  @exclusivity(unchecked) var isoEraseProtection = false
+  @exclusivity(unchecked) var insertMode = false
+  @exclusivity(unchecked) var newlineMode = false
+  @exclusivity(unchecked) var syncDeadline: UInt64?
+  @exclusivity(unchecked) var clock: UInt64 = 0
+  @exclusivity(unchecked) var parser = VTParserState.ground
   @exclusivity(unchecked) private var utf8 = TerminalText.UTF8Decoder()
-  @exclusivity(unchecked) private var sequenceBytes: [UInt8] = []
+  @exclusivity(unchecked) var sequenceBytes: [UInt8] = []
   private static let osc52Prefix: [UInt8] = Array("52;c;".utf8)
   private static let oscFilePrefix: [UInt8] = Array("1337;File=".utf8)
   private static let oscFilePartPrefix: [UInt8] = Array("1337;FilePart=".utf8)
   // Style, link and protection of the next printed cell. They live in one
   // value so a print transaction borrows them instead of assembling a copy.
-  @exclusivity(unchecked) private var attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
-  private var pen: TerminalStyle {
+  @exclusivity(unchecked) var attributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
+  var pen: TerminalStyle {
     get { attributes.style }
     set { captureRepeatAttributes(); attributes.style = newValue }
   }
-  private var currentLink: String? {
+  var currentLink: String? {
     get { attributes.link }
     set { captureRepeatAttributes(); attributes.link = newValue; attributes.linkID = nil }
   }
-  private var protectedOutput: Bool {
+  var protectedOutput: Bool {
     get { attributes.protected }
     set { captureRepeatAttributes(); attributes.protected = newValue }
   }
-  @exclusivity(unchecked) private var replies = Data()
-  @exclusivity(unchecked) private var nextClipboardRequestID: UInt64 = 1
-  @exclusivity(unchecked) private var clipboardRequests: [(UInt64, Data)] = []
-  @exclusivity(unchecked) private var pendingClipboardRequests = Set<UInt64>()
-  @exclusivity(unchecked) private var palette = TerminalPalette()
+  @exclusivity(unchecked) var replies = Data()
+  @exclusivity(unchecked) var nextClipboardRequestID: UInt64 = 1
+  @exclusivity(unchecked) var clipboardRequests: [(UInt64, Data)] = []
+  @exclusivity(unchecked) var pendingClipboardRequests = Set<UInt64>()
+  @exclusivity(unchecked) var palette = TerminalPalette()
   private var sixelPalette: [UInt32]?
-  private var sixelDisplayMode = false
-  private var sixelCursorRight = false
-  private var multipartImage: InlineImageDecoder?
-  private let downloads = TerminalDownloads()
-  @exclusivity(unchecked) private var title = ""
-  @exclusivity(unchecked) private var iconTitle = ""
-  @exclusivity(unchecked) private var titleStack: [(title: String?, icon: String?)] = []
-  @exclusivity(unchecked) private var identity = TerminalIdentity.helgeTerminal
-  @exclusivity(unchecked) private var colorSchemeReports = false
-  @exclusivity(unchecked) private var currentDirectory: String?
-  @exclusivity(unchecked) private var commandHistory = TerminalCommandHistory()
-  @exclusivity(unchecked) private var applicationCursor = false
-  @exclusivity(unchecked) private var applicationKeypad = false
-  @exclusivity(unchecked) private var bracketedPaste = false
-  @exclusivity(unchecked) private var focusReporting = false
-  @exclusivity(unchecked) private var reverseVideo = false
-  @exclusivity(unchecked) private var mouseMode = 0
-  @exclusivity(unchecked) private var mouseEncoding = 0
-  @exclusivity(unchecked) private var modifyOtherKeys = 0
-  private var sgrMouse: Bool { mouseEncoding == 1006 || mouseEncoding == 1016 }
-  @exclusivity(unchecked) private var tabs: [Bool]
-  @exclusivity(unchecked) private var tabsCleared = false
-  @exclusivity(unchecked) private var revision: UInt64 = 1
-  @exclusivity(unchecked) private var graphemeClustering = true
+  var sixelDisplayMode = false
+  var sixelCursorRight = false
+  var multipartImage: InlineImageDecoder?
+  let downloads = TerminalDownloads()
+  @exclusivity(unchecked) var title = ""
+  @exclusivity(unchecked) var iconTitle = ""
+  @exclusivity(unchecked) var titleStack: [(title: String?, icon: String?)] = []
+  @exclusivity(unchecked) var identity = TerminalIdentity.helgeTerminal
+  @exclusivity(unchecked) var colorSchemeReports = false
+  @exclusivity(unchecked) var currentDirectory: String?
+  @exclusivity(unchecked) var commandHistory = TerminalCommandHistory()
+  @exclusivity(unchecked) var applicationCursor = false
+  @exclusivity(unchecked) var applicationKeypad = false
+  @exclusivity(unchecked) var bracketedPaste = false
+  @exclusivity(unchecked) var focusReporting = false
+  @exclusivity(unchecked) var reverseVideo = false
+  @exclusivity(unchecked) var mouseMode = 0
+  @exclusivity(unchecked) var mouseEncoding = 0
+  @exclusivity(unchecked) var modifyOtherKeys = 0
+  var sgrMouse: Bool { mouseEncoding == 1006 || mouseEncoding == 1016 }
+  @exclusivity(unchecked) var tabs: [Bool]
+  @exclusivity(unchecked) var tabsCleared = false
+  @exclusivity(unchecked) var revision: UInt64 = 1
+  @exclusivity(unchecked) var graphemeClustering = true
   @exclusivity(unchecked) private var hostGraphemeClustering = true
   /// BEL characters since the host last asked.
   @exclusivity(unchecked) private var bells: UInt32 = 0
   func takeBells() -> UInt32 { defer { bells = 0 }; return bells }
-  @exclusivity(unchecked) private var geometryEpoch: UInt64 = 1
+  @exclusivity(unchecked) var geometryEpoch: UInt64 = 1
   // TerminalDocument deliberately restarts row IDs after a hard reset. Keep a
   // monotonic identity generation so a pending search cannot mistake a fresh
   // post-RIS row for an old (id, revision) pair.
   @exclusivity(unchecked) private var searchGeneration: UInt64 = 1
-  @exclusivity(unchecked) private var documentEpoch: UInt64 = 1
-  @exclusivity(unchecked) private var historyEpoch: UInt64 = 1
-  @exclusivity(unchecked) private var screenEpoch: UInt64 = 1
+  @exclusivity(unchecked) var documentEpoch: UInt64 = 1
+  @exclusivity(unchecked) var historyEpoch: UInt64 = 1
+  @exclusivity(unchecked) var screenEpoch: UInt64 = 1
   // Accepted matches stay in document identity space. Each keeps the row
   // revision that was proven at accept time, so a later change to an
   // unrelated row does not discard a valid decoration while a changed row can
   // never inherit one. Snapshot publication resolves these proofs against its
   // selected rows, so a non-view snapshot never paints a viewport-relative
   // coordinate onto unrelated live output.
-  private struct SearchHits {
+  struct SearchHits {
     let stamp: TerminalSearchStamp
     /// Document order, oldest first. Anchors are refreshed when navigation
     /// finds that history eviction moved a match.
@@ -234,11 +179,11 @@ private final class TerminalEmulator {
     /// publication costs the visible rows and not the retained match count.
     let byRow: [UInt64: [(match: Int, span: Int)]]
   }
-  @exclusivity(unchecked) private var searchHits: SearchHits?
-  private let graphics = KittyGraphicsStore()
-  @exclusivity(unchecked) private var cellPixelWidth = 8
-  @exclusivity(unchecked) private var cellPixelHeight = 16
-  @exclusivity(unchecked) private var lastPrinted: TerminalDocument.PrintedText?
+  @exclusivity(unchecked) var searchHits: SearchHits?
+  let graphics = KittyGraphicsStore()
+  @exclusivity(unchecked) var cellPixelWidth = 8
+  @exclusivity(unchecked) var cellPixelHeight = 16
+  @exclusivity(unchecked) var lastPrinted: TerminalDocument.PrintedText?
   // REP prints with the attributes of the last printed cluster. Those are
   // nearly always the current `attributes`, so they are copied only when the
   // current ones are about to change (or when a cluster kept its own).
@@ -249,15 +194,15 @@ private final class TerminalEmulator {
     lastPrintedAttributes = attributes
     repeatUsesCurrentAttributes = false
   }
-  private func forgetLastPrinted() {
+  func forgetLastPrinted() {
     lastPrinted = nil
     lastPrintedAttributes = TerminalDocument.PrintAttributes(style: TerminalStyle(), link: nil, protected: false)
     repeatUsesCurrentAttributes = false
     repeatRemaining = 0
   }
-  @exclusivity(unchecked) private var repeatRemaining = 0
-  @exclusivity(unchecked) private var charsetSpecial = [false, false]
-  @exclusivity(unchecked) private var charsetSlot = 0
+  @exclusivity(unchecked) var repeatRemaining = 0
+  @exclusivity(unchecked) var charsetSpecial = [false, false]
+  @exclusivity(unchecked) var charsetSlot = 0
   // Decoded text waiting to be printed: the first `decodedScalarCount`
   // elements of a buffer that keeps its full size, so that decoding writes
   // into it directly. Those before `decodedScalarStart` are already printed.
@@ -271,7 +216,7 @@ private final class TerminalEmulator {
   private static let minimumDirectASCIIRun = 16
   // CSI input itself is capped at 16 KiB, so this reusable numeric scratch is
   // bounded by the parser's existing sequence limit.
-  @exclusivity(unchecked) private var csiParameterScratch: [Int] = []
+  @exclusivity(unchecked) var csiParameterScratch: [Int] = []
   @exclusivity(unchecked) private var csiBytes: [UInt8] = []
   // Preserve the old scalar-backed String limit: bytes >= 0x80 took two UTF-8 bytes.
   @exclusivity(unchecked) private var csiUTF8Count = 0
@@ -285,11 +230,11 @@ private final class TerminalEmulator {
     csiBytes.reserveCapacity(64)
   }
 
-  private var screen: TerminalScreen {
+  var screen: TerminalScreen {
     get { usingAlternate ? alternate : primary }
     set { if usingAlternate { alternate = newValue } else { primary = newValue } }
   }
-  private var horizontalMargins: (left: Int, right: Int) {
+  var horizontalMargins: (left: Int, right: Int) {
     let s = screen
     return leftRightMargins ? (s.leftMargin, s.rightMargin) : (0, columns - 1)
   }
@@ -301,9 +246,9 @@ private final class TerminalEmulator {
     let margins = horizontalMargins
     return column <= margins.right ? margins : (0, columns - 1)
   }
-  private func eraseStyle() -> TerminalStyle { pen.erased() }
-  private func changed(history: Bool = false, geometry: Bool = false,
-                       document: Bool = true, screen: Bool = true) {
+  func eraseStyle() -> TerminalStyle { pen.erased() }
+  func changed(history: Bool = false, geometry: Bool = false,
+               document: Bool = true, screen: Bool = true) {
     revision &+= 1
     // Geometry changes alter column coordinates. Ordinary document edits are
     // instead resolved lazily against each accepted row's revision, retaining
@@ -314,7 +259,7 @@ private final class TerminalEmulator {
     if history { historyEpoch &+= 1 }
     if geometry { geometryEpoch &+= 1 }
   }
-  private func advanceSearchGeneration() {
+  func advanceSearchGeneration() {
     searchGeneration &+= 1
     searchHits = nil
   }
@@ -505,8 +450,8 @@ private final class TerminalEmulator {
     enforceHistoryLimits()
     historyEpoch &+= 1
   }
-  private func resetClusterBoundary() { document.resetPrintCluster() }
-  private func tick(_ now: UInt64) {
+  func resetClusterBoundary() { document.resetPrintCluster() }
+  func tick(_ now: UInt64) {
     clock = now
     graphics.tick(now: now)
     if let deadline = syncDeadline, now >= deadline {
@@ -904,7 +849,7 @@ private final class TerminalEmulator {
     apply(effect)
   }
 
-  private func index(reverse: Bool) {
+  func index(reverse: Bool) {
     if graphics.hasPlacements {
       let s = screen, margins = horizontalMargins
       if (margins.left != 0 || margins.right != columns - 1),
@@ -939,7 +884,7 @@ private final class TerminalEmulator {
     } else { moveCursorBackward(&s, count: 1) }
     s.pendingWrap = false; screen = s; changed()
   }
-  private func moveCursorBackward(_ s: inout TerminalScreen, count: Int) {
+  func moveCursorBackward(_ s: inout TerminalScreen, count: Int) {
     let margins = horizontalMargins
     if autoWrap && reverseWrapUnlimited && (s.topMargin...s.bottomMargin).contains(s.cursorRow)
       && (margins.left...margins.right).contains(s.cursorColumn) {
@@ -973,7 +918,7 @@ private final class TerminalEmulator {
       if remaining == 0 { break }
     }
   }
-  private func tab(_ reverse: Bool = false, count: Int = 1) {
+  func tab(_ reverse: Bool = false, count: Int = 1) {
     resetClusterBoundary()
     if !reverse && cursesTabWrap && autoWrap && screen.pendingWrap {
       index(reverse: false)
@@ -999,14 +944,14 @@ private final class TerminalEmulator {
     screen = s; changed()
   }
   private func reverseIndex() { index(reverse: true) }
-  private func saveCursor() {
+  func saveCursor() {
     var s = screen
     s.savedRow = s.cursorRow; s.savedColumn = s.cursorColumn; s.savedPendingWrap = s.pendingWrap
     s.savedRendition = SavedRendition(origin: originMode, style: pen, link: currentLink, linkID: attributes.linkID,
       protected: protectedOutput, charsetSpecial: charsetSpecial, charsetSlot: charsetSlot)
     screen = s
   }
-  private func restoreCursor() {
+  func restoreCursor() {
     var s = screen
     let saved = s.savedRendition
     originMode = saved.origin; pen = saved.style; currentLink = saved.link; attributes.linkID = saved.linkID
@@ -1049,970 +994,10 @@ private final class TerminalEmulator {
     resetClusterBoundary()
     changed(history: true)
   }
-  private struct CSIParameterPacket {
-    var values: [Int]
-    // CSI > ... u and CSI = ... u historically parsed their first field
-    // before any generic filtering.  Keep that protocol-specific value
-    // alongside the ordinary flattened fields.
-    var keyboardFlags: UInt32?
-    var hasColon: Bool
-  }
-  // CSI parameter syntax is ASCII. Scan it once rather than repeatedly
-  // traversing Character collections and allocating filtered strings. The
-  // accumulator deliberately preserves the legacy grammar: non-semicolon
-  // syntax bytes are ignored between digits, while each semicolon creates an
-  // empty/defaulted field when needed. Every value consumed by a non-SGR
-  // command is bounded to UInt32, matching the wire protocol.
-  private static func parseCSIParameters<Bytes: Collection>(_ bytes: Bytes, final: UInt8,
-                                         into parameters: inout [Int]) -> CSIParameterPacket? where Bytes.Element == UInt8 {
-    // The streaming CSI parser stores one input byte per scalar. A non-ASCII
-    // scalar cannot be terminal parameter syntax; reject it instead of
-    // silently turning a numeric-looking malformed byte into default zero.
-    parameters.removeAll(keepingCapacity: true)
-    var rawRun: UInt32 = 0
-    var rawHasDigits = false
-    var filtered: UInt32 = 0
-    var filteredHasDigits = false
-    let hasColon = bytes.contains(0x3a)
-    let preservingColonSGR = final == 0x6d && hasColon
-    let keyboardPrefix = final == 0x75 && (bytes.first == 0x3e || bytes.first == 0x3d)
-    let preservesRawSyntax = preservingColonSGR || keyboardPrefix
-    var keyboardValue: UInt32 = 0
-    var keyboardHasDigits = false
-    var keyboardNegative = false
-    var keyboardSawSign = false
-    var keyboardValid = keyboardPrefix
-    var keyboardFinished = !keyboardPrefix
-    for (index, byte) in bytes.enumerated() {
-      guard byte < 0x80 else { return nil }
-      if (0x30...0x39).contains(byte) {
-        let digit = UInt32(byte - 0x30)
-        if rawHasDigits {
-          guard rawRun <= (UInt32.max - digit) / 10 else { return nil }
-          rawRun = rawRun * 10 + digit
-        } else {
-          rawRun = digit
-          rawHasDigits = true
-        }
-        if !preservesRawSyntax {
-          guard filtered <= (UInt32.max - digit) / 10 else { return nil }
-          filtered = filtered * 10 + digit
-          filteredHasDigits = true
-        }
-      } else {
-        rawRun = 0
-        rawHasDigits = false
-        if !preservesRawSyntax, byte == 0x3b {
-          parameters.append(filteredHasDigits ? Int(filtered) : 0)
-          filtered = 0
-          filteredHasDigits = false
-        }
-      }
-      if keyboardPrefix && !keyboardFinished {
-        if index == 0 { continue }
-        if byte == 0x3b {
-          keyboardFinished = true
-        } else if (0x30...0x39).contains(byte), keyboardValid {
-          let digit = UInt32(byte - 0x30)
-          guard keyboardValue <= (UInt32.max - digit) / 10 else { keyboardValid = false; continue }
-          keyboardValue = keyboardValue * 10 + digit
-          keyboardHasDigits = true
-        } else if (byte == 0x2b || byte == 0x2d), !keyboardSawSign && !keyboardHasDigits && keyboardValue == 0, keyboardValid {
-          keyboardNegative = byte == 0x2d
-          keyboardSawSign = true
-        } else {
-          keyboardValid = false
-        }
-      }
-    }
-    if !preservesRawSyntax { parameters.append(filteredHasDigits ? Int(filtered) : 0) }
-    let keyboardFlags: UInt32? = keyboardPrefix
-      ? (keyboardValid && keyboardHasDigits && !keyboardNegative ? keyboardValue : 0)
-      : nil
-    return CSIParameterPacket(values: parameters, keyboardFlags: keyboardFlags, hasColon: hasColon)
-  }
-  /// Whether the command with this final byte, and the private marker and
-  /// intermediate byte found in `raw`, is one `handleCSI` carries out.
-  static func implementsCSI(final: UInt8, raw: [UInt8]) -> Bool {
-    let marker = raw.first.flatMap { (0x3c...0x3f).contains($0) ? $0 : nil }
-    let intermediates = raw.filter { (0x20...0x2f).contains($0) }
-    // A marker anywhere but first, or more than one intermediate, is no
-    // command this terminal knows.
-    guard !raw.dropFirst().contains(where: { (0x3c...0x3f).contains($0) }), intermediates.count <= 1 else { return false }
-    switch (marker, intermediates.first) {
-    case (nil, nil): return true
-    // DECSED and DECSEL, DEC private modes, DSR, the keyboard-flags query.
-    case (0x3f, nil): return [0x4a, 0x4b, 0x68, 0x6c, 0x6d, 0x6e, 0x72, 0x73, 0x75].contains(final)
-    // Keyboard flags (set, push, pop); secondary device attributes.
-    case (0x3d, nil), (0x3c, nil): return final == 0x75
-    case (0x3e, nil): return [0x75, 0x63, 0x6d, 0x6e, 0x71].contains(final)
-    // DECSTR, DECSCA, DECSCUSR, DECRQM for an ANSI or a private mode.
-    case (nil, 0x21): return final == 0x70
-    case (nil, 0x24): return [0x70, 0x76, 0x78, 0x7a, 0x7b].contains(final)
-    case (nil, 0x22), (nil, 0x20): return final == 0x71
-    case (0x3f, 0x24): return final == 0x70
-    // DECRQCRA.
-    case (nil, 0x2a): return final == 0x79
-    case (nil, 0x27): return final == 0x7d || final == 0x7e
-    default: return false
-    }
-  }
-  private func handleCSI(_ raw: [UInt8], final: UInt8) {
-    switch final {
-    case 0x6d, 0x6e, 0x63, 0x75: break
-    default: resetClusterBoundary()
-    }
-    // A private marker or an intermediate byte makes a different command of
-    // the same final byte. `CSI > 4 ; 2 m` enables xterm's modifyOtherKeys; it
-    // is not SGR 4;2. `CSI ? 1 ; 1 ; 0 S` asks about graphics; it does not
-    // scroll. Combinations this terminal does not implement are ignored.
-    guard Self.implementsCSI(final: final, raw: raw) else { return }
-    guard let packet = Self.parseCSIParameters(raw, final: final, into: &csiParameterScratch) else { return }
-    if (raw.first == 0x3e && (final == 0x6d || final == 0x6e))
-      || (raw.first == 0x3f && final == 0x6d) {
-      // Resource controls must never reach SGR/DSR. Unsupported resources and
-      // subparameter masks are ignored without changing the current setting.
-      guard !packet.hasColon else { return }
-      let params = packet.values
-      if raw.first == 0x3f {
-        if params == [4] { replies.append(contentsOf: "\u{1b}[>4;\(modifyOtherKeys)m".utf8) }
-      } else if final == 0x6e {
-        if params == [4] { modifyOtherKeys = -1; changed() }
-      } else if params == [0] || params == [4] {
-        modifyOtherKeys = 0; changed()
-      } else if params.count == 2, params[0] == 4, (0...3).contains(params[1]) {
-        modifyOtherKeys = params[1]; changed()
-      }
-      return
-    }
-    // SGR changes the pen only. Preserve the usual semantic revision without
-    // copying and writing back an unchanged screen or clearing pending wrap.
-    if final == 0x6d {
-      applySGR(packet.values, colonSyntax: packet.hasColon ? String(decoding: raw, as: UTF8.self) : nil)
-      changed()
-      return
-    }
-    if final == 0x71, raw.first == 0x3e {
-      if raw.dropFirst().allSatisfy({ $0 == 0x30 }) { replies.append(contentsOf: identity.versionReply.utf8) }
-      return
-    }
-    let params = packet.values
-    let first = raw.first
-    let last = raw.last
-    let privateMode = first == 0x3f
-    let n = max(1, params.first ?? 0)
-    if last == 0x24, [0x76, 0x78, 0x7a, 0x7b].contains(final) {
-      editRectangle(params, final: final); changed(); return
-    }
-    if last == 0x27, final == 0x7d || final == 0x7e {
-      shiftColumns(n, inserting: final == 0x7d); changed(); return
-    }
-    var s = screen
-    var changedActiveScreen = false
-    var semanticChange = true
-    var clearsPending = true
-    switch final {
-    case 0x41: moveCursorVertically(&s, up: true, count: n)
-    case 0x42: moveCursorVertically(&s, up: false, count: n)
-    case 0x43: s.cursorColumn = min(s.cursorColumn <= horizontalMargins.right ? horizontalMargins.right : columns - 1, s.cursorColumn + n)
-    case 0x44: moveCursorBackward(&s, count: n)
-    case 0x45:
-      moveCursorVertically(&s, up: false, count: n)
-      let left = horizontalMargins.left
-      s.cursorColumn = s.cursorColumn >= left ? left : 0
-    case 0x46:
-      moveCursorVertically(&s, up: true, count: n)
-      let left = horizontalMargins.left
-      s.cursorColumn = s.cursorColumn >= left ? left : 0
-    case 0x47: s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + n - 1)
-    case 0x64: s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + n - 1)
-    // HPA, HPR and VPR do what CHA, CUF and CUD do, as in xterm.
-    case 0x60: s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + n - 1)
-    case 0x61: s.cursorColumn = min(s.cursorColumn <= horizontalMargins.right ? horizontalMargins.right : columns - 1, s.cursorColumn + n)
-    case 0x65: moveCursorVertically(&s, up: false, count: n)
-    case 0x48, 0x66: s.cursorRow = min(originMode ? s.bottomMargin : rowCount - 1, (originMode ? s.topMargin : 0) + max(0, (params.first ?? 1) - 1)); s.cursorColumn = min(originMode ? horizontalMargins.right : columns - 1, (originMode ? horizontalMargins.left : 0) + max(0, (params.dropFirst().first ?? 1) - 1))
-    case 0x4a: eraseDisplay(params.first ?? 0, selective: privateMode); changedActiveScreen = true
-    case 0x4b: eraseLine(params.first ?? 0, selective: privateMode); changedActiveScreen = true
-    case 0x40: insertCharacters(n); changedActiveScreen = true
-    case 0x50: deleteCharacters(n); changedActiveScreen = true
-    case 0x58: eraseCharacters(n); changedActiveScreen = true
-    case 0x4c: insertLines(n); changedActiveScreen = true
-    case 0x4d: deleteLines(n); changedActiveScreen = true
-    case 0x49: tab(false, count: n); changedActiveScreen = true
-    case 0x5a: tab(true, count: n); changedActiveScreen = true
-    case 0x67:
-      if params.first == 3 { tabs = Array(repeating: false, count: columns); tabsCleared = true }
-      else if params.first ?? 0 == 0 { tabs[s.cursorColumn] = false }
-    case 0x72 where !privateMode: setVerticalMargins(params); changedActiveScreen = true
-    case 0x53: resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: true, allowHistory: true)
-    case 0x54: resetClusterBoundary(); scroll(&s, top: s.topMargin, bottom: s.bottomMargin, count: n, up: false, allowHistory: false)
-    case 0x62:
-      repeatRemaining = lastPrinted == nil ? 0 : min(1_000_000, n)
-      clearsPending = false
-    case 0x72 where privateMode:
-      for mode in params {
-        if let enabled = savedPrivateModes[mode] {
-          changedActiveScreen = setMode([mode], enabled: enabled, privateMode: true) || changedActiveScreen
-        }
-      }
-    case 0x73 where privateMode:
-      for mode in params {
-        let report = modeReport(mode, privateMode: true)
-        if report == 1 || report == 2 { savedPrivateModes[mode] = report == 1 }
-      }
-      clearsPending = false
-    case 0x73:
-      if leftRightMargins { setHorizontalMargins(params); changedActiveScreen = true }
-      else { saveCursor(); changedActiveScreen = true; clearsPending = false }
-    case 0x75:
-      clearsPending = false
-      if first == 0x3e {
-        if s.keyboardStack.count == 32 { s.keyboardStack.removeFirst() }
-        s.keyboardStack.append(s.keyboardFlags); s.keyboardFlags = (packet.keyboardFlags ?? 0) & 31
-      }
-      else if first == 0x3f { replies.append(contentsOf: "\u{1b}[?\(s.keyboardFlags)u".utf8) }
-      else if first == 0x3c { for _ in 0..<min(32, n) { s.keyboardFlags = s.keyboardStack.popLast() ?? 0 } }
-      else if first == 0x3d {
-        let flags = (packet.keyboardFlags ?? 0) & 31
-        let action = String(decoding: raw, as: UTF8.self).split(separator: ";", omittingEmptySubsequences: false).dropFirst().first.flatMap { Int($0) } ?? 1
-        if action == 1 { s.keyboardFlags = flags }
-        else if action == 2 { s.keyboardFlags |= flags }
-        else if action == 3 { s.keyboardFlags &= ~flags }
-      }
-      else { restoreCursor(); changedActiveScreen = true }
-    case 0x6e where privateMode && Self.deviceStatus(params) != nil:
-      clearsPending = false; replies.append(contentsOf: Self.deviceStatus(params)!.utf8)
-    case 0x6e: clearsPending = false; if privateMode && params.first == 996 { replies.append(contentsOf: colorSchemeReply.utf8) } else if params.first == 5 { replies.append(contentsOf: "\u{1b}[0n".utf8) } else if params.first == 6 { let row = max(1, s.cursorRow + 1 - (originMode ? s.topMargin : 0)); let column = max(1, s.cursorColumn + 1 - (originMode ? horizontalMargins.left : 0)); replies.append(contentsOf: "\u{1b}[\(privateMode ? "?" : "")\(row);\(column)R".utf8) }
-    // Secondary device attributes: a VT220-class terminal, firmware version
-    // 10, no ROM cartridge. Primary attributes otherwise.
-    case 0x63 where first == 0x3e: clearsPending = false; replies.append(contentsOf: "\u{1b}[>1;10;0c".utf8)
-    // VT220 with Sixel graphics (4) and ANSI color (22).
-    case 0x63: clearsPending = false; replies.append(contentsOf: Self.primaryDeviceAttributes.utf8)
-    // DECRQCRA: the checksum of a rectangle's characters, as xterm (patch
-    // 334 and later) gives it: their code points summed, an empty cell
-    // counted as a space, modulo 65536. Coordinates follow origin mode.
-    // XTWINOPS reports, the ones that only read: the text area in pixels
-    // (14), a cell in pixels (16), the text area in cells (18) and the
-    // screen in cells (19, the same here). Changing the window is not done.
-    case 0x74 where first != 0x3e && last != 0x24:
-      clearsPending = false
-      switch params.first ?? 0 {
-      case 14: replies.append(contentsOf: "\u{1b}[4;\(rowCount * cellPixelHeight);\(columns * cellPixelWidth)t".utf8)
-      case 16: replies.append(contentsOf: "\u{1b}[6;\(cellPixelHeight);\(cellPixelWidth)t".utf8)
-      // 20 and 21 would report the icon and window titles. They are not
-      // answered: a title is set by output, so reporting it lets output
-      // place its own text in the input stream.
-      case 22:
-        let which = params.count > 1 ? params[1] : 0
-        if (0...2).contains(which), params.count <= 2 || params[2] == 0 {
-          if titleStack.count == 16 { titleStack.removeFirst() }
-          titleStack.append((which == 1 ? nil : title, which == 2 ? nil : iconTitle))
-        }
-      case 23:
-        let which = params.count > 1 ? params[1] : 0
-        if (0...2).contains(which), params.count <= 2 || params[2] == 0, let saved = titleStack.popLast() {
-          // A partial frame inherits its missing title from the nearest
-          // older frame, matching xterm's mixed icon/window stack behavior.
-          let restoredTitle = saved.title ?? titleStack.reversed().first(where: { $0.title != nil })?.title
-          let restoredIcon = saved.icon ?? titleStack.reversed().first(where: { $0.icon != nil })?.icon
-          if which != 1, let value = restoredTitle { title = value }
-          if which != 2, let value = restoredIcon { iconTitle = value }
-        }
-      case 18, 19: replies.append(contentsOf: "\u{1b}[\((params.first ?? 18) == 18 ? 8 : 9);\(rowCount);\(columns)t".utf8)
-      default: break
-      }
-    case 0x79 where last == 0x2a:
-      clearsPending = false
-      func value(_ index: Int, _ fallback: Int) -> Int { index < params.count && params[index] > 0 ? params[index] : fallback }
-      let originRow = originMode ? s.topMargin : 0, originColumn = originMode && leftRightMargins ? s.leftMargin : 0
-      let lastRow = originMode ? s.bottomMargin : rowCount - 1, lastColumn = originMode && leftRightMargins ? s.rightMargin : columns - 1
-      let top = min(lastRow, originRow + value(2, 1) - 1), left = min(lastColumn, originColumn + value(3, 1) - 1)
-      let bottom = min(lastRow, originRow + value(4, lastRow - originRow + 1) - 1)
-      let right = min(lastColumn, originColumn + value(5, lastColumn - originColumn + 1) - 1)
-      var sum: UInt32 = 0
-      if top <= bottom, left <= right {
-        for row in top...bottom where s.rows.indices.contains(row) {
-          for column in left...right where column < s.rows[row].count {
-            let cell = s.rows[row].cell(column)
-            if cell.kind == 3 { continue }
-            sum &+= cell.text.unicodeScalars.first.map { $0.value } ?? 0x20
-          }
-        }
-      }
-      replies.append(contentsOf: "\u{1b}P\(params.first ?? 0)!~\(String(format: "%04X", sum & 0xffff))\u{1b}\\".utf8)
-    case 0x70 where last == 0x24:
-      clearsPending = false
-      let mode = params.first ?? 0
-      replies.append(contentsOf: "\u{1b}[\(privateMode ? "?" : "")\(mode);\(modeReport(mode, privateMode: privateMode))$y".utf8)
-    case 0x70 where last == 0x21: softReset(); changedActiveScreen = true
-    case 0x71 where last == 0x22: protectedOutput = (params.first ?? 0) == 1; clearsPending = false
-    case 0x71 where last == 0x20: s.cursorShape = UInt8(min(6, max(0, params.first ?? 0))); clearsPending = false
-    case 0x71: clearsPending = false; semanticChange = false
-    case 0x68, 0x6c:
-      if privateMode, params.allSatisfy({ [47, 1047, 1049].contains($0) }), params.allSatisfy({ _ in usingAlternate == (final == 0x68) }) { semanticChange = false }
-      changedActiveScreen = setMode(params, enabled: final == 0x68, privateMode: privateMode)
-    default: break
-    }
-    // DEC alternate-screen modes swap the screen object.  Keeping the swap
-    // inside mode ownership prevents this generic CSI epilogue from writing a
-    // stale primary copy back into the newly active alternate buffer.
-    if !changedActiveScreen { if clearsPending { s.pendingWrap = false }; screen = s }
-    // Scroll commits its replacement screen before eviction resolves anchors.
-    if final == 0x53 { enforceHistoryLimits() }
-    if graphics.hasPlacements {
-      switch final {
-      case 0x4a, 0x4c, 0x4d, 0x53, 0x54, 0x68, 0x6c: pruneGraphicsAnchors()
-      default: break
-      }
-    }
-    if semanticChange { changed() }
-  }
-  // Moving up stops at the top margin unless already above it; moving down
-  // stops at the bottom margin unless already below it. Otherwise use the
-  // corresponding screen edge, independently of origin mode.
-  // Keeping this policy here prevents redraw commands from drifting apart.
-  private func moveCursorVertically(_ screen: inout TerminalScreen, up: Bool, count: Int) {
-    if up {
-      let limit = screen.cursorRow < screen.topMargin ? 0 : screen.topMargin
-      screen.cursorRow -= min(count, screen.cursorRow - limit)
-    } else {
-      let limit = screen.cursorRow > screen.bottomMargin ? rowCount - 1 : screen.bottomMargin
-      screen.cursorRow += min(count, limit - screen.cursorRow)
-    }
-  }
-  private func eraseDisplay(_ mode: Int, selective: Bool = false) {
-    guard (0...3).contains(mode) else { return }
-    if mode == 3 {
-      if !usingAlternate {
-        document.clearHistory(); advanceSearchGeneration(); historyEpoch &+= 1
-        // Clearing retained rows evicts a pinned viewport's content; it
-        // does not express the user's intent to start following output.
-        resolveViewportAnchor(clamp: true)
-      }
-      return
-    }
-    if mode == 2 && !selective { graphics.clear(alternate: usingAlternate) }
-    var s = screen
-    let top = mode == 0 ? s.cursorRow : 0
-    let bottom = mode == 1 ? s.cursorRow : rowCount - 1
-    for row in top...bottom {
-      let left = mode == 0 && row == s.cursorRow ? s.cursorColumn : 0
-      let right = mode == 1 && row == s.cursorRow ? s.cursorColumn + 1 : columns
-      document.erase(&s, row: row, columns: left..<right, style: eraseStyle(), selective: selective,
-                     respectISOProtection: !selective && isoEraseProtection)
-    }
-    s.pendingWrap = false; screen = s
-  }
-  private func eraseLine(_ mode: Int, selective: Bool = false) {
-    guard (0...2).contains(mode) else { return }
-    var s = screen
-    let range = (mode == 0 ? s.cursorColumn : 0)..<(mode == 1 ? s.cursorColumn + 1 : columns)
-    document.erase(&s, row: s.cursorRow, columns: range, style: eraseStyle(), selective: selective,
-                   respectISOProtection: !selective && isoEraseProtection)
-    s.pendingWrap = false; screen = s
-  }
-  /// DEC rectangle coordinates are page-relative unless DECOM is enabled.
-  /// A start outside the page is empty; only the bottom/right are clipped.
-  private func editRectangle(_ params: [Int], final: UInt8) {
-    var s = screen
-    let originRow = originMode ? s.topMargin : 0
-    let originColumn = originMode ? horizontalMargins.left : 0
-    let lastRow = originMode ? s.bottomMargin : rowCount - 1
-    let lastColumn = originMode ? horizontalMargins.right : columns - 1
-    func value(_ index: Int, _ fallback: Int) -> Int {
-      index < params.count && params[index] > 0 ? params[index] : fallback
-    }
-    let offset = final == 0x78 ? 1 : 0
-    let top = originRow + value(offset, 1) - 1
-    let left = originColumn + value(offset + 1, 1) - 1
-    let bottom = min(lastRow, originRow + value(offset + 2, lastRow - originRow + 1) - 1)
-    let right = min(lastColumn, originColumn + value(offset + 3, lastColumn - originColumn + 1) - 1)
-    guard top <= bottom, left <= right else { return }
-    if final == 0x76 {
-      // This emulator has one page. Page 0 means the current page.
-      guard value(4, 1) == 1, value(7, 1) == 1 else { return }
-      let destinationTop = originRow + value(5, 1) - 1
-      let destinationLeft = originColumn + value(6, 1) - 1
-      document.copyRectangle(&s, top: top, left: left, bottom: bottom, right: right,
-                             destinationTop: destinationTop, destinationLeft: destinationLeft,
-                             lastRow: lastRow, lastColumn: lastColumn, eraseStyle: eraseStyle())
-    } else if final == 0x78 {
-      let code = params.first ?? 0
-      guard (32...126).contains(code) || (160...255).contains(code),
-            let scalar = Unicode.Scalar(code) else { return }
-      document.fillRectangle(&s, top: top, left: left, bottom: bottom, right: right, scalar: scalar, style: pen)
-    } else {
-      for row in top...bottom {
-        document.erase(&s, row: row, columns: left..<(right + 1), style: eraseStyle(), selective: final == 0x7b)
-      }
-    }
-    // Rectangular operations do not move the cursor or change deferred wrap.
-    screen = s
-  }
-  private func shiftColumns(_ count: Int, inserting: Bool) {
-    var s = screen
-    let margins = horizontalMargins
-    guard (s.topMargin...s.bottomMargin).contains(s.cursorRow),
-          (margins.left...margins.right).contains(s.cursorColumn) else { return }
-    for row in s.topMargin...s.bottomMargin {
-      document.shift(&s, row: row, column: s.cursorColumn, right: margins.right,
-                     count: count, inserting: inserting, eraseStyle: eraseStyle())
-    }
-    s.pendingWrap = false; screen = s
-  }
-  private func horizontalIndex(reverse: Bool) {
-    resetClusterBoundary()
-    var s = screen
-    let margins = horizontalMargins
-    let edge = reverse ? margins.left : margins.right
-    if s.cursorColumn == edge, (s.topMargin...s.bottomMargin).contains(s.cursorRow) {
-      for row in s.topMargin...s.bottomMargin {
-        document.shift(&s, row: row, column: margins.left, right: margins.right,
-                       count: 1, inserting: reverse, eraseStyle: eraseStyle())
-      }
-    } else {
-      s.cursorColumn = min(columns - 1, max(0, s.cursorColumn + (reverse ? -1 : 1)))
-    }
-    s.pendingWrap = false; screen = s; changed()
-  }
-  private func eraseCharacters(_ count: Int) {
-    var s = screen
-    let end = s.cursorColumn + min(count, columns - s.cursorColumn)
-    document.erase(&s, row: s.cursorRow, columns: s.cursorColumn..<end, style: eraseStyle(), respectISOProtection: isoEraseProtection)
-    s.pendingWrap = false
-    screen = s
-  }
-  private func insertCharacters(_ count: Int) {
-    var s = screen; let margins = horizontalMargins
-    if (margins.left...margins.right).contains(s.cursorColumn) { document.shift(&s, row: s.cursorRow, column: s.cursorColumn, right: margins.right, count: count, inserting: true, eraseStyle: eraseStyle()); s.pendingWrap = false }
-    else { s.pendingWrap = false }; screen = s
-  }
-  private func deleteCharacters(_ count: Int) {
-    var s = screen; let margins = horizontalMargins
-    if (margins.left...margins.right).contains(s.cursorColumn) { document.shift(&s, row: s.cursorRow, column: s.cursorColumn, right: margins.right, count: count, inserting: false, eraseStyle: eraseStyle()); s.pendingWrap = false }; screen = s
-  }
-  private func insertLines(_ count: Int) { scrollLines(count, up: false) }
-  private func deleteLines(_ count: Int) { scrollLines(count, up: true) }
-  private func setVerticalMargins(_ params: [Int]) {
-    let top = max(0, (params.first ?? 1) - 1)
-    let bottom = min(rowCount - 1, ((params.dropFirst().first ?? rowCount) == 0 ? rowCount : (params.dropFirst().first ?? rowCount)) - 1)
-    guard top < bottom else { return }
-    var s = screen; s.topMargin = top; s.bottomMargin = bottom; s.cursorRow = originMode ? top : 0; s.cursorColumn = originMode ? horizontalMargins.left : 0; s.pendingWrap = false; screen = s
-  }
-  private func scrollLines(_ count: Int, up: Bool) {
-    var s = screen; let margins = horizontalMargins
-    guard s.cursorRow >= s.topMargin, s.cursorRow <= s.bottomMargin, (margins.left...margins.right).contains(s.cursorColumn) else { s.pendingWrap = false; screen = s; return }
-    scroll(&s, top: s.cursorRow, bottom: s.bottomMargin, count: count, up: up, allowHistory: false); s.cursorColumn = margins.left; s.pendingWrap = false; screen = s
-  }
-  private func scroll(_ s: inout TerminalScreen, top: Int, bottom: Int, count: Int, up: Bool, allowHistory: Bool) {
-    let margins = horizontalMargins; let amount = min(count, bottom - top + 1); guard amount > 0 else { return }
-    if margins.left != 0 || margins.right != columns - 1 {
-      if graphics.hasPlacements {
-        graphics.scrollRectangle(alternate: usingAlternate, rows: s.rows.map(\.id), top: top, bottom: bottom,
-          left: margins.left, right: margins.right, amount: amount, up: up)
-      }
-      document.scrollRectangle(&s, top: top, bottom: bottom, left: margins.left, right: margins.right, count: amount, up: up, eraseStyle: eraseStyle()); return
-    }
-    for _ in 0..<amount {
-      let removed: TerminalRow
-      if up { removed = s.rows.remove(at: top); s.rows.insert(document.eraseRow(eraseStyle()), at: bottom) }
-      else { removed = s.rows.remove(at: bottom); s.rows.insert(document.eraseRow(eraseStyle()), at: top) }
-      if up && allowHistory && !usingAlternate && top == 0 && bottom == rowCount - 1 {
-        document.history.append(removed)
-        if viewAnchor != nil { viewOffset += 1 }
-        historyEpoch &+= 1
-      }
-    }
-  }
-  private func setHorizontalMargins(_ params: [Int]) {
-    let left = max(0, (params.first ?? 1) - 1); let suppliedRight = params.dropFirst().first ?? columns
-    let requestedRight = suppliedRight == 0 ? columns : suppliedRight
-    guard requestedRight <= columns else { return }
-    let right = requestedRight - 1
-    guard left < right else { return }
-    var s = screen; s.leftMargin = left; s.rightMargin = right
-    s.cursorRow = originMode ? s.topMargin : 0; s.cursorColumn = originMode ? left : 0; s.pendingWrap = false; screen = s
-  }
-  private func applySGR(_ p: [Int], colonSyntax raw: String? = nil) {
-    // Colon-form SGR parameters cannot pass through the general CSI integer
-    // parser: removing ':' turns `4:3` into 43. Handle each colon group at
-    // the SGR boundary, while delegating ordinary semicolon groups to the
-    // established parser so mixed sequences retain their ordering.
-    if let raw {
-      let groups = raw.split(separator: ";", omittingEmptySubsequences: false)
-      var group = 0
-      while group < groups.count {
-        let value = groups[group]
-        guard value.utf8.contains(0x3a) else {
-          guard let code = value.isEmpty ? 0 : Int(value) else { group += 1; continue }
-          // Keep extended semicolon colors together; handling them as single
-          // values would lose the RGB/index operands beside a colon group.
-          if [38, 48, 58].contains(code), group + 1 < groups.count,
-            let mode = Int(groups[group + 1])
-          {
-            let count = mode == 2 ? 5 : mode == 5 ? 3 : 1
-            if group + count <= groups.count {
-              var nestedParameters: [Int] = []
-              if let packet = Self.parseCSIParameters(groups[group..<(group + count)].joined(separator: ";").utf8, final: 0x6d, into: &nestedParameters) {
-                applySGR(packet.values, colonSyntax: nil)
-              }
-              group += count
-              continue
-            }
-          }
-          applySGR([code], colonSyntax: nil)
-          group += 1
-          continue
-        }
-        let fields = value.split(separator: ":", omittingEmptySubsequences: false)
-        guard let code = fields.first.flatMap({ Int($0) }) else { group += 1; continue }
-        if code == 4, let subtype = fields.dropFirst().first.flatMap({ Int($0) }), (0...5).contains(subtype) {
-          pen.underlineKind = UInt8(subtype)
-          group += 1
-          continue
-        }
-        guard [38, 48, 58].contains(code), fields.count >= 3,
-          let mode = Int(fields[1])
-        else { group += 1; continue }
-        switch mode {
-        case 5:
-          guard let index = fields.dropFirst(2).first.flatMap({ Int($0) }),
-                (0...255).contains(index) else { group += 1; continue }
-          let color = 0x0100_0000 | UInt32(index)
-          if code == 38 { pen.foreground = color }
-          else if code == 48 { pen.background = color }
-          else { pen.underline = color }
-        case 2:
-          // An optional color-space field precedes exactly three channels.
-          // Missing/invalid channels leave the existing color unchanged.
-          let start = fields.count >= 6 ? 3 : 2
-          guard fields.count >= start + 3 else { group += 1; continue }
-          let rgb = fields[start..<(start + 3)].compactMap { Int($0) }
-          guard rgb.count == 3, rgb.allSatisfy({ (0...255).contains($0) }) else { group += 1; continue }
-          let color = 0x0200_0000 | UInt32(rgb[0] << 16) | UInt32(rgb[1] << 8) | UInt32(rgb[2])
-          if code == 38 { pen.foreground = color }
-          else if code == 48 { pen.background = color }
-          else { pen.underline = color }
-        default: group += 1; continue
-        }
-        group += 1
-      }
-      return
-    }
-    (p.isEmpty ? [0] : p).withUnsafeBufferPointer { applySGR($0) }
-  }
-  /// Applies ordinary (semicolon-separated) SGR values in order.
-  private func applySGR(_ values: UnsafeBufferPointer<Int>) {
-    var style = pen
-    defer { pen = style }
-    var i = 0
-    while i < values.count {
-      let code = values[i]
-      switch code {
-      case 0: style = TerminalStyle()
-      case 1: style.flags |= 1
-      case 2: style.flags |= 2
-      case 3: style.flags |= 4
-      case 4: style.underlineKind = 1
-      case 5, 6: style.flags |= 128
-      case 7: style.flags |= 8
-      case 8: style.flags |= 16
-      case 9: style.flags |= 32
-      case 53: style.flags |= 64
-      case 21: style.underlineKind = 2
-      case 22: style.flags &= ~UInt16(3)
-      case 23: style.flags &= ~UInt16(4)
-      case 24: style.underlineKind = 0
-      case 27: style.flags &= ~UInt16(8)
-      case 28: style.flags &= ~UInt16(16)
-      case 25: style.flags &= ~UInt16(128)
-      case 29: style.flags &= ~UInt16(32)
-      case 55: style.flags &= ~UInt16(64)
-      case 30...37: style.foreground = 0x0100_0000 | UInt32(code - 30)
-      case 39: style.foreground = 0
-      case 40...47: style.background = 0x0100_0000 | UInt32(code - 40)
-      case 49: style.background = 0
-      case 90...97: style.foreground = 0x0100_0000 | UInt32(code - 90 + 8)
-      case 100...107: style.background = 0x0100_0000 | UInt32(code - 100 + 8)
-      case 38, 48, 58:
-        if i + 2 < values.count && values[i + 1] == 5 {
-          if (0...255).contains(values[i + 2]) {
-            let color = 0x0100_0000 | UInt32(values[i + 2])
-            if code == 38 { style.foreground = color } else if code == 48 { style.background = color } else { style.underline = color }
-          }
-          i += 2
-        } else if i + 4 < values.count && values[i + 1] == 2 {
-          if values[(i + 2)...(i + 4)].allSatisfy({ (0...255).contains($0) }) {
-            let color = 0x0200_0000 | (UInt32(values[i + 2]) << 16)
-              | (UInt32(values[i + 3]) << 8) | UInt32(values[i + 4])
-            if code == 38 { style.foreground = color } else if code == 48 { style.background = color } else { style.underline = color }
-          }
-          i += 4
-        }
-      case 59: style.underline = 0
-      default: break
-      }
-      i += 1
-    }
-  }
-  /// DECRQM status: 1 set, 2 reset, 4 permanently reset, 0 for a mode
-  /// `setMode` does not implement. Status 4 covers the ECMA-48 editing and
-  /// transfer modes and DECHCCM, which this terminal can never enter.
-  private func modeReport(_ mode: Int, privateMode: Bool) -> Int {
-    if privateMode, mode == 2031 { return colorSchemeReports ? 1 : 2 }
-    if privateMode, mode == 2027 { return graphemeClustering ? 1 : 2 }
-    let enabled: Bool
-    if !privateMode {
-      switch mode {
-      case 4: enabled = insertMode
-      case 20: enabled = newlineMode
-      case 1, 5, 7, 10, 11, 13...19: return 4
-      default: return 0
-      }
-    } else {
-      switch mode {
-      case 1: enabled = applicationCursor
-      case 5: enabled = reverseVideo
-      case 6: enabled = originMode
-      case 7: enabled = autoWrap
-      case 45: enabled = reverseWrap
-      case 41: enabled = cursesTabWrap
-      case 1045: enabled = reverseWrapUnlimited
-      case 25: enabled = screen.cursorVisible
-      case 47, 1047, 1049: enabled = usingAlternate
-      case 66: enabled = applicationKeypad
-      case 69: enabled = leftRightMargins
-      case 80: enabled = sixelDisplayMode
-      case 8452: enabled = sixelCursorRight
-      case 9, 1000, 1002, 1003: enabled = mouseMode == mode
-      case 1004: enabled = focusReporting
-      case 1005, 1006, 1015, 1016: enabled = mouseEncoding == mode
-      case 2004: enabled = bracketedPaste
-      case 2026: enabled = syncDeadline != nil
-      case 60: return 4
-      default: return 0
-      }
-    }
-    return enabled ? 1 : 2
-  }
-  private func setMode(_ params: [Int], enabled: Bool, privateMode: Bool) -> Bool {
-    var changedActiveScreen = false
-    if !privateMode {
-      for mode in params {
-        if mode == 4 { insertMode = enabled }
-        if mode == 20 { newlineMode = enabled }
-      }
-      return false
-    }
-    for mode in params where privateMode {
-      switch mode {
-      case 1: applicationCursor = enabled
-      case 66: applicationKeypad = enabled
-      case 6: originMode = enabled; var s = screen; s.cursorRow = enabled ? s.topMargin : 0; s.cursorColumn = enabled ? horizontalMargins.left : 0; s.pendingWrap = false; screen = s; changedActiveScreen = true
-      case 7: autoWrap = enabled; if !enabled { var s = screen; s.pendingWrap = false; screen = s }; changedActiveScreen = true
-      case 45: reverseWrap = enabled
-      case 41: cursesTabWrap = enabled
-      case 1045: reverseWrapUnlimited = enabled
-      case 25:
-        var s = screen; s.cursorVisible = enabled; screen = s
-        changedActiveScreen = true
-      case 47, 1047, 1049:
-        if usingAlternate != enabled {
-          resetClusterBoundary()
-          advanceSearchGeneration()
-          if enabled && mode == 1049 { saveCursor() }
-          // 47 and 1047 share the active cursor while retaining independent
-          // saved cursor slots and screen contents.
-          let previousCursor = (screen.cursorRow, screen.cursorColumn, screen.pendingWrap)
-          if !enabled && mode == 1047 {
-            alternate.rows = (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }
-          }
-          usingAlternate = enabled
-          if enabled && mode == 1049 {
-            let keyboardFlags = alternate.keyboardFlags
-            let keyboardStack = alternate.keyboardStack
-            let cursorVisible = alternate.cursorVisible
-            let cursorShape = alternate.cursorShape
-            alternate = TerminalScreen(rows: (0..<rowCount).map { _ in document.eraseRow(eraseStyle()) }, columns: columns)
-            alternate.keyboardFlags = keyboardFlags; alternate.keyboardStack = keyboardStack
-            alternate.cursorVisible = cursorVisible; alternate.cursorShape = cursorShape
-          } else {
-            var s = screen
-            s.cursorRow = previousCursor.0; s.cursorColumn = previousCursor.1; s.pendingWrap = previousCursor.2
-            screen = s
-          }
-          if !enabled && mode == 1049 { restoreCursor() }
-          changedActiveScreen = true
-        }
-      case 1048:
-        if enabled { saveCursor() } else { restoreCursor() }
-        changedActiveScreen = true
-      case 1004: focusReporting = enabled
-      case 80: sixelDisplayMode = enabled
-      case 8452: sixelCursorRight = enabled
-      case 9, 1000, 1002, 1003:
-        if enabled { mouseMode = mode } else if mouseMode == mode { mouseMode = 0 }
-      case 1005, 1006, 1015, 1016:
-        if enabled { mouseEncoding = mode } else if mouseEncoding == mode { mouseEncoding = 0 }
-      case 2004: bracketedPaste = enabled
-      case 2027: applyGraphemeClustering(enabled)
-      case 2031: colorSchemeReports = enabled
-      case 5: reverseVideo = enabled
-      case 69:
-        leftRightMargins = enabled
-        if !enabled { primary.leftMargin = 0; primary.rightMargin = columns - 1; primary.pendingWrap = false; alternate.leftMargin = 0; alternate.rightMargin = columns - 1; alternate.pendingWrap = false; originMode = false }
-        changedActiveScreen = true
-      case 2026:
-        if enabled { if syncDeadline == nil { syncDeadline = clock &+ 150 } }
-        else { syncDeadline = nil }
-      default: break
-      }
-    }
-    return changedActiveScreen
-  }
-  private func softReset() {
-    originMode = false; leftRightMargins = false; autoWrap = true; insertMode = false
-    reverseWrap = false; reverseWrapUnlimited = false
-    cursesTabWrap = false
-    newlineMode = false; protectedOutput = false
-    attributes.isoProtected = false
-    isoEraseProtection = false
-    pen = TerminalStyle(); currentLink = nil; applicationCursor = false; applicationKeypad = false
-    bracketedPaste = false; focusReporting = false; reverseVideo = false; mouseMode = 0; mouseEncoding = 0; modifyOtherKeys = 0; syncDeadline = nil
-    forgetLastPrinted()
-    charsetSpecial = [false, false]; charsetSlot = 0
-    var s = screen
-    s.topMargin = 0; s.bottomMargin = rowCount - 1
-    s.savedRow = 0; s.savedColumn = 0; s.savedPendingWrap = false; s.savedRendition = SavedRendition()
-    s.pendingWrap = false; s.cursorVisible = true; s.cursorShape = 0
-    screen = s
-    primary.leftMargin = 0; primary.rightMargin = columns - 1; alternate.leftMargin = 0; alternate.rightMargin = columns - 1
-    primary.keyboardFlags = 0; primary.keyboardStack.removeAll(); alternate.keyboardFlags = 0; alternate.keyboardStack.removeAll()
-  }
-  // VT220 with Sixel graphics (4) and ANSI color (22).
-  private static let primaryDeviceAttributes = "\u{1b}[?62;4;22c"
-  /// DEC status reports for hardware this terminal does not have. Each answer
-  /// is the documented "absent" or "nothing to report" value.
-  private static func deviceStatus(_ params: [Int]) -> String? {
-    switch params.first {
-    case 15: return "\u{1b}[?13n"      // no printer
-    case 25: return "\u{1b}[?21n"      // user-defined keys locked
-    case 26: return "\u{1b}[?27;1n"    // keyboard: North American
-    case 55: return "\u{1b}[?50n"      // no locator
-    case 56: return "\u{1b}[?57;0n"    // locator type: none
-    case 62: return "\u{1b}[0*{"       // no macro space
-    case 63: return "\u{1b}P\(params.count > 1 ? params[1] : 0)!~0000\u{1b}\\"  // memory checksum
-    case 75: return "\u{1b}[?70n"      // data integrity: no errors
-    case 85: return "\u{1b}[?83n"      // one session
-    default: return nil
-    }
-  }
-  private var colorSchemeReply: String { "\u{1b}[?997;\(palette.schemeIsDark ? 1 : 2)n" }
+  var colorSchemeReply: String { "\u{1b}[?997;\(palette.schemeIsDark ? 1 : 2)n" }
   func setIdentity(_ value: TerminalIdentity) { identity = value }
-  private func finishQuery() {
-    let payload = String(decoding: sequenceBytes, as: UTF8.self)
-    sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
-    if payload.hasPrefix("+q") {
-      replies.append(contentsOf: TerminalQueries.termcap(String(payload.dropFirst(2)), applicationCursor: applicationCursor).utf8)
-    } else if payload.hasPrefix("$q") {
-      let s = screen
-      replies.append(contentsOf: TerminalQueries.status(String(payload.dropFirst(2)), style: pen, protected: protectedOutput,
-        top: s.topMargin, bottom: s.bottomMargin, left: s.leftMargin, right: s.rightMargin, cursorShape: s.cursorShape).utf8)
-    }
-  }
-  private func finishString() {
-    if case .osc = parser {
-      // OSC bytes are lossy UTF-8 decoded before command dispatch.
-      let decoded = String(decoding: sequenceBytes, as: UTF8.self)
-      sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
-      let parts = decoded.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false)
-      let command = parts.first.map(String.init) ?? ""
-      let value = parts.count > 1 ? String(parts[1]) : ""
-      if command == "0" || command == "2" {
-        title = sanitizedTitle(value); if command == "0" { iconTitle = title }
-        changed(document: false, screen: false)
-      }
-      else if command == "1" { iconTitle = sanitizedTitle(value) }
-      else if command == "7" {
-        if value.utf8.count <= 8192 { currentDirectory = value }
-      }
-      else if command == "8" {
-        if let parameterSeparator = value.firstIndex(of: ";") {
-          let uri = String(value[value.index(after: parameterSeparator)...])
-          if uri.utf8.count <= 8192 {
-            currentLink = uri.isEmpty ? nil : uri
-            if !uri.isEmpty {
-              // OSC 8 parameters are colon-separated key=value pairs. Retain
-              // only the defined id field; reject overlong/control IDs rather
-              // than truncating two distinct identities to the same value.
-              let parameters = value[..<parameterSeparator].split(separator: ":", omittingEmptySubsequences: false)
-              if let field = parameters.first(where: { $0.hasPrefix("id=") }) {
-                let id = String(field.dropFirst(3))
-                if !id.isEmpty, id.utf8.count <= 256,
-                   !id.unicodeScalars.contains(where: { $0.properties.generalCategory == .control }) {
-                  attributes.linkID = id
-                }
-              }
-            }
-          }
-        }
-      }
-      else if ["4", "5", "6", "10", "11", "12", "104", "105", "106", "110", "111", "112"].contains(command) {
-        for reply in palette.applyOSC(command: command, value: value) { replies.append(contentsOf: reply.utf8) }
-        refreshGraphicsPalette()
-        changed(document: false, screen: false)
-      }
-      else if command == "133" {
-        if !usingAlternate {
-          commandHistory.marker(value, row: screen.rows[screen.cursorRow].id, directory: currentDirectory)
-        }
-        let marker = value.split(separator: ";", omittingEmptySubsequences: false).first
-        var current = screen
-        switch marker {
-        case "A", "B":
-          if marker == "A" {
-            current.promptPhase = .drawing
-            current.promptRedraw = value.split(separator: ";", omittingEmptySubsequences: false).dropFirst().contains { $0 == "redraw=1" }
-            current.promptAnchor = PromptAnchor(row: current.rows[current.cursorRow].id,
-                                                column: current.cursorColumn,
-                                                pendingWrap: current.pendingWrap)
-          } else {
-            current.promptPhase = .inputReady
-          }
-        case "C", "D": current.promptPhase = .none; current.retirePromptAnchor()
-        default: break
-        }
-        screen = current
-      }
-      else if command == "1337" {
-        if value.hasPrefix("MultipartFile=") {
-          multipartImage = InlineImageDecoder(multipartHeader: String(value.dropFirst("MultipartFile=".count)))
-        } else if value == "FileEnd" {
-          let decoder = multipartImage; multipartImage = nil
-          if let image = decoder?.finish(download: { [self] in _ = downloads.enqueue(name: $0, data: $1) }) {
-            showInlineImage(image.request, width: image.width, height: image.height, rgba: image.rgba, frames: image.frames)
-          }
-        } else if value == "ReportCellSize" {
-          replies.append(Data("\u{1b}]1337;ReportCellSize=\(cellPixelHeight);\(cellPixelWidth)\u{1b}\\".utf8))
-        } else if value == "Capabilities" {
-          // F is the File capability. Saving received bytes remains an explicit
-          // host action; receipt never chooses or writes a filesystem path.
-          replies.append(Data("\u{1b}]1337;Capabilities=T3LrBFSyHSx\u{1b}\\".utf8))
-        }
-      }
-      return
-    }
-    guard case .apc = parser else {
-      sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
-      return
-    }
-    let payload = Data(sequenceBytes)
-    sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
-    // Printing can move history rows, but the graphics protocol is the only
-    // path that needs live anchor membership.  Pruning here keeps ordinary
-    // scalar output O(1) while retaining the placement cap semantics.
-    pruneGraphicsAnchors()
-    if graphicsPaletteStale { refreshGraphicsPalette() }
-    let s = screen
-    let outcome = graphics.consume(payload, context: KittyGraphicsContext(
-      alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
-      cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id),
-      rowPositions: graphics.hasRelativePlacements ? graphicsRowPositions(offset: 0) : [:],
-      virtualOrigins: virtualParentOrigins(offset: 0)), now: clock)
-    applyGraphicsOutcome(outcome)
-  }
-  private func applyGraphicsOutcome(_ outcome: KittyGraphicsOutcome) {
-    let s = screen
-    if let reply = outcome.reply { replies.append(reply) }
-    if let advance = outcome.advance {
-      resetClusterBoundary()
-      var moved = s
-      moved.cursorColumn = min(columns - 1, moved.cursorColumn + advance.0)
-      moved.cursorRow = min(rowCount - 1, moved.cursorRow + advance.1)
-      moved.pendingWrap = false
-      screen = moved
-    }
-    changed(document: false)
-  }
-  /// Shows a decoded picture at the cursor and moves the cursor past it.
-  /// The screen scrolls as the picture needs, so all of it stays visible
-  /// (it is anchored to its first row, which scrolls with the text).
-  /// `below` leaves the cursor on the line after the picture, in the column
-  /// it began in, as Sixel does; otherwise it ends on the picture's last
-  /// row, to its right, as iTerm2's inline images do.
-  private func showSixel(width: Int, height: Int, rgba: Data) {
-    if sixelDisplayMode {
-      let s = screen
-      _ = graphics.show(width: width, height: height, rgba: rgba, columns: 0, rows: 0,
-        context: KittyGraphicsContext(alternate: usingAlternate, row: s.rows[0].id, column: 0,
-          cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id)))
-      changed()
-    } else {
-      showPicture(width: width, height: height, rgba: rgba, columns: 0, rows: 0, below: !sixelCursorRight)
-    }
-  }
-  private func showPicture(width: Int, height: Int, rgba: Data, columns wanted: Int, rows wantedRows: Int, below: Bool,
-                           frames: [InlineImageDecoder.Frame] = [], stretch: Bool = false) {
-    pruneGraphicsAnchors()
-    let s = screen
-    guard s.rows.indices.contains(s.cursorRow), let cells = graphics.show(
-      width: width, height: height, rgba: rgba, columns: wanted, rows: wantedRows,
-      context: KittyGraphicsContext(
-        alternate: usingAlternate, row: s.rows[s.cursorRow].id, column: s.cursorColumn,
-        cellWidth: cellPixelWidth, cellHeight: cellPixelHeight, screenRows: s.rows.map(\.id)), animation: frames, stretch: stretch)
-    else { return }
-    resetClusterBoundary()
-    for _ in 0..<(below ? cells.rows : cells.rows - 1) { index(reverse: false) }
-    var moved = screen
-    moved.cursorColumn = below ? s.cursorColumn : min(columns - 1, s.cursorColumn + cells.columns)
-    moved.pendingWrap = false
-    screen = moved
-    changed()
-  }
-  /// Turns an inline image's `width` and `height` into cells. A picture
-  /// wider than the room to the right of the cursor is scaled to fit it.
-  private func showInlineImage(_ request: InlineImageDecoder.Request, width: Int, height: Int, rgba: Data,
-                               frames: [InlineImageDecoder.Frame] = []) {
-    let cellWidth = max(1, cellPixelWidth), cellHeight = max(1, cellPixelHeight)
-    func cells(_ size: InlineImageDecoder.Size, of total: Int, cell: Int) -> Int? {
-      switch size {
-      case .automatic: return nil
-      case .cells(let count): return count
-      case .pixels(let pixels): return max(1, (pixels + cell - 1) / cell)
-      case .percent(let percent): return max(1, total * percent / 100)
-      }
-    }
-    let room = max(1, columns - screen.cursorColumn)
-    var wide = cells(request.width, of: columns, cell: cellWidth) ?? 0
-    var tall = cells(request.height, of: rowCount, cell: cellHeight) ?? 0
-    if wide == 0, tall == 0 {
-      if (width + cellWidth - 1) / cellWidth > room { wide = room }
-    } else if wide > 0, tall > 0, request.preservesAspectRatio {
-      // The largest size of the picture's shape inside the box asked for.
-      let boxWidth = wide * cellWidth, boxHeight = tall * cellHeight
-      if boxWidth * height <= boxHeight * width {
-        tall = max(1, (boxWidth * height / width + cellHeight - 1) / cellHeight)
-      } else {
-        wide = max(1, (boxHeight * width / height + cellWidth - 1) / cellWidth)
-      }
-    }
-    showPicture(width: width, height: height, rgba: rgba, columns: min(wide, 4096), rows: min(tall, 4096), below: false,
-      frames: frames, stretch: !request.preservesAspectRatio)
-  }
-  private func enqueueClipboard(_ data: Data) {
-    guard data.count <= OSC52Decoder.maximumDecodedBytes, pendingClipboardRequests.count < 4 else { return }
-    var requestID = nextClipboardRequestID
-    repeat {
-      nextClipboardRequestID &+= 1
-      if nextClipboardRequestID == 0 { nextClipboardRequestID = 1 }
-      if requestID != 0 && !pendingClipboardRequests.contains(requestID) { break }
-      requestID = nextClipboardRequestID
-    } while true
-    pendingClipboardRequests.insert(requestID)
-    clipboardRequests.append((requestID, data))
-  }
-  private var selectionScreen: TerminalSelectionScreen { usingAlternate ? .alternate : .primary }
-  private func validatedSelection() {
+  var selectionScreen: TerminalSelectionScreen { usingAlternate ? .alternate : .primary }
+  func validatedSelection() {
     if selection.hasPendingWork {
       if pendingSelectionRevision != revision { selection.cancel(in: &document, preservePrevious: false); pendingSelectionRevision = nil }
       else { return }
@@ -2195,7 +1180,7 @@ private final class TerminalEmulator {
     let bounded = min(history.count, max(0, offset)); viewOffset = bounded
     viewAnchor = bounded > 0 ? history[history.count - bounded].id : nil; viewportWasClamped = false
   }
-  @discardableResult private func resolveViewportAnchor(clamp: Bool) -> Int {
+  @discardableResult func resolveViewportAnchor(clamp: Bool) -> Int {
     guard let anchor = viewAnchor else { viewOffset = 0; return 0 }
     if let historyIndex = history.index(ofRowID: anchor) {
       viewOffset = history.count - historyIndex; return viewOffset
@@ -2212,7 +1197,7 @@ private final class TerminalEmulator {
     guard viewAnchor != nil else { return }
     if let row = history.first ?? primary.rows.first { viewAnchor = row.id; viewOffset = history.first == nil ? 0 : history.count; if !viewportWasClamped { viewportClampRevision &+= 1; viewportWasClamped = true } }
   }
-  private func enforceHistoryLimits() {
+  func enforceHistoryLimits() {
     if document.trimHistory(rowLimit: historyLimit, byteLimit: historyByteLimit) > 0 { didEvictHistory() }
   }
   private func didEvictHistory() {
@@ -2222,36 +1207,20 @@ private final class TerminalEmulator {
       clampViewportAfterEviction()
     }
   }
-  private func pruneGraphicsAnchors() {
+  func pruneGraphicsAnchors() {
     guard graphics.hasPlacements else { return }
     // Retired placements retain only bounded (<= 256) row IDs, never rows.
     // Rebuilding this membership set is therefore deferred to graphics seams.
     let screens = Set(primary.rows.map(\.id) + alternate.rows.map(\.id))
     graphics.pruneAnchors(isRetained: { screens.contains($0) || history.index(ofRowID: $0) != nil })
   }
-  private func graphicsRowPositions(offset: Int) -> [UInt64: Int] {
-    var positions: [UInt64: Int] = [:]
-    let visible = Dictionary(uniqueKeysWithValues: screen.rows.enumerated().map { ($0.element.id, $0.offset) })
-    let scroll = usingAlternate ? 0 : min(offset, history.count)
-    for id in graphics.anchorRows {
-      if let index = visible[id] { positions[id] = index + scroll }
-      else if !usingAlternate, let index = history.index(ofRowID: id) { positions[id] = index - history.count + scroll }
-    }
-    return positions
-  }
-  private func visibleImages(offset: Int, height: Int? = nil) -> [KittyImagePlacement] {
-    guard graphics.hasPlacements else { return [] }
-    let placeholders = graphics.hasVirtualPlacements ? placeholderImages(offset: offset, presentationHeight: height) : (images: [], origins: [:])
-    return graphics.visible(alternate: usingAlternate, positions: graphicsRowPositions(offset: offset), height: height ?? rowCount,
-                            virtualOrigins: virtualParentOrigins(offset: offset)) + placeholders.images
-  }
-  private struct HistoryVirtualOrigin {
+  struct HistoryVirtualOrigin {
     var rowID: UInt64
     var rowOffset: Int
     var columnRowID: UInt64
     var column: Int
   }
-  private struct VirtualOriginCache {
+  struct VirtualOriginCache {
     let geometry: UInt64
     let placements: [UInt64]
     var tail: UInt64?
@@ -2261,107 +1230,11 @@ private final class TerminalEmulator {
   // extrema and scan newly appended rows, not all history after live output.
   // Rebuild if reflow/prototype changes or eviction removes an extremum/tail.
   // At most 256 entries; no cached rows, cells or per-history-row metadata.
-  private var virtualOriginCache: VirtualOriginCache?
-  private func virtualParentOrigins(offset: Int) -> [UInt64: KittyPlacementOrigin] {
-    guard graphics.hasVirtualParents else { virtualOriginCache = nil; return [:] }
-    if usingAlternate { return placeholderImages(offset: 0, originsOnly: true).origins }
-    let placements = graphics.virtualPlacementIdentities
-    var cache = virtualOriginCache ?? VirtualOriginCache(geometry: geometryEpoch, placements: placements)
-    if cache.geometry != geometryEpoch || cache.placements != placements
-      || cache.tail.map({ history.index(ofRowID: $0) == nil }) == true
-      || cache.origins.values.contains(where: {
-        history.index(ofRowID: $0.rowID) == nil || history.index(ofRowID: $0.columnRowID) == nil
-      }) {
-      cache = VirtualOriginCache(geometry: geometryEpoch, placements: placements)
-    }
-    let first = cache.tail.flatMap { history.index(ofRowID: $0).map { $0 + 1 } } ?? 0
-    if first < history.count {
-      _ = placeholderImages(offset: 0, originsOnly: true, historyRange: first..<history.count) { serial, origin, rowID, sourceRow in
-        let next = HistoryVirtualOrigin(rowID: rowID, rowOffset: origin.row - sourceRow, columnRowID: rowID, column: origin.column)
-        if var old = cache.origins[serial] {
-          let oldRow = self.history.index(ofRowID: old.rowID)! - self.history.count + old.rowOffset
-          if origin.row < oldRow { old.rowID = next.rowID; old.rowOffset = next.rowOffset }
-          if origin.column < old.column { old.column = next.column; old.columnRowID = next.columnRowID }
-          cache.origins[serial] = old
-        } else { cache.origins[serial] = next }
-      }
-    }
-    cache.tail = history.count > 0 ? history[history.count - 1].id : nil
-    virtualOriginCache = cache
-    var origins = cache.origins.mapValues {
-      KittyPlacementOrigin(row: history.index(ofRowID: $0.rowID)! - history.count + $0.rowOffset, column: $0.column)
-    }
-    for (serial, live) in placeholderImages(offset: 0, originsOnly: true).origins {
-      if let old = origins[serial] { origins[serial] = KittyPlacementOrigin(row: min(old.row, live.row), column: min(old.column, live.column)) }
-      else { origins[serial] = live }
-    }
-    let scroll = min(offset, history.count)
-    return origins.mapValues { KittyPlacementOrigin(row: $0.row + scroll, column: $0.column) }
-  }
-  /// The image slices behind the Unicode placeholders on screen. Runs of
-  /// placeholder cells that continue one another become one slice each.
-  private func placeholderImages(offset: Int, originsOnly: Bool = false, historyRange: Range<Int>? = nil, presentationHeight: Int? = nil,
-    recordOrigin: ((UInt64, KittyPlacementOrigin, UInt64, Int) -> Void)? = nil)
-    -> (images: [KittyImagePlacement], origins: [UInt64: KittyPlacementOrigin]) {
-    let start = usingAlternate ? 0 : history.count - min(offset, history.count)
-    let total = usingAlternate ? alternate.rows.count : history.count + primary.rows.count
-    // Parents may be above the viewport while their relative children are visible.
-    let lower = historyRange?.lowerBound ?? start
-    let visibleHeight = presentationHeight ?? rowCount
-    let upper = historyRange?.upperBound ?? min(total, start + visibleHeight)
-    var result: [KittyImagePlacement] = []
-    var origins: [UInt64: KittyPlacementOrigin] = [:]
-    for index in lower..<upper {
-      let row = usingAlternate ? alternate.rows[index] : index < history.count ? history[index] : primary.rows[index - history.count]
-      let rowID = row.id
-      let screenRow = index - start
-      var run: (cell: KittyPlaceholder.Cell, start: Int, count: Int)?
-      var previous: KittyPlaceholder.Cell?
-      func flush() {
-        guard let current = run, let row = current.cell.row, let column = current.cell.column else { run = nil; return }
-        if let anchor = graphics.placeholderOrigin(current.cell, screenRow: screenRow, screenColumn: current.start) {
-          recordOrigin?(anchor.serial, anchor.origin, rowID, screenRow)
-          if let old = origins[anchor.serial] {
-            origins[anchor.serial] = KittyPlacementOrigin(row: min(old.row, anchor.origin.row), column: min(old.column, anchor.origin.column))
-          } else { origins[anchor.serial] = anchor.origin }
-        }
-        if !originsOnly, screenRow >= 0, screenRow < visibleHeight, let slice = graphics.placeholderSlice(
-          current.cell, row: row, column: column, count: current.count, screenRow: screenRow,
-          screenColumn: current.start, alternate: usingAlternate, cellWidth: cellPixelWidth, cellHeight: cellPixelHeight) {
-          result.append(slice)
-        }
-        run = nil
-      }
-      for index in 0..<row.count {
-        guard row.starts(with: KittyPlaceholder.character, at: index) else { flush(); previous = nil; continue }
-        let cell = row.cell(index)
-        guard var placeholder = KittyPlaceholder.read(text: cell.text, foreground: cell.style.foreground, underline: cell.style.underline)
-        else { flush(); previous = nil; continue }
-        // A cell without its row or column continues the one to its left.
-        if let left = previous, left.image == placeholder.image, left.placement == placeholder.placement {
-          if placeholder.row == nil { placeholder.row = left.row }
-          if placeholder.column == nil, placeholder.row == left.row { placeholder.column = left.column.map { $0 + 1 } }
-        }
-        if placeholder.row == nil { placeholder.row = 0 }
-        if placeholder.column == nil { placeholder.column = 0 }
-        if let current = run, current.cell.image == placeholder.image, current.cell.placement == placeholder.placement,
-           current.cell.row == placeholder.row, let first = current.cell.column,
-           placeholder.column == first + current.count, current.start + current.count == index {
-          run!.count += 1
-        } else {
-          flush()
-          run = (placeholder, index, 1)
-        }
-        previous = placeholder
-      }
-      flush()
-    }
-    return (result, origins)
-  }
+  var virtualOriginCache: VirtualOriginCache?
   /// Mode 2027. Set: a grapheme cluster, such as an emoji with a skin tone,
   /// takes the cells of one character. Reset: each code point with a width
   /// takes its own cells, which is what a program that sums `wcwidth` expects.
-  private func applyGraphemeClustering(_ enabled: Bool) {
+  func applyGraphemeClustering(_ enabled: Bool) {
     graphemeClustering = enabled
     document.setGraphemeClustering(enabled)
   }
@@ -2379,8 +1252,8 @@ private final class TerminalEmulator {
   }
   /// Every palette change calls this; a graphics command only finds the
   /// initial palette still unsent.
-  private var graphicsPaletteStale = true
-  private func refreshGraphicsPalette() {
+  var graphicsPaletteStale = true
+  func refreshGraphicsPalette() {
     graphicsPaletteStale = false
     graphics.setPalette(palette.snapshotGraphicsPalette)
   }
@@ -2480,104 +1353,13 @@ private final class TerminalEmulator {
     parser = .ground
   }
   var hasPendingWork: Bool { repeatRemaining > 0 || graphics.transportPending }
-  fileprivate var pendingDownloads: [TerminalPendingDownload] { downloads.pending }
-  fileprivate func resolveDownload(_ id: UInt64, take: Bool) -> TerminalDownload? { downloads.resolve(id, take: take) }
-  fileprivate func takeDownloads() -> [TerminalDownload] { downloads.takeAll() }
-  fileprivate func enableAsynchronousGraphics() { graphics.asynchronousTransport = true }
-  fileprivate func whenGraphicsReady(_ callback: @escaping () -> Void) -> Bool {
+  var pendingDownloads: [TerminalPendingDownload] { downloads.pending }
+  func resolveDownload(_ id: UInt64, take: Bool) -> TerminalDownload? { downloads.resolve(id, take: take) }
+  func takeDownloads() -> [TerminalDownload] { downloads.takeAll() }
+  func enableAsynchronousGraphics() { graphics.asynchronousTransport = true }
+  func whenGraphicsReady(_ callback: @escaping () -> Void) -> Bool {
     guard graphics.transportPending else { return false }
     graphics.whenTransportReady(callback); return true
-  }
-  var publicationGated: Bool { syncDeadline != nil }
-  func snapshot(scroll: Int?, now: UInt64) -> Data? {
-    tick(now)
-    return publicationGated ? nil : snapshotJSON(scroll: scroll)
-  }
-  func snapshotValue(scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
-    tick(now)
-    guard !publicationGated else { return (nil, nil) }
-    validatedSelection()
-    let selected = selectSnapshot(scroll: scroll)
-    let cursor = screen
-    if let error = TerminalSnapshot.geometryError(columns: columns, rows: selected.rows.count) {
-      return (nil, error)
-    }
-    guard selectionSnapshotID < UInt64.max else { return (nil, "Snapshot identity exhausted") }
-    selectionSnapshotID += 1
-    let colors = palette.snapshotPalette
-    let foreground = palette.snapshotDefaultForeground
-    let background = palette.snapshotDefaultBackground
-    guard colors.count == 256, colors.allSatisfy({ $0.count == 3 }),
-          foreground.count == 3, background.count == 3 else {
-      return (nil, "Invalid snapshot dimensions or palette")
-    }
-    var rows: [RowSnapshot] = []
-    rows.reserveCapacity(selected.rows.count)
-    // At most one adjacent row is projected for smooth viewport presentation.
-    // Keep it separate from rows and the advertised geometry.
-    var presentationRows = selected.rows
-    if !usingAlternate, selected.offset > 0,
-      TerminalSnapshot.geometryError(columns: columns, rows: selected.rows.count + 1) == nil {
-      let next = history.count + primary.rows.count - selected.offset
-      if next < history.count { presentationRows.append(history[next]) }
-      else if primary.rows.indices.contains(next - history.count) {
-        presentationRows.append(primary.rows[next - history.count])
-      }
-    }
-    for row in presentationRows {
-      guard row.count == columns else { return (nil, "Invalid snapshot dimensions or palette") }
-      var cells: [CellSnapshot] = []
-      cells.reserveCapacity(columns)
-      for cell in row.cells {
-        guard let kind = CellKind(rawValue: cell.kind) else { return (nil, "Invalid cell kind") }
-        let resolved = palette.presentationStyle(cell.style)
-        let flags = resolved.flags
-        let style = CellStyle(
-          foreground: TerminalColor(packed: resolved.foreground),
-          background: TerminalColor(packed: resolved.background),
-          underline_color: TerminalColor(packed: resolved.underline),
-          underline: Int(resolved.underlineKind), bold: flags & 1 != 0, faint: flags & 2 != 0,
-          italic: flags & 4 != 0, inverse: flags & 8 != 0, conceal: flags & 16 != 0,
-          strike: flags & 32 != 0, overline: flags & 64 != 0, blink: flags & 128 != 0)
-        cells.append(CellSnapshot(text: cell.text, kind: kind, style: style,
-                                  link: cell.link, linkID: cell.linkID, flags: Int(cell.flags)))
-      }
-      rows.append(RowSnapshot(cells: cells, soft_wrapped: row.softWrapped, id: row.id, revision: row.revision))
-    }
-    let highlights = visibleSearchHighlights(in: selected.rows, offset: selected.offset)
-    func image(_ value: KittyImagePlacement) -> ImagePlacementSnapshot {
-      ImagePlacementSnapshot(image: value.image, generation: value.generation, width: value.width, height: value.height,
-        source: value.source, row: value.row, col: value.column, columns: value.columns,
-        rows: value.rows, offset: value.offset, natural: value.natural, z: value.z, placement: value.placement,
-        extent: value.extent, stretch: value.stretch)
-    }
-    let images = visibleImages(offset: selected.offset).map(image)
-    var snapshot = TerminalSnapshot(
-      at_prompt: cursor.atPrompt, input_ready: cursor.inputReady, search: highlights.current, images: images,
-      revision: revision, geometry_epoch: geometryEpoch, document_epoch: documentEpoch,
-      history_epoch: historyEpoch, screen_epoch: screenEpoch, scroll_offset: selected.offset,
-      following_tail: selected.followingTail, viewport_clamp_revision: viewportClampRevision,
-      cols: columns, rows: Array(rows.prefix(selected.rows.count)),
-      cursor: CursorSnapshot(row: cursor.cursorRow, col: cursor.cursorColumn, pending_wrap: cursor.pendingWrap,
-                             visible: cursor.cursorVisible, shape: Int(cursor.cursorShape)),
-      modes: ModesSnapshot(application_cursor: applicationCursor, bracketed_paste: bracketedPaste,
-                           focus: focusReporting, mouse: mouseMode, sgr_mouse: sgrMouse, mouse_encoding: mouseEncoding,
-                           reverse_video: reverseVideo, newline: newlineMode),
-      alternate: usingAlternate, title: title, cwd: currentDirectory, history_rows: history.count,
-      palette: colors, default_fg: foreground, default_bg: background, cursor_color: palette.cursorRGB,
-      selectionPresentation: TerminalSelectionPresentation(snapshotID: selectionSnapshotID,
-        documentGeneration: selectionDocumentGeneration, screen: selectionScreen, geometryEpoch: geometryEpoch,
-        columns: columns, rows: selected.rows.map { .init(id: $0.id, revision: $0.revision, softWrapped: $0.softWrapped) }),
-      selection: selection.snapshot(screen: selectionScreen, rows: selected.rows),
-      search_matches: highlights.others)
-    if rows.count > selected.rows.count, let guardRow = rows.last {
-      let expandedHighlights = visibleSearchHighlights(in: presentationRows, offset: selected.offset)
-      snapshot.presentationOverscan = TerminalPresentationOverscan(row: guardRow,
-        images: visibleImages(offset: selected.offset, height: rowCount + 1).map(image),
-        selection: selection.snapshot(screen: selectionScreen, rows: presentationRows),
-        search: expandedHighlights.current, searchMatches: expandedHighlights.others)
-    }
-    return (snapshot, nil)
   }
   func isValid() -> Bool {
     document.hasValidInvariants(primary) && document.hasValidInvariants(alternate) &&
@@ -2672,7 +1454,7 @@ private final class TerminalEmulator {
           row.softWrapped else { return nil }
     return capturedSearchRow(index + 1, alternateMode: alternateMode, historyCount: historyCount)?.id
   }
-  private func searchSource() -> TerminalSearchSource {
+  func searchSource() -> TerminalSearchSource {
     let alternateMode = usingAlternate
     let historyCount = history.count
     let rowCount = alternateMode ? alternate.rows.count : historyCount + primary.rows.count
@@ -2812,184 +1594,9 @@ private final class TerminalEmulator {
     searchHits = nil
     changed(document: false, screen: false)
   }
-  private func sanitizedTitle(_ value: String) -> String {
-    var result = ""
-    var byteCount = 0
-    // Remove direction overrides, isolates and marks that can disguise a
-    // host/path. Preserve other format scalars, including ZWJ and WORD JOINER.
-    for scalar in value.unicodeScalars where scalar.properties.generalCategory != .control
-      && ![0x061c, 0x200e, 0x200f, 0x202a, 0x202b, 0x202c, 0x202d, 0x202e, 0x2066, 0x2067, 0x2068, 0x2069].contains(scalar.value) {
-      let nextCount = scalar.utf8.count
-      guard byteCount + nextCount <= 4096 else { break }
-      result.unicodeScalars.append(scalar)
-      byteCount += nextCount
-    }
-    return result
-  }
-  private struct SnapshotSelection {
-    var rows: [TerminalRow]
-    var offset: Int
-    var followingTail: Bool
-  }
-  private func rowsForSnapshot(offset: Int) -> (rows: [TerminalRow], offset: Int) {
-    let requested = max(0, offset)
-    guard !usingAlternate, requested > 0 else { return (screen.rows, 0) }
-    let all = history + primary.rows
-    let end = max(rowCount, all.count - min(requested, history.count))
-    return (Array(all[max(0, end - rowCount)..<end]), min(requested, history.count))
-  }
-  private func selectSnapshot(scroll: Int?) -> SnapshotSelection {
-    guard let scroll else {
-      let selected = rowsForSnapshot(offset: viewOffset)
-      return SnapshotSelection(rows: selected.rows, offset: selected.offset,
-                               followingTail: usingAlternate || viewAnchor == nil)
-    }
-    let selected = rowsForSnapshot(offset: scroll)
-    return SnapshotSelection(rows: selected.rows, offset: selected.offset,
-                             followingTail: selected.offset == 0)
-  }
-  /// Highlights for one published row selection: the navigated match and the
-  /// remaining visible matches. `offset` is the selection's scroll offset; it
-  /// locates the rows in document space so each proof is checked exactly.
-  private func visibleSearchHighlights(in rows: [TerminalRow], offset: Int)
-    -> (current: [SearchHighlight], others: [SearchHighlight]) {
-    guard let hits = searchHits, let firstRow = rows.first else { return ([], []) }
-    let source = searchSource()
-    guard source.stamp == hits.stamp else { return ([], []) }
-    let base: Int
-    if usingAlternate { base = 0 }
-    else if offset <= 0 { base = history.count }
-    else {
-      let total = history.count + primary.rows.count
-      base = max(0, max(rowCount, total - min(offset, history.count)) - rowCount)
-    }
-    guard source.rowIDAt(base) == firstRow.id else { return ([], []) }
-    var proofs: [Int: TerminalSearchProof?] = [:]
-    func proven(_ index: Int, _ proof: TerminalSearchProof) -> Bool {
-      if let known = proofs[index] { return known == proof }
-      let live = source.proofAt(index)
-      proofs[index] = live
-      return live == proof
-    }
-    var current: [SearchHighlight] = []
-    var others: [SearchHighlight] = []
-    for (visible, row) in rows.enumerated() {
-      guard let entries = hits.byRow[row.id] else { continue }
-      for entry in entries {
-        let match = hits.matches[entry.match]
-        let first = base + visible - entry.span
-        // A multi-row match is drawn only while all of its rows are still
-        // adjacent and unchanged.
-        guard first >= 0, match.spans.enumerated().allSatisfy({ proven(first + $0.offset, $0.element.span.proof) })
-        else { continue }
-        let span = match.spans[entry.span].span
-        let highlight = SearchHighlight(row: visible, start: span.start, end: span.end)
-        if entry.match == hits.current { current.append(highlight) } else { others.append(highlight) }
-      }
-    }
-    return (current, others)
-  }
-  private func snapshotLinkIDs(_ rows: [TerminalRow]) -> [String: String] {
-    var ids: [String: String] = [:]
-    for (row, cells) in rows.enumerated() {
-      cells.forEachLinkID { column, id in ids[String(row * columns + column)] = id }
-    }
-    return ids
-  }
-  func publishBinary(scroll: Int?, now: UInt64, context: UnsafeMutableRawPointer?, callback: SnapshotCallback?) -> Bool {
-    tick(now)
-    guard !publicationGated else { return false }
-    guard let callback else { return false }
-    let selected = selectSnapshot(scroll: scroll)
-    var metadataObject = snapshotMetadata(cursor: screen, offset: selected.offset,
-                                          followingTail: selected.followingTail,
-                                          search: visibleSearchHighlights(in: selected.rows, offset: selected.offset))
-    metadataObject["link_ids"] = snapshotLinkIDs(selected.rows)
-    metadataObject["row_identities"] = selected.rows.map { ["id": $0.id, "revision": $0.revision] }
-    #if SNAPSHOT_ABI_DIAGNOSTICS
-    SnapshotABIDiagnostics.jsonPublications += 1
-    #endif
-    guard let metadata = try? JSONSerialization.data(withJSONObject: metadataObject) else { return false }
-    let borrowed = BorrowedSnapshotCells()
-    var views: [TerminalCellView] = []
-    views.reserveCapacity(selected.rows.count * columns)
-    for row in selected.rows {
-      for cell in row.cells {
-        let resolved = palette.presentationStyle(cell.style)
-        var view = TerminalCellView()
-        view.text = borrowed.copy(cell.text, into: &borrowed.text)
-        view.text_len = cell.text.utf8.count
-        if let link = cell.link {
-          view.link = borrowed.copy(link, into: &borrowed.links)
-          view.link_len = link.utf8.count
-        }
-        view.foreground = resolved.foreground
-        view.background = resolved.background
-        view.underline_color = resolved.underline
-        view.style_flags = resolved.flags
-        view.kind = cell.kind
-        view.cell_flags = cell.flags
-        view.underline = resolved.underlineKind
-        views.append(view)
-      }
-    }
-    let wraps = selected.rows.map { $0.softWrapped ? UInt8(1) : UInt8(0) }
-    return metadata.withUnsafeBytes { metadataBuffer in
-      views.withUnsafeBufferPointer { viewBuffer in
-        wraps.withUnsafeBufferPointer { wrapBuffer in
-          callback(context, metadataBuffer.bindMemory(to: UInt8.self).baseAddress, metadata.count,
-                   viewBuffer.baseAddress, views.count, wrapBuffer.baseAddress, wraps.count)
-        }
-      }
-      return true
-    }
-  }
-  func snapshotJSON(scroll: Int?) -> Data {
-    #if SNAPSHOT_ABI_DIAGNOSTICS
-    SnapshotABIDiagnostics.jsonPublications += 1
-    #endif
-    let source: [TerminalRow]; let offset: Int
-    let selected = selectSnapshot(scroll: scroll)
-    source = selected.rows; offset = selected.offset
-    let rows: [[String: Any]] = source.map { row in ["id": row.id, "revision": row.revision, "soft_wrapped": row.softWrapped, "cells": row.cells.map { cell in let resolved = palette.presentationStyle(cell.style); return ["text": cell.text, "kind": ["Empty","Lead1","Lead2","Continuation","WrapSpacer"][Int(cell.kind)], "style": ["foreground": colorJSON(resolved.foreground), "background": colorJSON(resolved.background), "underline_color": colorJSON(resolved.underline), "underline": Int(resolved.underlineKind), "bold": resolved.flags & 1 != 0, "faint": resolved.flags & 2 != 0, "italic": resolved.flags & 4 != 0, "inverse": resolved.flags & 8 != 0, "conceal": resolved.flags & 16 != 0, "strike": resolved.flags & 32 != 0, "overline": resolved.flags & 64 != 0, "blink": resolved.flags & 128 != 0], "link": cell.link as Any, "linkID": cell.linkID as Any, "flags": Int(cell.flags)] } ] }
-    var data = snapshotMetadata(cursor: screen, offset: offset,
-                                followingTail: selected.followingTail,
-                                search: visibleSearchHighlights(in: source, offset: offset))
-    data["rows"] = rows
-    return (try? JSONSerialization.data(withJSONObject: data)) ?? Data("{}".utf8)
-  }
-  private func snapshotMetadata(cursor: TerminalScreen, offset: Int,
-                                followingTail: Bool,
-                                search: (current: [SearchHighlight], others: [SearchHighlight])) -> [String: Any] {
-    let images = visibleImages(offset: offset).map { image in ["image": image.image, "generation": image.generation, "width": image.width, "height": image.height, "source": image.source, "row": image.row, "col": image.column, "columns": image.columns, "rows": image.rows, "offset": image.offset, "natural": image.natural, "z": image.z, "placement": image.placement, "extent": image.extent as Any? ?? NSNull(), "stretch": image.stretch] as [String: Any] }
-    let currentSearch = search.current.map { ["row": $0.row, "start": $0.start, "end": $0.end] }
-    let otherSearch = search.others.map { ["row": $0.row, "start": $0.start, "end": $0.end] }
-    var metadata: [String: Any] = ["at_prompt":cursor.atPrompt,"input_ready":cursor.inputReady,"search":currentSearch,"search_matches":otherSearch,"images":images,"revision":revision,"geometry_epoch":geometryEpoch,"document_epoch":documentEpoch,"history_epoch":historyEpoch,"screen_epoch":screenEpoch,"scroll_offset":offset,"following_tail":followingTail,"viewport_clamp_revision":viewportClampRevision,"cols":columns,"cursor":["row":cursor.cursorRow,"col":cursor.cursorColumn,"pending_wrap":cursor.pendingWrap,"visible":cursor.cursorVisible,"shape":Int(cursor.cursorShape)],"modes":["application_cursor":applicationCursor,"application_keypad":applicationKeypad,"autowrap":autoWrap,"bracketed_paste":bracketedPaste,"focus":focusReporting,"insert":insertMode,"left_right_margins":leftRightMargins,"mouse":mouseMode,"newline":newlineMode,"origin":originMode,"reverse_video":reverseVideo,"sgr_mouse":sgrMouse],"primary_margins":[primary.leftMargin, primary.rightMargin],"alternate_margins":[alternate.leftMargin, alternate.rightMargin],"vertical_margins":[cursor.topMargin, cursor.bottomMargin],"alternate":usingAlternate,"title":title,"history_rows":history.count,"palette":palette.snapshotPalette,"default_fg":palette.snapshotDefaultForeground,"default_bg":palette.snapshotDefaultBackground]
-    metadata["cursor_color"] = palette.cursorRGB
-    if var modes = metadata["modes"] as? [String: Any] {
-      modes["mouse_encoding"] = mouseEncoding
-      metadata["modes"] = modes
-    }
-    metadata["cwd"] = currentDirectory as Any? ?? NSNull()
-    return metadata
-  }
-  private func colorJSON(_ color: UInt32) -> Any { if color >> 24 == 1 { return ["Indexed": Int(color & 255)] }; if color >> 24 == 2 { return ["Rgb": [Int((color >> 16) & 255), Int((color >> 8) & 255), Int(color & 255)]] }; return "Default" }
 }
 
-// MARK: C ABI bridge. The app imports Bridge.h, so native call sites keep one
-// stable C-shaped surface.
-
-private func core(_ pointer: OpaquePointer?) -> TerminalEmulator? { pointer.map { Unmanaged<TerminalEmulator>.fromOpaque(UnsafeMutableRawPointer($0)).takeUnretainedValue() } }
-package enum TerminalRecoveryBridge {
-  package static func capture(core pointer: OpaquePointer, maximumBytes: Int = 16 * 1024 * 1024) -> TerminalRecoveryCapture {
-    core(pointer)!.recoveryCapture(maximumBytes: maximumBytes)
-  }
-  package static func seed(core pointer: OpaquePointer, text: String) {
-    core(pointer)!.seedRecovery(text)
-  }
-}
-
-private extension TerminalEmulator {
+extension TerminalEmulator {
   func recoveryCapture(maximumBytes: Int) -> TerminalRecoveryCapture {
     TerminalRecoveryCapture(history: history, primary: primary.rows, limit: historyLimit, maximumBytes: maximumBytes)
   }
@@ -3009,21 +1616,7 @@ private extension TerminalEmulator {
     changed(history: true)
   }
 }
-package enum TerminalHandoffBridge {
-  /// False while an escape sequence, a UTF-8 character or a repeat is only
-  /// partly read. A capture taken then would lose the part already read.
-  package static func isAtBoundary(core pointer: OpaquePointer) -> Bool { core(pointer)!.handoffBoundary }
-  package static func capture(core pointer: OpaquePointer) -> TerminalHandoff { core(pointer)!.captureHandoff() }
-  /// Restores into a terminal that has read nothing yet and has the
-  /// handoff's size. False when the state cannot be read; the rows are
-  /// restored either way.
-  @discardableResult
-  package static func restore(core pointer: OpaquePointer, _ handoff: TerminalHandoff, now: UInt64) -> Bool {
-    core(pointer)!.restoreHandoff(handoff, now: now)
-  }
-}
-
-private extension TerminalEmulator {
+extension TerminalEmulator {
   var handoffBoundary: Bool {
     guard case .ground = parser else { return false }
     return utf8.isIdle && repeatRemaining == 0 && syncDeadline == nil
@@ -3146,162 +1739,4 @@ private extension TerminalEmulator {
     graphicsPaletteStale = true
     return true
   }
-}
-package func swiftTerminalCommands(_ pointer: OpaquePointer?) -> [TerminalCommandRecord] { core(pointer)?.commands() ?? [] }
-package func swiftTerminalNavigateCommand(_ pointer: OpaquePointer?, older: Bool) { core(pointer)?.navigateCommand(older: older) }
-// Internal Swift adapter: same owner-confined handle, no C callback or borrowed
-// row/cell storage. The returned value survives later mutation and destruction.
-package func swiftTerminalSnapshot(_ pointer: OpaquePointer?, scroll: Int?, now: UInt64) -> (snapshot: TerminalSnapshot?, error: String?) {
-  core(pointer)?.snapshotValue(scroll: scroll, now: now) ?? (nil, nil)
-}
-package func swiftTerminalHistoryPage(_ pointer: OpaquePointer?, request: TerminalHistoryPageRequest) -> TerminalHistoryPage? {
-  core(pointer)?.accessibilityHistoryPage(request)
-}
-package enum TerminalSelectionBridge {
-  package static func begin(core pointer: OpaquePointer, action: TerminalSelectionAction) -> TerminalSelectionProgress {
-    core(pointer)!.beginSelection(action)
-  }
-  package static func advance(core pointer: OpaquePointer) -> TerminalSelectionProgress { core(pointer)!.advanceSelection() }
-  package static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelSelection() }
-}
-package enum TerminalPresentedContentBridge {
-  package static func begin(core pointer: OpaquePointer, content: TerminalPresentedContent) -> TerminalPresentedContentProgress {
-    core(pointer)!.beginPresentedContent(content)
-  }
-  package static func advance(core pointer: OpaquePointer) -> TerminalPresentedContentProgress { core(pointer)!.advancePresentedContent() }
-  package static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelPresentedContent() }
-}
-package enum TerminalResizeBridge {
-  package static func begin(core pointer: OpaquePointer, columns: Int, rows: Int,
-                    cellWidth: Int, cellHeight: Int) -> TerminalResizeProgress {
-    core(pointer)!.beginResize(TerminalResizeGeometry(columns: columns, rows: rows,
-      cellWidth: cellWidth, cellHeight: cellHeight))
-  }
-  package static func advance(core pointer: OpaquePointer) -> TerminalResizeProgress { core(pointer)!.advanceResize() }
-  package static func cancel(core pointer: OpaquePointer) { core(pointer)!.cancelResize() }
-}
-private func inputCharacter(_ scalar: UInt32) -> Character? {
-  guard scalar != 0, let value = UnicodeScalar(scalar) else { return nil }
-  return Character(String(value))
-}
-typealias BytesCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int) -> Void
-package typealias ClipboardCallback = @convention(c) (UnsafeMutableRawPointer?, UInt64, UnsafePointer<UInt8>?, Int) -> Void
-typealias SnapshotCallback = @convention(c) (UnsafeMutableRawPointer?, UnsafePointer<UInt8>?, Int, UnsafePointer<TerminalCellView>?, Int, UnsafePointer<UInt8>?, Int) -> Void
-
-@_cdecl("helge_terminal_abi_version") func swift_terminal_abi_version() -> UInt32 { 1 }
-@_cdecl("helge_terminal_create") func swift_terminal_create(_ cols: UInt32, _ rows: UInt32) -> OpaquePointer? {
-  guard (1...4096).contains(cols), (1...4096).contains(rows), cols <= 1_048_576 / rows else { return nil }
-  return OpaquePointer(Unmanaged.passRetained(TerminalEmulator(columns: Int(cols), rows: Int(rows))).toOpaque())
-}
-/// Swift host configuration includes cursor/selection colors without changing
-/// the layout of the version-1 C snapshot ABI.
-package func swiftTerminalSetColorScheme(_ pointer: OpaquePointer?, colors: TerminalColorScheme) { core(pointer)?.setColorScheme(colors) }
-package func swiftTerminalSetIdentity(_ pointer: OpaquePointer?, identity: TerminalIdentity) { core(pointer)?.setIdentity(identity) }
-@_cdecl("helge_terminal_set_identity") func swift_terminal_set_identity(_ pointer: OpaquePointer?, _ name: UnsafePointer<CChar>?, _ version: UnsafePointer<CChar>?) {
-  func bounded(_ pointer: UnsafePointer<CChar>?) -> String? {
-    guard let pointer else { return nil }
-    var bytes: [UInt8] = []
-    for index in 0..<128 {
-      let byte = UInt8(bitPattern: pointer[index])
-      if byte == 0 { break }
-      bytes.append(byte)
-    }
-    return String(decoding: bytes, as: UTF8.self)
-  }
-  core(pointer)?.setIdentity(TerminalIdentity(name: bounded(name) ?? "HelgeTerminal", version: bounded(version)))
-}
-@_cdecl("helge_terminal_destroy") func swift_terminal_destroy(_ pointer: OpaquePointer?) { if let pointer { Unmanaged<TerminalEmulator>.fromOpaque(UnsafeMutableRawPointer(pointer)).release() } }
-@_cdecl("helge_terminal_feed") func swift_terminal_feed(_ pointer: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ count: Int, _ now: UInt64) -> Int { core(pointer)?.feed(bytes, count: count, now: now) ?? 0 }
-@_cdecl("helge_terminal_resize") func swift_terminal_resize(_ pointer: OpaquePointer?, _ cols: UInt32, _ rows: UInt32) -> Bool { core(pointer)?.resize(columns: Int(cols), rows: Int(rows)) ?? false }
-@_cdecl("helge_terminal_resize_pixels") func swift_terminal_resize_pixels(_ pointer: OpaquePointer?, _ cols: UInt32, _ rows: UInt32, _ width: UInt32, _ height: UInt32) -> Bool { core(pointer)?.resize(columns: Int(cols), rows: Int(rows), cellWidth: Int(width), cellHeight: Int(height)) ?? false }
-@_cdecl("helge_terminal_search_position") func swift_terminal_search_position(_ pointer: OpaquePointer?, _ position: UnsafeMutablePointer<UInt32>?, _ total: UnsafeMutablePointer<UInt32>?, _ capped: UnsafeMutablePointer<Bool>?) -> Bool {
-  guard let value = core(pointer)?.searchPosition() else { return false }
-  position?.pointee = UInt32(value.position); total?.pointee = UInt32(value.total); capped?.pointee = value.capped
-  return true
-}
-@_cdecl("helge_terminal_search_navigate") func swift_terminal_search_navigate(_ pointer: OpaquePointer?, _ older: Bool, _ position: UnsafeMutablePointer<UInt32>?, _ total: UnsafeMutablePointer<UInt32>?, _ capped: UnsafeMutablePointer<Bool>?) -> Bool {
-  guard let value = core(pointer)?.navigateSearch(older: older) else { return false }
-  position?.pointee = UInt32(value.position); total?.pointee = UInt32(value.total); capped?.pointee = value.capped
-  return true
-}
-@_cdecl("helge_terminal_search_clear") func swift_terminal_search_clear(_ pointer: OpaquePointer?) { core(pointer)?.clearSearch() }
-@_cdecl("helge_terminal_finish") func swift_terminal_finish(_ pointer: OpaquePointer?) { core(pointer)?.finish() }
-@_cdecl("helge_terminal_validate") func swift_terminal_validate(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.isValid() ?? false }
-@_cdecl("helge_terminal_has_work") func swift_terminal_has_work(_ pointer: OpaquePointer?) -> Bool { core(pointer)?.hasPendingWork ?? false }
-@_cdecl("helge_terminal_set_colors") func swift_terminal_set_colors(_ pointer: OpaquePointer?, _ foreground: UInt32, _ background: UInt32, _ ansi: UnsafePointer<UInt32>?) {
-  guard let ansi else { return }
-  core(pointer)?.setColorScheme(TerminalColorScheme(foreground: foreground, background: background, ansi: Array(UnsafeBufferPointer(start: ansi, count: 16))))
-}
-@_cdecl("helge_terminal_set_grapheme_clustering") func swift_terminal_set_grapheme_clustering(_ pointer: OpaquePointer?, _ enabled: Bool) { core(pointer)?.setGraphemeClusteringDefault(enabled) }
-@_cdecl("helge_terminal_next_frame_delay") func swift_terminal_next_frame_delay(_ pointer: OpaquePointer?, _ now: UInt64) -> Int64 {
-  guard let due = core(pointer)?.nextFrameTime(now: now) else { return -1 }
-  return Int64(due > now ? due - now : 0)
-}
-@_cdecl("helge_terminal_take_bells") func swift_terminal_take_bells(_ pointer: OpaquePointer?) -> UInt32 { core(pointer)?.takeBells() ?? 0 }
-@_cdecl("helge_terminal_set_history_limit") func swift_terminal_set_history_limit(_ pointer: OpaquePointer?, _ limit: UInt32) { core(pointer)?.setHistoryLimit(Int(limit)) }
-@_cdecl("helge_terminal_set_history_byte_limit") func swift_terminal_set_history_byte_limit(_ pointer: OpaquePointer?, _ limit: UInt64) { core(pointer)?.setHistoryByteLimit(limit > UInt64(Int.max) ? Int.max : Int(limit)) }
-@_cdecl("helge_terminal_history_bytes") func swift_terminal_history_bytes(_ pointer: OpaquePointer?) -> UInt64 { core(pointer)?.historyBytes() ?? 0 }
-@_cdecl("helge_terminal_snapshot") func swift_terminal_snapshot(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64) -> UnsafeMutablePointer<CChar>? { guard let snapshot = core(pointer)?.snapshot(scroll: scroll, now: now) else { return nil }; return strdup(String(data: snapshot, encoding: .utf8) ?? "{}") }
-@_cdecl("helge_terminal_string_free") func swift_terminal_string_free(_ value: UnsafeMutablePointer<CChar>?) { if let value { free(value) } }
-@_cdecl("helge_terminal_snapshot_binary") func swift_terminal_snapshot_binary(_ pointer: OpaquePointer?, _ scroll: Int, _ now: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: SnapshotCallback?) -> Bool { core(pointer)?.publishBinary(scroll: scroll, now: now, context: context, callback: callback) ?? false }
-@_cdecl("helge_terminal_view_snapshot_binary") func swift_terminal_view_snapshot_binary(_ pointer: OpaquePointer?, _ now: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: SnapshotCallback?) -> Bool { core(pointer)?.publishBinary(scroll: nil, now: now, context: context, callback: callback) ?? false }
-@_cdecl("helge_terminal_view_scroll") func swift_terminal_view_scroll(_ pointer: OpaquePointer?, _ amount: Int64) { core(pointer)?.scroll(Int(amount)) }
-@_cdecl("helge_terminal_view_follow_tail") func swift_terminal_view_follow_tail(_ pointer: OpaquePointer?) { core(pointer)?.followTail() }
-@_cdecl("helge_terminal_clear_display") func swift_terminal_clear_display(_ pointer: OpaquePointer?) -> UInt32 { core(pointer)?.clearDisplay() ?? 0 }
-@_cdecl("helge_terminal_replies") func swift_terminal_replies(_ pointer: OpaquePointer?, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) { guard let callback, let data = core(pointer)?.takeReplies(), !data.isEmpty else { return }; data.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, data.count) } }
-@_cdecl("helge_terminal_take_clipboard_requests") func swift_terminal_take_clipboard_requests(_ pointer: OpaquePointer?, _ context: UnsafeMutableRawPointer?, _ callback: ClipboardCallback?) {
-  guard let callback else { return }
-  for (requestID, data) in core(pointer)?.takeClipboardRequests() ?? [] {
-    if data.isEmpty {
-      // An empty write still passes a non-null pointer, for hosts whose callback validates the pointer before
-      // observing the zero length.
-      var sentinel: UInt8 = 0
-      withUnsafePointer(to: &sentinel) { callback(context, requestID, $0, 0) }
-    } else {
-      data.withUnsafeBytes { callback(context, requestID, $0.bindMemory(to: UInt8.self).baseAddress, data.count) }
-    }
-  }
-}
-@_cdecl("helge_terminal_complete_clipboard_request") func swift_terminal_complete_clipboard_request(_ pointer: OpaquePointer?, _ requestID: UInt64) -> Bool { core(pointer)?.completeClipboardRequest(requestID) ?? false }
-@_cdecl("helge_terminal_input") func swift_terminal_input(_ pointer: OpaquePointer?, _ text: UnsafePointer<CChar>?, _ key: UInt32, _ modifiers: UInt32, _ event: UInt32, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool { guard let value = core(pointer)?.input(text.map { String(cString: $0) } ?? "", key: key, modifiers: modifiers, event: event) else { return false }; if let callback, !value.isEmpty { value.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, value.count) } }; return true }
-@_cdecl("helge_terminal_input_with_metadata") func swift_terminal_input_with_metadata(_ pointer: OpaquePointer?, _ text: UnsafePointer<CChar>?, _ key: UInt32, _ modifiers: UInt32, _ event: UInt32, _ associated: UnsafePointer<CChar>?, _ legacy: UnsafePointer<CChar>?, _ shifted: UInt32, _ baseLayout: UInt32, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool {
-  func optionalText(_ pointer: UnsafePointer<CChar>?) -> String? {
-    guard let pointer, pointer.pointee != 0 else { return nil }
-    return String(cString: pointer)
-  }
-  let metadata = TerminalInputEncoder.KeyMetadata(
-    shifted: inputCharacter(shifted), baseLayout: inputCharacter(baseLayout),
-    associatedText: optionalText(associated), legacyText: optionalText(legacy))
-  guard let value = core(pointer)?.input(text.map { String(cString: $0) } ?? "", key: key,
-                                         modifiers: modifiers, event: event, metadata: metadata) else { return false }
-  if let callback, !value.isEmpty { value.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, value.count) } }
-  return true
-}
-@_cdecl("helge_terminal_image_rgba") func swift_terminal_image_rgba(_ pointer: OpaquePointer?, _ image: UInt32, _ generation: UInt64, _ context: UnsafeMutableRawPointer?, _ callback: BytesCallback?) -> Bool { guard let callback, let pixels = core(pointer)?.imageRGBA(id: image, generation: generation) else { return false }; pixels.withUnsafeBytes { callback(context, $0.bindMemory(to: UInt8.self).baseAddress, pixels.count) }; return true }
-@_cdecl("helge_terminal_search_create") func swift_terminal_search_create(_ pointer: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ count: Int) -> OpaquePointer? {
-  guard let bytes, count > 0, count <= 4_096,
-        let query = String(bytes: UnsafeBufferPointer(start: bytes, count: count), encoding: .utf8),
-        let token = core(pointer)?.createSearch(query)
-  else { return nil }
-  return OpaquePointer(Unmanaged.passRetained(token).toOpaque())
-}
-@_cdecl("helge_terminal_search_create_options") func swift_terminal_search_create_options(_ pointer: OpaquePointer?, _ bytes: UnsafePointer<UInt8>?, _ count: Int, _ flags: UInt32) -> OpaquePointer? {
-  guard flags & ~UInt32(7) == 0, let bytes, count > 0, count <= 4_096,
-        let query = String(bytes: UnsafeBufferPointer(start: bytes, count: count), encoding: .utf8),
-        let token = core(pointer)?.createSearch(query, options: TerminalSearchOptions(flags: flags))
-  else { return nil }
-  return OpaquePointer(Unmanaged.passRetained(token).toOpaque())
-}
-@_cdecl("helge_terminal_search_destroy") func swift_terminal_search_destroy(_ pointer: OpaquePointer?) { if let pointer { Unmanaged<TerminalSearchToken>.fromOpaque(UnsafeMutableRawPointer(pointer)).release() } }
-@_cdecl("helge_terminal_search_fill") func swift_terminal_search_fill(_ pointer: OpaquePointer?, _ task: OpaquePointer?) -> UInt32 {
-  guard let terminal = core(pointer), let task else { return 3 }
-  return terminal.fillSearch(Unmanaged<TerminalSearchToken>.fromOpaque(UnsafeMutableRawPointer(task)).takeUnretainedValue())
-}
-@_cdecl("helge_terminal_search_step") func swift_terminal_search_step(_ pointer: OpaquePointer?) -> UInt32 {
-  guard let pointer else { return 3 }
-  return TerminalEmulator.stepSearch(Unmanaged<TerminalSearchToken>.fromOpaque(UnsafeMutableRawPointer(pointer)).takeUnretainedValue())
-}
-@_cdecl("helge_terminal_search_accept") func swift_terminal_search_accept(_ pointer: OpaquePointer?, _ task: OpaquePointer?) -> UInt32 {
-  guard let terminal = core(pointer), let task else { return 3 }
-  return terminal.acceptSearch(Unmanaged<TerminalSearchToken>.fromOpaque(UnsafeMutableRawPointer(task)).takeUnretainedValue())
 }

@@ -63,5 +63,63 @@ import TerminalInterop
     #expect(bgra(9, 12) == [255, 255, 0, 255] && bgra(22, 12) == [255, 255, 0, 255],
       "preserveAspectRatio=0 stretches to both horizontal edges")
   }
+
+  @Test func kittyCropAlphaOverCellBackgroundAndZOrderRelativeToText() async throws {
+    let core = try #require(helge_terminal_create(3, 2)); defer { helge_terminal_destroy(core) }
+    #expect(helge_terminal_resize_pixels(core, 3, 2, 8, 8))
+    Oracle.feed(core, "\(esc)[?25l\(esc)]11;#000000\(esc)\\")
+
+    // Source-rectangle cropping (x, y, w, h) on a 2x2 RGBA image:
+    // (0,0)=red, (1,0)=green, (0,1)=blue, (1,1)=cyan.
+    let quadrants: [UInt8] = [
+      255, 0, 0, 255, 0, 255, 0, 255,
+      0, 0, 255, 255, 0, 255, 255, 255,
+    ]
+    // Col 0, Row 0: bottom-right quadrant (x=1, y=1, w=1, h=1) -> cyan.
+    Oracle.feed(core, "\(esc)[1;1H" + Oracle.command("a=T,f=32,s=2,v=2,i=1,p=1,x=1,y=1,w=1,h=1,c=1,r=1,C=1", quadrants))
+    // Col 1, Row 0: bottom-left quadrant (x=0, y=1, w=1, h=1) -> blue.
+    Oracle.feed(core, "\(esc)[1;2H" + Oracle.command("a=p,i=1,p=2,x=0,y=1,w=1,h=1,c=1,r=1,C=1"))
+
+    // Alpha compositing over a colored SGR cell background:
+    // Col 2, Row 0 has a red cell background with a half-transparent blue Kitty image over it.
+    Oracle.feed(core, "\(esc)[1;3H\(esc)[48;2;255;0;0m \(esc)[0m")
+    Oracle.feed(core, "\(esc)[1;3H" + Oracle.command("a=T,f=32,s=1,v=1,i=2,p=1,c=1,r=1,C=1,z=0", [0, 0, 255, 128]))
+
+    // Z-order layering relative to text and cell backgrounds:
+    // Full block U+2588 draws as a solid yellow text quad in scratchTextQuads.
+    // Col 0, Row 1: negative z (-1) renders behind yellow text -> yellow wins.
+    Oracle.feed(core, "\(esc)[2;1H\(esc)[38;2;255;255;0m\u{2588}\(esc)[0m")
+    Oracle.feed(core, "\(esc)[2;1H" + Oracle.command("a=T,f=32,s=1,v=1,i=3,p=1,c=1,r=1,C=1,z=-1", [255, 0, 255, 255]))
+    // Col 1, Row 1: positive z (1) renders in front of yellow text -> magenta wins.
+    Oracle.feed(core, "\(esc)[2;2H\(esc)[38;2;255;255;0m\u{2588}\(esc)[0m")
+    Oracle.feed(core, "\(esc)[2;2H" + Oracle.command("a=p,i=3,p=2,c=1,r=1,C=1,z=1"))
+    // Col 2, Row 1: z < -1_073_741_824 renders behind cell backgrounds -> green background wins.
+    Oracle.feed(core, "\(esc)[2;3H\(esc)[48;2;0;255;0m \(esc)[0m")
+    Oracle.feed(core, "\(esc)[2;3H" + Oracle.command("a=p,i=3,p=3,c=1,r=1,C=1,z=-1073741825"))
+
+    var snapshot = try #require(swiftTerminalSnapshot(core, scroll: nil, now: 0).snapshot)
+    for image in snapshot.images {
+      let bytes = Oracle.Bytes()
+      #expect(helge_terminal_image_rgba(core, image.image, image.generation,
+        Unmanaged.passUnretained(bytes).toOpaque(), Oracle.collect))
+      snapshot.imagePixels[image.key] = ImagePixels(bytes.data)
+    }
+    let renderer = try TerminalRendering()
+    let captured = Captured()
+    renderer.renderPixelsForTesting(RenderRequest(snapshot: snapshot, width: 24, height: 16, inset: 0,
+      cellWidth: 8, cellHeight: 8, fontSize: 8, focused: false, marked: "", linkUnderline: [])) { captured.set($0) }
+    #expect(await TestEnvironment.wait { captured.pixels != nil })
+    let pixels = try #require(captured.pixels)
+    func bgra(_ x: Int, _ y: Int) -> [UInt8] { Array(pixels[((y * 24 + x) * 4)..<((y * 24 + x) * 4 + 4)]) }
+
+    #expect(bgra(6, 6) == [255, 255, 0, 255], "cropped (x=1, y=1, w=1, h=1) selects cyan bottom-right pixel")
+    #expect(bgra(9, 6) == [255, 0, 0, 255], "cropped (x=0, y=1, w=1, h=1) selects blue bottom-left pixel")
+    let blended = bgra(20, 4)
+    #expect(abs(Int(blended[0]) - 188) <= 2 && blended[1] == 0 && abs(Int(blended[2]) - 187) <= 2 && blended[3] == 255,
+      "half-transparent blue image composites over red cell background")
+    #expect(bgra(4, 12) == [0, 255, 255, 255], "negative z (-1) renders behind yellow text")
+    #expect(bgra(12, 12) == [255, 0, 255, 255], "positive z (1) renders in front of yellow text")
+    #expect(bgra(20, 12) == [0, 255, 0, 255], "z < -1_073_741_824 renders behind green cell background")
+  }
 }
 #endif
