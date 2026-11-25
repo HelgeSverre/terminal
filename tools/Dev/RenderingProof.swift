@@ -78,8 +78,6 @@ enum RenderingProof {
   private static func prepareHelpers() throws -> Helpers {
     let directory = absolutePath(ProcessInfo.processInfo.environment["TERMINAL_RENDER_PROOF_HELPERS"]
       ?? "~/.codex/artifacts/rendering-final-preflight/helpers")
-    do { try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true) }
-    catch { throw Failure("cannot create \(directory): \(error.localizedDescription)") }
     func helper(_ name: String) throws -> String {
       let binary = try TUIStress.compileHelper(name, source: sources + "/\(name).swift", into: directory)
       guard try runInherited([binary, "--self-test"]) else { throw Failure("\(name) self-test failed") }

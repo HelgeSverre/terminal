@@ -14,7 +14,6 @@ swift_test := "TERMINAL_TEST_HOOKS=1 swift test --scratch-path target/swiftpm/te
 # optimized ASan executable triggers Swift serialized-linkage errors.
 emulator_sources := "-package-name terminal -I Sources/TerminalInterop/include Sources/TerminalEngine/Terminal*.swift Sources/TerminalEngine/Text/*.swift Sources/TerminalEngine/Emulation/*.swift"
 esctest_commit := "2798f12"
-spawn_object := "xcrun clang -Wall -Wextra -Werror -mmacosx-version-min=14.0 -I Sources/TerminalInterop/include -c Sources/TerminalInterop/Spawn.c -o target/native/Spawn.o"
 
 [private]
 default:
@@ -40,7 +39,7 @@ default:
 # Remove build outputs (target/, dist/) and stray compiler module files.
 [group('build')]
 clean:
-    rm -rf target dist .build
+    rm -rf target dist .build Examples/iOSCheck/.build-xc
     rm -f Terminal-*.abi.json Terminal-*.swiftdoc Terminal-*.swiftmodule Terminal-*.swiftsourceinfo
 
 # ── run ───────────────────────────────────────────────────────────────

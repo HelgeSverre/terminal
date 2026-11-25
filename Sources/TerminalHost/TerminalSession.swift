@@ -51,21 +51,23 @@ package enum LiveChildren {
 package enum EarlyChild {
   private static let lock = NSLock()
   nonisolated(unsafe) private static var pending: (spec: LaunchSpec, process: TerminalProcess)?
-  nonisolated(unsafe) private static var remembersGrid = false
-  private static let gridKey = "LaunchGrid"
+  nonisolated(unsafe) private static var settleGrid: (@Sendable (Int, Int, Int, Int) -> Void)?
 
-  /// Spawns `spec` now. With no explicit grid, the PTY starts at the size the
-  /// first pane settled on last time, so the child usually never sees it
-  /// change.
-  package static func start(_ spec: LaunchSpec, grid: (columns: Int, rows: Int)?) {
+  /// Spawns `spec` now. With no explicit grid, the PTY starts at `savedGrid`
+  /// when provided, so the child usually never sees it change.
+  package static func start(
+    _ spec: LaunchSpec,
+    grid: (columns: Int, rows: Int)?,
+    savedGrid: (rows: Int, columns: Int, pixelWidth: Int, pixelHeight: Int)? = nil,
+    onSettleGrid: (@Sendable (Int, Int, Int, Int) -> Void)? = nil
+  ) {
     guard spec.isValid else { return }
     var size = winsize(ws_row: UInt16(grid?.rows ?? 24), ws_col: UInt16(grid?.columns ?? 80),
                        ws_xpixel: 0, ws_ypixel: 0)
-    // Rows, columns, width and height in pixels, as `noteGrid` saved them.
-    if grid == nil, let saved = UserDefaults.standard.array(forKey: gridKey) as? [Int], saved.count == 4,
-       saved.allSatisfy({ (1...Int(UInt16.max)).contains($0) }) {
-      size = winsize(ws_row: UInt16(saved[0]), ws_col: UInt16(saved[1]),
-                     ws_xpixel: UInt16(saved[2]), ws_ypixel: UInt16(saved[3]))
+    if grid == nil, let saved = savedGrid,
+       [saved.rows, saved.columns, saved.pixelWidth, saved.pixelHeight].allSatisfy({ (1...Int(UInt16.max)).contains($0) }) {
+      size = winsize(ws_row: UInt16(saved.rows), ws_col: UInt16(saved.columns),
+                     ws_xpixel: UInt16(saved.pixelWidth), ws_ypixel: UInt16(saved.pixelHeight))
     }
     let process = spec.spawn(columns: Int(size.ws_col), rows: Int(size.ws_row))
     guard process.error == 0 else { return }
@@ -73,7 +75,7 @@ package enum EarlyChild {
     if size.ws_xpixel > 0 { _ = ioctl(process.master, TIOCSWINSZ, &size) }
     lock.lock(); defer { lock.unlock() }
     pending = (spec, process)
-    remembersGrid = grid == nil
+    settleGrid = grid == nil ? onSettleGrid : nil
   }
   /// The early child, when it was started for `spec`. The first call settles
   /// it either way.
@@ -93,12 +95,10 @@ package enum EarlyChild {
   /// Records the first size a pane settles on, for the next launch.
   static func noteGrid(_ size: winsize) {
     lock.lock()
-    let remember = remembersGrid
-    remembersGrid = false
+    let callback = settleGrid
+    settleGrid = nil
     lock.unlock()
-    guard remember else { return }
-    UserDefaults.standard.set([Int(size.ws_row), Int(size.ws_col), Int(size.ws_xpixel), Int(size.ws_ypixel)],
-                              forKey: gridKey)
+    callback?(Int(size.ws_row), Int(size.ws_col), Int(size.ws_xpixel), Int(size.ws_ypixel))
   }
 }
 

@@ -25,13 +25,41 @@ package enum TerminalDownloadBridge {
 
 
 private func decSpecialGraphics(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
-  let mapping: [UInt32: UInt32] = [
-    0x5f: 0x00a0, 0x60: 0x25c6, 0x61: 0x2592, 0x62: 0x2409, 0x63: 0x240c, 0x64: 0x240d, 0x65: 0x240a,
-    0x66: 0x00b0, 0x67: 0x00b1, 0x68: 0x2424, 0x69: 0x240b, 0x6a: 0x2518, 0x6b: 0x2510, 0x6c: 0x250c, 0x6d: 0x2514,
-    0x6e: 0x253c, 0x6f: 0x23ba, 0x70: 0x23bb, 0x71: 0x2500, 0x72: 0x23bc, 0x73: 0x23bd, 0x74: 0x251c, 0x75: 0x2524,
-    0x76: 0x2534, 0x77: 0x252c, 0x78: 0x2502, 0x79: 0x2264, 0x7a: 0x2265, 0x7b: 0x03c0, 0x7c: 0x2260, 0x7d: 0x00a3, 0x7e: 0x00b7,
-  ]
-  return mapping[scalar.value].flatMap(Unicode.Scalar.init) ?? scalar
+  switch scalar.value {
+  case 0x5f: return "\u{00a0}"
+  case 0x60: return "\u{25c6}"
+  case 0x61: return "\u{2592}"
+  case 0x62: return "\u{2409}"
+  case 0x63: return "\u{240c}"
+  case 0x64: return "\u{240d}"
+  case 0x65: return "\u{240a}"
+  case 0x66: return "\u{00b0}"
+  case 0x67: return "\u{00b1}"
+  case 0x68: return "\u{2424}"
+  case 0x69: return "\u{240b}"
+  case 0x6a: return "\u{2518}"
+  case 0x6b: return "\u{2510}"
+  case 0x6c: return "\u{250c}"
+  case 0x6d: return "\u{2514}"
+  case 0x6e: return "\u{253c}"
+  case 0x6f: return "\u{23ba}"
+  case 0x70: return "\u{23bb}"
+  case 0x71: return "\u{2500}"
+  case 0x72: return "\u{23bc}"
+  case 0x73: return "\u{23bd}"
+  case 0x74: return "\u{251c}"
+  case 0x75: return "\u{2524}"
+  case 0x76: return "\u{2534}"
+  case 0x77: return "\u{252c}"
+  case 0x78: return "\u{2502}"
+  case 0x79: return "\u{2264}"
+  case 0x7a: return "\u{2265}"
+  case 0x7b: return "\u{03c0}"
+  case 0x7c: return "\u{2260}"
+  case 0x7d: return "\u{00a3}"
+  case 0x7e: return "\u{00b7}"
+  default: return scalar
+  }
 }
 
 private enum VTParserState { case ground, escape, charset(Int), escapeIntermediate(UInt8), csi, osc, osc52(OSC52Decoder, escaped: Bool), apc, discardString(escaped: Bool, osc: Bool), inlineImage(InlineImageDecoder, escaped: Bool), dcsHeader, dcsQuery(escaped: Bool), sixel(SixelDecoder, escaped: Bool) }

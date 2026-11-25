@@ -41,8 +41,8 @@ import TerminalUI
     view.deleteBackward()
     #expect(view.text(in: view.markedTextRange!) == "a")
     #expect(view.position(from: view.endOfDocument, offset: 1) == nil)
-    view.setMarkedText(String(repeating: "界", count: 20_000), selectedRange: NSRange(location: NSNotFound, length: 0))
-    #expect(view.offset(from: view.beginningOfDocument, to: view.endOfDocument) == 16_384)
+    view.setMarkedText(String(repeating: "界", count: 70_000), selectedRange: NSRange(location: NSNotFound, length: 0))
+    #expect(view.offset(from: view.beginningOfDocument, to: view.endOfDocument) == 65_536)
     view.insertText("committed")
     #expect(view.markedTextRange == nil)
   }

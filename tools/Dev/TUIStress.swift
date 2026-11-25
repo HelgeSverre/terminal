@@ -111,8 +111,6 @@ enum TUIStress {
   private static func prepareHelpers() throws -> Helpers {
     let directory = absolutePath(ProcessInfo.processInfo.environment["TERMINAL_TUI_STRESS_HELPERS"]
       ?? "~/.codex/artifacts/tui-stress/helpers")
-    do { try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true) }
-    catch { throw Failure("cannot create \(directory): \(error.localizedDescription)") }
     try pass(tests, otherwise: "TUI stress runner self-test failed")
     let helpers = Helpers(driver: try compileHelper("TUIStressDriver", source: driverSource, into: directory),
                           capture: try compileHelper("TUIStressCapture", source: captureSource, into: directory))
@@ -137,7 +135,14 @@ enum TUIStress {
     if FileManager.default.isReadableFile(atPath: binary), previous["source_sha256"] as? String == sourceHash,
        previous["binary_sha256"] as? String == (try? sha256(ofFile: binary)) { return binary }
 
-    let command = compiler + ["-parse-as-library", "-O", "-target", "arm64-apple-macosx15.0", source, "-o", binary]
+    do { try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true) }
+    catch { throw Failure("cannot create \(directory): \(error.localizedDescription)") }
+    #if arch(x86_64)
+    let target = "x86_64-apple-macosx14.0"
+    #else
+    let target = "arm64-apple-macosx14.0"
+    #endif
+    let command = compiler + ["-parse-as-library", "-O", "-target", target, source, "-o", binary]
     guard try runInherited(command) else { throw Failure("\(name) compilation failed") }
     guard try sha256(ofFile: source) == sourceHash else { throw Failure("\(name) source changed while compiling") }
     try writeJSON(["source_sha256": sourceHash, "binary_sha256": try sha256(ofFile: binary)], to: stamp)

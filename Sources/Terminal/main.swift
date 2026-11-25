@@ -41,7 +41,18 @@ if claimedHandoff == nil, let baseLaunch = restoredFirstPane.map({ LaunchSpec.re
   let launch = baseLaunch.withResumeFile(firstPaneID.flatMap { recoveryState?.resumeFile($0) })
   let columns = TerminalPreferences.launchInteger("--columns", within: 10...4096)
   let rows = TerminalPreferences.launchInteger("--rows", within: 4...4096)
-  EarlyChild.start(launch, grid: columns.flatMap { columns in rows.map { (columns, $0) } })
+  let explicitGrid = columns.flatMap { columns in rows.map { (columns, $0) } }
+  let launchGridKey = "LaunchGrid"
+  let savedGrid: (rows: Int, columns: Int, pixelWidth: Int, pixelHeight: Int)? = {
+    guard explicitGrid == nil,
+          let saved = UserDefaults.standard.array(forKey: launchGridKey) as? [Int],
+          saved.count == 4,
+          saved.allSatisfy({ (1...Int(UInt16.max)).contains($0) }) else { return nil }
+    return (saved[0], saved[1], saved[2], saved[3])
+  }()
+  EarlyChild.start(launch, grid: explicitGrid, savedGrid: savedGrid) { rows, columns, pixelWidth, pixelHeight in
+    UserDefaults.standard.set([rows, columns, pixelWidth, pixelHeight], forKey: launchGridKey)
+  }
 }
 // The libraries take their measurement switches from the app; they do not
 // read its command line.

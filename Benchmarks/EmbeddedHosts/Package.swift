@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.0
 import PackageDescription
 
 // Two minimal hosts that run one command in one terminal view and exit when
@@ -7,7 +7,7 @@ import PackageDescription
 // an embedding app gets them. See reports/swiftterm-throughput-2026-11-14.
 let package = Package(
   name: "EmbeddedHosts",
-  platforms: [.macOS(.v15)],
+  platforms: [.macOS(.v14)],
   dependencies: [
     .package(name: "Terminal", path: "../.."),
     // The newest release. It needs a one-line edit to compile with Swift

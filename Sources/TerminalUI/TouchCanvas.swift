@@ -26,6 +26,8 @@ public final class TerminalCanvasView: UIView, UITextInput {
   var clipboardRevision: UInt64 = 0
   private var scrollRemainder: CGFloat = 0
   private let blinkWake = BlinkWake()
+  private var accessibilityDirty = true
+  private var cachedAccessibilityElements: [UIAccessibilityElement]?
   /// Called with the title the program set.
   public var onTitle: ((String) -> Void)?
   /// Return true when the host opened the validated link.
@@ -56,7 +58,7 @@ public final class TerminalCanvasView: UIView, UITextInput {
         if !self.composition.text.isEmpty { self.cancelComposition() }
       }
       self.snapshot = value
-      self.updateAccessibility()
+      self.accessibilityDirty = true
       self.onTitle?(value.title)
       self.redraw()
     }
@@ -69,7 +71,6 @@ public final class TerminalCanvasView: UIView, UITextInput {
     accessibilityLabel = "Terminal"
     NotificationCenter.default.addObserver(self, selector: #selector(suspendInput), name: UIApplication.willResignActiveNotification, object: nil)
     NotificationCenter.default.addObserver(self, selector: #selector(resumeDrawing), name: UIApplication.didBecomeActiveNotification, object: nil)
-    updateAccessibility()
   }
   public required init?(coder: NSCoder) { fatalError("init(coder:) unsupported") }
   deinit {
@@ -133,6 +134,7 @@ public final class TerminalCanvasView: UIView, UITextInput {
   private func updateGeometry() {
     guard bounds.width > 16, bounds.height > 16 else { return }
     updateMetrics()
+    accessibilityDirty = true
     if let layer = layer as? CAMetalLayer {
       layer.contentsScale = scale
       layer.drawableSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
@@ -252,5 +254,19 @@ public final class TerminalCanvasView: UIView, UITextInput {
     }
   }
   public override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) { pressesEnded(presses, with: event) }
+
+  public override var accessibilityElements: [Any]? {
+    get {
+      if accessibilityDirty || cachedAccessibilityElements == nil {
+        cachedAccessibilityElements = buildAccessibilityElements()
+        accessibilityDirty = false
+      }
+      return cachedAccessibilityElements
+    }
+    set {
+      cachedAccessibilityElements = newValue as? [UIAccessibilityElement]
+      accessibilityDirty = false
+    }
+  }
 }
 #endif

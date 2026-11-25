@@ -73,8 +73,11 @@ enum StartupGridSmoke {
   }
 
   static func buildDriver(_ path: String) throws {
-    guard try runInherited(["/usr/bin/xcrun", "clang", "-O2", BenchDriver.source, "-o", path]) else {
-      throw Failure("driver build failed")
+    let log = path + ".build.log"
+    guard try BenchDriver.build(to: path, log: log) else {
+      let detail = ((try? String(contentsOfFile: log, encoding: .utf8)) ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+      throw Failure(detail.isEmpty ? "driver build failed" : "driver build failed: \(detail)")
     }
   }
 

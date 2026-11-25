@@ -4,7 +4,7 @@ import UIKit
 /// The input method edits only its pending composition. Terminal output is
 /// immutable to UIKit; shell editing remains the remote program's job.
 final class TouchComposition {
-  static let maximumUTF16 = 16_384
+  static let maximumUTF16 = MarkedTextStorage.maximumLength
   var text = ""
   var selection = NSRange(location: 0, length: 0)
   var length: Int { text.utf16.count }

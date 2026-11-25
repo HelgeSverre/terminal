@@ -19,6 +19,14 @@ extension TerminalCanvasView {
     guard row < snapshot.rows.count, column < snapshot.cols else { return nil }
     return row * snapshot.cols + column
   }
+  func selectionHit(at point: CGPoint) -> TerminalSelectionHit? {
+    guard let snapshot, snapshot.cols > 0, !snapshot.rows.isEmpty else { return nil }
+    let row = max(0, min(snapshot.rows.count - 1,
+      Int((point.y * scale - CGFloat(insetPixels)) / CGFloat(cellHeight))))
+    let boundary = max(0, min(snapshot.cols,
+      Int((point.x * scale - CGFloat(insetPixels)) / CGFloat(cellWidth))))
+    return snapshot.selectionHit(row: row, boundary: boundary)
+  }
   @objc func selected(_ gesture: UILongPressGestureRecognizer) {
     if gesture.state == .ended || gesture.state == .cancelled {
       guard selecting else { return }
@@ -28,8 +36,7 @@ extension TerminalCanvasView {
       menu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: gesture.location(in: self)))
       return
     }
-    guard let snapshot, let grid = gridIndex(at: gesture.location(in: self)),
-          let hit = snapshot.selectionHit(row: grid / snapshot.cols, boundary: grid % snapshot.cols) else { return }
+    guard let hit = selectionHit(at: gesture.location(in: self)) else { return }
     switch gesture.state {
     case .began:
       _ = becomeFirstResponder()

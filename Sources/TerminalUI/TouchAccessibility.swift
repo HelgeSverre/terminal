@@ -10,8 +10,8 @@ private final class TouchAccessibleElement: UIAccessibilityElement {
 extension TerminalCanvasView {
   /// The presented viewport only, capped by row, element and UTF-16 budgets.
   /// Older history is fetched by a session scroll, never an AX-thread core read.
-  func updateAccessibility() {
-    guard let snapshot else { accessibilityElements = [emptyTerminalElement()]; return }
+  func buildAccessibilityElements() -> [UIAccessibilityElement] {
+    guard let snapshot else { return [emptyTerminalElement()] }
     var elements: [UIAccessibilityElement] = [], remaining = 65_536
     let rowLimit = min(256, snapshot.rows.count)
     for row in 0..<rowLimit {
@@ -70,7 +70,7 @@ extension TerminalCanvasView {
     }
     // A cleared or initially blank screen still needs an entry point for
     // typing, Find and history navigation when the canvas is a container.
-    accessibilityElements = elements.isEmpty ? [emptyTerminalElement()] : elements
+    return elements.isEmpty ? [emptyTerminalElement()] : elements
   }
   private func emptyTerminalElement() -> UIAccessibilityElement {
     let element = TouchAccessibleElement(accessibilityContainer: self)
