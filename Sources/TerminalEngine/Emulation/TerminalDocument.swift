@@ -537,73 +537,77 @@ struct TerminalDocument {
         // Where the cluster most recently admitted to this run begins.
         var lead = -1
         if !state.runClusters.isEmpty { state.runClusters.removeAll(keepingCapacity: true) }
-        if !state.runWidths.isEmpty { state.runWidths.removeAll(keepingCapacity: true) }
         state.clusters.beginRun()
         // A wrap on the primary screen can append history. Its scalar is
         // admitted alone, so the caller enforces history limits before
         // anything else is printed.
         let limit = wraps && retainHistory ? min(scalars.count, consumed + 1) : scalars.count
-        while end < limit, cells < capacity {
-          let candidate = scalars[end]
-          let width: Int
-          if candidate.value &- 0x20 < 0x5f {
-            guard segmenter.printableASCIIStartsCluster else { break }
-            segmenter.pushPrintableASCII()
-            width = 1
-          } else {
-            let scalarClass = TerminalText.scalarClass(of: candidate)
-            if scalarClass.isPlainText, segmenter.isAfterPlainText {
-              // Ordinary text after ordinary text: a boundary that leaves
-              // the segmenter as it is.
+        let maxRunScalars = min(limit - consumed, max(0, capacity) * ClusterCache.maximumScalars)
+        if state.runWidths.count < maxRunScalars {
+          state.runWidths.append(contentsOf: repeatElement(0, count: maxRunScalars - state.runWidths.count))
+        }
+        state.runWidths.withUnsafeMutableBufferPointer { runWidths in
+          while end < limit, cells < capacity {
+            let candidate = scalars[end]
+            let width: Int
+            if candidate.value &- 0x20 < 0x5f {
+              guard segmenter.printableASCIIStartsCluster else { break }
+              segmenter.pushPrintableASCII()
+              width = 1
+            } else {
+              let scalarClass = TerminalText.scalarClass(of: candidate)
+              if scalarClass.isPlainText, segmenter.isAfterPlainText {
+                // Ordinary text after ordinary text: a boundary that leaves
+                // the segmenter as it is.
+                width = scalarClass.width
+                guard width == 1 || width == 2, cells + width <= capacity else { break }
+                runWidths[end - consumed] = UInt8(width)
+                lead = end
+                cells += width
+                lastWidth = width
+                end += 1
+                continue
+              }
+              guard !scalarClass.isUnprintedControl else { break }
+              var next = segmenter
+              guard next.push(candidate, class: scalarClass) else {
+                // `candidate` joins the cluster before it. When this run began
+                // that cluster, take the rest of it from the buffer and admit
+                // the whole; otherwise the code below extends its cell.
+                guard lead >= 0, !segmenter.legacy else { break }
+                var clusterEnd = end + 1
+                while clusterEnd < limit {
+                  var following = next
+                  let admitted = admit(scalars[clusterEnd], to: &following)
+                  guard !admitted.skipped, !admitted.startsCluster else { break }
+                  next = following
+                  clusterEnd += 1
+                }
+                guard clusterEnd - lead <= ClusterCache.maximumScalars,
+                      let slot = state.clusters.slot(for: UnsafeBufferPointer(rebasing: scalars[lead..<clusterEnd]),
+                                                     pinning: true) else { break }
+                let clusterWidth = state.clusters.width(in: slot, ofFirst: clusterEnd - lead)
+                guard state.clusters.onlyWidens(in: slot), cells - lastWidth + clusterWidth <= capacity else { break }
+                state.runClusters.append(PrintedCluster(start: lead - consumed, count: clusterEnd - lead,
+                                                        slot: slot, wide: clusterWidth == 2))
+                cells += clusterWidth - lastWidth
+                lastWidth = clusterWidth
+                segmenter = next
+                end = clusterEnd
+                lead = -1
+                continue
+              }
+              guard !scalarClass.isDefaultIgnorable else { break }
               width = scalarClass.width
               guard width == 1 || width == 2, cells + width <= capacity else { break }
-              state.runWidths.append(UInt8(width))
-              lead = end
-              cells += width
-              lastWidth = width
-              end += 1
-              continue
-            }
-            guard !scalarClass.isUnprintedControl else { break }
-            var next = segmenter
-            guard next.push(candidate, class: scalarClass) else {
-              // `candidate` joins the cluster before it. When this run began
-              // that cluster, take the rest of it from the buffer and admit
-              // the whole; otherwise the code below extends its cell.
-              guard lead >= 0, !segmenter.legacy else { break }
-              var clusterEnd = end + 1
-              while clusterEnd < limit {
-                var following = next
-                let admitted = admit(scalars[clusterEnd], to: &following)
-                guard !admitted.skipped, !admitted.startsCluster else { break }
-                next = following
-                clusterEnd += 1
-              }
-              guard clusterEnd - lead <= ClusterCache.maximumScalars,
-                    let slot = state.clusters.slot(for: UnsafeBufferPointer(rebasing: scalars[lead..<clusterEnd]),
-                                                   pinning: true) else { break }
-              let clusterWidth = state.clusters.width(in: slot, ofFirst: clusterEnd - lead)
-              guard state.clusters.onlyWidens(in: slot), cells - lastWidth + clusterWidth <= capacity else { break }
-              state.runClusters.append(PrintedCluster(start: lead - consumed, count: clusterEnd - lead,
-                                                      slot: slot, wide: clusterWidth == 2))
-              for _ in end..<clusterEnd { state.runWidths.append(0) }
-              cells += clusterWidth - lastWidth
-              lastWidth = clusterWidth
               segmenter = next
-              end = clusterEnd
-              lead = -1
-              continue
             }
-            guard !scalarClass.isDefaultIgnorable else { break }
-            width = scalarClass.width
-            guard width == 1 || width == 2, cells + width <= capacity else { break }
-            segmenter = next
+            runWidths[end - consumed] = UInt8(width)
+            lead = end
+            cells += width
+            lastWidth = width
+            end += 1
           }
-          state.runWidths.append(UInt8(width))
-          lead = end
-          cells += width
-          lastWidth = width
-          end += 1
         }
         if end > consumed {
           if wraps {
@@ -614,12 +618,14 @@ struct TerminalDocument {
               style: attributes.style, history: &history, nextRowID: &nextRowID, retainHistory: retainHistory)
           }
           let row = screen.cursorRow, count = end - consumed
-          screen.rows[row].replaceClusters(
-            at: column, scalars: UnsafeBufferPointer(rebasing: scalars[consumed..<end]),
-            widths: state.runWidths,
-            clusters: state.runClusters, texts: state.clusters, cellCount: cells,
-            style: attributes.style, link: attributes.link, linkID: attributes.linkID, protected: attributes.protected,
-            isoProtected: attributes.isoProtected)
+          state.runWidths.withUnsafeBufferPointer { widths in
+            screen.rows[row].replaceClusters(
+              at: column, scalars: UnsafeBufferPointer(rebasing: scalars[consumed..<end]),
+              widths: UnsafeBufferPointer(rebasing: widths[0..<count]),
+              clusters: state.runClusters, texts: state.clusters, cellCount: cells,
+              style: attributes.style, link: attributes.link, linkID: attributes.linkID, protected: attributes.protected,
+              isoProtected: attributes.isoProtected)
+          }
           state.segmenter = segmenter
           state.openCluster = (row, column + cells - lastWidth)
           state.capped = false

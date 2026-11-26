@@ -447,7 +447,7 @@ final class KittyGraphicsStore {
     let body = packet.dropFirst()
     let split = body.firstIndex(of: UInt8(ascii: ";"))
     let header = split.map { Data(body[..<$0]) } ?? Data(body)
-    let payload = split.map { Data(body[body.index(after: $0)...]) } ?? Data()
+    let payload = split.map { body[body.index(after: $0)...] } ?? Data()
     guard let incoming = fields(header) else { abort(); return KittyGraphicsOutcome() }
     let action = incoming["a"] ?? "t"
     let featureQuery = action == "q" && incoming["e"] != nil
@@ -496,15 +496,13 @@ final class KittyGraphicsStore {
       // may be followed by more: chafa pads its last data chunk and closes
       // the transmission with an empty m=0 chunk.
       if payload.count > Self.maximumChunkBytes { throw KittyGraphicsError.invalid }
-      var encoded = payload
-      // RawStdEncoding omits trailing padding. Still reject partial padding,
-      // non-zero unused bits and non-alphabet bytes using canonical re-encode.
-      if encoded.count % 4 != 0 && !encoded.contains(UInt8(ascii: "=")) {
-        encoded.append(contentsOf: repeatElement(UInt8(ascii: "="), count: 4 - encoded.count % 4))
-      }
-      guard let decoded = Data(base64Encoded: encoded, options: []), decoded.base64EncodedData() == encoded else { throw KittyGraphicsError.invalid }
+      let decoded = try Self.decodeCanonicalBase64(payload)
       guard upload.bytes.count + decoded.count <= Self.maximumImageBytes else { throw KittyGraphicsError.tooLarge }
-      upload.bytes.append(decoded)
+      if upload.bytes.isEmpty {
+        upload.bytes = decoded
+      } else {
+        upload.bytes.append(decoded)
+      }
       upload.lastChunk = now
     } catch let error as KittyGraphicsError { return outcome(fields: upload.fields, result: .failure(error)) }
       catch { return outcome(fields: upload.fields, result: .failure(.invalid)) }
@@ -522,6 +520,81 @@ final class KittyGraphicsStore {
     var fields = upload.fields
     if fields["I"] != nil, resolvedID != 0 { fields["i"] = String(resolvedID) }
     return outcome(fields: fields, result: result)
+  }
+
+  private static let base64Table: [UInt8] = {
+    var table = [UInt8](repeating: 0xff, count: 256)
+    for index in 0..<26 {
+      table[Int(UInt8(ascii: "A")) + index] = UInt8(index)
+      table[Int(UInt8(ascii: "a")) + index] = UInt8(26 + index)
+    }
+    for index in 0..<10 {
+      table[Int(UInt8(ascii: "0")) + index] = UInt8(52 + index)
+    }
+    table[Int(UInt8(ascii: "+"))] = 62
+    table[Int(UInt8(ascii: "/"))] = 63
+    return table
+  }()
+
+  /// Strict single-pass canonical Base64 decoder accepting both standard padded
+  /// (`=`) and unpadded (RawStdEncoding) payloads while rejecting partial
+  /// padding, non-zero trailing bits, whitespace, and any non-alphabet byte.
+  private static func decodeCanonicalBase64(_ encoded: Data) throws -> Data {
+    let count = encoded.count
+    if count == 0 { return Data() }
+    let remainder = count & 3
+    if remainder == 1 { throw KittyGraphicsError.invalid }
+    return try encoded.withUnsafeBytes { src in
+      guard let base = src.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return Data() }
+      var dataLength = count
+      if remainder == 0, base[count &- 1] == 0x3d {
+        dataLength &-= 1
+        if base[count &- 2] == 0x3d { dataLength &-= 1 }
+      }
+      let fullQuads = dataLength >> 2
+      let tail = dataLength & 3
+      let outputCount = fullQuads &* 3 &+ (tail > 0 ? tail &- 1 : 0)
+      var output = Data(count: outputCount)
+      let valid: Bool = output.withUnsafeMutableBytes { dst in
+        guard let out = dst.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return false }
+        return Self.base64Table.withUnsafeBufferPointer { table in
+          guard let lut = table.baseAddress else { return false }
+          var srcIndex = 0
+          var dstIndex = 0
+          let quadLimit = fullQuads &* 4
+          var invalidMask: UInt8 = 0
+          while srcIndex < quadLimit {
+            let v0 = lut[Int(base[srcIndex])]
+            let v1 = lut[Int(base[srcIndex &+ 1])]
+            let v2 = lut[Int(base[srcIndex &+ 2])]
+            let v3 = lut[Int(base[srcIndex &+ 3])]
+            invalidMask |= v0 | v1 | v2 | v3
+            out[dstIndex] = (v0 &<< 2) | (v1 &>> 4)
+            out[dstIndex &+ 1] = (v1 &<< 4) | (v2 &>> 2)
+            out[dstIndex &+ 2] = (v2 &<< 6) | v3
+            srcIndex &+= 4
+            dstIndex &+= 3
+          }
+          if invalidMask & 0xc0 != 0 { return false }
+          if tail == 2 {
+            let v0 = lut[Int(base[srcIndex])]
+            let v1 = lut[Int(base[srcIndex &+ 1])]
+            if ((v0 | v1) & 0xc0) != 0 || (v1 & 0x0f) != 0 { return false }
+            out[dstIndex] = (v0 &<< 2) | (v1 &>> 4)
+          } else if tail == 3 {
+            let v0 = lut[Int(base[srcIndex])]
+            let v1 = lut[Int(base[srcIndex &+ 1])]
+            let v2 = lut[Int(base[srcIndex &+ 2])]
+            if ((v0 | v1 | v2) & 0xc0) != 0 || (v2 & 0x03) != 0 { return false }
+            out[dstIndex] = (v0 &<< 2) | (v1 &>> 4)
+            out[dstIndex &+ 1] = (v1 &<< 4) | (v2 &>> 2)
+          }
+          return true
+        }
+      }
+      guard valid else { throw KittyGraphicsError.invalid }
+      return output
+    }
   }
 
   private func fields(_ header: Data) -> [Character: String]? {

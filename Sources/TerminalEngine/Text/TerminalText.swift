@@ -68,6 +68,7 @@ enum TerminalText {
       return push(scalar, category: scalarClass.category, isIncbLinker: scalarClass.isIncbLinker)
     }
 
+    @inline(__always)
     private mutating func push(_ scalar: Unicode.Scalar, category current: Category, isIncbLinker: Bool) -> Bool {
       // Ordinary text after ordinary text: a boundary that leaves every flag
       // clear, which is the state this segmenter is already in.
@@ -408,18 +409,17 @@ extension TerminalText {
         | (TerminalText.isDefaultIgnorable(scalar) ? 0x40 : 0)
         | (Unicode18GraphemeTables.isIncbLinker(scalar.value) ? 0x80 : 0)
     }
-    var category: Category { Category(rawValue: bits & 0x0f).unsafelyUnwrapped }
+    @inline(__always) var category: Category { unsafeBitCast(bits & 0x0f, to: Category.self) }
     /// `TerminalWidth.width(of:)` for the scalar on its own: 0...3.
-    var width: Int { Int(bits >> 4 & 3) }
-    var isDefaultIgnorable: Bool { bits & 0x40 != 0 }
-    var isIncbLinker: Bool { bits & 0x80 != 0 }
+    @inline(__always) var width: Int { Int(bits >> 4 & 3) }
+    @inline(__always) var isDefaultIgnorable: Bool { bits & 0x40 != 0 }
+    @inline(__always) var isIncbLinker: Bool { bits & 0x80 != 0 }
     /// Category Other with neither flag: letters, ideographs, box drawing.
-    var isPlainText: Bool { bits & 0xcf == Category.other.rawValue }
+    @inline(__always) var isPlainText: Bool { bits & 0xcf == Category.other.rawValue }
     /// CR, LF and Control are never printed.
-    var isUnprintedControl: Bool {
+    @inline(__always) var isUnprintedControl: Bool {
       let category = bits & 0x0f
-      return category == Category.cr.rawValue || category == Category.lf.rawValue
-        || category == Category.control.rawValue
+      return category >= Category.cr.rawValue && category <= Category.control.rawValue
     }
   }
 

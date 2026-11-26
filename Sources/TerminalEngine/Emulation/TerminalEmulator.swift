@@ -717,7 +717,35 @@ final class TerminalEmulator {
         else if escaped { parser = .escape; handleEscapedByte(byte) }
         else { decoder.push(byte) }
       case .apc:
-        if byte == 0x18 || byte == 0x1a {
+        if !sequenceBytes.isEmpty && sequenceBytes.last != 0x1b {
+          let remaining = KittyGraphicsStore.maximumPacketBytes - sequenceBytes.count
+          if remaining > 0 {
+            let start = offset
+            let scanLimit = min(limit, start + remaining)
+            while offset < scanLimit {
+              let next = bytes[offset]
+              if next < 0x20 || next == 0x7f { break }
+              offset += 1
+            }
+            if offset > start {
+              sequenceBytes.append(contentsOf: UnsafeBufferPointer(start: bytes + start, count: offset - start))
+              if offset == limit { continue }
+            }
+          }
+          let byte = bytes[offset]
+          if byte == 0x18 || byte == 0x1a {
+            graphics.abort()
+            sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
+            parser = .ground
+          } else if byte == 0x1b {
+            sequenceBytes.append(0x1b)
+          } else if sequenceBytes.count >= KittyGraphicsStore.maximumPacketBytes {
+            graphics.abort()
+            parser = .discardString(escaped: false, osc: false)
+            sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
+          }
+        }
+        else if byte == 0x18 || byte == 0x1a {
           graphics.abort()
           sequenceBytes.removeAll(keepingCapacity: sequenceBytes.capacity <= 65_536)
           parser = .ground

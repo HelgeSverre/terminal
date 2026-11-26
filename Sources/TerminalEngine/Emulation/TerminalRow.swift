@@ -170,6 +170,17 @@ private struct TerminalRowPayloads: Equatable {
       }
     }
   }
+  @inline(__always)
+  mutating func append(column: Int, text: String, link: String?, linkID: String?) {
+    let payload = TerminalRowPayload(text: text, link: link, linkID: linkID)
+    if entries.isEmpty || entries[entries.count - 1].column < column {
+      entries.append(Entry(column: column, payload: payload))
+      utf8Bytes += payload.utf8Bytes
+      grewCapacity()
+    } else {
+      self[column] = payload
+    }
+  }
   mutating func removeValue(forKey column: Int) { self[column] = nil }
   mutating func removeAll(keepingCapacity: Bool = false) {
     entries.removeAll(keepingCapacity: keepingCapacity); utf8Bytes = 0
@@ -763,7 +774,7 @@ struct TerminalRow: Equatable {
   /// precomputed width in `widths`), except where `clusters` (in buffer order)
   /// names a longer one held in `texts`.
   mutating func replaceClusters(at column: Int, scalars: UnsafeBufferPointer<Unicode.Scalar>,
-                                widths: [UInt8],
+                                widths: UnsafeBufferPointer<UInt8>,
                                 clusters: [TerminalDocument.PrintedCluster],
                                 texts: borrowing TerminalDocument.ClusterCache, cellCount: Int,
                                 style: TerminalStyle, link: String?, linkID: String? = nil, protected: Bool, isoProtected: Bool = false) {
@@ -778,47 +789,21 @@ struct TerminalRow: Equatable {
     let flags: UInt8 = (protected ? 2 : 0) | (isoProtected ? 8 : 0)
     let linked = link != nil
     let storage = self.storage
-    widths.withUnsafeBufferPointer { widths in
-      storage.slots.withUnsafeMutableBufferPointer { slots in
-        var narrowSlot = TerminalRowSlot(scalar: 0, style: styleIndex, hasScalar: true, kind: 1,
-                                         flags: flags, protected: protected, hasPayload: linked)
-        var wideSlot = TerminalRowSlot(scalar: 0, style: styleIndex, hasScalar: true, kind: 2,
+    storage.slots.withUnsafeMutableBufferPointer { slots in
+      var narrowSlot = TerminalRowSlot(scalar: 0, style: styleIndex, hasScalar: true, kind: 1,
                                        flags: flags, protected: protected, hasPayload: linked)
-        let continuationSlot = TerminalRowSlot(style: styleIndex, kind: 3, flags: flags, protected: protected,
-                                               hasPayload: linked)
-        let narrowClusterSlot = TerminalRowSlot(style: styleIndex, kind: 1, flags: flags, protected: protected,
-                                                hasPayload: true)
-        let wideClusterSlot = TerminalRowSlot(style: styleIndex, kind: 2, flags: flags, protected: protected,
+      var wideSlot = TerminalRowSlot(scalar: 0, style: styleIndex, hasScalar: true, kind: 2,
+                                     flags: flags, protected: protected, hasPayload: linked)
+      let continuationSlot = TerminalRowSlot(style: styleIndex, kind: 3, flags: flags, protected: protected,
+                                             hasPayload: linked)
+      let narrowClusterSlot = TerminalRowSlot(style: styleIndex, kind: 1, flags: flags, protected: protected,
                                               hasPayload: true)
-        var index = column, position = 0
-        for cluster in clusters {
-          let clusterStart = cluster.start
-          while position < clusterStart {
-            if widths[position] == 2 {
-              wideSlot.scalar = scalars[position].value
-              slots[index] = wideSlot
-              slots[index + 1] = continuationSlot
-              index += 2
-            } else {
-              narrowSlot.scalar = scalars[position].value
-              slots[index] = narrowSlot
-              index += 1
-            }
-            position += 1
-          }
-          storage.payloads[index] = TerminalRowPayload(text: texts.text(in: cluster.slot), link: link, linkID: linkID)
-          if cluster.wide {
-            slots[index] = wideClusterSlot
-            slots[index + 1] = continuationSlot
-            index += 2
-          } else {
-            slots[index] = narrowClusterSlot
-            index += 1
-          }
-          position = clusterStart + cluster.count
-        }
-        let scalarCount = scalars.count
-        while position < scalarCount {
+      let wideClusterSlot = TerminalRowSlot(style: styleIndex, kind: 2, flags: flags, protected: protected,
+                                            hasPayload: true)
+      var index = column, position = 0
+      for cluster in clusters {
+        let clusterStart = cluster.start
+        while position < clusterStart {
           if widths[position] == 2 {
             wideSlot.scalar = scalars[position].value
             slots[index] = wideSlot
@@ -831,6 +816,30 @@ struct TerminalRow: Equatable {
           }
           position += 1
         }
+        storage.payloads.append(column: index, text: texts.text(in: cluster.slot), link: link, linkID: linkID)
+        if cluster.wide {
+          slots[index] = wideClusterSlot
+          slots[index + 1] = continuationSlot
+          index += 2
+        } else {
+          slots[index] = narrowClusterSlot
+          index += 1
+        }
+        position = clusterStart + cluster.count
+      }
+      let scalarCount = scalars.count
+      while position < scalarCount {
+        if widths[position] == 2 {
+          wideSlot.scalar = scalars[position].value
+          slots[index] = wideSlot
+          slots[index + 1] = continuationSlot
+          index += 2
+        } else {
+          narrowSlot.scalar = scalars[position].value
+          slots[index] = narrowSlot
+          index += 1
+        }
+        position += 1
       }
     }
   }
