@@ -161,8 +161,6 @@ _verify-bundle:
     "$TERMINAL_TEST_PRODUCTS/TUIStressDriver" --self-test
     xcrun clang -Wall -Wextra -Werror -O2 Benchmarks/TerminalBench/terminal-bench-clock-test.c -o target/native/terminal-bench-clock-test
     target/native/terminal-bench-clock-test
-    xcrun swiftc -swift-version 6 -D DISTRIBUTION_TESTING -parse-as-library tools/Distribution.swift tools/Dev/SigningOrder.swift tools/DistributionTests.swift -o target/native/distribution-tests
-    target/native/distribution-tests
     mkdir -p target/native/automation-dictionary
     xcrun sdp -fs -o target/native/automation-dictionary Resources/Terminal/Terminal.sdef
 
@@ -314,7 +312,7 @@ gallery-panes: build _dev
 # Replay stdin through the emulator; JSON on stdout, replies on stderr.
 [group('diagnose')]
 @replay columns="80" rows="24": _terminfo-probe
-    target/native/terminfo-probe "$1" "$2"
+    target/swiftpm/testing/debug/TerminfoProbe "$1" "$2"
 
 # ── release ───────────────────────────────────────────────────────────
 
@@ -349,7 +347,7 @@ release-status:
 [private]
 @_distribution operation:
     mkdir -p target/native
-    xcrun swiftc -swift-version 6 -parse-as-library tools/Distribution.swift tools/Dev/SigningOrder.swift -o target/native/distribute
+    xcrun swiftc -swift-version 6 -parse-as-library tools/Distribution.swift tools/Dev/DistributionCore.swift tools/Dev/SigningOrder.swift -o target/native/distribute
     target/native/distribute "$1"
 
 [private]
@@ -445,5 +443,4 @@ fuzz-replay seed: _fuzz-build
 
 [private]
 @_terminfo-probe:
-    mkdir -p target/native
-    xcrun swiftc -swift-version 6 -O {{emulator_sources}} Tests/Programs/TerminfoProbe.swift -framework Foundation -framework CoreGraphics -framework ImageIO -o target/native/terminfo-probe
+    swift build --product TerminfoProbe --scratch-path target/swiftpm/testing -c debug -Xswiftc -O --jobs 3

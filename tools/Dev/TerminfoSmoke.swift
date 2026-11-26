@@ -39,7 +39,7 @@ enum TerminfoSmoke {
 
   static func run(_ arguments: [String]) throws {
     guard arguments.isEmpty else { throw Failure.usage(command) }
-    let probe = TestPipeline.prebuiltProduct("TerminfoProbe") ?? Repository.path("target/native/terminfo-probe")
+    let probe = TestPipeline.prebuiltProduct("TerminfoProbe") ?? Repository.path("target/swiftpm/testing/debug/TerminfoProbe")
     guard FileManager.default.isExecutableFile(atPath: probe) else {
       throw Failure("run just terminfo-test to compile the Swift ABI probe")
     }
