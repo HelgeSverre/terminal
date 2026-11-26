@@ -115,111 +115,255 @@ private struct TerminalRowPayload: Equatable {
 // enter this path. Reflow can therefore reserve an input generation without
 // scanning every cell or retaining an uncharged history generation first.
 //
-// Entries are kept in column order. Printing writes left to right, so a new
-// payload is nearly always an append, and a bulk overwrite removes one
-// contiguous run; neither hashes anything.
+// Plain multi-scalar cluster text lives in `texts` (24 bytes, one non-optional
+// String) separate from rare OSC 8 hyperlink metadata in `links`. On the
+// overwhelmingly common non-linked rows, `links` stays completely empty with
+// zero optional link ARC traffic on write, copy, or scroll reset.
+//
+// Entries in both arrays are kept in column order. Printing writes left to
+// right, so a new payload is nearly always an append, and a bulk overwrite
+// removes one contiguous run; neither hashes anything.
 private struct TerminalRowPayloads: Equatable {
-  struct Entry: Equatable {
+  struct TextEntry: Equatable {
     var column: Int
-    var payload: TerminalRowPayload
+    var text: String
   }
-  private(set) var entries: [Entry] = []
+  struct LinkEntry: Equatable {
+    var column: Int
+    var link: String
+    var linkID: String?
+    @inline(__always) var utf8Bytes: UInt64 {
+      UInt64(link.utf8.count) + UInt64(linkID?.utf8.count ?? 0)
+    }
+  }
+  private(set) var texts: [TextEntry] = []
+  private(set) var links: [LinkEntry] = []
   private(set) var utf8Bytes: UInt64 = 0
+  // Distinct columns carrying either cluster text or a link.
+  private(set) var count = 0
   // Reflow admission charges the capacity of the dictionary these entries
   // used to live in. That capacity grew to hold the most entries the row had
   // held at once and never shrank, so the same figure is kept here.
   private(set) var capacity = 0
-  var count: Int { entries.count }
-  var isEmpty: Bool { entries.isEmpty }
+  var isEmpty: Bool { count == 0 }
 
-  static func == (lhs: TerminalRowPayloads, rhs: TerminalRowPayloads) -> Bool { lhs.entries == rhs.entries }
+  static func == (lhs: TerminalRowPayloads, rhs: TerminalRowPayloads) -> Bool {
+    lhs.texts == rhs.texts && lhs.links == rhs.links
+  }
+  @inline(__always)
   private mutating func grewCapacity() {
-    if entries.count > capacity { capacity = TerminalHistory.dictionaryCapacity(holding: entries.count) }
+    if count > capacity { capacity = TerminalHistory.dictionaryCapacity(holding: count) }
   }
 
-  /// Position of the first entry at or right of `column`.
-  @inline(__always) private func position(of column: Int) -> Int {
-    guard let last = entries.last, last.column >= column else { return entries.count }
-    var lower = 0, upper = entries.count - 1
+  /// Position of the first text entry at or right of `column`.
+  @inline(__always) private func textPosition(of column: Int) -> Int {
+    guard let last = texts.last, last.column >= column else { return texts.count }
+    var lower = 0, upper = texts.count - 1
     while lower < upper {
       let middle = (lower + upper) / 2
-      if entries[middle].column < column { lower = middle + 1 } else { upper = middle }
+      if texts[middle].column < column { lower = middle + 1 } else { upper = middle }
     }
     return lower
   }
+  /// Position of the first link entry at or right of `column`.
+  @inline(__always) private func linkPosition(of column: Int) -> Int {
+    guard let last = links.last, last.column >= column else { return links.count }
+    var lower = 0, upper = links.count - 1
+    while lower < upper {
+      let middle = (lower + upper) / 2
+      if links[middle].column < column { lower = middle + 1 } else { upper = middle }
+    }
+    return lower
+  }
+  /// Distinct column count across two column-sorted slices.
+  private static func unionCount(_ texts: ArraySlice<TextEntry>, _ links: ArraySlice<LinkEntry>) -> Int {
+    var ti = texts.startIndex, li = links.startIndex, total = 0
+    while ti < texts.endIndex && li < links.endIndex {
+      let tc = texts[ti].column, lc = links[li].column
+      if tc < lc { ti += 1 }
+      else if lc < tc { li += 1 }
+      else { ti += 1; li += 1 }
+      total += 1
+    }
+    return total + (texts.endIndex - ti) + (links.endIndex - li)
+  }
+
+  @inline(__always) func text(at column: Int) -> String? {
+    let position = textPosition(of: column)
+    return position < texts.count && texts[position].column == column ? texts[position].text : nil
+  }
+  @inline(__always) func forEachLinkID(_ body: (Int, String) -> Void) {
+    for entry in links {
+      if let id = entry.linkID { body(entry.column, id) }
+    }
+  }
+
   subscript(_ column: Int) -> TerminalRowPayload? {
     get {
-      let position = position(of: column)
-      return position < entries.count && entries[position].column == column ? entries[position].payload : nil
+      let textPos = textPosition(of: column)
+      let text = textPos < texts.count && texts[textPos].column == column ? texts[textPos].text : nil
+      if links.isEmpty {
+        return text.map { TerminalRowPayload(text: $0, link: nil, linkID: nil) }
+      }
+      let linkPos = linkPosition(of: column)
+      let linkEntry = linkPos < links.count && links[linkPos].column == column ? links[linkPos] : nil
+      guard text != nil || linkEntry != nil else { return nil }
+      return TerminalRowPayload(text: text, link: linkEntry?.link, linkID: linkEntry?.linkID)
     }
     set {
-      let position = position(of: column)
-      let exists = position < entries.count && entries[position].column == column
+      let textPos = textPosition(of: column)
+      let hasText = textPos < texts.count && texts[textPos].column == column
+      let linkPos = links.isEmpty ? 0 : linkPosition(of: column)
+      let hasLink = !links.isEmpty && linkPos < links.count && links[linkPos].column == column
+      let existed = hasText || hasLink
       if let newValue {
-        if exists {
-          utf8Bytes -= entries[position].payload.utf8Bytes
-          entries[position].payload = newValue
-        } else {
-          let entry = Entry(column: column, payload: newValue)
-          if position == entries.count { entries.append(entry) } else { entries.insert(entry, at: position) }
-          grewCapacity()
+        let willExist = newValue.text != nil || newValue.link != nil
+        if let newText = newValue.text {
+          if hasText {
+            utf8Bytes -= UInt64(texts[textPos].text.utf8.count)
+            texts[textPos].text = newText
+          } else {
+            let entry = TextEntry(column: column, text: newText)
+            if textPos == texts.count { texts.append(entry) } else { texts.insert(entry, at: textPos) }
+          }
+          utf8Bytes += UInt64(newText.utf8.count)
+        } else if hasText {
+          utf8Bytes -= UInt64(texts.remove(at: textPos).text.utf8.count)
         }
-        utf8Bytes += newValue.utf8Bytes
-      } else if exists {
-        utf8Bytes -= entries.remove(at: position).payload.utf8Bytes
+        if let newLink = newValue.link {
+          let entry = LinkEntry(column: column, link: newLink, linkID: newValue.linkID)
+          if hasLink {
+            utf8Bytes -= links[linkPos].utf8Bytes
+            links[linkPos] = entry
+          } else {
+            if linkPos == links.count { links.append(entry) } else { links.insert(entry, at: linkPos) }
+          }
+          utf8Bytes += entry.utf8Bytes
+        } else if hasLink {
+          utf8Bytes -= links.remove(at: linkPos).utf8Bytes
+        }
+        if !existed && willExist {
+          count += 1
+          grewCapacity()
+        } else if existed && !willExist {
+          count -= 1
+        }
+      } else if existed {
+        if hasText { utf8Bytes -= UInt64(texts.remove(at: textPos).text.utf8.count) }
+        if hasLink { utf8Bytes -= links.remove(at: linkPos).utf8Bytes }
+        count -= 1
       }
     }
   }
   @inline(__always)
   mutating func append(column: Int, text: String, link: String?, linkID: String?) {
-    let payload = TerminalRowPayload(text: text, link: link, linkID: linkID)
-    if entries.isEmpty || entries[entries.count - 1].column < column {
-      entries.append(Entry(column: column, payload: payload))
-      utf8Bytes += payload.utf8Bytes
-      grewCapacity()
-    } else {
-      self[column] = payload
+    if link == nil && links.isEmpty {
+      if texts.isEmpty || texts[texts.count - 1].column < column {
+        texts.append(TextEntry(column: column, text: text))
+        utf8Bytes += UInt64(text.utf8.count)
+        count += 1
+        grewCapacity()
+        return
+      }
     }
+    self[column] = TerminalRowPayload(text: text, link: link, linkID: linkID)
   }
   mutating func removeValue(forKey column: Int) { self[column] = nil }
   mutating func removeAll(keepingCapacity: Bool = false) {
-    entries.removeAll(keepingCapacity: keepingCapacity); utf8Bytes = 0
+    if !texts.isEmpty || !keepingCapacity { texts.removeAll(keepingCapacity: keepingCapacity) }
+    if !links.isEmpty || !keepingCapacity { links.removeAll(keepingCapacity: keepingCapacity) }
+    utf8Bytes = 0
+    count = 0
     if !keepingCapacity { capacity = 0 }
   }
   /// Leaves every column in `range` with a payload that is only `link`, or
   /// with none when `link` is nil.
   mutating func replace(in range: Range<Int>, link: String?, linkID: String? = nil) {
-    if link == nil && entries.isEmpty { return }
-    let lower = position(of: range.lowerBound), upper = position(of: range.upperBound)
-    for position in lower..<upper { utf8Bytes -= entries[position].payload.utf8Bytes }
+    guard !range.isEmpty else { return }
+    if link == nil && isEmpty { return }
+    let textLower = textPosition(of: range.lowerBound), textUpper = textPosition(of: range.upperBound)
+    for position in textLower..<textUpper { utf8Bytes -= UInt64(texts[position].text.utf8.count) }
     guard let link else {
-      if lower < upper { entries.removeSubrange(lower..<upper) }
+      if links.isEmpty {
+        if textLower < textUpper {
+          texts.removeSubrange(textLower..<textUpper)
+          count -= textUpper - textLower
+        }
+        return
+      }
+      let linkLower = linkPosition(of: range.lowerBound), linkUpper = linkPosition(of: range.upperBound)
+      for position in linkLower..<linkUpper { utf8Bytes -= links[position].utf8Bytes }
+      let removed = Self.unionCount(texts[textLower..<textUpper], links[linkLower..<linkUpper])
+      if textLower < textUpper { texts.removeSubrange(textLower..<textUpper) }
+      if linkLower < linkUpper { links.removeSubrange(linkLower..<linkUpper) }
+      count -= removed
       return
     }
-    let payload = TerminalRowPayload(text: nil, link: link, linkID: linkID)
-    entries.replaceSubrange(lower..<upper, with: range.lazy.map { Entry(column: $0, payload: payload) })
-    utf8Bytes += UInt64(range.count) * payload.utf8Bytes
+    let linkLower = linkPosition(of: range.lowerBound), linkUpper = linkPosition(of: range.upperBound)
+    for position in linkLower..<linkUpper { utf8Bytes -= links[position].utf8Bytes }
+    let removed = Self.unionCount(texts[textLower..<textUpper], links[linkLower..<linkUpper])
+    if textLower < textUpper { texts.removeSubrange(textLower..<textUpper) }
+    let template = LinkEntry(column: 0, link: link, linkID: linkID)
+    links.replaceSubrange(linkLower..<linkUpper, with: range.lazy.map { LinkEntry(column: $0, link: link, linkID: linkID) })
+    utf8Bytes += UInt64(range.count) * template.utf8Bytes
+    count += range.count - removed
     grewCapacity()
   }
   /// Drops every payload at or right of `column`. The modeled capacity
   /// starts over from the survivors, as the rebuilt dictionary's did.
   mutating func truncate(to column: Int) {
-    let lower = position(of: column)
-    for position in lower..<entries.count { utf8Bytes -= entries[position].payload.utf8Bytes }
-    entries.removeSubrange(lower...)
-    capacity = TerminalHistory.dictionaryCapacity(holding: entries.count)
+    let textLower = textPosition(of: column)
+    for position in textLower..<texts.count { utf8Bytes -= UInt64(texts[position].text.utf8.count) }
+    if links.isEmpty {
+      if textLower < texts.count {
+        count -= texts.count - textLower
+        texts.removeSubrange(textLower...)
+      }
+      capacity = TerminalHistory.dictionaryCapacity(holding: count)
+      return
+    }
+    let linkLower = linkPosition(of: column)
+    for position in linkLower..<links.count { utf8Bytes -= links[position].utf8Bytes }
+    let removed = Self.unionCount(texts[textLower..<texts.count], links[linkLower..<links.count])
+    if textLower < texts.count { texts.removeSubrange(textLower...) }
+    if linkLower < links.count { links.removeSubrange(linkLower...) }
+    count -= removed
+    capacity = TerminalHistory.dictionaryCapacity(holding: count)
   }
   /// Gives the columns `source` shifted by `offset` the payloads of `source`.
   /// Columns outside that target keep theirs.
   mutating func move(_ source: Range<Int>, by offset: Int) {
-    guard !entries.isEmpty, !source.isEmpty else { return }
-    let moved = entries[position(of: source.lowerBound)..<position(of: source.upperBound)].map {
-      Entry(column: $0.column + offset, payload: $0.payload)
+    guard !isEmpty, !source.isEmpty else { return }
+    let srcTextLower = textPosition(of: source.lowerBound), srcTextUpper = textPosition(of: source.upperBound)
+    let dstTextLower = textPosition(of: source.lowerBound + offset), dstTextUpper = textPosition(of: source.upperBound + offset)
+    if links.isEmpty {
+      let movedTexts = texts[srcTextLower..<srcTextUpper].map {
+        TextEntry(column: $0.column + offset, text: $0.text)
+      }
+      for position in dstTextLower..<dstTextUpper { utf8Bytes -= UInt64(texts[position].text.utf8.count) }
+      for entry in movedTexts { utf8Bytes += UInt64(entry.text.utf8.count) }
+      count += movedTexts.count - (dstTextUpper - dstTextLower)
+      texts.replaceSubrange(dstTextLower..<dstTextUpper, with: movedTexts)
+      grewCapacity()
+      return
     }
-    let lower = position(of: source.lowerBound + offset), upper = position(of: source.upperBound + offset)
-    for position in lower..<upper { utf8Bytes -= entries[position].payload.utf8Bytes }
-    for entry in moved { utf8Bytes += entry.payload.utf8Bytes }
-    entries.replaceSubrange(lower..<upper, with: moved)
+    let srcLinkLower = linkPosition(of: source.lowerBound), srcLinkUpper = linkPosition(of: source.upperBound)
+    let dstLinkLower = linkPosition(of: source.lowerBound + offset), dstLinkUpper = linkPosition(of: source.upperBound + offset)
+    let movedCount = Self.unionCount(texts[srcTextLower..<srcTextUpper], links[srcLinkLower..<srcLinkUpper])
+    let overwrittenCount = Self.unionCount(texts[dstTextLower..<dstTextUpper], links[dstLinkLower..<dstLinkUpper])
+    let movedTexts = texts[srcTextLower..<srcTextUpper].map {
+      TextEntry(column: $0.column + offset, text: $0.text)
+    }
+    let movedLinks = links[srcLinkLower..<srcLinkUpper].map {
+      LinkEntry(column: $0.column + offset, link: $0.link, linkID: $0.linkID)
+    }
+    for position in dstTextLower..<dstTextUpper { utf8Bytes -= UInt64(texts[position].text.utf8.count) }
+    for position in dstLinkLower..<dstLinkUpper { utf8Bytes -= links[position].utf8Bytes }
+    for entry in movedTexts { utf8Bytes += UInt64(entry.text.utf8.count) }
+    for entry in movedLinks { utf8Bytes += entry.utf8Bytes }
+    texts.replaceSubrange(dstTextLower..<dstTextUpper, with: movedTexts)
+    links.replaceSubrange(dstLinkLower..<dstLinkUpper, with: movedLinks)
+    count += movedCount - overwrittenCount
     grewCapacity()
   }
 }
@@ -477,8 +621,11 @@ struct TerminalRow: Equatable {
       }
       resolvedStyles = table
     }
-    let payloadEntries = storage.payloads.entries
-    var payloadCursor = 0
+    let textEntries = storage.payloads.texts
+    let linkEntries = storage.payloads.links
+    let hasLinks = !linkEntries.isEmpty
+    var textCursor = 0
+    var linkCursor = 0
     return storage.slots.withUnsafeBufferPointer { slots -> [CellSnapshot]? in
       var cells: [CellSnapshot] = []
       cells.reserveCapacity(slots.count)
@@ -486,22 +633,31 @@ struct TerminalRow: Equatable {
         let slot = slots[index]
         guard let kind = CellKind(rawValue: slot.kind) else { return nil }
         let style = slot.style == 0 ? defaultStyle : resolvedStyles[Int(slot.style)]
-        let payload: TerminalRowPayload?
+        var payloadText: String? = nil
+        var link: String? = nil
+        var linkID: String? = nil
         if slot.hasPayload {
-          while payloadCursor < payloadEntries.count && payloadEntries[payloadCursor].column < index {
-            payloadCursor += 1
+          while textCursor < textEntries.count && textEntries[textCursor].column < index {
+            textCursor += 1
           }
-          if payloadCursor < payloadEntries.count && payloadEntries[payloadCursor].column == index {
-            payload = payloadEntries[payloadCursor].payload
-            payloadCursor += 1
-          } else {
-            payload = nil
+          if textCursor < textEntries.count && textEntries[textCursor].column == index {
+            payloadText = textEntries[textCursor].text
+            textCursor += 1
           }
-        } else {
-          payload = nil
+          if hasLinks {
+            while linkCursor < linkEntries.count && linkEntries[linkCursor].column < index {
+              linkCursor += 1
+            }
+            if linkCursor < linkEntries.count && linkEntries[linkCursor].column == index {
+              let entry = linkEntries[linkCursor]
+              link = entry.link
+              linkID = entry.linkID
+              linkCursor += 1
+            }
+          }
         }
         let text: String
-        if let payloadText = payload?.text {
+        if let payloadText {
           text = payloadText
         } else if slot.hasScalar {
           let rawScalar = slot.scalar
@@ -516,7 +672,7 @@ struct TerminalRow: Equatable {
           text = ""
         }
         cells.append(CellSnapshot(text: text, kind: kind, style: style,
-                                  link: payload?.link, linkID: payload?.linkID, flags: Int(slot.flags)))
+                                  link: link, linkID: linkID, flags: Int(slot.flags)))
       }
       return cells
     }
@@ -528,7 +684,7 @@ struct TerminalRow: Equatable {
     let slot = storage.slots[index]
     if slot.hasScalar { return slot.scalar == scalar }
     guard slot.hasPayload else { return false }
-    return storage.payload(at: index)?.text?.unicodeScalars.first?.value == scalar
+    return storage.payloads.text(at: index)?.unicodeScalars.first?.value == scalar
   }
 
   func cell(_ index: Int) -> TerminalCell {
@@ -675,7 +831,9 @@ struct TerminalRow: Equatable {
   func isProtected(at index: Int) -> Bool { storage.slots[index].protected }
   func isISOProtected(at index: Int) -> Bool { storage.slots[index].flags & 8 != 0 }
   func scalarCount(at index: Int) -> Int {
-    storage.payload(at: index)?.text?.unicodeScalars.count ?? (storage.slots[index].hasScalar ? 1 : 0)
+    let slot = storage.slots[index]
+    if slot.hasPayload, let text = storage.payloads.text(at: index) { return text.unicodeScalars.count }
+    return slot.hasScalar ? 1 : 0
   }
   mutating func appendScalar(_ scalar: Unicode.Scalar, at index: Int) {
     var cell = cell(index)
@@ -871,9 +1029,7 @@ struct TerminalRow: Equatable {
   }
   /// Enumerate sparse metadata without projecting ordinary scalar cells.
   func forEachLinkID(_ body: (Int, String) -> Void) {
-    for entry in storage.payloads.entries {
-      if let id = entry.payload.linkID { body(entry.column, id) }
-    }
+    storage.payloads.forEachLinkID(body)
   }
   var retainedStorageCost: UInt64 {
     var bytes = Self.logicalRowCharge + UInt64(storage.logicalCapacity) * Self.logicalCellCharge

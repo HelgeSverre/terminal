@@ -363,6 +363,16 @@ final class TerminalEmulator {
           if lead < 0x80 {
             guard joiningASCII, lead &- 0x20 < 0x5f else { ended = true; break }
             if asciiRemaining == 0 {
+              // A single printable ASCII byte (such as a space or punctuation)
+              // immediately before a multi-byte UTF-8 scalar is always a 1-byte
+              // run (< minimumDirectASCIIRun) with UTF-8 following; admit it in
+              // O(1) without entering the lookahead loop.
+              if index + 1 < limit && bytes[index + 1] >= 0xc2 {
+                buffer[end] = Unicode.Scalar(lead)
+                end += 1
+                index += 1
+                continue
+              }
               // Like `printASCIIRun`: only a short run joins, and only when
               // text is still pending or UTF-8 follows immediately.
               let asciiLimit = min(limit, index + Self.minimumDirectASCIIRun)

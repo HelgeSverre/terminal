@@ -252,7 +252,7 @@ enum TerminalText {
 
   /// Builds a String from scalars with one UTF-8 encoding pass, instead of
   /// growing it one scalar at a time.
-  static func string(from scalars: [Unicode.Scalar]) -> String {
+  static func string(from scalars: UnsafeBufferPointer<Unicode.Scalar>) -> String {
     String(unsafeUninitializedCapacity: scalars.count * 4) { buffer in
       var count = 0
       for scalar in scalars {
@@ -275,6 +275,10 @@ enum TerminalText {
       }
       return count
     }
+  }
+
+  static func string(from scalars: [Unicode.Scalar]) -> String {
+    scalars.withUnsafeBufferPointer(Self.string(from:))
   }
 
   static func clusters(in text: String) -> [String] {

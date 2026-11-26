@@ -150,36 +150,41 @@ struct TerminalDocument {
     /// the next run begins, and the result is nil when that would mean
     /// replacing a slot this run has pinned.
     mutating func slot(for scalars: UnsafeBufferPointer<Unicode.Scalar>, pinning: Bool = false) -> Int? {
+      let count = scalars.count
       var hash: UInt32 = 2_166_136_261
-      for scalar in scalars { hash = (hash ^ scalar.value) &* 16_777_619 }
+      for index in 0..<count { hash = (hash ^ scalars[index].value) &* 16_777_619 }
       let slot = Int((hash ^ hash >> 16) & 255)
-      let base = slot * Self.maximumScalars
-      if keys.isEmpty {
+      let base = slot &* Self.maximumScalars
+      if !keys.isEmpty {
+        if Int(counts[slot]) == count {
+          let matches = keys.withUnsafeBufferPointer { keys in
+            var index = 0
+            while index < count, keys[base &+ index] == scalars[index] { index &+= 1 }
+            return index == count
+          }
+          if matches {
+            if pinning && runs[slot] != run { runs[slot] = run }
+            return slot
+          }
+        }
+      } else {
         keys = Array(repeating: "\0", count: Self.slotCount * Self.maximumScalars)
         counts = Array(repeating: 0, count: Self.slotCount)
         texts = Array(repeating: "", count: Self.slotCount)
         widePrefixes = Array(repeating: 0, count: Self.slotCount)
         runs = Array(repeating: 0, count: Self.slotCount)
-      } else if Int(counts[slot]) == scalars.count {
-        let matches = keys.withUnsafeBufferPointer { keys in
-          var index = 0
-          while index < scalars.count, keys[base + index] == scalars[index] { index += 1 }
-          return index == scalars.count
-        }
-        if matches {
-          if pinning { runs[slot] = run }
-          return slot
-        }
       }
       if pinning && runs[slot] == run { return nil }
       var wide: UInt32 = 0
-      for count in 1...scalars.count
-      where TerminalWidth.width(of: Array(scalars[..<count])[...]) >= 2 {
-        wide |= 1 << UInt32(count)
+      for prefixCount in 1...count
+      where TerminalWidth.width(of: UnsafeBufferPointer(rebasing: scalars[..<prefixCount])) >= 2 {
+        wide |= 1 << UInt32(prefixCount)
       }
-      for index in 0..<scalars.count { keys[base + index] = scalars[index] }
-      counts[slot] = UInt8(scalars.count)
-      texts[slot] = TerminalText.string(from: Array(scalars))
+      keys.withUnsafeMutableBufferPointer { keys in
+        for index in 0..<count { keys[base &+ index] = scalars[index] }
+      }
+      counts[slot] = UInt8(count)
+      texts[slot] = TerminalText.string(from: scalars)
       widePrefixes[slot] = wide
       runs[slot] = pinning ? run : run &- 1
       return slot
@@ -577,8 +582,12 @@ struct TerminalDocument {
                 guard lead >= 0, !segmenter.legacy else { break }
                 var clusterEnd = end + 1
                 while clusterEnd < limit {
+                  let followingScalar = scalars[clusterEnd]
+                  if followingScalar.value &- 0x20 < 0x5f, next.printableASCIIStartsCluster {
+                    break
+                  }
                   var following = next
-                  let admitted = admit(scalars[clusterEnd], to: &following)
+                  let admitted = admit(followingScalar, to: &following)
                   guard !admitted.skipped, !admitted.startsCluster else { break }
                   next = following
                   clusterEnd += 1
@@ -668,8 +677,12 @@ struct TerminalDocument {
         var segmenter = state.segmenter
         var end = consumed
         while end < scalars.count {
+          let followingScalar = scalars[end]
+          if followingScalar.value &- 0x20 < 0x5f, segmenter.printableASCIIStartsCluster {
+            break
+          }
           var next = segmenter
-          let following = admit(scalars[end], to: &next)
+          let following = admit(followingScalar, to: &next)
           guard !following.skipped, !following.startsCluster else { break }
           segmenter = next
           end += 1
