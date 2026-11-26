@@ -75,6 +75,11 @@ glyphs: build
     dist/Terminal.app/Contents/MacOS/Terminal --font-catalog "$PWD/reports/font-glyphs.txt"
     open -n "$PWD/dist/Terminal.app" --args --execute /bin/cat "$PWD/reports/font-glyphs.txt"
 
+# Open a window running the interactive feature-verification TUI.
+[group('run')]
+@feature-check: build _dev
+    open -n "$TERMINAL_PROJECT_ROOT/dist/Terminal.app" --args --execute "$TERMINAL_PROJECT_ROOT/target/native/dev" feature-check --interactive
+
 # ── install ───────────────────────────────────────────────────────────
 
 # Install an optimized build to ~/Applications/Helge Terminal.app.

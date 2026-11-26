@@ -30,6 +30,7 @@ let commands = [
   TUIStress.command,
   RenderingProof.command,
   Gallery.command,
+  FeatureCheck.command,
   // Measurements and diagnoses.
   CompareStartup.command,
   CompareShutdown.command,
