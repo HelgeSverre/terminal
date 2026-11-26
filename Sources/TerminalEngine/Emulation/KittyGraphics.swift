@@ -1028,31 +1028,302 @@ final class KittyGraphicsStore {
     // Compression.framework's ZLIB decoder consumes a raw DEFLATE stream on
     // current macOS. Kitty supplies RFC1950 (zlib) framing,
     // so validate and strip the two-byte header/four-byte Adler trailer first.
-    guard input.count >= 6, input[0] & 0x0f == 8, input[0] >> 4 <= 7,
-          input[1] & 0x20 == 0,
-          ((UInt16(input[0]) << 8) | UInt16(input[1])) % 31 == 0 else { throw KittyGraphicsError.invalid }
-    let source = input.subdata(in: 2..<(input.count - 4))
-    guard !source.isEmpty else { throw KittyGraphicsError.invalid }
+    guard input.count >= 6 else { throw KittyGraphicsError.invalid }
+    let (headerValid, checksum) = input.withUnsafeBytes { raw -> (Bool, UInt32) in
+      let bytes = raw.bindMemory(to: UInt8.self)
+      let b0 = bytes[0], b1 = bytes[1]
+      let valid = b0 & 0x0f == 8 && b0 >> 4 <= 7 && b1 & 0x20 == 0
+        && ((UInt16(b0) << 8) | UInt16(b1)) % 31 == 0
+      let n = bytes.count
+      let trailer = (UInt32(bytes[n - 4]) << 24) | (UInt32(bytes[n - 3]) << 16)
+        | (UInt32(bytes[n - 2]) << 8) | UInt32(bytes[n - 1])
+      return (valid, trailer)
+    }
+    guard headerValid else { throw KittyGraphicsError.invalid }
+    let sourceCount = input.count - 6
+    guard sourceCount > 0 else { throw KittyGraphicsError.invalid }
     // Reserve one sentinel byte so the decoder can prove stream completion
     // even when the legal payload exactly fills its declared image extent.
     var output = Data(count: limit + 1)
     let count = output.withUnsafeMutableBytes { destination in
-      source.withUnsafeBytes { compressed in
+      input.withUnsafeBytes { compressed in
         compression_decode_buffer(
           destination.bindMemory(to: UInt8.self).baseAddress!, limit + 1,
-          compressed.bindMemory(to: UInt8.self).baseAddress!, source.count,
+          compressed.bindMemory(to: UInt8.self).baseAddress!.advanced(by: 2), sourceCount,
           nil, COMPRESSION_ZLIB)
       }
     }
     guard count > 0, count <= limit else { throw KittyGraphicsError.invalid }
     output.removeSubrange(count..<output.count)
-    var a: UInt32 = 1, b: UInt32 = 0
-    for byte in output { a = (a + UInt32(byte)) % 65_521; b = (b + a) % 65_521 }
-    let checksum = input.suffix(4).reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
-    guard (b << 16 | a) == checksum else { throw KittyGraphicsError.invalid }
+    let computed = output.withUnsafeBytes { raw -> UInt32 in
+      let bytes = raw.bindMemory(to: UInt8.self)
+      var a: UInt32 = 1, b: UInt32 = 0
+      var index = 0
+      let total = bytes.count
+      while index < total {
+        let end = min(index + 5000, total)
+        while index < end {
+          a &+= UInt32(bytes[index])
+          b &+= a
+          index += 1
+        }
+        a %= 65_521
+        b %= 65_521
+      }
+      return (b << 16) | a
+    }
+    guard computed == checksum else { throw KittyGraphicsError.invalid }
     return output
   }
+
+  private func fastDecodePNG(_ input: Data) -> (width: Int, height: Int, rgba: Data)? {
+    let count = input.count
+    guard count >= 33 else { return nil }
+
+    var width = 0
+    var height = 0
+    var colorType: UInt8 = 0
+    var idatRanges: [Range<Int>] = []
+    var totalIDATBytes = 0
+
+    let parsed = input.withUnsafeBytes { raw -> Bool in
+      let bytes = raw.bindMemory(to: UInt8.self)
+      guard bytes[0] == 0x89, bytes[1] == 0x50, bytes[2] == 0x4E, bytes[3] == 0x47,
+            bytes[4] == 0x0D, bytes[5] == 0x0A, bytes[6] == 0x1A, bytes[7] == 0x0A else {
+        return false
+      }
+      var offset = 8
+      var seenIHDR = false
+      var seenIDAT = false
+      var finishedIDAT = false
+      var seenIEND = false
+
+      while offset < count {
+        guard count - offset >= 12 else { return false }
+        let lengthU32 = (UInt32(bytes[offset]) << 24)
+          | (UInt32(bytes[offset + 1]) << 16)
+          | (UInt32(bytes[offset + 2]) << 8)
+          | UInt32(bytes[offset + 3])
+        guard lengthU32 <= 0x7FFF_FFFF else { return false }
+        let length = Int(lengthU32)
+        guard length <= count - offset - 12 else { return false }
+
+        let typeOffset = offset + 4
+        let dataStart = offset + 8
+        let dataEnd = dataStart + length
+        let chunkEnd = dataEnd + 4
+
+        var crc = UInt32.max
+        for i in typeOffset..<dataEnd {
+          crc = Self.pngCRCTable[Int((crc ^ UInt32(bytes[i])) & 0xFF)] ^ (crc >> 8)
+        }
+        let expectedCRC = (UInt32(bytes[dataEnd]) << 24)
+          | (UInt32(bytes[dataEnd + 1]) << 16)
+          | (UInt32(bytes[dataEnd + 2]) << 8)
+          | UInt32(bytes[dataEnd + 3])
+        guard (crc ^ UInt32.max) == expectedCRC else { return false }
+
+        let chunkType = (UInt32(bytes[typeOffset]) << 24)
+          | (UInt32(bytes[typeOffset + 1]) << 16)
+          | (UInt32(bytes[typeOffset + 2]) << 8)
+          | UInt32(bytes[typeOffset + 3])
+
+        if !seenIHDR {
+          guard chunkType == 0x4948_4452, length == 13 else { return false } // IHDR
+          let w = (UInt32(bytes[dataStart]) << 24)
+            | (UInt32(bytes[dataStart + 1]) << 16)
+            | (UInt32(bytes[dataStart + 2]) << 8)
+            | UInt32(bytes[dataStart + 3])
+          let h = (UInt32(bytes[dataStart + 4]) << 24)
+            | (UInt32(bytes[dataStart + 5]) << 16)
+            | (UInt32(bytes[dataStart + 6]) << 8)
+            | UInt32(bytes[dataStart + 7])
+          guard w > 0, h > 0,
+                w <= UInt32(Self.maximumImageDimension),
+                h <= UInt32(Self.maximumImageDimension) else { return false }
+          let iw = Int(w), ih = Int(h)
+          guard iw * ih * 4 <= Self.maximumImageBytes else { return false }
+          let bitDepth = bytes[dataStart + 8]
+          let cType = bytes[dataStart + 9]
+          let compression = bytes[dataStart + 10]
+          let filter = bytes[dataStart + 11]
+          let interlace = bytes[dataStart + 12]
+          guard bitDepth == 8, cType == 2 || cType == 6,
+                compression == 0, filter == 0, interlace == 0 else { return false }
+          width = iw
+          height = ih
+          colorType = cType
+          seenIHDR = true
+        } else {
+          switch chunkType {
+          case 0x4944_4154: // IDAT
+            guard !finishedIDAT else { return false }
+            seenIDAT = true
+            if length > 0 {
+              idatRanges.append(dataStart..<dataEnd)
+              totalIDATBytes += length
+            }
+          case 0x4945_4E44: // IEND
+            guard length == 0, chunkEnd == count else { return false }
+            seenIEND = true
+          case 0x7452_4E53, // tRNS
+               0x6943_4350, // iCCP
+               0x6741_4D41, // gAMA
+               0x6348_524D, // cHRM
+               0x504C_5445, // PLTE
+               0x4948_4452: // duplicate IHDR
+            return false
+          default:
+            // Any unknown critical chunk (bit 5 of first byte is 0) falls back.
+            guard (chunkType & 0x2000_0000) != 0 else { return false }
+            if seenIDAT { finishedIDAT = true }
+          }
+        }
+        offset = chunkEnd
+      }
+      return seenIHDR && seenIEND && !idatRanges.isEmpty
+    }
+    guard parsed else { return nil }
+
+    let compressed: Data
+    if idatRanges.count == 1 {
+      let range = idatRanges[0]
+      let base = input.startIndex
+      compressed = input[(base + range.lowerBound)..<(base + range.upperBound)]
+    } else {
+      var combined = Data(capacity: totalIDATBytes)
+      let base = input.startIndex
+      for range in idatRanges {
+        combined.append(input[(base + range.lowerBound)..<(base + range.upperBound)])
+      }
+      compressed = combined
+    }
+
+    let bpp = colorType == 6 ? 4 : 3
+    let rowBytes = width * bpp
+    let stride = 1 + rowBytes
+    let expected = height * stride
+    guard expected <= Self.maximumImageBytes,
+          let inflated = try? inflate(compressed, limit: expected),
+          inflated.count == expected else { return nil }
+
+    @inline(__always)
+    func paeth(_ a: UInt8, _ b: UInt8, _ c: UInt8) -> UInt8 {
+      let ia = Int(a), ib = Int(b), ic = Int(c)
+      let p = ia + ib - ic
+      let pa = abs(p - ia)
+      let pb = abs(p - ib)
+      let pc = abs(p - ic)
+      if pa <= pb && pa <= pc { return a }
+      if pb <= pc { return b }
+      return c
+    }
+
+    @inline(__always)
+    func unfilterScanline(
+      filterType: UInt8,
+      raw: UnsafePointer<UInt8>,
+      prev: UnsafePointer<UInt8>?,
+      curr: UnsafeMutablePointer<UInt8>,
+      rowBytes: Int,
+      bpp: Int
+    ) -> Bool {
+      switch filterType {
+      case 0:
+        curr.update(from: raw, count: rowBytes)
+      case 1:
+        for x in 0..<bpp { curr[x] = raw[x] }
+        for x in bpp..<rowBytes { curr[x] = raw[x] &+ curr[x - bpp] }
+      case 2:
+        if let prev {
+          for x in 0..<rowBytes { curr[x] = raw[x] &+ prev[x] }
+        } else {
+          curr.update(from: raw, count: rowBytes)
+        }
+      case 3:
+        if let prev {
+          for x in 0..<bpp { curr[x] = raw[x] &+ (prev[x] >> 1) }
+          for x in bpp..<rowBytes { curr[x] = raw[x] &+ UInt8((Int(curr[x - bpp]) + Int(prev[x])) >> 1) }
+        } else {
+          for x in 0..<bpp { curr[x] = raw[x] }
+          for x in bpp..<rowBytes { curr[x] = raw[x] &+ (curr[x - bpp] >> 1) }
+        }
+      case 4:
+        if let prev {
+          for x in 0..<bpp { curr[x] = raw[x] &+ prev[x] }
+          for x in bpp..<rowBytes { curr[x] = raw[x] &+ paeth(curr[x - bpp], prev[x], prev[x - bpp]) }
+        } else {
+          for x in 0..<bpp { curr[x] = raw[x] }
+          for x in bpp..<rowBytes { curr[x] = raw[x] &+ curr[x - bpp] }
+        }
+      default:
+        return false
+      }
+      return true
+    }
+
+    var rgba = Data(count: width * height * 4)
+    let ok = rgba.withUnsafeMutableBytes { dstRaw -> Bool in
+      inflated.withUnsafeBytes { srcRaw -> Bool in
+        guard let dstBase = dstRaw.bindMemory(to: UInt8.self).baseAddress,
+              let srcBase = srcRaw.bindMemory(to: UInt8.self).baseAddress else { return false }
+        if colorType == 6 {
+          for y in 0..<height {
+            let srcRow = srcBase.advanced(by: y * stride)
+            let currRow = dstBase.advanced(by: y * rowBytes)
+            let prevRow: UnsafePointer<UInt8>? = y > 0 ? UnsafePointer(dstBase.advanced(by: (y - 1) * rowBytes)) : nil
+            guard unfilterScanline(
+              filterType: srcRow[0],
+              raw: srcRow.advanced(by: 1),
+              prev: prevRow,
+              curr: currRow,
+              rowBytes: rowBytes,
+              bpp: 4
+            ) else { return false }
+          }
+          return true
+        } else {
+          var scratch = [UInt8](repeating: 0, count: rowBytes * 2)
+          return scratch.withUnsafeMutableBufferPointer { scratchBuf -> Bool in
+            guard let scratchBase = scratchBuf.baseAddress else { return false }
+            let dstStride = width * 4
+            for y in 0..<height {
+              let srcRow = srcBase.advanced(by: y * stride)
+              let currOffset = (y & 1) * rowBytes
+              let prevOffset = ((y + 1) & 1) * rowBytes
+              let currRow = scratchBase.advanced(by: currOffset)
+              let prevRow: UnsafePointer<UInt8>? = y > 0 ? UnsafePointer(scratchBase.advanced(by: prevOffset)) : nil
+              guard unfilterScanline(
+                filterType: srcRow[0],
+                raw: srcRow.advanced(by: 1),
+                prev: prevRow,
+                curr: currRow,
+                rowBytes: rowBytes,
+                bpp: 3
+              ) else { return false }
+              let dstRow = dstBase.advanced(by: y * dstStride)
+              var s = 0
+              var d = 0
+              for _ in 0..<width {
+                dstRow[d] = currRow[s]
+                dstRow[d + 1] = currRow[s + 1]
+                dstRow[d + 2] = currRow[s + 2]
+                dstRow[d + 3] = 255
+                s += 3
+                d += 4
+              }
+            }
+            return true
+          }
+        }
+      }
+    }
+    guard ok else { return nil }
+    return (width, height, rgba)
+  }
+
   private func png(_ bytes: Data) throws -> (width: Int, height: Int, rgba: Data) {
+    if let fast = fastDecodePNG(bytes) { return fast }
     guard bytes.starts(with: [137, 80, 78, 71, 13, 10, 26, 10]), bytes.count >= 33 else { throw KittyGraphicsError.invalid }
     // ImageIO erases RGB behind a tRNS color key. Remove only that chunk from
     // its input, then apply the original key/palette alpha to decoded samples.

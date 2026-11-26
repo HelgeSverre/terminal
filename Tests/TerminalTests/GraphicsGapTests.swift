@@ -1,4 +1,5 @@
 import Foundation
+import Compression
 import CoreGraphics
 import ImageIO
 import Testing
@@ -328,5 +329,214 @@ import TerminalInterop
     #expect(helge_terminal_image_rgba(core, second.image, second.generation,
       Unmanaged.passUnretained(pixels).toOpaque(), Oracle.collect))
     #expect(pixels.data == Data([0, 255, 0, 255]))
+  }
+
+  private static func encodeTestPNG(
+    width: Int,
+    height: Int,
+    colorType: UInt8,
+    samples: [UInt8],
+    filterForRow: (Int) -> UInt8,
+    extraChunks: [(String, [UInt8])] = [],
+    splitIDAT: Bool = false
+  ) throws -> Data {
+    func crc32(_ bytes: [UInt8]) -> UInt32 {
+      var crc = UInt32.max
+      for byte in bytes {
+        crc ^= UInt32(byte)
+        for _ in 0..<8 { crc = (crc & 1) == 0 ? (crc >> 1) : ((crc >> 1) ^ 0xEDB8_8320) }
+      }
+      return crc ^ UInt32.max
+    }
+    func adler32(_ bytes: [UInt8]) -> UInt32 {
+      var a: UInt32 = 1, b: UInt32 = 0
+      for byte in bytes {
+        a = (a + UInt32(byte)) % 65_521
+        b = (b + a) % 65_521
+      }
+      return (b << 16) | a
+    }
+    func appendBE32(_ out: inout [UInt8], _ value: UInt32) {
+      out.append(UInt8((value >> 24) & 0xFF))
+      out.append(UInt8((value >> 16) & 0xFF))
+      out.append(UInt8((value >> 8) & 0xFF))
+      out.append(UInt8(value & 0xFF))
+    }
+    func chunk(_ type: String, _ payload: [UInt8]) -> [UInt8] {
+      var body = Array(type.utf8)
+      body.append(contentsOf: payload)
+      var out = [UInt8]()
+      out.reserveCapacity(12 + payload.count)
+      appendBE32(&out, UInt32(payload.count))
+      out.append(contentsOf: body)
+      appendBE32(&out, crc32(body))
+      return out
+    }
+    func paeth(_ a: UInt8, _ b: UInt8, _ c: UInt8) -> UInt8 {
+      let ia = Int(a), ib = Int(b), ic = Int(c)
+      let p = ia + ib - ic
+      let pa = abs(p - ia), pb = abs(p - ib), pc = abs(p - ic)
+      if pa <= pb && pa <= pc { return a }
+      if pb <= pc { return b }
+      return c
+    }
+
+    let bpp = colorType == 6 ? 4 : (colorType == 2 ? 3 : 1)
+    let rowBytes = width * bpp
+    var raw = [UInt8]()
+    raw.reserveCapacity(height * (1 + rowBytes))
+    for y in 0..<height {
+      let filter = filterForRow(y)
+      raw.append(filter)
+      let currBase = y * rowBytes
+      let prevBase = (y - 1) * rowBytes
+      for x in 0..<rowBytes {
+        let orig = samples[currBase + x]
+        let left: UInt8 = x >= bpp ? samples[currBase + x - bpp] : 0
+        let up: UInt8 = y > 0 ? samples[prevBase + x] : 0
+        let upLeft: UInt8 = (y > 0 && x >= bpp) ? samples[prevBase + x - bpp] : 0
+        let encoded: UInt8
+        switch filter {
+        case 0: encoded = orig
+        case 1: encoded = orig &- left
+        case 2: encoded = orig &- up
+        case 3: encoded = orig &- UInt8((Int(left) + Int(up)) >> 1)
+        case 4: encoded = orig &- paeth(left, up, upLeft)
+        default: encoded = orig
+        }
+        raw.append(encoded)
+      }
+    }
+
+    var deflateBuffer = [UInt8](repeating: 0, count: raw.count + 1024)
+    let deflateCount = raw.withUnsafeBytes { src in
+      deflateBuffer.withUnsafeMutableBytes { dst in
+        compression_encode_buffer(
+          dst.bindMemory(to: UInt8.self).baseAddress!, dst.count,
+          src.bindMemory(to: UInt8.self).baseAddress!, src.count,
+          nil, COMPRESSION_ZLIB)
+      }
+    }
+    try #require(deflateCount > 0)
+    var zlib = [UInt8]()
+    zlib.reserveCapacity(2 + deflateCount + 4)
+    zlib.append(contentsOf: [0x78, 0x01])
+    zlib.append(contentsOf: deflateBuffer[0..<deflateCount])
+    appendBE32(&zlib, adler32(raw))
+
+    var ihdr = [UInt8]()
+    appendBE32(&ihdr, UInt32(width))
+    appendBE32(&ihdr, UInt32(height))
+    ihdr.append(contentsOf: [8, colorType, 0, 0, 0])
+
+    var png: [UInt8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+    png.append(contentsOf: chunk("IHDR", ihdr))
+    for (type, payload) in extraChunks {
+      png.append(contentsOf: chunk(type, payload))
+    }
+    if splitIDAT && zlib.count > 4 {
+      let mid = zlib.count / 2
+      png.append(contentsOf: chunk("IDAT", Array(zlib[0..<mid])))
+      png.append(contentsOf: chunk("IDAT", Array(zlib[mid..<zlib.count])))
+    } else {
+      png.append(contentsOf: chunk("IDAT", zlib))
+    }
+    png.append(contentsOf: chunk("IEND", []))
+    return Data(png)
+  }
+
+  @Test func fastPNGDecoderHandlesRGBAAndRGBWithAllFiveFilters() throws {
+    let width = 64, height = 32
+    var rgbaSamples = [UInt8]()
+    rgbaSamples.reserveCapacity(width * height * 4)
+    for y in 0..<height {
+      for x in 0..<width {
+        rgbaSamples.append(UInt8((x &* 7 &+ y &* 13 &+ 17) & 0xFF))
+        rgbaSamples.append(UInt8((x &* 19 &+ y &* 5 &+ 83) & 0xFF))
+        rgbaSamples.append(UInt8((x &* 31 &+ y &* 29 &+ 211) & 0xFF))
+        rgbaSamples.append(UInt8((x &* 11 &+ y &* 37 &+ 41) & 0xFF))
+      }
+    }
+    let rgbaPNG = try Self.encodeTestPNG(
+      width: width, height: height, colorType: 6, samples: rgbaSamples,
+      filterForRow: { UInt8($0 % 5) },
+      extraChunks: [("sRGB", [0])],
+      splitIDAT: false
+    )
+
+    var rgbSamples = [UInt8]()
+    var expectedRGBAsRGBA = [UInt8]()
+    rgbSamples.reserveCapacity(width * height * 3)
+    expectedRGBAsRGBA.reserveCapacity(width * height * 4)
+    for y in 0..<height {
+      for x in 0..<width {
+        let r = UInt8((x &* 13 &+ y &* 23 &+ 5) & 0xFF)
+        let g = UInt8((x &* 29 &+ y &* 7 &+ 127) & 0xFF)
+        let b = UInt8((x &* 3 &+ y &* 43 &+ 199) & 0xFF)
+        rgbSamples.append(contentsOf: [r, g, b])
+        expectedRGBAsRGBA.append(contentsOf: [r, g, b, 255])
+      }
+    }
+    let rgbPNG = try Self.encodeTestPNG(
+      width: width, height: height, colorType: 2, samples: rgbSamples,
+      filterForRow: { UInt8(($0 + 4) % 5) },
+      extraChunks: [("pHYs", [0, 0, 0x0B, 0x13, 0, 0, 0x0B, 0x13, 1])],
+      splitIDAT: true
+    )
+
+    let store = KittyGraphicsStore()
+    let context = KittyGraphicsContext(alternate: false, row: 1, column: 0, cellWidth: 8, cellHeight: 16)
+
+    let rgbaOutcome = store.consume(
+      Data("Ga=T,f=100,i=1,C=1;\(rgbaPNG.base64EncodedString())".utf8),
+      context: context, now: 0)
+    #expect(String(decoding: try #require(rgbaOutcome.reply), as: UTF8.self).contains("OK"))
+    let rgbaPlacement = try #require(store.visible(alternate: false, positions: [1: 0], height: 4).first { $0.image == 1 })
+    #expect(rgbaPlacement.width == width && rgbaPlacement.height == height)
+    #expect(store.imageRGBA(id: rgbaPlacement.image, generation: rgbaPlacement.generation) == Data(rgbaSamples))
+
+    let rgbOutcome = store.consume(
+      Data("Ga=T,f=100,i=2,C=1;\(rgbPNG.base64EncodedString())".utf8),
+      context: context, now: 0)
+    #expect(String(decoding: try #require(rgbOutcome.reply), as: UTF8.self).contains("OK"))
+    let rgbPlacement = try #require(store.visible(alternate: false, positions: [1: 0], height: 4).first { $0.image == 2 })
+    #expect(rgbPlacement.width == width && rgbPlacement.height == height)
+    #expect(store.imageRGBA(id: rgbPlacement.image, generation: rgbPlacement.generation) == Data(expectedRGBAsRGBA))
+  }
+
+  @Test func pngFallbackHandlesTRNSGrayscaleAndPalette() throws {
+    let rgbTRNS = try Self.encodeTestPNG(
+      width: 2, height: 1, colorType: 2,
+      samples: [12, 34, 56, 78, 90, 102],
+      filterForRow: { _ in 0 },
+      extraChunks: [("tRNS", [0, 12, 0, 34, 0, 56])]
+    )
+    let grayscale = try Self.encodeTestPNG(
+      width: 2, height: 1, colorType: 0,
+      samples: [42, 200],
+      filterForRow: { _ in 0 }
+    )
+    let palette = try Self.encodeTestPNG(
+      width: 2, height: 1, colorType: 3,
+      samples: [0, 1],
+      filterForRow: { _ in 0 },
+      extraChunks: [("PLTE", [255, 0, 0, 0, 255, 0]), ("tRNS", [255, 99])]
+    )
+
+    let store = KittyGraphicsStore()
+    let context = KittyGraphicsContext(alternate: false, row: 1, column: 0, cellWidth: 8, cellHeight: 16)
+    let cases: [(UInt32, Data, [UInt8])] = [
+      (1, rgbTRNS, [12, 34, 56, 0, 78, 90, 102, 255]),
+      (2, grayscale, [42, 42, 42, 255, 200, 200, 200, 255]),
+      (3, palette, [255, 0, 0, 255, 0, 255, 0, 99]),
+    ]
+    for (id, png, expected) in cases {
+      let outcome = store.consume(
+        Data("Ga=T,f=100,i=\(id),C=1;\(png.base64EncodedString())".utf8),
+        context: context, now: 0)
+      #expect(String(decoding: try #require(outcome.reply), as: UTF8.self).contains("OK"))
+      let placement = try #require(store.visible(alternate: false, positions: [1: 0], height: 4).first { $0.image == id })
+      #expect(store.imageRGBA(id: placement.image, generation: placement.generation) == Data(expected))
+    }
   }
 }
