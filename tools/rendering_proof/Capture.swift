@@ -1,6 +1,6 @@
 import Foundation
 import AppKit
-@preconcurrency import ScreenCaptureKit
+import ScreenCaptureKit
 import CoreMedia
 import CoreVideo
 import ImageIO
