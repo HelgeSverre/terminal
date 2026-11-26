@@ -100,9 +100,9 @@ extension TerminalSession {
           _ = helge_terminal_search_step(job.handle)
           owner.submit { [weak self, job] in
             guard let self else { return }
-            self.working = false
-            if job.generation != self.generation { self.job = nil }
-            self.schedule()
+            working = false
+            if job.generation != generation { self.job = nil }
+            schedule()
           }
         }
       } else if status == 2 {
