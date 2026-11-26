@@ -21,9 +21,134 @@ import TerminalInterop
     #expect(first["generation"] as? Int != refreshed["generation"] as? Int)
     #expect(Oracle.rgba(core, refreshed)?.prefix(4) == Data([101, 67, 33, 99]))
     Oracle.feed(core, Oracle.command("a=f,f=32,s=1,v=1,i=1", [1, 2, 3, 4]))
-    #expect(Oracle.replies(core).contains("ENOTSUP"))
+    #expect(Oracle.replies(core).contains("OK"))
     Oracle.feed(core, Oracle.command("a=T,f=8,s=1,v=1,i=2,C=1", [1]))
     #expect(Oracle.images(core).first { $0["image"] as? Int == 2 }.flatMap { Oracle.rgba(core, $0) } == Data([101, 67, 33, 255]))
+  }
+
+  @Test func indexedAnimationFramesPlayAndRebakeOnPaletteUpdate() throws {
+    let core = try #require(helge_terminal_create(8, 4)); defer { helge_terminal_destroy(core) }
+    func rgba(at now: UInt64) throws -> (generation: UInt64, data: Data) {
+      let image = try #require(swiftTerminalSnapshot(core, scroll: nil, now: now).snapshot?.images.first)
+      let pixels = Oracle.Bytes()
+      #expect(helge_terminal_image_rgba(core, image.image, image.generation,
+        Unmanaged.passUnretained(pixels).toOpaque(), Oracle.collect))
+      return (image.generation, pixels.data)
+    }
+
+    Oracle.feed(core, "\(esc)]4;1;#ff0000\(esc)\\\(esc)]4;2;#00ff00\(esc)\\\(esc)]11;#102030\(esc)\\", now: 0)
+    Oracle.feed(core, Oracle.command("a=T,f=8,s=2,v=1,i=1,C=1", [1, 2]), now: 0)
+    Oracle.feed(core, Oracle.command("a=f,f=16,s=2,v=1,i=1,z=50", [2, 128, 248, 255]), now: 0)
+    Oracle.feed(core, Oracle.command("a=a,i=1,r=1,z=50,s=3,v=1"), now: 0)
+    let replies = Oracle.replies(core)
+    #expect(!replies.contains("ENOTSUP") && replies.contains("OK"))
+
+    let frame1Before = try rgba(at: 0)
+    #expect(frame1Before.data == Data([255, 0, 0, 255, 0, 255, 0, 255]))
+    let frame2Before = try rgba(at: 60)
+    #expect(frame2Before.generation != frame1Before.generation)
+    #expect(frame2Before.data == Data([0, 255, 0, 128, 16, 32, 48, 255]))
+
+    Oracle.feed(core, "\(esc)]4;1;#112233\(esc)\\\(esc)]4;2;#445566\(esc)\\\(esc)]11;#778899\(esc)\\", now: 60)
+    let frame2After = try rgba(at: 60)
+    #expect(frame2After.generation != frame2Before.generation)
+    #expect(frame2After.data == Data([0x44, 0x55, 0x66, 128, 0x77, 0x88, 0x99, 255]))
+
+    Oracle.feed(core, Oracle.command("a=a,i=1,s=1,c=1"), now: 60)
+    let frame1After = try rgba(at: 60)
+    #expect(frame1After.generation != frame1Before.generation)
+    #expect(frame1After.data == Data([0x11, 0x22, 0x33, 255, 0x44, 0x55, 0x66, 255]))
+
+    Oracle.feed(core, "\(esc)_Ga=q,i=9,e=f,f=8\(esc)\\\(esc)_Ga=q,i=9,e=f,f=16\(esc)\\", now: 60)
+    let featureReplies = Oracle.replies(core)
+    #expect(featureReplies.contains("e=f,f=8;OK") && featureReplies.contains("e=f,f=16;OK"))
+  }
+
+  @Test func indexedComposeOverwritePreservesPaletteAndAlphaBlendBakesRGBA() throws {
+    let core = try #require(helge_terminal_create(8, 4)); defer { helge_terminal_destroy(core) }
+    func currentFrame() throws -> (generation: UInt64, data: Data) {
+      let image = try #require(swiftTerminalSnapshot(core, scroll: nil, now: 0).snapshot?.images.first)
+      let pixels = Oracle.Bytes()
+      #expect(helge_terminal_image_rgba(core, image.image, image.generation,
+        Unmanaged.passUnretained(pixels).toOpaque(), Oracle.collect))
+      return (image.generation, pixels.data)
+    }
+
+    Oracle.feed(core, "\(esc)]4;1;#ff0000\(esc)\\\(esc)]4;2;#0000ff\(esc)\\\(esc)]4;3;#00ff00\(esc)\\")
+    Oracle.feed(core, Oracle.command("a=T,f=8,s=2,v=1,i=1,C=1", [1, 1]))
+    Oracle.feed(core, Oracle.command("a=f,f=16,s=2,v=1,i=1", [2, 128, 3, 255]))
+    Oracle.feed(core, Oracle.command("a=f,f=8,s=2,v=1,i=1", [1, 1]))
+
+    // C=1 overwrite from indexed f=16 frame 2 onto indexed f=8 frame 1 keeps palette reactivity and upgrades alpha.
+    Oracle.feed(core, Oracle.command("a=c,i=1,r=2,c=1,X=0,Y=0,x=1,y=0,w=1,h=1,C=1"))
+    // C=0 alpha blend from f=16 frame 2 onto f=8 frame 3 bakes RGBA and drops palette reactivity on frame 3.
+    Oracle.feed(core, Oracle.command("a=c,i=1,r=2,c=3,X=0,Y=0,x=0,y=0,w=1,h=1,C=0"))
+    #expect(!Oracle.replies(core).contains("ENOTSUP"))
+
+    let frame1Before = try currentFrame()
+    #expect(frame1Before.data == Data([255, 0, 0, 255, 0, 0, 255, 128]))
+
+    Oracle.feed(core, Oracle.command("a=a,i=1,s=1,c=3"))
+    let frame3Before = try currentFrame()
+    #expect(frame3Before.data[0] > 120 && frame3Before.data[0] < 135)
+    #expect(frame3Before.data[1] == 0)
+    #expect(frame3Before.data[2] > 120 && frame3Before.data[2] < 135)
+    #expect(frame3Before.data[3] == 255)
+
+    // Update palette: frame 1 updates, frame 3 remains baked.
+    Oracle.feed(core, "\(esc)]4;1;#102030\(esc)\\\(esc)]4;2;#405060\(esc)\\")
+    let frame3After = try currentFrame()
+    #expect(frame3After.generation == frame3Before.generation)
+    #expect(frame3After.data == frame3Before.data)
+
+    Oracle.feed(core, Oracle.command("a=a,i=1,s=1,c=1"))
+    let frame1After = try currentFrame()
+    #expect(frame1After.generation != frame1Before.generation)
+    #expect(frame1After.data == Data([0x10, 0x20, 0x30, 255, 0x40, 0x50, 0x60, 128]))
+  }
+
+  @Test func indexedDeleteRootPromotesIndexedFrameAndAccountsBytes() throws {
+    let store = KittyGraphicsStore()
+    var palette = [[Int]](repeating: [0, 0, 0], count: 256)
+    palette[1] = [255, 0, 0]
+    palette[2] = [0, 255, 0]
+    store.setPalette(palette)
+    let context = KittyGraphicsContext(alternate: false, row: 1, column: 0, cellWidth: 8, cellHeight: 16)
+    func send(_ header: String, _ bytes: [UInt8] = []) {
+      let payload = Data(bytes).base64EncodedString()
+      let packet = Data("G\(header);\(payload)".utf8)
+      _ = store.consume(packet, context: context, now: 0)
+    }
+
+    // Root f=8 (2x1): 8 rgba + 2 indexed = 10 bytes.
+    send("a=T,f=8,s=2,v=1,i=1,C=1", [1, 1])
+    #expect(store.accountedBytes == 10)
+    // Frame 2 f=16 (2x1): 8 rgba + 4 indexed = 12 bytes -> total 22.
+    send("a=f,f=16,s=2,v=1,i=1", [2, 200, 2, 100])
+    #expect(store.accountedBytes == 22)
+    // Frame 3 f=32 (2x1): 8 rgba + 0 indexed = 8 bytes -> total 30.
+    send("a=f,f=32,s=2,v=1,i=1", [1, 2, 3, 4, 5, 6, 7, 8])
+    #expect(store.accountedBytes == 30)
+
+    // Delete root frame 1: promotes indexed f=16 frame 2 to root, frees 10 bytes -> total 20.
+    send("a=d,d=f,i=1,r=1")
+    #expect(store.accountedBytes == 20)
+    let promotedBefore = try #require(store.visible(alternate: false, positions: [1: 0], height: 4).first)
+    #expect(store.imageRGBA(id: promotedBefore.image, generation: promotedBefore.generation) == Data([0, 255, 0, 200, 0, 255, 0, 100]))
+
+    // Palette change must re-bake the promoted root frame and advance its generation.
+    palette[2] = [10, 20, 30]
+    store.setPalette(palette)
+    let promotedAfter = try #require(store.visible(alternate: false, positions: [1: 0], height: 4).first)
+    #expect(promotedAfter.generation != promotedBefore.generation)
+    #expect(store.imageRGBA(id: promotedAfter.image, generation: promotedAfter.generation) == Data([10, 20, 30, 200, 10, 20, 30, 100]))
+
+    // Delete frame 2 (the f=32 frame, 8 bytes) -> total 12.
+    send("a=d,d=f,i=1,r=2")
+    #expect(store.accountedBytes == 12)
+    // Delete last frame with d=F -> frees image completely.
+    send("a=d,d=F,i=1,r=1")
+    #expect(store.accountedBytes == 0)
   }
 
   @Test func ordinaryAndRelativePlacementsFollowWidthReflow() throws {

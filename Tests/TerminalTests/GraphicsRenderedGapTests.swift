@@ -215,5 +215,43 @@ import TerminalInterop
     #expect(abs(Int(blended[0]) - 128) <= 2 && blended[1] == 0 && abs(Int(blended[2]) - 127) <= 2 && blended[3] == 255,
       "a=c blends half-transparent blue onto red root frame")
   }
+
+  @Test func kittyIndexedAnimatedFramesAdvanceAndFollowPalettePixels() async throws {
+    let core = try #require(helge_terminal_create(2, 2)); defer { helge_terminal_destroy(core) }
+    #expect(helge_terminal_resize_pixels(core, 2, 2, 8, 8))
+    Oracle.feed(core, "\(esc)[?25l\(esc)]11;#000000\(esc)\\\(esc)]4;1;#ff0000\(esc)\\\(esc)]4;2;#00ff00\(esc)\\", now: 0)
+
+    // Root frame 1 (f=8 index 1 = red), appended frame 2 (f=16 index 2 opaque = green, 50ms gap), looping.
+    Oracle.feed(core, Oracle.command("a=T,f=8,s=1,v=1,i=11,c=1,r=1,C=1,q=2", [1]), now: 0)
+    Oracle.feed(core, Oracle.command("a=f,i=11,z=50,f=16,s=1,v=1,q=2", [2, 255]), now: 0)
+    Oracle.feed(core, Oracle.command("a=a,i=11,r=1,z=50,s=3,v=1,q=2"), now: 0)
+
+    let renderer = try TerminalRendering()
+    func bgra(_ pixels: [UInt8], _ x: Int, _ y: Int) -> [UInt8] {
+      Array(pixels[((y * 16 + x) * 4)..<((y * 16 + x) * 4 + 4)])
+    }
+
+    let tick0 = try await render(core, with: renderer, width: 16, height: 16, now: 0)
+    let gen1 = try #require(tick0.snapshot.images.first?.generation)
+    #expect(bgra(tick0.pixels, 4, 4) == [0, 0, 255, 255], "indexed root frame renders red at now=0ms")
+
+    let tick1 = try await render(core, with: renderer, width: 16, height: 16, now: 60)
+    let gen2 = try #require(tick1.snapshot.images.first?.generation)
+    #expect(gen2 != gen1, "advancing past 50ms gap switches to indexed frame 2")
+    #expect(bgra(tick1.pixels, 4, 4) == [0, 255, 0, 255], "indexed frame 2 renders green at now=60ms")
+
+    // Update palette: index 1 -> yellow, index 2 -> blue. Both frames re-bake with fresh generations.
+    Oracle.feed(core, "\(esc)]4;1;#ffff00\(esc)\\\(esc)]4;2;#0000ff\(esc)\\", now: 60)
+
+    let tick1Repainted = try await render(core, with: renderer, width: 16, height: 16, now: 60)
+    let gen2Blue = try #require(tick1Repainted.snapshot.images.first?.generation)
+    #expect(gen2Blue != gen2, "palette update publishes a fresh generation for indexed frame 2")
+    #expect(bgra(tick1Repainted.pixels, 4, 4) == [255, 0, 0, 255], "indexed frame 2 renders blue after OSC 4 update")
+
+    let tick2Repainted = try await render(core, with: renderer, width: 16, height: 16, now: 110)
+    let gen1Yellow = try #require(tick2Repainted.snapshot.images.first?.generation)
+    #expect(gen1Yellow != gen1 && gen1Yellow != gen2Blue, "looping back renders re-baked indexed root frame")
+    #expect(bgra(tick2Repainted.pixels, 4, 4) == [0, 255, 255, 255], "indexed root frame renders yellow after OSC 4 update")
+  }
 }
 #endif
