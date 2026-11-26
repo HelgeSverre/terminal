@@ -1,6 +1,6 @@
 # Implementation status
 
-Current release line: **v0.6.4** (with post-release engineering improvements on
+Current release line: **v0.6.5** (with post-release engineering improvements on
 `main`). Terminal is a working development milestone, not v1 completion.
 Historical 0.2.x/0.3.x milestones, Rust-to-Swift cutover measurements, and the
 2026-11 gap ledgers are preserved in [docs/archive/](archive/README.md).
@@ -53,7 +53,7 @@ Historical 0.2.x/0.3.x milestones, Rust-to-Swift cutover measurements, and the
   `TerminalHost`, `TerminalUI`) usable by external macOS and UIKit hosts; see
   [embedding](embedding.md).
 
-## Recent improvements (post-v0.6.4)
+## Recent improvements (v0.6.5)
 
 - **Swift 6 & embedding hygiene**: Strict library-boundary enforcement across
   the three library targets, CI verification of Swift 6 consumer embedding
