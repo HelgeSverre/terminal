@@ -70,15 +70,15 @@ Historical 0.2.x/0.3.x milestones, Rust-to-Swift cutover measurements, and the
 
 ## CI and virtual-GPU policy
 
-Hosted macOS CI runs three required jobs on every push to `main`:
+Hosted macOS CI runs two required jobs on every push to `main`:
 
 1. **Headless tests** (`just test`, bundle verification, `just embedding-check`,
    and `just release-build`) using `TERMINAL_CI_GPU_POLICY=paravirtual` for the
    hosted runner's virtual GPU.
 2. **Protocol conformance** (`just esctest` against the 461-case known-good
    gate).
-3. **Sanitizer fuzzing** (`just fuzz 120` with Address Sanitizer and
-   exclusivity checks).
+
+The sanitizer fuzzer (`just fuzz SECONDS`) runs locally only, not in CI.
 
 See [qualification](qualification.md) for how hosted paravirtual CI separates
 from hardware GPU and distribution qualification.

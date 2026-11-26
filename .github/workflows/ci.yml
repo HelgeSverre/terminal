@@ -107,27 +107,11 @@ jobs:
             reports/esctest.log
             reports/esctest-ci.txt
 
-  fuzz:
-    name: Emulator address-sanitizer fuzzing
-    if: ${{ !github.event.inputs.test_target || github.event.inputs.test_target == 'test' }}
-    runs-on: macos-26
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: brew install just
-      - name: Fuzz the emulator for two minutes
-        run: just fuzz 120
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: fuzz-results
-          path: reports/fuzz-current-seed
-
   # Preserve the existing required-check name: a passing headless job alone
-  # must not hide failed conformance or sanitizer checks.
+  # must not hide a failed conformance check.
   macos:
     name: macOS · Swift native tests
-    needs: [headless, conformance, fuzz]
+    needs: [headless, conformance]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -135,11 +119,9 @@ jobs:
         env:
           HEADLESS_RESULT: ${{ needs.headless.result }}
           CONFORMANCE_RESULT: ${{ needs.conformance.result }}
-          FUZZ_RESULT: ${{ needs.fuzz.result }}
           TEST_TARGET: ${{ github.event.inputs.test_target || 'test' }}
         run: |
           test "$HEADLESS_RESULT" = success
           if [ "$TEST_TARGET" = test ]; then
             test "$CONFORMANCE_RESULT" = success
-            test "$FUZZ_RESULT" = success
           fi

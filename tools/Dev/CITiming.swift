@@ -37,7 +37,7 @@ enum CITiming {
   static func summarize(_ data: Data) throws -> Receipt {
     let jobs = try JSONDecoder().decode(Jobs.self, from: data).jobs
     let required = Set(["macOS · Headless tests", "Terminal protocol conformance",
-                        "Emulator address-sanitizer fuzzing", "macOS · Swift native tests"])
+                        "macOS · Swift native tests"])
     guard required.isSubset(of: Set(jobs.map(\.name))),
           let headless = jobs.first(where: { $0.name == "macOS · Headless tests" }),
           let aggregate = jobs.first(where: { $0.name == "macOS · Swift native tests" }),

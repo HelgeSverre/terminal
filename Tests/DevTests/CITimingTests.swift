@@ -4,11 +4,11 @@ import Testing
 
 @Suite struct CITimingTests {
   func fixture(aggregate: String = "success", finished: String = "2026-11-17T00:06:03Z") throws -> Data {
-    let names = ["macOS · Headless tests", "Terminal protocol conformance", "Emulator address-sanitizer fuzzing", "macOS · Swift native tests"]
+    let names = ["macOS · Headless tests", "Terminal protocol conformance", "macOS · Swift native tests"]
     let jobs = names.enumerated().map { index, name -> [String: Any] in
-      ["name": name, "run_id": 44, "head_sha": "fixture-commit", "conclusion": index == 3 ? aggregate : "success",
-       "started_at": index == 3 ? "2026-11-17T00:05:40Z" : "2026-11-17T00:00:00Z",
-       "completed_at": index == 3 ? finished : "2026-11-17T00:05:40Z",
+      ["name": name, "run_id": 44, "head_sha": "fixture-commit", "conclusion": index == 2 ? aggregate : "success",
+       "started_at": index == 2 ? "2026-11-17T00:05:40Z" : "2026-11-17T00:00:00Z",
+       "completed_at": index == 2 ? finished : "2026-11-17T00:05:40Z",
        "steps": index == 0 ? [["name": "Run Swift native tests", "started_at": "2026-11-17T00:00:30.000Z",
                                 "completed_at": "2026-11-17T00:05:15.000Z"]] : []]
     }

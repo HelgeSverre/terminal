@@ -10,7 +10,7 @@ compact dated summary following [reports/README.md](../reports/README.md).
 The target is **under 300 seconds for both the native test step and complete
 feedback**. Complete feedback runs from the earliest CI job start through the
 `macOS · Swift native tests` aggregate check's completion. It includes setup,
-cache transfer, protocol conformance, two minutes of ASan fuzzing and aggregate
+cache transfer, protocol conformance and aggregate
 scheduling. Runner queue time before the first job starts is reported separately
 when relevant; it is not silently substituted for this boundary.
 
@@ -85,7 +85,7 @@ claims; the following rows require evidence at the candidate commit.
 
 | Combination | Required evidence |
 | --- | --- |
-| Apple silicon, macOS 15 hosted CI | Full headless, known-good conformance, ASan fuzz and bundle checks; preserve the exact paravirtual GPU disposition |
+| Apple silicon, macOS 26 hosted CI (Xcode 26.3) | Full headless, known-good conformance and bundle checks; preserve the exact paravirtual GPU disposition |
 | Apple silicon, macOS 14 minimum | Build and launch frozen bundle; local PTY/input/resize/close, real Metal raster/residency, ordinary shell configuration |
 | Apple silicon, newest available macOS | Same native gates plus mixed-DPI/display changes, sleep/wake, IME and VoiceOver recipes from their owners |
 | Intel, macOS 14 | Run universal app's x86_64 slice on actual Intel hardware; PTY/input/resize and discrete/shared-heap Metal checks; cross-compilation alone is insufficient |

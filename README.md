@@ -154,9 +154,9 @@ Swift 6 consumer embedding (`just embedding-check`), and builds an ad-hoc signed
 WMO release bundle (`just release-build`). Phase timings and per-test XML
 reports are written to `reports/test-timing`. The test cache preserves
 timestamps only for tracked files whose contents match the build receipt; edited
-files still rebuild normally. CI runs protocol conformance (`just esctest`) and
-the two-minute sanitizer fuzzer (`just fuzz 120`) in separate jobs alongside the
-headless gate. All three jobs must pass.
+files still rebuild normally. CI runs protocol conformance (`just esctest`) in a separate job alongside the
+headless gate. Both jobs must pass. The sanitizer fuzzer (`just fuzz SECONDS`) runs
+locally only.
 
 GUI diagnostics open disposable windows and clean up their child processes.
 The real-workload stress commands need Accessibility, Screen Recording, and
